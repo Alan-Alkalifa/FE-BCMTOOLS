@@ -36,4 +36,10 @@ export default defineNuxtConfig({
       },
     },
   },
+  icon: {
+    // The static build has no Nuxt server, and nginx sends every /api path to the backend,
+    // so all icons must be in the client bundle rather than fetched from /api/_nuxt_icon.
+    provider: 'none',
+    clientBundle: { scan: true },
+  },
 })
