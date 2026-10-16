@@ -59,12 +59,16 @@ frontend/
 │   ├── app.config.ts              # Nuxt UI theme (primary/neutral colours)
 │   ├── error.vue                  # Full-page error screen (404, unhandled errors)
 │   ├── assets/css/main.css        # Tailwind + Nuxt UI imports
-│   ├── composables/useAuth.ts     # Current user, fetchUser(), hasRole()
-│   ├── layouts/default.vue        # App shell: header with user name and sign-out
+│   ├── components/ProfileFields.vue # Label/value list used on the profile page
+│   ├── composables/
+│   │   ├── useAuth.ts             # Current user, fetchUser(), hasRole()
+│   │   └── useProfile.ts          # GET /api/me/profile (Microsoft profile saved at sign-in); photo at /api/me/photo
+│   ├── layouts/default.vue        # App shell: header with navigation, user name and sign-out
 │   ├── middleware/auth.global.ts  # Redirects to /login unless the page is public
 │   ├── pages/
 │   │   ├── index.vue              # Home (requires sign-in)
-│   │   └── login.vue              # Public sign-in page (no layout)
+│   │   ├── profile.vue            # The user's Microsoft profile from the backend's users table
+│   │   └── login.vue              # Public sign-in page (no layout); shows sign-in errors and sign-out confirmation
 │   └── types/page-meta.d.ts       # Adds `public` to definePageMeta
 ├── public/                        # Copied as-is: favicon.svg, robots.txt
 ├── e2e/
@@ -173,6 +177,8 @@ definePageMeta({ public: true })
 
 ### Sign-in and sign-out
 
+Sign-out ends only the BCM Tools session; the browser stays signed in to Microsoft. The backend then redirects to `/login?signed_out=1`, which shows a confirmation.
+
 Use plain links — they must be full-page navigations, not client-side routes:
 
 ```vue
@@ -223,6 +229,8 @@ Icons use the Lucide set, bundled at build time so they work without internet ac
 ```
 
 To use another icon set, install its `@iconify-json/<set>` package — don't rely on the online Iconify API, which is blocked in the private network.
+
+Every icon is compiled into the client bundle (`icon.clientBundle.scan` in `nuxt.config.ts`), because the static build has no `/api/_nuxt_icon` endpoint and nginx would send that path to the backend. Write icon names as literal strings (`'i-lucide-house'`) so the build can find them; names assembled at runtime won't be bundled.
 
 ## Testing
 

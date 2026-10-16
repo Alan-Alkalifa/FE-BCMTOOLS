@@ -26,6 +26,16 @@ const loginHref = computed(() => {
         class="mb-4"
       />
 
+      <UAlert
+        v-else-if="route.query.signed_out"
+        color="success"
+        variant="subtle"
+        icon="i-lucide-circle-check"
+        title="You've signed out of BCM Tools."
+        description="You're still signed in to your Microsoft account, so signing in again won't ask for your password."
+        class="mb-4"
+      />
+
       <UButton
         :to="loginHref"
         external
