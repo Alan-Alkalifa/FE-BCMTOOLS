@@ -55,14 +55,18 @@ flowchart LR
 ```text
 frontend/
 ├── app/
-│   ├── app.vue                    # Root: <UApp><NuxtPage /></UApp>
+│   ├── app.vue                    # Root: <UApp><NuxtLayout><NuxtPage /></NuxtLayout></UApp>
+│   ├── app.config.ts              # Nuxt UI theme (primary/neutral colours)
+│   ├── error.vue                  # Full-page error screen (404, unhandled errors)
 │   ├── assets/css/main.css        # Tailwind + Nuxt UI imports
 │   ├── composables/useAuth.ts     # Current user, fetchUser(), hasRole()
+│   ├── layouts/default.vue        # App shell: header with user name and sign-out
 │   ├── middleware/auth.global.ts  # Redirects to /login unless the page is public
 │   ├── pages/
 │   │   ├── index.vue              # Home (requires sign-in)
-│   │   └── login.vue              # Public sign-in page
+│   │   └── login.vue              # Public sign-in page (no layout)
 │   └── types/page-meta.d.ts       # Adds `public` to definePageMeta
+├── public/                        # Copied as-is: favicon.svg, robots.txt
 ├── e2e/
 │   ├── ui/                        # Playwright tests with the API mocked
 │   └── smoke/                     # Playwright tests against a real backend
@@ -70,16 +74,21 @@ frontend/
 ├── .github/workflows/             # ci.yml, deploy.yml, deploy-env.yml
 ├── compose.yaml                   # Local dev server with hot reload
 ├── Dockerfile                     # Targets: dev, build, prod
+├── eslint.config.mjs              # ESLint (rules and code style set in nuxt.config.ts)
 ├── nuxt.config.ts
 ├── playwright.config.ts
+├── .editorconfig, .nvmrc          # Editor settings; Node version used by CI
+├── .env.example                   # Dev-only environment variables
 └── package.json
 ```
+
+Pages use `layouts/default.vue` unless they opt out with `definePageMeta({ layout: false })`, as `login.vue` does.
 
 ## Getting started
 
 ### Prerequisites
 
-- Docker Desktop, **or** Node.js 22.21+ / 24.11+ with npm 11.5+
+- Docker Desktop, **or** Node.js 24.11+ (`.nvmrc`; 22.21+ also works) with npm 11.5+. Docker and CI use Node 24; use npm 11 locally too, because npm 10's `npm ci` rejects lockfiles written by npm 11.
 - The backend running locally on port 8000 (see the backend README)
 
 > npm 11.4 has a bug that crashes `npm install` on this project (`Cannot read properties of null (reading 'edgesOut')`). Upgrade with `npm install -g npm@latest`, or run `npx npm@latest install`.
@@ -119,6 +128,7 @@ $env:NUXT_DEV_BACKEND_URL = "http://localhost:8001"; npm run dev
 | `npm run dev` | Dev server with hot reload on port 3000 |
 | `npm run build` | Static production build into `.output/public` (`nuxt generate`) |
 | `npm run preview` | Preview the production build |
+| `npm run lint` | ESLint, including code style (`npm run lint:fix` to auto-fix) |
 | `npm run typecheck` | Type-check the app (`vue-tsc`) |
 | `npm run test:e2e` | Playwright UI tests (API mocked) against `E2E_BASE_URL` |
 | `npm run test:smoke` | Playwright smoke tests against a real backend at `E2E_BASE_URL` |
@@ -268,8 +278,8 @@ Smoke tests must not depend on a signed-in user: real Entra sign-in (MFA, condit
 
 | Target | Base | What it does |
 |---|---|---|
-| `dev` | `node:22-alpine` | `nuxt dev` on port 3000 (used by `compose.yaml`) |
-| `build` | `node:22-alpine` | `npm ci`, `nuxt generate`, writes `version.json` |
+| `dev` | `node:24-alpine` | `nuxt dev` on port 3000 (used by `compose.yaml`) |
+| `build` | `node:24-alpine` | `npm ci`, `nuxt generate`, writes `version.json` |
 | `prod` | `nginxinc/nginx-unprivileged:1.27-alpine` | Serves `.output/public` on port 8080 as a non-root user |
 
 Run the production image locally against a backend on your machine:
@@ -285,6 +295,7 @@ docker run --rm -p 3000:8080 --add-host host.docker.internal:host-gateway `
 - **SPA fallback**: unknown paths serve `index.html`, so deep links work. Pre-rendered pages such as `/login` are served from `login/index.html` directly.
 - **Relative redirects** (`absolute_redirect off`): nginx never builds redirects with its internal port 8080.
 - **Proxy**: `/api/*` and `/auth/*` go to `BACKEND_URL`. The upstream `Host` header is the backend's own host (required by App Service routing), with the original host in `X-Forwarded-Host`. SNI is enabled for HTTPS upstreams. `X-Forwarded-Proto` is passed through from the load balancer.
+- **Compression**: gzip for JS, CSS, JSON and SVG over 1 KB.
 - **Caching**: hashed assets under `/_nuxt/` are cached for 1 year; HTML and `version.json` are `no-cache`, so a new release is picked up immediately.
 - **Security headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - **Upload limit**: 20 MB request bodies.
@@ -295,14 +306,14 @@ docker run --rm -p 3000:8080 --add-host host.docker.internal:host-gateway `
 
 ```mermaid
 flowchart LR
-    PR["Pull request"] --> CI["CI: typecheck, build, UI tests on prod image"]
+    PR["Pull request"] --> CI["CI: lint, typecheck, build, UI tests on prod image"]
     Main["Push to main"] --> CI2["CI"] --> Build["Build + push bcm-frontend:SHA to ACR"]
     Build --> Dev["Deploy dev + smoke"] --> Test["Deploy test + smoke (approval)"] --> Prod["Deploy prod + smoke (approval)"]
 ```
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | Pull requests; called by `deploy.yml` | `npm ci`, typecheck, build; then builds the **prod** image, runs it, and runs the Playwright `ui` project against it |
+| `ci.yml` | Pull requests; called by `deploy.yml` | `npm ci`, lint, typecheck, build; then builds the **prod** image, runs it, and runs the Playwright `ui` project against it |
 | `deploy.yml` | Push to `main`, manual | Runs CI, builds the image once, tagged with the commit SHA, pushes to ACR, then promotes the **same image** through `dev`, `test`, `prod` |
 | `deploy-env.yml` | Called per environment | Points the App Service at the new image, waits until `APP_URL/version.json` reports the new SHA, then runs the Playwright `smoke` project against `APP_URL` |
 
@@ -330,7 +341,7 @@ Azure login uses OpenID Connect (federated credentials) — no Azure secrets in 
 
 Protection rules: require reviewers on `test` and `prod`; restrict `prod` to `main`.
 
-The self-hosted runner (shared with the backend repository) needs Docker, Azure CLI, `curl` and Node.js 22, plus the OS libraries Playwright installs with `npx playwright install --with-deps`.
+The self-hosted runner (shared with the backend repository) needs Docker, Azure CLI, `curl` and Node.js 24, plus the OS libraries Playwright installs with `npx playwright install --with-deps`.
 
 ## Azure setup
 

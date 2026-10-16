@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ public: true })
+definePageMeta({ public: true, layout: false })
 
 const route = useRoute()
 
@@ -13,7 +13,9 @@ const loginHref = computed(() => {
   <div class="min-h-screen flex items-center justify-center p-4">
     <UCard class="w-full max-w-sm">
       <template #header>
-        <h1 class="text-lg font-semibold">BCM Tools</h1>
+        <h1 class="text-lg font-semibold">
+          BCM Tools
+        </h1>
       </template>
 
       <UAlert
@@ -24,7 +26,12 @@ const loginHref = computed(() => {
         class="mb-4"
       />
 
-      <UButton :to="loginHref" external block label="Sign in with Microsoft" />
+      <UButton
+        :to="loginHref"
+        external
+        block
+        label="Sign in with Microsoft"
+      />
     </UCard>
   </div>
 </template>

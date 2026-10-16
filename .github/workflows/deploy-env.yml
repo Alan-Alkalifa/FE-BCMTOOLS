@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: vars.APP_URL != ''
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - name: Smoke test
         if: vars.APP_URL != ''
