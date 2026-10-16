@@ -25,6 +25,7 @@ test('signed-in users see their profile', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Welcome, Test User' })).toBeVisible()
   await expect(page.getByText('Roles: BCM.Admin')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/auth/logout')
 })
 
 test('sign-in errors are shown', async ({ page }) => {
