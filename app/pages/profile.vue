@@ -2,9 +2,8 @@
 import type { ProfileField } from '~/components/ProfileFields.vue'
 import { PROFILE_PHOTO_URL, type Profile } from '~/composables/useProfile'
 
-useHead({ title: 'Profile · BCM Tools' })
-
 const { data: profile, status, error } = useProfile()
+const showSkeleton = useDelayedLoading(() => status.value === 'pending')
 
 const SHOWN_GRAPH_FIELDS = new Set([
   'id', 'displayName', 'givenName', 'surname', 'mail', 'userPrincipalName', 'jobTitle', 'department',
@@ -57,22 +56,34 @@ function formatValue(value: unknown) {
 const accessFields = computed<ProfileField[]>(() => [
   {
     label: 'Last sign-in',
-    value: profile.value?.last_login_at
-      ? new Date(profile.value.last_login_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-      : null,
+    value: formatDateTime(profile.value?.last_login_at),
   },
 ])
 </script>
 
 <template>
-  <UContainer class="py-10 space-y-6">
-    <div
-      v-if="status === 'pending'"
-      class="space-y-4"
+  <AppPage title="Profile">
+    <SkeletonGroup
+      v-if="showSkeleton"
+      label="Loading profile"
+      class="space-y-6"
     >
-      <USkeleton class="h-16 w-72" />
-      <USkeleton class="h-48 w-full" />
-    </div>
+      <div class="flex items-center gap-4">
+        <div class="skeleton size-12 rounded-full" />
+        <div class="space-y-2">
+          <div class="skeleton h-6 w-48" />
+          <div class="skeleton h-4 w-32" />
+        </div>
+      </div>
+      <div class="grid gap-6 md:grid-cols-2">
+        <SkeletonCard
+          v-for="n in 4"
+          :key="n"
+          fields
+          :lines="5"
+        />
+      </div>
+    </SkeletonGroup>
 
     <UAlert
       v-else-if="error?.statusCode === 404"
@@ -100,9 +111,9 @@ const accessFields = computed<ProfileField[]>(() => [
           size="3xl"
         />
         <div>
-          <h1 class="text-2xl font-semibold">
+          <h2 class="text-2xl font-semibold">
             {{ profile.display_name }}
-          </h1>
+          </h2>
           <p class="text-muted">
             {{ [profile.job_title, profile.department].filter(Boolean).join(' · ') || profile.email }}
           </p>
@@ -115,18 +126,18 @@ const accessFields = computed<ProfileField[]>(() => [
           :key="section.title"
         >
           <template #header>
-            <h2 class="flex items-center gap-2 font-semibold">
+            <h3 class="flex items-center gap-2 font-semibold">
               <UIcon :name="section.icon" /> {{ section.title }}
-            </h2>
+            </h3>
           </template>
           <ProfileFields :fields="section.fields" />
         </UCard>
 
         <UCard>
           <template #header>
-            <h2 class="flex items-center gap-2 font-semibold">
+            <h3 class="flex items-center gap-2 font-semibold">
               <UIcon name="i-lucide-shield-check" /> Access
-            </h2>
+            </h3>
           </template>
           <div class="flex flex-wrap gap-1 mb-3">
             <UBadge
@@ -145,9 +156,9 @@ const accessFields = computed<ProfileField[]>(() => [
 
         <UCard v-if="otherFields.length">
           <template #header>
-            <h2 class="flex items-center gap-2 font-semibold">
+            <h3 class="flex items-center gap-2 font-semibold">
               <UIcon name="i-lucide-map-pin" /> Other Microsoft profile fields
-            </h2>
+            </h3>
           </template>
           <ProfileFields :fields="otherFields" />
         </UCard>
@@ -157,5 +168,5 @@ const accessFields = computed<ProfileField[]>(() => [
         From your Microsoft Entra ID profile, refreshed each time you sign in. Empty fields haven't been filled in by your organisation.
       </p>
     </template>
-  </UContainer>
+  </AppPage>
 </template>

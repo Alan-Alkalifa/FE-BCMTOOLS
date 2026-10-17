@@ -8,12 +8,12 @@ const subtitle = computed(() =>
 </script>
 
 <template>
-  <UContainer class="py-10">
+  <AppPage title="Home">
     <UCard>
       <template #header>
-        <h1 class="text-lg font-semibold">
+        <h2 class="text-lg font-semibold">
           Welcome, {{ profile?.display_name ?? user?.name }}
-        </h1>
+        </h2>
         <p
           v-if="subtitle"
           class="text-sm text-muted"
@@ -35,5 +35,5 @@ const subtitle = computed(() =>
         />
       </template>
     </UCard>
-  </UContainer>
+  </AppPage>
 </template>

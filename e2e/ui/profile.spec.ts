@@ -78,6 +78,39 @@ test('initials are shown without a photo', async ({ page }) => {
   expect(photoRequested).toBe(false)
 })
 
+test('slow loads show one announced skeleton region, then the content', async ({ page }) => {
+  let release!: () => void
+  const released = new Promise<void>((resolve) => (release = resolve))
+  await page.route('**/api/me', (route) => route.fulfill({ json: USER }))
+  await page.route('**/api/me/profile', async (route) => {
+    await released
+    await route.fulfill({ json: PROFILE })
+  })
+
+  await page.goto('/profile')
+  await expect(page.getByRole('status', { name: 'Loading profile' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveCount(1)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  release()
+  await expect(page.getByRole('heading', { name: 'Test User' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveCount(0)
+})
+
+test('fast loads never flash a skeleton', async ({ page }) => {
+  await signIn(page, { json: PROFILE })
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector('[role="status"][aria-busy="true"]')) {
+        (window as unknown as { sawSkeleton: boolean }).sawSkeleton = true
+      }
+    }).observe(document, { childList: true, subtree: true })
+  })
+  await page.goto('/profile')
+  await expect(page.getByRole('heading', { name: 'Test User' })).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { sawSkeleton?: boolean }).sawSkeleton)).toBeFalsy()
+})
+
 test('profile page explains a missing profile', async ({ page }) => {
   await signIn(page, { status: 404, json: { error: 'not_found' } })
   await page.goto('/profile')
