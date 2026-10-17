@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
-import { PROFILE_PHOTO_URL } from '~/composables/useProfile'
-
-const { user } = useAuth()
-const { data: profile } = useProfile()
 
 const items: NavigationMenuItem[] = [
   { label: 'Home', icon: 'i-lucide-house', to: '/' },
@@ -12,47 +8,37 @@ const items: NavigationMenuItem[] = [
 </script>
 
 <template>
-  <div>
-    <UHeader
-      title="BCM Tools"
-      to="/"
+  <UDashboardGroup unit="rem">
+    <UDashboardSidebar
+      collapsible
+      :default-size="15"
+      :collapsed-size="4"
+      class="bg-muted"
+      :ui="{ footer: 'border-t border-default' }"
     >
-      <UNavigationMenu :items="items" />
-
-      <template #right>
-        <ULink
-          v-if="user"
-          to="/profile"
-          class="flex items-center gap-2 text-sm text-muted"
-        >
-          <UAvatar
-            :src="profile?.has_photo ? PROFILE_PHOTO_URL : undefined"
-            :alt="user.name ?? undefined"
-            size="xs"
-          />
-          <span class="hidden sm:inline">{{ user.name }}</span>
-        </ULink>
-        <UButton
-          to="/auth/logout"
-          external
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-log-out"
-          label="Sign out"
-        />
+      <template #header="{ collapsed }">
+        <AppLogo :collapsed="collapsed" />
       </template>
 
-      <template #body>
+      <template #default="{ collapsed }">
         <UNavigationMenu
+          :collapsed="collapsed"
           :items="items"
           orientation="vertical"
-          class="-mx-2.5"
+          tooltip
         />
       </template>
-    </UHeader>
 
-    <UMain>
-      <slot />
-    </UMain>
-  </div>
+      <template #footer="{ collapsed }">
+        <p
+          v-if="!collapsed"
+          class="text-xs text-dimmed"
+        >
+          Internal use only
+        </p>
+      </template>
+    </UDashboardSidebar>
+
+    <slot />
+  </UDashboardGroup>
 </template>

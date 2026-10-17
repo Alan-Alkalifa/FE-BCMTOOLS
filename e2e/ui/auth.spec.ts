@@ -14,6 +14,17 @@ test('unauthenticated users are sent to the login page', async ({ page }) => {
   )
 })
 
+test('the sign-in button starts the Microsoft sign-in flow', async ({ page }) => {
+  await page.route('**/auth/login**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<h1>Microsoft sign-in</h1>' }),
+  )
+
+  await page.goto('/login?redirect=/profile')
+  await page.getByRole('link', { name: 'Sign in with Microsoft' }).click()
+
+  await expect(page).toHaveURL(/\/auth\/login\?next=%2Fprofile$/)
+})
+
 test('signed-in users see their profile', async ({ page }) => {
   await page.route('**/api/me', (route) =>
     route.fulfill({
@@ -25,7 +36,8 @@ test('signed-in users see their profile', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Welcome, Test User' })).toBeVisible()
   await expect(page.getByText('Roles: BCM.Admin')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/auth/logout')
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveAttribute('href', '/auth/logout')
 })
 
 test('sign-in errors are shown', async ({ page }) => {

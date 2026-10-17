@@ -30,7 +30,8 @@ The backend (Flask API, Microsoft sign-in, Graph, MySQL) lives in a separate rep
 | Concern | Choice |
 |---|---|
 | Framework | Nuxt 4 (Vue 3, TypeScript), client-side rendering only (`ssr: false`) |
-| UI | Nuxt UI 4 (Tailwind CSS 4) |
+| UI | Nuxt UI 4 (Tailwind CSS 4), themed by the [design system](docs/design-system.md) |
+| Font | Inter, self-hosted via `@fontsource-variable/inter` (no Google Fonts) |
 | Icons | Lucide, bundled locally via `@iconify-json/lucide` (no runtime calls to the Iconify API) |
 | State | `useState` composables (add Pinia when state grows) |
 | Tests | Playwright |
@@ -56,21 +57,28 @@ flowchart LR
 frontend/
 ├── app/
 │   ├── app.vue                    # Root: <UApp><NuxtLayout><NuxtPage /></NuxtLayout></UApp>
-│   ├── app.config.ts              # Nuxt UI theme (primary/neutral colours)
+│   ├── app.config.ts              # Nuxt UI theme: colour aliases, compact tables
 │   ├── error.vue                  # Full-page error screen (404, unhandled errors)
-│   ├── assets/css/main.css        # Tailwind + Nuxt UI imports
-│   ├── components/ProfileFields.vue # Label/value list used on the profile page
+│   ├── assets/css/main.css        # Design tokens: CIMB palette, chart palette, Inter, motion
+│   ├── components/
+│   │   ├── AppLogo.vue            # CIMB Niaga logo + "BCM Tools" (sidebar, collapses to the mark)
+│   │   ├── AppPage.vue            # Page wrapper: top bar with title, actions slot and user menu
+│   │   ├── UserMenu.vue           # Avatar + name dropdown: Profile, Sign out
+│   │   ├── StatusBadge.vue        # Renders a value from a status scale (label, colour, icon)
+│   │   └── ProfileFields.vue      # Label/value list used on the profile page
 │   ├── composables/
 │   │   ├── useAuth.ts             # Current user, fetchUser(), hasRole()
 │   │   └── useProfile.ts          # GET /api/me/profile (Microsoft profile saved at sign-in); photo at /api/me/photo
-│   ├── layouts/default.vue        # App shell: header with navigation, user name and sign-out
+│   ├── layouts/default.vue        # App shell: collapsible left sidebar with logo and navigation
 │   ├── middleware/auth.global.ts  # Redirects to /login unless the page is public
 │   ├── pages/
 │   │   ├── index.vue              # Home (requires sign-in)
 │   │   ├── profile.vue            # The user's Microsoft profile from the backend's users table
 │   │   └── login.vue              # Public sign-in page (no layout); shows sign-in errors and sign-out confirmation
-│   └── types/page-meta.d.ts       # Adds `public` to definePageMeta
-├── public/                        # Copied as-is: favicon.svg, robots.txt
+│   ├── types/page-meta.d.ts       # Adds `public` to definePageMeta
+│   └── utils/                     # Auto-imported: format.ts (id-ID dates/numbers/Rp, WIB), chart.ts, status.ts
+├── docs/design-system.md          # Design system spec: tokens, components, accessibility, writing style
+├── public/                        # Copied as-is: cimb-niaga-logo.svg, favicon.ico
 ├── e2e/
 │   ├── ui/                        # Playwright tests with the API mocked
 │   └── smoke/                     # Playwright tests against a real backend
@@ -86,7 +94,9 @@ frontend/
 └── package.json
 ```
 
-Pages use `layouts/default.vue` unless they opt out with `definePageMeta({ layout: false })`, as `login.vue` does.
+Pages use `layouts/default.vue` and wrap their content in `<AppPage title="...">`, unless they opt out with `definePageMeta({ layout: false })`, as `login.vue` does.
+
+**Before building UI, read [`docs/design-system.md`](docs/design-system.md).** It defines colours, typography, spacing, and how to use buttons, forms, tables, feedback, status badges, KPI tiles, charts and navigation.
 
 ## Getting started
 

@@ -8,10 +8,15 @@ export default defineNuxtConfig({
     head: {
       title: 'BCM Tools',
       htmlAttrs: { lang: 'en' },
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+      link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
     },
   },
-  css: ['~/assets/css/main.css'],
+  css: ['@fontsource-variable/inter', '~/assets/css/main.css'],
+  ui: {
+    // @nuxt/fonts downloads from Google Fonts; Inter is self-hosted via @fontsource instead.
+    fonts: false,
+    colorMode: false,
+  },
   compatibilityDate: '2025-07-15',
   nitro: {
     devProxy: {
