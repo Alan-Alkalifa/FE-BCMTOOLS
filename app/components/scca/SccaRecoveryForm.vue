@@ -256,7 +256,7 @@ async function onSubmit() {
               <SccaRecoveryField
                 v-model="state[kind][field.key]"
                 :control="field.control"
-                :aria-label="`${kindLabel(kind)} ${field.label}`"
+                :ariaLabel="`${kindLabel(kind)} ${field.label}`"
               />
             </UFormField>
             <UFormField
@@ -292,7 +292,7 @@ async function onSubmit() {
             <SccaRecoveryField
               v-model="state.final[field.key]"
               :control="field.control"
-              :aria-label="`${kindLabel('final')} ${field.label}`"
+              :ariaLabel="`${kindLabel('final')} ${field.label}`"
             />
           </UFormField>
           <UAlert
