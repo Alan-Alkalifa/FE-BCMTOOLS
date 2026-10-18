@@ -16,6 +16,7 @@ The backend (Flask API, Microsoft sign-in, Graph, MySQL) lives in a separate rep
 - [Configuration](#configuration)
 - [Authentication in the frontend](#authentication-in-the-frontend)
 - [Building pages](#building-pages)
+- [SCCA](#scca)
 - [Testing](#testing)
 - [Docker images and nginx](#docker-images-and-nginx)
 - [CI/CD](#cicd)
@@ -61,20 +62,23 @@ frontend/
 │   ├── error.vue                  # Full-page error screen (404, unhandled errors)
 │   ├── assets/css/main.css        # Design tokens: CIMB palette, chart palette, Inter, motion
 │   ├── components/
-│   │   ├── AppLogo.vue            # CIMB Niaga logo + "BCM Tools" (sidebar, collapses to the mark)
-│   │   ├── AppPage.vue            # Page wrapper: top bar with title, actions slot and user menu
+│   │   ├── AppLogo.vue            # CIMB Niaga logo + "BCM Tools", links home from the top bar
+│   │   ├── AppPage.vue            # Page wrapper: top bar with actions slot and user menu
 │   │   ├── UserMenu.vue           # Avatar + name dropdown: Profile, Sign out
 │   │   ├── StatusBadge.vue        # Renders a value from a status scale (label, colour, icon)
-│   │   └── ProfileFields.vue      # Label/value list used on the profile page
+│   │   ├── ProfileFields.vue      # Label/value list used on the profile page
+│   │   └── scca/                  # SCCA forms, score panel and criticality matrix
 │   ├── composables/
 │   │   ├── useAuth.ts             # Current user, fetchUser(), hasRole()
-│   │   └── useProfile.ts          # GET /api/me/profile (Microsoft profile saved at sign-in); photo at /api/me/photo
-│   ├── layouts/default.vue        # App shell: collapsible left sidebar with logo and navigation
+│   │   ├── useProfile.ts          # GET /api/me/profile (Microsoft profile saved at sign-in); photo at /api/me/photo
+│   │   └── useScca.ts             # SCCA types, list/detail fetchers, mutations, 422 field errors
+│   ├── layouts/default.vue        # App shell. Pages use AppPage: top bar, then content
 │   ├── middleware/auth.global.ts  # Redirects to /login unless the page is public
 │   ├── pages/
-│   │   ├── index.vue              # Home (requires sign-in)
+│   │   ├── index.vue              # Home: welcome, then the module menu (requires sign-in)
 │   │   ├── profile.vue            # The user's Microsoft profile from the backend's users table
-│   │   └── login.vue              # Public sign-in page (no layout); shows sign-in errors and sign-out confirmation
+│   │   ├── login.vue              # Public sign-in page (no layout); shows sign-in errors and sign-out confirmation
+│   │   └── scca/                  # Assessment list, create, tabbed editor, print-friendly report
 │   ├── types/page-meta.d.ts       # Adds `public` to definePageMeta
 │   └── utils/                     # Auto-imported: format.ts (id-ID dates/numbers/Rp, WIB), chart.ts, status.ts
 ├── docs/design-system.md          # Design system spec: tokens, components, accessibility, writing style
@@ -203,6 +207,10 @@ Use plain links — they must be full-page navigations, not client-side routes:
 ```
 
 Hiding UI is for usability only. The backend enforces every permission with `@require_role`.
+
+## SCCA
+
+System Criticality Categorisation Assessment. The list, editor and report call `/api/scca/*`. The list is **server-paginated**: search `q`, category, `page` and `per_page=25` are sent as query parameters and kept in the URL. The editor has four tabs (Details, Rating, Interdependencies, Result and sign-off) and a live score panel that previews via `POST /api/scca/calculate`. Scoring stays on the backend.
 
 ## Building pages
 

@@ -1,33 +1,45 @@
 <script setup lang="ts">
-const props = defineProps<{ title: string, description?: string }>()
+const props = defineProps<{
+  title: string
+  description?: string
+  crumbs?: { label: string, to?: string }[]
+}>()
 
 useHead({ title: () => `${props.title} · BCM Tools` })
+
+const breadcrumbItems = computed(() =>
+  props.crumbs?.length ? [{ label: 'Home', to: '/' }, ...props.crumbs] : [],
+)
 </script>
 
 <template>
-  <UDashboardPanel>
-    <template #header>
-      <UDashboardNavbar :title="title">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
+  <div class="min-h-dvh">
+    <header class="print:hidden border-b border-default bg-default">
+      <div class="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+        <AppLogo />
+        <h1 class="sr-only">
+          {{ title }}
+        </h1>
+        <div class="ms-auto flex items-center gap-2">
           <slot name="actions" />
           <UserMenu />
-        </template>
-      </UDashboardNavbar>
-    </template>
-
-    <template #body>
-      <div class="w-full max-w-6xl mx-auto space-y-6">
-        <p
-          v-if="description"
-          class="text-sm text-muted -mt-2"
-        >
-          {{ description }}
-        </p>
-        <slot />
+        </div>
       </div>
-    </template>
-  </UDashboardPanel>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">
+      <UBreadcrumb
+        v-if="breadcrumbItems.length"
+        class="print:hidden"
+        :items="breadcrumbItems"
+      />
+      <p
+        v-if="description"
+        class="text-sm text-muted"
+      >
+        {{ description }}
+      </p>
+      <slot />
+    </main>
+  </div>
 </template>

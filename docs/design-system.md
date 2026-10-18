@@ -110,7 +110,7 @@ Use Nuxt UI's semantic utilities. Values come from `slate`.
 | `text-muted` | Labels, secondary text, helper text (4.8:1, passes AA) |
 | `text-dimmed` | Placeholders and disabled text only (below 4.5:1, so never for content people need to read) |
 | `bg-default` | Page and card surface (white) |
-| `bg-muted` | Sidebar, table headers, login background |
+| `bg-muted` | Table headers, login background |
 | `bg-elevated` | Hover and selected states |
 | `border-default` | Card borders, dividers |
 | `border-accented` | Input borders, stronger separators |
@@ -140,7 +140,7 @@ When a chart shows status (e.g. passed/failed), use the status colours with labe
 
 | Role | Classes | Size / line height | Use |
 |---|---|---|---|
-| Page title | set by `AppPage` | 16px / semibold | Top bar title, one per page (`<h1>`) |
+| Page title | set by `AppPage` | screen-reader only | `h1` for the page; shown in the browser tab, not in the top bar |
 | Display | `text-2xl font-semibold` | 24 / 32px | A person or record name heading a detail page |
 | Section heading | `text-lg font-semibold` | 18 / 28px | Card or section titles (`<h2>`) |
 | Card title | `font-semibold` | 16 / 24px | Titles inside cards (`<h3>`) |
@@ -154,7 +154,7 @@ Rules:
 - **Numbers in tables, KPIs and anything compared vertically use `tabular-nums`** so digits line up. Compact tables apply it automatically.
 - Weights: 400 regular, 500 medium (buttons, labels), 600 semibold (headings). Don't use 700+.
 - Headings are sentence case ("Recovery plans", not "Recovery Plans"). No all-caps except table headers.
-- Keep heading levels in order: one `h1` (the top bar), then `h2`, then `h3`.
+- Keep heading levels in order: one `h1` (screen-reader only, from `AppPage`), then `h2`, then `h3`.
 
 ### Spacing and layout
 
@@ -173,10 +173,10 @@ Tailwind's 4px scale. Prefer these steps:
 
 **Layout:**
 
-- App shell: left sidebar (240px, collapsible to 64px) + main panel with a 64px top bar. See [Navigation](#navigation-and-page-structure).
+- App shell: a 64px top bar (logo, actions, user menu) and page content below. Modules are opened from the home page, not a sidebar. See [Navigation](#navigation-and-page-structure).
 - Page content is capped at `max-w-6xl` (1152px) and centred, so tables and forms don't stretch on wide monitors.
 - Grids: `grid gap-6 md:grid-cols-2` for cards, `lg:grid-cols-4` for KPI rows.
-- Breakpoints are Tailwind's (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). The app is designed for desktop (≥1280px) but must stay usable at 768px; below `lg` the sidebar becomes a slide-over menu.
+- Breakpoints are Tailwind's (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). The app is designed for desktop (≥1280px) but must stay usable at 768px. The module grid goes from one column to two at `sm` and three at `lg`.
 
 ### Radius, borders and elevation
 
@@ -389,6 +389,8 @@ Example, a dashboard's first load:
 
 - Prefer `loading-auto`: Nuxt UI shows the spinner while the `@click` (or `UForm @submit`) handler's promise is pending, so you can't forget to reset it.
 - The spinner replaces the leading icon; the label stays, so the button keeps its width and the user knows what's running.
+- If you fill the `#leading` slot yourself (like the Microsoft logo on the login page), the slot replaces the spinner too, so render `<UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />` in it while loading.
+- Spinners keep turning (slower) under reduced motion, because they're the only sign that work is running. Other animations stop.
 - A loading button can't be clicked again (prevents double submits). Other controls stay usable unless the action would conflict with them.
 - If the action is quick and succeeds, follow it with a success toast ("Plan saved"); if it fails, an error message, never a silent reset.
 
@@ -470,28 +472,23 @@ Rules:
 
 ### Navigation and page structure
 
-**App shell** (`app/layouts/default.vue`):
+**App shell** (`app/layouts/default.vue` and `AppPage`):
 
 ```text
-┌──────────────┬───────────────────────────────────────────────┐
-│ [logo] BCM   │ [⇤] Page title                [actions] [user]│  ← top bar (AppPage)
-│ Tools        ├───────────────────────────────────────────────┤
-│              │                                               │
-│ ⌂ Home       │   page content, max-w-6xl, centred            │
-│ 👤 Profile   │                                               │
-│ ...          │                                               │
-│              │                                               │
-│ Internal use │                                               │
-└──────────────┴───────────────────────────────────────────────┘
-   sidebar 240px, collapses to 64px (icons + tooltips)
+┌──────────────────────────────────────────────────────────────┐
+│ [logo] BCM Tools                            [actions] [user] │  ← top bar
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│   page content, max-w-6xl, centred                           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-- **Sidebar** (`UDashboardSidebar`): logo at the top (`AppLogo`), `UNavigationMenu` (vertical) in the middle, footer note at the bottom. `bg-muted` background. Collapsible; below `lg` it becomes a slide-over menu.
-- **Navigation items:** icon + 1–2 word label, sentence case. Group items under section headings once there are more than ~7 (pass `NavigationMenuItem[][]`). The current page is highlighted in `primary`.
-- **Every page** is wrapped in `<AppPage title="...">`, which renders the top bar (sidebar toggle, page title as the `h1`, an `actions` slot, and the user menu) and sets the browser tab title to "Page · BCM Tools".
+- **No sidebar.** The home page lists modules under the welcome section. Available modules link through; future modules show "Coming soon".
+- **Every page** is wrapped in `<AppPage title="...">`, which renders the top bar (logo linking home, an `actions` slot, and the user menu) and sets the browser tab title to "Page · BCM Tools". The title is not shown in the top bar.
 - **User menu** (`UserMenu`): avatar + name, opens a menu with the user's email, Profile and Sign out.
 - **Page actions** go in the `actions` slot (primary on the right).
-- **Breadcrumbs** (`UBreadcrumb`) at the top of the page body for anything deeper than one level ("Plans / Data centre outage / Edit"). Not needed on top-level pages.
+- **Breadcrumbs** (`AppPage` `crumbs`) on module pages, starting from Home: `Home / SCCA` on the module list, `Home / SCCA / New assessment` (or the record name) one level down. Not on Home itself. The last crumb is the current page and is not a link.
 - **Tabs** (`UTabs`) to switch between views of the same record. Don't use tabs for steps in a process (use a stepper, `UStepper`).
 - **Public pages** (login) opt out of the shell with `definePageMeta({ layout: false })` and centre a single card on `bg-muted`.
 
@@ -506,7 +503,7 @@ Target: **WCAG 2.2 AA**. Check every new screen against this list.
 - [ ] Everything works with the keyboard, in a logical order, with a visible focus ring (Nuxt UI's default; never remove `outline`).
 - [ ] Icon-only buttons have `aria-label` (and a tooltip).
 - [ ] Form fields have visible labels; errors are linked to their field and announced.
-- [ ] One `h1` per page (the top bar), headings in order.
+- [ ] One `h1` per page (from `AppPage`, screen-reader only), headings in order.
 - [ ] Images have `alt` text (`alt=""` if decorative).
 - [ ] Click targets are at least 24×24px (WCAG 2.5.8).
 - [ ] Usable at 200% browser zoom and at 768px width.
@@ -524,6 +521,20 @@ Target: **WCAG 2.2 AA**. Check every new screen against this list.
 - **Empty states** say what's missing and the next step.
 - Use BCM terms consistently (pick one: "BCP" or "plan", "exercise" or "test") and keep a glossary in this file as features are added.
 - Dates and numbers through `format.ts`. Write "WIB" after times.
+
+### Glossary (SCCA)
+
+| Term | Meaning |
+|---|---|
+| SCCA | System Criticality Categorisation Assessment |
+| SCC | The resulting criticality category |
+| CIA | Combined Confidentiality, Integrity and Availability score |
+| Potential Loss | Impact dimension (financial, customer, reputation, regulatory) |
+| MTD | Maximum tolerable downtime |
+| RTO | Recovery time objective |
+| RPO | Recovery point objective |
+
+SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), Very Important (`warning`), Important (`info`), Necessary and Other (`neutral`).
 
 ---
 

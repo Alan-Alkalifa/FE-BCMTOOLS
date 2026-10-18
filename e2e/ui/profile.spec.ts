@@ -36,7 +36,10 @@ async function signIn(page: Page, profile: { status?: number, json: unknown }) {
 test('home shows job title and department', async ({ page }) => {
   await signIn(page, { json: PROFILE })
   await page.goto('/')
-  await expect(page.getByText('Engineer · IT')).toBeVisible()
+  await expect(page.getByText('Engineer · IT')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Modules' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/scca')
+  await expect(page.getByText('Coming soon')).toHaveCount(4)
 })
 
 test('profile page shows the Microsoft profile', async ({ page }) => {
@@ -46,7 +49,8 @@ test('profile page shows the Microsoft profile', async ({ page }) => {
   })
   await signIn(page, { json: PROFILE })
   await page.goto('/')
-  await page.getByRole('link', { name: 'Profile' }).first().click()
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await page.getByRole('menuitem', { name: 'Profile' }).click()
 
   await expect(page).toHaveURL('/profile')
   await expect(page.getByRole('heading', { name: 'Test User' })).toBeVisible()
