@@ -243,7 +243,7 @@ test('the matrix highlights this system\'s cell', async ({ page }) => {
 test('the report page renders the assessment', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1/report')
-  await expect(page.getByRole('heading', { name: 'CC Omni Channel' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'CC Omni Channel', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Ratings' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Sign-off' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Print' })).toBeVisible()

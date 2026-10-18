@@ -76,7 +76,7 @@ function isCurrent(cia: number, poloss: number) {
               />
               <span
                 v-if="isCurrent(cia, poloss)"
-                class="sr-only"
+                class="text-[10px] font-medium text-primary"
               >This system</span>
             </span>
           </td>
