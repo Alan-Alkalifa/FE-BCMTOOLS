@@ -127,7 +127,6 @@ const categoryItems = SCCA_CATEGORIES.map((category) => ({
 const processingItems = ['Online', 'Batch']
 const dependencyItems = [...SCCA_DEPENDENCIES]
 const rpoItems = [...SCCA_RPO_OPTIONS]
-
 </script>
 
 <template>

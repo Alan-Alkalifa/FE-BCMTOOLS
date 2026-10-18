@@ -42,9 +42,9 @@ function printReport() {
       { label: 'SCCA', to: '/scca' },
       ...(assessment
         ? [
-            { label: assessment.application_name, to: `/scca/${assessment.id}` },
-            { label: 'Report' },
-          ]
+          { label: assessment.application_name, to: `/scca/${assessment.id}` },
+          { label: 'Report' },
+        ]
         : []),
     ]"
   >

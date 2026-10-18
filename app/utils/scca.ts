@@ -30,7 +30,7 @@ export const SCCA_REASONS = [
 ] as const
 export type SccaReason = (typeof SCCA_REASONS)[number]['value']
 
-export const SCCA_DEPLOYMENT_MODELS = ['On-premise',  'SaaS', 'PaaS', 'laaS'] as const
+export const SCCA_DEPLOYMENT_MODELS = ['On-premise', 'SaaS', 'PaaS', 'laaS'] as const
 export const SCCA_BUSINESS_DAYS = [
   { value: 'Mon-Fri', label: 'Mon–Fri' },
   { value: 'Mon-Sat', label: 'Mon–Sat' },
