@@ -119,6 +119,10 @@ async function removeAssessment() {
         icon="i-lucide-file-text"
         label="View report"
       />
+      <SccaReportDownloads
+        v-if="assessment"
+        :assessment-id="assessment.id"
+      />
       <UButton
         v-if="assessment?.can_delete"
         color="error"
@@ -189,7 +193,7 @@ async function removeAssessment() {
           />
         </template>
         <template #interdependencies>
-          <SccaInterdependencyTable
+          <SccaInterdependencyForm
             :key="`inter-${formKey}`"
             :assessment="assessment"
             @saved="onSaved"

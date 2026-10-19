@@ -30,7 +30,18 @@ export const SCCA_REASONS = [
 ] as const
 export type SccaReason = (typeof SCCA_REASONS)[number]['value']
 
-export const SCCA_DEPLOYMENT_MODELS = ['On-premise', 'SaaS', 'PaaS', 'laaS'] as const
+/** Workbook: "On Premises/ SaaS/ PaaS/ IaaS". The API stores On Premises as `On-premise`. */
+export const SCCA_DEPLOYMENT_MODELS = [
+  { value: 'On-premise', label: 'On Premises' },
+  { value: 'SaaS', label: 'SaaS' },
+  { value: 'PaaS', label: 'PaaS' },
+  { value: 'IaaS', label: 'IaaS' },
+] as const
+export type SccaDeploymentModel = (typeof SCCA_DEPLOYMENT_MODELS)[number]['value']
+
+export function deploymentModelLabel(value: string | null | undefined) {
+  return SCCA_DEPLOYMENT_MODELS.find((item) => item.value === value)?.label ?? value ?? null
+}
 export const SCCA_BUSINESS_DAYS = [
   { value: 'Mon-Fri', label: 'Mon–Fri' },
   { value: 'Mon-Sat', label: 'Mon–Sat' },
@@ -126,12 +137,12 @@ export const SCCA_RECOVERY_SECTIONS: Record<SccaRecoveryKind, SccaRecoverySectio
   ],
 }
 
+/** 1–24 h, plus 36/48/72 h so the Necessary (24–48 h) and Other (> 48 h) MTD bands fit. Matches the API. */
+export const SCCA_HOURS = [...Array.from({ length: 24 }, (_, index) => index + 1), 36, 48, 72]
+
 export const SCCA_HOUR_OPTIONS = [
   { label: 'NA', value: 'NA' },
-  ...Array.from({ length: 24 }, (_, index) => {
-    const hours = index + 1
-    return { label: `${hours} ${hours === 1 ? 'Hour' : 'Hours'}`, value: String(hours) }
-  }),
+  ...SCCA_HOURS.map((hours) => ({ label: `${hours} ${hours === 1 ? 'Hour' : 'Hours'}`, value: String(hours) })),
 ]
 
 export function hourOptions(current: string) {
@@ -393,3 +404,66 @@ export const SCCA_SIGNOFF_ROLES = [
   { value: 'bcm_acknowledgement', label: 'BCM acknowledgement' },
 ] as const
 export type SccaSignoffRole = (typeof SCCA_SIGNOFF_ROLES)[number]['value']
+
+/** "5-CIA" / "4-PoLoss", as the workbook writes the levels. */
+export function sccaLevelLabel(level: number | null | undefined, kind: 'CIA' | 'POLOSS') {
+  if (!level) return null
+  return kind === 'CIA' ? `${level}-CIA` : `${level}-PoLoss`
+}
+
+const CATEGORY_RATING: Record<SccaCategory, number> = {
+  'Critical': 5,
+  'Very Important': 4,
+  'Important': 3,
+  'Necessary': 2,
+  'Other': 1,
+}
+
+/** I4: the number of interfaces (systems on the A3 tab) gives the rating. */
+export function interfaceRating(count: number) {
+  if (count >= 40) return 5
+  if (count >= 30) return 4
+  if (count >= 20) return 3
+  if (count >= 10) return 2
+  return 1
+}
+
+/** A3: the highest category among systems with a Full dependency; 1 when there are none. */
+export function interdependencyRating(rows: Array<{ dependency?: string | null, criticality_category?: string | null }>) {
+  const ratings = rows
+    .filter((row) => row.dependency === 'Full' && row.criticality_category)
+    .map((row) => CATEGORY_RATING[row.criticality_category as SccaCategory] ?? 1)
+  return ratings.length ? Math.max(...ratings) : 1
+}
+
+/**
+ * The notes printed on SCC_Rating, as warnings. They don't block saving, as in the workbook:
+ * - C1 Critical means C5 and P4 are Critical too.
+ * - A3 is the highest category of the systems with a Full dependency on the A3 tab.
+ * - I4 follows the number of interfaces on the A3 tab.
+ */
+export function ratingNoteWarnings(
+  ratings: Record<string, number | undefined>,
+  interdependencies: Array<{ dependency?: string | null, criticality_category?: string | null, system_name?: string }>,
+): { code: string, message: string }[] {
+  const warnings: { code: string, message: string }[] = []
+  if (ratings.C1 === 5) {
+    for (const code of ['C5', 'P4']) {
+      if (ratings[code] != null && ratings[code] !== 5) {
+        warnings.push({ code, message: `C1 is Critical, so ${code} should be Critical too.` })
+      }
+    }
+  }
+  const rows = interdependencies.filter((row) => (row.system_name ?? '').trim() !== '')
+  if (rows.length) {
+    const a3 = interdependencyRating(rows)
+    if (ratings.A3 != null && ratings.A3 !== a3) {
+      warnings.push({ code: 'A3', message: `The A3 tab suggests ${a3}: the highest category among systems with a Full dependency.` })
+    }
+    const i4 = interfaceRating(rows.length)
+    if (ratings.I4 != null && ratings.I4 !== i4) {
+      warnings.push({ code: 'I4', message: `The A3 tab lists ${rows.length} interface${rows.length === 1 ? '' : 's'}, which suggests ${i4}.` })
+    }
+  }
+  return warnings
+}

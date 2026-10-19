@@ -5,7 +5,8 @@ test.setTimeout(90_000)
 
 async function selectUser(page: Page, field: string, name: string) {
   await page.getByRole('button', { name: field }).click()
-  await page.getByRole('option', { name }).click()
+  // Options also show job title and email, so match the name at the start.
+  await page.getByRole('option', { name: new RegExp(`^${name}`) }).click()
 }
 
 test('the list shows badges and keeps search and category in the URL', async ({ page }) => {
@@ -40,7 +41,7 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
   await selectUser(page, 'IT support', 'IT Support')
   await selectUser(page, 'Business stakeholder', 'Retail Lead')
   await page.getByLabel('Deployment model').click()
-  await page.getByRole('option', { name: 'On-premise' }).click()
+  await page.getByRole('option', { name: 'On Premises' }).click()
   await page.getByLabel('Customer facing').click()
   await page.getByRole('option', { name: 'Yes' }).click()
   await page.getByLabel('Business days').click()
@@ -54,8 +55,8 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
 test('C1 only offers the ratings allowed by the formula', async ({ page }) => {
   await mockScca(page, draft())
   await page.goto('/scca/1?tab=rating')
-  await expect(page.getByText('C1 · Regulatory').first()).toBeVisible({ timeout: 60_000 })
-  const c1 = page.locator('div.space-y-3', { has: page.getByText('C1 · Regulatory') }).first()
+  await expect(page.getByText('C1 · Customer Information').first()).toBeVisible({ timeout: 60_000 })
+  const c1 = page.locator('div.space-y-3', { has: page.getByText('C1 · Customer Information') }).first()
   await expect(c1.getByRole('button', { name: 'Critical', exact: true })).toBeVisible()
   await expect(c1.getByRole('button', { name: 'Moderate', exact: true })).toBeVisible()
   await expect(c1.getByRole('button', { name: 'Insignificant', exact: true })).toBeVisible()
@@ -68,12 +69,12 @@ test('the guidance panel shows the selected rating', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1?tab=rating')
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 90_000 })
-  await expect(page.getByText('84%', { exact: true })).toBeVisible()
+  await expect(page.getByText('84%').first()).toBeVisible()
   const guidance = page.getByRole('heading', { name: 'Guidance' }).locator('xpath=ancestor::*[self::div][1]/..')
   await expect(guidance.getByText('Guidance for C1 rating 5.')).toBeVisible()
   await expect(guidance.getByText('Guidance for C1 rating 3.')).toBeVisible()
   await expect(guidance.getByText('Guidance for C1 rating 1.')).toBeVisible()
-  await expect(guidance.getByText('C1 · Regulatory')).toHaveCount(0)
+  await expect(guidance.getByText('C1 · Customer Information')).toHaveCount(0)
   await page.getByRole('tab', { name: 'I', exact: true }).click()
   await expect(guidance.getByText('Guidance for I1 rating 5.')).toBeVisible()
 })
@@ -237,7 +238,7 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
 test('the matrix highlights this system\'s cell', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1?tab=result')
-  await expect(page.getByText('This system')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('This system').filter({ visible: true })).toBeVisible({ timeout: 60_000 })
 })
 
 test('the report page renders the assessment', async ({ page }) => {
@@ -247,6 +248,8 @@ test('the report page renders the assessment', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Ratings' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Sign-off' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Print' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Download PDF' })).toHaveAttribute('href', '/api/scca/assessments/1/report.pdf')
+  await expect(page.getByRole('link', { name: 'Download Excel' })).toHaveAttribute('href', '/api/scca/assessments/1/report.xlsx')
   await expect(page.getByRole('button', { name: 'User menu' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'breadcrumb' }).getByRole('link', { name: 'SCCA' })).toBeVisible()
 })
@@ -288,4 +291,22 @@ test('empty list explains the next step', async ({ page }) => {
   await page.goto('/scca')
   await expect(page.getByRole('heading', { name: 'SCCA' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('No assessments yet. Create the first assessment.')).toBeVisible()
+})
+
+test('the assessment page offers the PDF and Excel downloads', async ({ page }) => {
+  await mockScca(page)
+  await page.goto('/scca/1')
+  await expect(page.getByText('View report')).toBeVisible({ timeout: 60_000 })
+  const pdf = page.getByRole('link', { name: 'Download PDF' })
+  await expect(pdf).toHaveAttribute('href', '/api/scca/assessments/1/report.pdf')
+  await expect(pdf).toHaveAttribute('download', '')
+  await expect(page.getByRole('link', { name: 'Download Excel' })).toHaveAttribute('href', '/api/scca/assessments/1/report.xlsx')
+})
+
+test('the rating tab shows the workbook notes and the C, I, A scores', async ({ page }) => {
+  await mockScca(page)
+  await page.goto('/scca/1?tab=rating')
+  await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('Confidentiality', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('· 5-CIA').first()).toBeVisible()
 })

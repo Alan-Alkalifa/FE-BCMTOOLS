@@ -69,16 +69,40 @@ function percent(value: number | null | undefined) {
   return formatPercent(value, 0) ?? '—'
 }
 
+/** Same figures as the workbook's SCC_Result: C, I, A and CIA with its level, then Potential Loss. */
 const summary = computed(() => {
   const preview = livePreview?.value
-  if (preview) {
-    return preview.result
-      ? { cia: preview.result.cia_score, poloss: preview.result.poloss_score, category: preview.result.category }
-      : null
+  const scores = preview ? preview.result : props.assessment.result
+  if (!scores || (scores.cia_score == null && scores.poloss_score == null)) return null
+  return {
+    c: scores.confidentiality_score,
+    i: scores.integrity_score,
+    a: scores.availability_score,
+    cia: scores.cia_score,
+    ciaLevel: sccaLevelLabel(scores.cia_level, 'CIA'),
+    poloss: scores.poloss_score,
+    polossLevel: sccaLevelLabel(scores.poloss_level, 'POLOSS'),
+    category: preview?.result ? preview.result.category : props.assessment.result.final_category,
   }
-  const saved = props.assessment.result
-  if (saved.cia_score == null && saved.poloss_score == null && !saved.final_category) return null
-  return { cia: saved.cia_score, poloss: saved.poloss_score, category: saved.final_category }
+})
+
+const summaryRows = computed(() => [
+  { label: 'Confidentiality', value: summary.value?.c },
+  { label: 'Integrity', value: summary.value?.i },
+  { label: 'Availability', value: summary.value?.a },
+  { label: 'CIA', value: summary.value?.cia, level: summary.value?.ciaLevel, strong: true },
+  { label: 'PO-LOSS', value: summary.value?.poloss, level: summary.value?.polossLevel, strong: true },
+])
+
+/** The workbook's notes on C1, A3 and I4, shown as warnings next to the question. */
+const noteWarnings = computed(() => {
+  const current: Record<string, number | undefined> = {}
+  for (const [code, answer] of Object.entries(state.answers)) current[code] = answer.rating
+  const byCode: Record<string, string[]> = {}
+  for (const warning of ratingNoteWarnings(current, props.assessment.interdependencies)) {
+    (byCode[warning.code] ??= []).push(warning.message)
+  }
+  return byCode
 })
 
 function choose(code: string, rating: number) {
@@ -196,8 +220,8 @@ async function onSubmit() {
               <p class="font-medium">
                 {{ question.code }} · {{ question.label }}
               </p>
-              <p class="mt-1 text-sm text-muted">
-                {{ question.question }}
+              <p class="mt-1 text-sm text-muted whitespace-pre-line">
+                {{ question.question.trim() }}
               </p>
             </div>
             <UFormField
@@ -216,6 +240,17 @@ async function onSubmit() {
                   @click="choose(question.code, option.rating)"
                 />
               </div>
+              <p
+                v-for="message in noteWarnings[question.code] ?? []"
+                :key="message"
+                class="mt-2 flex items-start gap-1.5 text-sm text-warning"
+              >
+                <UIcon
+                  name="i-lucide-triangle-alert"
+                  class="mt-0.5 size-4 shrink-0"
+                />
+                {{ message }}
+              </p>
             </UFormField>
             <UFormField
               :name="`justification.${question.code}`"
@@ -247,24 +282,27 @@ async function onSubmit() {
             </h2>
           </template>
           <dl class="space-y-2 text-sm">
-            <div class="flex items-center justify-between gap-3">
-              <dt class="text-muted">
-                CIA
+            <div
+              v-for="row in summaryRows"
+              :key="row.label"
+              class="flex items-center justify-between gap-3"
+            >
+              <dt :class="row.strong ? 'font-medium' : 'text-muted'">
+                {{ row.label }}
               </dt>
-              <dd class="font-medium tabular-nums">
-                {{ percent(summary?.cia) }}
+              <dd
+                class="tabular-nums"
+                :class="row.strong ? 'font-semibold' : 'font-medium'"
+              >
+                {{ percent(row.value) }}
+                <span
+                  v-if="row.level"
+                  class="font-normal text-muted"
+                > · {{ row.level }}</span>
               </dd>
             </div>
-            <div class="flex items-center justify-between gap-3">
-              <dt class="text-muted">
-                PO-LOSS
-              </dt>
-              <dd class="font-medium tabular-nums">
-                {{ percent(summary?.poloss) }}
-              </dd>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <dt class="text-muted">
+            <div class="flex items-center justify-between gap-3 border-t border-default pt-2">
+              <dt class="font-medium">
                 Category
               </dt>
               <dd>
@@ -302,7 +340,7 @@ async function onSubmit() {
               <p class="font-medium">
                 {{ ratingName(option.label) }}
               </p>
-              <p class="text-sm">
+              <p class="text-sm whitespace-pre-line">
                 {{ option.guidance || 'No guidance is written for this rating.' }}
               </p>
             </div>

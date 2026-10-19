@@ -216,6 +216,13 @@ export const sccaApi = {
   remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),
 }
 
+export type SccaReportFormat = 'pdf' | 'xlsx'
+
+/** Download link for the PDF report or the filled SCCA Tools workbook. */
+export function sccaReportUrl(id: number, format: SccaReportFormat) {
+  return `${BASE}/${id}/report.${format}`
+}
+
 interface ApiError {
   statusCode?: number
   data?: { error?: string, details?: Record<string, string> }

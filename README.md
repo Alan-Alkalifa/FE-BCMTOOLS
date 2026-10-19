@@ -67,11 +67,11 @@ frontend/
 │   │   ├── UserMenu.vue           # Avatar + name dropdown: Profile, Sign out
 │   │   ├── StatusBadge.vue        # Renders a value from a status scale (label, colour, icon)
 │   │   ├── ProfileFields.vue      # Label/value list used on the profile page
-│   │   └── scca/                  # SCCA forms, score panel and criticality matrix
+│   │   └── scca/                  # One Scca*Form.vue per editor tab, SccaMatrix, SccaReportDownloads
 │   ├── composables/
 │   │   ├── useAuth.ts             # Current user, fetchUser(), hasRole()
 │   │   ├── useProfile.ts          # GET /api/me/profile (Microsoft profile saved at sign-in); photo at /api/me/photo
-│   │   └── useScca.ts             # SCCA types, list/detail fetchers, mutations, 422 field errors
+│   │   └── useScca.ts             # SCCA types, list/detail fetchers, mutations, report URLs, 422 field errors
 │   ├── layouts/default.vue        # App shell. Pages use AppPage: top bar, then content
 │   ├── middleware/auth.global.ts  # Redirects to /login unless the page is public
 │   ├── pages/
@@ -80,7 +80,8 @@ frontend/
 │   │   ├── login.vue              # Public sign-in page (no layout); shows sign-in errors and sign-out confirmation
 │   │   └── scca/                  # Assessment list, create, tabbed editor, print-friendly report
 │   ├── types/page-meta.d.ts       # Adds `public` to definePageMeta
-│   └── utils/                     # Auto-imported: format.ts (id-ID dates/numbers/Rp, WIB), chart.ts, status.ts
+│   └── utils/                     # Auto-imported: format.ts (id-ID dates/numbers/Rp, WIB), chart.ts, status.ts,
+│                                  # scca.ts (SCCA constants, gap checks, workbook notes)
 ├── docs/design-system.md          # Design system spec: tokens, components, accessibility, writing style
 ├── public/                        # Copied as-is: cimb-niaga-logo.svg, favicon.ico
 ├── e2e/
@@ -97,6 +98,20 @@ frontend/
 ├── .env.example                   # Dev-only environment variables
 └── package.json
 ```
+
+### Naming conventions
+
+| What | Convention | Example |
+|---|---|---|
+| Components | `PascalCase.vue`; a feature folder's components start with the feature name, so Nuxt's auto-import name is the file name | `components/scca/SccaRatingForm.vue` → `<SccaRatingForm>` |
+| Tab or edit forms | `<Feature><Thing>Form.vue` | `SccaInterdependencyForm.vue` |
+| Composables | `use<Feature>.ts`, one per feature | `useScca.ts` |
+| Utils | lower-case feature or concern name | `utils/scca.ts`, `utils/format.ts` |
+| Pages and routes | lower-case, nested by feature; `[id]` for a record | `pages/scca/[id]/report.vue` → `/scca/1/report` |
+| Constants | `SCREAMING_SNAKE_CASE`, prefixed with the feature | `SCCA_DEPLOYMENT_MODELS` |
+| UI tests | `e2e/ui/<feature>.spec.ts`; mocks in `e2e/fixtures/<feature>.ts` | `e2e/ui/scca.spec.ts` |
+
+Values sent to the API (deployment model, business hours, recovery hours, ...) are the same lists as the backend's `app/models/scca.py`; keep both in step. All text files use LF line endings (`.gitattributes`).
 
 Pages use `layouts/default.vue` and wrap their content in `<AppPage title="...">`, unless they opt out with `definePageMeta({ layout: false })`, as `login.vue` does.
 
@@ -210,7 +225,21 @@ Hiding UI is for usability only. The backend enforces every permission with `@re
 
 ## SCCA
 
-System Criticality Categorisation Assessment. The list, editor and report call `/api/scca/*`. The list is **server-paginated**: search `q`, category, `page` and `per_page=25` are sent as query parameters and kept in the URL. The editor has four tabs (Details, Rating, Interdependencies, Result and sign-off) and a live score panel that previews via `POST /api/scca/calculate`. Scoring stays on the backend.
+System Criticality Categorisation Assessment, matching the workbook *SCCA Tools V4.2 for CIMB Niaga*. The list, editor and report call `/api/scca/*`. The list is **server-paginated**: search `q`, category, `page` and `per_page=25` are sent as query parameters and kept in the URL.
+
+The editor has five tabs, one per part of the workbook. Each tab is one form component in `components/scca/`:
+
+| Tab | Workbook sheet | Component |
+|---|---|---|
+| Application | `SCC_Rating` header, `SCC_Result` application details | `SccaDetailsForm.vue` |
+| Rating | `SCC_Rating` (18 questions, guides, justification) | `SccaRatingForm.vue` |
+| Interdependencies | `A3 Interdependency` | `SccaInterdependencyForm.vue` |
+| Recovery | `SCC_Result` recovery blocks | `SccaRecoveryForm.vue` |
+| Result and sign-off | `SCC_Result` scores, upgrade/downgrade, 8 sign-offs | `SccaResultForm.vue` |
+
+**Scoring stays on the backend.** The Rating tab previews through `POST /api/scca/calculate` and shows C, I, A, CIA with its level (`5-CIA`), Potential Loss with its level (`4-PoLoss`) and the category, the same figures as the workbook. The workbook's notes on C1 (C5 and P4 follow a Critical C1), A3 (highest category among *Full* dependencies) and I4 (number of interfaces) appear as warnings under those questions; like the workbook, they don't block saving (`ratingNoteWarnings()` in `utils/scca.ts`).
+
+**Reports.** The assessment and report pages have **Download PDF** and **Download Excel** (`SccaReportDownloads.vue`). They link to `GET /api/scca/assessments/{id}/report.pdf` and `.xlsx`: the backend fills the official workbook (formulas, charts and tick boxes kept) and lays out the PDF like the workbook's print. Downloads contain the saved assessment, so save the current tab first.
 
 ## Building pages
 

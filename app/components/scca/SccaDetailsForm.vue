@@ -27,7 +27,7 @@ const schema = z.object({
   business_stakeholders: z.string().min(1, 'Select the business stakeholder.'),
   country: z.string().optional(),
   vendor_name: z.string().optional(),
-  deployment_model: z.enum(['On-premise', 'SaaS', 'PaaS', 'laaS'], 'Select a deployment model.'),
+  deployment_model: z.enum(['On-premise', 'SaaS', 'PaaS', 'IaaS'], 'Select a deployment model.'),
   customer_facing: z.enum(['yes', 'no'], 'Select whether the application is customer facing.'),
   business_days: z.enum(['Mon-Fri', 'Mon-Sat', 'Mon-Sun'], 'Select the business days.'),
   business_hours: z.enum(['08-18', '08-21', '00-24'], 'Select the business hours.'),

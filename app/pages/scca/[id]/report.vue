@@ -49,6 +49,10 @@ function printReport() {
     ]"
   >
     <template #actions>
+      <SccaReportDownloads
+        v-if="assessment"
+        :assessment-id="assessment.id"
+      />
       <UButton
         icon="i-lucide-printer"
         label="Print"
@@ -241,7 +245,7 @@ function printReport() {
             </dt>
             <dd class="font-semibold tabular-nums">
               {{ percent(assessment.result.cia_score) }}
-              <span v-if="assessment.result.cia_level"> · level {{ assessment.result.cia_level }}</span>
+              <span v-if="assessment.result.cia_level"> · {{ sccaLevelLabel(assessment.result.cia_level, 'CIA') }}</span>
             </dd>
           </div>
           <div>
@@ -250,7 +254,7 @@ function printReport() {
             </dt>
             <dd class="font-semibold tabular-nums">
               {{ percent(assessment.result.poloss_score) }}
-              <span v-if="assessment.result.poloss_level"> · level {{ assessment.result.poloss_level }}</span>
+              <span v-if="assessment.result.poloss_level"> · {{ sccaLevelLabel(assessment.result.poloss_level, 'POLOSS') }}</span>
             </dd>
           </div>
           <div>

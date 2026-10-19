@@ -200,7 +200,7 @@ async function onSubmit() {
                 <span
                   v-if="assessment.result.cia_level"
                   class="text-sm font-normal text-muted"
-                > · level {{ assessment.result.cia_level }}</span>
+                > · {{ sccaLevelLabel(assessment.result.cia_level, 'CIA') }}</span>
               </dd>
             </div>
             <div>
@@ -212,7 +212,7 @@ async function onSubmit() {
                 <span
                   v-if="assessment.result.poloss_level"
                   class="text-sm font-normal text-muted"
-                > · level {{ assessment.result.poloss_level }}</span>
+                > · {{ sccaLevelLabel(assessment.result.poloss_level, 'POLOSS') }}</span>
               </dd>
             </div>
             <div>
