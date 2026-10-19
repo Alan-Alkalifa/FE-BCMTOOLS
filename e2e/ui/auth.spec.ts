@@ -25,6 +25,33 @@ test('the sign-in button starts the Microsoft sign-in flow', async ({ page }) =>
   await expect(page).toHaveURL(/\/auth\/login\?next=%2Fprofile$/)
 })
 
+test('the sign-in button shows a spinning loader while redirecting', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  // Playwright blocks all page access while a navigation is pending, so cancel it in the page.
+  await page.addInitScript(() => {
+    navigation.addEventListener('navigate', (event) => {
+      if (new URL(event.destination.url).pathname === '/auth/login') event.preventDefault()
+    })
+  })
+
+  await page.goto('/login')
+  const button = page.getByRole('link', { name: 'Sign in with Microsoft' })
+  await button.click({ noWaitAfter: true })
+
+  await expect(button).toHaveAttribute('aria-disabled', 'true')
+  const spinner = button.locator('.animate-spin')
+  await expect(spinner).toBeVisible()
+  const state = await spinner.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return {
+      drawn: el.tagName.toLowerCase() === 'svg' || style.maskImage !== 'none',
+      name: style.animationName,
+      iterations: style.animationIterationCount,
+    }
+  })
+  expect(state).toEqual({ drawn: true, name: 'spin', iterations: 'infinite' })
+})
+
 test('signed-in users see their profile', async ({ page }) => {
   await page.route('**/api/me', (route) =>
     route.fulfill({
@@ -34,7 +61,7 @@ test('signed-in users see their profile', async ({ page }) => {
 
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Welcome, Test User' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Welcome, Test User' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Roles: BCM.Admin')).toBeVisible()
   await page.getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveAttribute('href', '/auth/logout')

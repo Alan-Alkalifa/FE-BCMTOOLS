@@ -128,8 +128,13 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', resetRedirecting))
             @click.prevent="signIn"
           >
             <template #leading>
+              <UIcon
+                v-if="redirecting"
+                name="i-lucide-loader-circle"
+                class="size-5 animate-spin"
+              />
               <svg
-                v-if="!redirecting"
+                v-else
                 aria-hidden="true"
                 viewBox="0 0 21 21"
                 class="size-5"

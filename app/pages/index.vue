@@ -5,6 +5,16 @@ const { data: profile } = useProfile()
 const subtitle = computed(() =>
   [profile.value?.job_title, profile.value?.department].filter(Boolean).join(' · '),
 )
+
+const modules = [
+  {
+    title: 'SCCA',
+    description: 'System criticality categorisation for an application.',
+    to: '/scca',
+    icon: 'i-lucide-shield-check',
+    available: true,
+  },
+]
 </script>
 
 <template>
@@ -21,19 +31,52 @@ const subtitle = computed(() =>
           {{ subtitle }}
         </p>
       </template>
-
       <p>Signed in as {{ user?.email }}</p>
       <p>Roles: {{ user?.roles.join(', ') || 'none' }}</p>
-
-      <template #footer>
-        <UButton
-          to="/profile"
-          variant="link"
-          trailing-icon="i-lucide-arrow-right"
-          label="View your profile"
-          class="px-0"
-        />
-      </template>
     </UCard>
+
+    <section class="space-y-4">
+      <h2 class="text-lg font-semibold">
+        Modules
+      </h2>
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <UCard
+          v-for="module in modules"
+          :key="module.title"
+        >
+          <div class="flex items-start gap-3">
+            <UIcon
+              :name="module.icon"
+              class="mt-0.5 size-5 text-primary"
+            />
+            <div class="min-w-0">
+              <h3 class="font-semibold">
+                {{ module.title }}
+              </h3>
+              <p class="mt-1 text-sm text-muted">
+                {{ module.description }}
+              </p>
+            </div>
+          </div>
+          <template #footer>
+            <UButton
+              v-if="module.available && module.to"
+              :to="module.to"
+              variant="link"
+              trailing-icon="i-lucide-arrow-right"
+              label="Open"
+              class="px-0"
+            />
+            <UBadge
+              v-else
+              label="Coming soon"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-clock"
+            />
+          </template>
+        </UCard>
+      </div>
+    </section>
   </AppPage>
 </template>
