@@ -1,0 +1,441 @@
+/** Administration API: users, roles and permissions, menus, email settings, audit log. */
+
+export interface AdminRoleRef {
+  id: number
+  code: string
+  name: string
+}
+
+export interface AdminUser {
+  id: number
+  username: string
+  email: string | null
+  display_name: string | null
+  given_name: string | null
+  surname: string | null
+  job_title: string | null
+  department: string | null
+  company_name: string | null
+  office_location: string | null
+  employee_id: string | null
+  mobile_phone: string | null
+  preferred_language: string | null
+  auth_provider: 'local' | 'ldap'
+  is_active: boolean
+  is_locked: boolean
+  has_password: boolean
+  must_change_password: boolean
+  roles: AdminRoleRef[]
+  last_login_at: string | null
+  created_at: string | null
+}
+
+export interface AdminUserInput {
+  email?: string
+  display_name?: string
+  job_title?: string | null
+  department?: string | null
+  company_name?: string | null
+  office_location?: string | null
+  employee_id?: string | null
+  mobile_phone?: string | null
+  is_active?: boolean
+  role_ids?: number[]
+  password?: string | null
+}
+
+export interface AdminPermission {
+  code: string
+  module: string
+  description: string
+}
+
+export interface AdminRole {
+  id: number
+  code: string
+  name: string
+  description: string | null
+  is_system: boolean
+  permissions: string[]
+  user_count: number
+}
+
+export interface AdminMenu {
+  id: number
+  code: string
+  label: string
+  icon: string | null
+  route: string | null
+  parent_id: number | null
+  sort_order: number
+  permission: string | null
+  is_active: boolean
+}
+
+export type AdminMenuInput = Omit<AdminMenu, 'id' | 'code'> & { code?: string }
+
+export type SmtpKind = 'gmail' | 'resend' | 'custom'
+export type SmtpSecurity = 'starttls' | 'ssl' | 'none'
+
+export interface SmtpProvider {
+  id: number
+  name: string
+  kind: SmtpKind
+  host: string
+  port: number
+  security: SmtpSecurity
+  username: string
+  from_address: string
+  from_name: string
+  is_active: boolean
+  password_set: boolean
+  created_at: string | null
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export type SmtpProviderInput = Pick<SmtpProvider, 'name' | 'kind' | 'host' | 'port' | 'security' | 'username' | 'from_address' | 'from_name'> & {
+  /** Left out: keep the stored one. */
+  password?: string
+}
+
+export interface SmtpProviderList {
+  items: SmtpProvider[]
+  active_id: number | null
+}
+
+export interface SmtpTestResult {
+  to: string
+  provider: string
+  sent: boolean
+  error: string | null
+}
+
+interface SmtpPreset {
+  label: string
+  icon: string
+  host: string
+  port: number
+  security: SmtpSecurity
+  username: string
+  usernameHelp: string
+  passwordLabel: string
+  /** The button on a provider card whose password or key is missing. */
+  addPasswordLabel: string
+  passwordHelp: string
+  fromHelp: string
+}
+
+/** Defaults and field help for each kind of SMTP provider. */
+export const SMTP_PRESETS: Record<SmtpKind, SmtpPreset> = {
+  gmail: {
+    label: 'Gmail',
+    icon: 'i-lucide-mail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    security: 'starttls',
+    username: '',
+    usernameHelp: 'The Gmail address that sends the emails.',
+    passwordLabel: 'App password',
+    addPasswordLabel: 'Add app password',
+    passwordHelp: 'Google Account > Security > App passwords (needs 2-Step Verification). Not your Gmail password.',
+    fromHelp: 'Usually the same Gmail address.',
+  },
+  resend: {
+    label: 'Resend',
+    icon: 'i-lucide-send',
+    host: 'smtp.resend.com',
+    port: 465,
+    security: 'ssl',
+    username: 'resend',
+    usernameHelp: 'Always "resend".',
+    passwordLabel: 'API key',
+    addPasswordLabel: 'Add API key',
+    passwordHelp: 'A Resend API key with Sending access (starts with re_). Create one at resend.com > API Keys.',
+    fromHelp: 'An address on a domain verified in Resend, e.g. noreply@bemlanja.com.',
+  },
+  custom: {
+    label: 'Other SMTP server',
+    icon: 'i-lucide-server',
+    host: '',
+    port: 587,
+    security: 'starttls',
+    username: '',
+    usernameHelp: 'Leave empty if the server needs no sign-in.',
+    passwordLabel: 'Password',
+    addPasswordLabel: 'Add password',
+    passwordHelp: 'The SMTP password for this username.',
+    fromHelp: 'An address the server is allowed to send from.',
+  },
+}
+
+export const SMTP_SECURITY_ITEMS = [
+  { label: 'SSL/TLS (port 465)', value: 'ssl' as const },
+  { label: 'STARTTLS (port 587)', value: 'starttls' as const },
+  { label: 'None (internal relay only)', value: 'none' as const },
+]
+
+export interface AuditEvent {
+  id: number
+  event: string
+  username: string | null
+  actor: string | null
+  target_type: string | null
+  target_id: number | null
+  detail: Record<string, unknown> | null
+  ip: string | null
+  created_at: string
+}
+
+export interface OutboxEmail {
+  id: number
+  to: string[]
+  subject: string
+  status: 'queued' | 'sent' | 'failed'
+  attempts: number
+  last_error: string | null
+  /** The SMTP provider of the last attempt. */
+  provider: string | null
+  related_type: string | null
+  related_id: number | null
+  created_at: string
+  sent_at: string | null
+}
+
+export interface Page<T> {
+  items: T[]
+  page: number
+  per_page: number
+  total: number
+  pages: number
+}
+
+const BASE = '/api/admin'
+
+export const adminApi = {
+  createUser: (body: AdminUserInput) =>
+    $fetch<{ user: AdminUser, invitation_sent: boolean }>(`${BASE}/users`, { method: 'POST', body }),
+  updateUser: (id: number, body: AdminUserInput) =>
+    $fetch<AdminUser>(`${BASE}/users/${id}`, { method: 'PUT', body }),
+  unlockUser: (id: number) => $fetch<AdminUser>(`${BASE}/users/${id}/unlock`, { method: 'POST' }),
+  resetPassword: (id: number, password?: string) =>
+    $fetch<{ user: AdminUser, email_sent: boolean }>(`${BASE}/users/${id}/reset-password`, {
+      method: 'POST',
+      body: password ? { password } : {},
+    }),
+  createRole: (body: { name: string, description?: string | null, permissions: string[] }) =>
+    $fetch<AdminRole>(`${BASE}/roles`, { method: 'POST', body }),
+  updateRole: (id: number, body: { name: string, description?: string | null, permissions: string[] }) =>
+    $fetch<AdminRole>(`${BASE}/roles/${id}`, { method: 'PUT', body }),
+  deleteRole: (id: number) => $fetch(`${BASE}/roles/${id}`, { method: 'DELETE' }),
+  createMenu: (body: AdminMenuInput) => $fetch<AdminMenu>(`${BASE}/menus`, { method: 'POST', body }),
+  updateMenu: (id: number, body: AdminMenuInput) =>
+    $fetch<AdminMenu>(`${BASE}/menus/${id}`, { method: 'PUT', body }),
+  orderMenus: (items: { id: number, parent_id: number | null, sort_order: number }[]) =>
+    $fetch<{ items: AdminMenu[] }>(`${BASE}/menus/order`, { method: 'PUT', body: { items } }),
+  deleteMenu: (id: number) => $fetch(`${BASE}/menus/${id}`, { method: 'DELETE' }),
+  createProvider: (body: SmtpProviderInput) =>
+    $fetch<SmtpProvider>(`${BASE}/settings/mail/providers`, { method: 'POST', body }),
+  updateProvider: (id: number, body: SmtpProviderInput) =>
+    $fetch<SmtpProvider>(`${BASE}/settings/mail/providers/${id}`, { method: 'PUT', body }),
+  deleteProvider: (id: number) => $fetch(`${BASE}/settings/mail/providers/${id}`, { method: 'DELETE' }),
+  activateProvider: (id: number) =>
+    $fetch<SmtpProviderList>(`${BASE}/settings/mail/providers/${id}/activate`, { method: 'POST' }),
+  deactivateProvider: (id: number) =>
+    $fetch<SmtpProviderList>(`${BASE}/settings/mail/providers/${id}/deactivate`, { method: 'POST' }),
+  testProvider: (id: number, to?: string) =>
+    $fetch<SmtpTestResult>(`${BASE}/settings/mail/providers/${id}/test`, {
+      method: 'POST',
+      body: to ? { to } : {},
+    }),
+  retryEmail: (id: number) =>
+    $fetch<{ id: number, status: string, last_error: string | null }>(`${BASE}/audit/emails/${id}/retry`, { method: 'POST' }),
+}
+
+export function useAdminRoles() {
+  return useFetch<{ items: AdminRole[] }>(`${BASE}/roles`, { key: 'admin-roles' })
+}
+
+export function useAdminPermissions() {
+  return useFetch<{ items: AdminPermission[] }>(`${BASE}/permissions`, { key: 'admin-permissions' })
+}
+
+export type UserState = 'active' | 'invited' | 'locked' | 'inactive'
+
+export function userState(user: AdminUser): UserState {
+  if (!user.is_active) return 'inactive'
+  if (user.is_locked) return 'locked'
+  if (!user.has_password || !user.last_login_at) return 'invited'
+  return 'active'
+}
+
+export const userStatus = defineStatusScale<UserState>({
+  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
+  invited: { label: 'Not signed in yet', color: 'info', icon: 'i-lucide-mail' },
+  locked: { label: 'Locked', color: 'warning', icon: 'i-lucide-lock' },
+  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-minus' },
+})
+
+export const emailStatus = defineStatusScale<OutboxEmail['status']>({
+  queued: { label: 'Queued', color: 'info', icon: 'i-lucide-clock' },
+  sent: { label: 'Sent', color: 'success', icon: 'i-lucide-circle-check' },
+  failed: { label: 'Failed', color: 'error', icon: 'i-lucide-circle-alert' },
+})
+
+const MODULE_LABELS: Record<string, string> = { scca: 'SCCA', admin: 'Administration' }
+
+export function moduleLabel(module: string) {
+  return MODULE_LABELS[module] ?? module
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  'auth.login': 'Signed in',
+  'auth.login_failed': 'Sign-in failed',
+  'auth.login_locked': 'Sign-in while locked',
+  'auth.locked': 'Account locked',
+  'auth.logout': 'Signed out',
+  'auth.password_changed': 'Password changed',
+  'auth.reset_requested': 'Reset link requested',
+  'auth.reset_done': 'Password reset',
+  'admin.user_created': 'User created',
+  'admin.user_updated': 'User updated',
+  'admin.user_unlocked': 'User unlocked',
+  'admin.password_set': 'Temporary password set',
+  'admin.password_link_sent': 'Password link sent',
+  'admin.role_created': 'Role created',
+  'admin.role_updated': 'Role updated',
+  'admin.role_deleted': 'Role deleted',
+  'admin.menu_created': 'Menu added',
+  'admin.menu_updated': 'Menu updated',
+  'admin.menu_deleted': 'Menu deleted',
+  'admin.menus_reordered': 'Menus reordered',
+  'admin.mail_settings_updated': 'Email settings updated',
+  'admin.mail_provider_created': 'SMTP provider added',
+  'admin.mail_provider_updated': 'SMTP provider updated',
+  'admin.mail_provider_deleted': 'SMTP provider deleted',
+  'admin.mail_provider_activated': 'SMTP provider switched',
+  'admin.mail_provider_deactivated': 'Email sending turned off',
+  'admin.bootstrap': 'Administrator set up',
+}
+
+export function eventLabel(event: string) {
+  return EVENT_LABELS[event] ?? event
+}
+
+export function eventTone(event: string): 'error' | 'warning' | 'neutral' {
+  if (event === 'auth.login_failed' || event === 'auth.login_locked') return 'error'
+  if (event === 'auth.locked') return 'warning'
+  return 'neutral'
+}
+
+type ActivityTone = 'neutral' | 'primary' | 'success' | 'error' | 'warning' | 'info'
+
+/** SCCA actions in the audit log (`scca.*`): label, icon and colour. */
+export const SCCA_ACTIVITY: Record<string, { label: string, icon: string, tone: ActivityTone }> = {
+  created: { label: 'Created', icon: 'i-lucide-file-plus', tone: 'primary' },
+  updated: { label: 'Edited', icon: 'i-lucide-pencil', tone: 'neutral' },
+  ratings_saved: { label: 'Ratings saved', icon: 'i-lucide-list-checks', tone: 'neutral' },
+  interdependencies_saved: { label: 'Interdependencies saved', icon: 'i-lucide-network', tone: 'neutral' },
+  submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', tone: 'info' },
+  approved: { label: 'Approved', icon: 'i-lucide-circle-check', tone: 'success' },
+  rejected: { label: 'Rejected', icon: 'i-lucide-circle-x', tone: 'error' },
+  recalled: { label: 'Recalled', icon: 'i-lucide-undo-2', tone: 'warning' },
+  finalised: { label: 'Final', icon: 'i-lucide-badge-check', tone: 'success' },
+  comment_added: { label: 'Comment', icon: 'i-lucide-message-square', tone: 'neutral' },
+  report_downloaded: { label: 'Report downloaded', icon: 'i-lucide-download', tone: 'neutral' },
+  renewal_started: { label: 'Renewal started', icon: 'i-lucide-refresh-cw', tone: 'primary' },
+  nudged: { label: 'Reminded by BCM', icon: 'i-lucide-bell-ring', tone: 'info' },
+  reassigned: { label: 'Step reassigned', icon: 'i-lucide-user-round-cog', tone: 'warning' },
+  approved_on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', tone: 'warning' },
+  reminded: { label: 'Automatic reminder', icon: 'i-lucide-bell', tone: 'neutral' },
+  escalated: { label: 'Escalated to BCM', icon: 'i-lucide-siren', tone: 'error' },
+  renewal_notice: { label: 'Renewal notice', icon: 'i-lucide-calendar-clock', tone: 'neutral' },
+  monitoring_exported: { label: 'Monitoring export', icon: 'i-lucide-file-spreadsheet', tone: 'neutral' },
+  settings_updated: { label: 'Reminder rules changed', icon: 'i-lucide-sliders-horizontal', tone: 'neutral' },
+  version_moved: { label: 'Moved to another version', icon: 'i-lucide-file-cog', tone: 'info' },
+  signer_changed: { label: 'Default or fixed signer changed', icon: 'i-lucide-user-round-cog', tone: 'neutral' },
+  config_draft_started: { label: 'Configuration draft started', icon: 'i-lucide-file-plus', tone: 'primary' },
+  config_changed: { label: 'Configuration changed', icon: 'i-lucide-file-cog', tone: 'neutral' },
+  config_publish_requested: { label: 'Configuration publish requested', icon: 'i-lucide-send', tone: 'info' },
+  config_publish_withdrawn: { label: 'Configuration request withdrawn', icon: 'i-lucide-undo-2', tone: 'warning' },
+  config_published: { label: 'Configuration published', icon: 'i-lucide-badge-check', tone: 'success' },
+  config_discarded: { label: 'Configuration draft discarded', icon: 'i-lucide-trash-2', tone: 'warning' },
+}
+
+export const SCCA_ACTIVITY_FILTERS = [
+  { label: 'All actions', value: 'all' },
+  ...Object.entries(SCCA_ACTIVITY).map(([value, item]) => ({ label: item.label, value, icon: item.icon })),
+]
+
+export function sccaActivity(event: string) {
+  const action = event.replace(/^scca\./, '')
+  return SCCA_ACTIVITY[action] ?? { label: action.replaceAll('_', ' '), icon: 'i-lucide-dot', tone: 'neutral' as const }
+}
+
+function sccaRoleName(role: unknown) {
+  if (typeof role !== 'string') return null
+  if (role === 'assessor') return 'Assessor'
+  if (role === 'contributor') return 'Contributor'
+  if (role === 'admin') return 'Admin'
+  return signoffRoleLabel(role, true)
+}
+
+function sccaTabName(tab: unknown) {
+  return SCCA_TABS.find((item) => item.value === tab)?.label ?? String(tab)
+}
+
+/** One line on what an SCCA action did, e.g. "Changed Rating · Category Critical → Very Important". */
+export function sccaActivityDetail(row: AuditEvent): string {
+  const detail = (row.detail ?? {}) as Record<string, unknown>
+  const parts: string[] = []
+  const action = row.event.replace(/^scca\./, '')
+  if (action === 'created' && detail.reason) parts.push(reasonLabel(String(detail.reason)) ?? String(detail.reason))
+  if (Array.isArray(detail.sections) && detail.sections.length) {
+    parts.push(`Changed ${detail.sections.map(sccaTabName).join(', ')}`)
+  }
+  if (action === 'comment_added' && detail.tab) parts.push(`On ${sccaTabName(detail.tab)}`)
+  const role = sccaRoleName(detail.role)
+  if (role) parts.push(action === 'comment_added' ? `as ${role}` : role)
+  if (detail.category_from && detail.category_to) parts.push(`Category ${detail.category_from} → ${detail.category_to}`)
+  else if (detail.category_to) parts.push(`Category ${detail.category_to}`)
+  if (detail.format) parts.push(String(detail.format) === 'xlsx' ? 'Excel' : String(detail.format).toUpperCase())
+  if (action === 'renewal_started' && detail.renewal_of) parts.push(`Renews ${detail.renewal_of}`)
+  if (action === 'reassigned' && (detail.from_name || detail.to_name)) parts.push(`${detail.from_name ?? '—'} → ${detail.to_name ?? '—'}`)
+  else if (detail.approver) parts.push(action === 'approved_on_behalf' ? `for ${detail.approver}` : `to ${detail.approver}`)
+  if (typeof detail.working_days === 'number') parts.push(`${detail.working_days} working days waiting`)
+  if (detail.attachment_name) parts.push(`evidence ${detail.attachment_name}`)
+  if (action === 'renewal_notice' && detail.kind) {
+    const kind = String(detail.kind)
+    parts.push(kind === 'overdue' ? `Overdue by ${detail.days_overdue ?? '?'} days` : `${kind.replace('renewal_', '')}-day notice`)
+  }
+  if (action === 'monitoring_exported') parts.push(`${detail.view} · ${detail.rows} rows · ${detail.filters}`)
+  if (action === 'settings_updated' && detail.changed && typeof detail.changed === 'object') {
+    parts.push(`Changed ${Object.keys(detail.changed).map((key) => key.replaceAll('_', ' ')).join(', ')}`)
+  }
+  if (action === 'version_moved') {
+    parts.push(`${detail.from_version} → ${detail.to_version}`)
+    if (Array.isArray(detail.cleared) && detail.cleared.length) parts.push(`cleared ${detail.cleared.join(', ')}`)
+  }
+  if (action === 'signer_changed') parts.push(`${signoffRoleLabel(String(detail.step), true)} (${detail.mode}): ${detail.from ?? '—'} → ${detail.to ?? '—'}`)
+  if (action.startsWith('config_') && detail.version) {
+    parts.push(String(detail.version))
+    if (detail.part) parts.push(String(detail.part).replace('list:', 'list ').replaceAll('_', ' '))
+    if (detail.copied_from) parts.push(`copy of ${detail.copied_from}`)
+    if (detail.retired) parts.push(`${detail.retired} retired`)
+    if (detail.request_withdrawn) parts.push('publish request withdrawn')
+  }
+  if (detail.note) parts.push(`“${detail.note}”`)
+  return parts.join(' · ')
+}
+
+/** One readable message for an admin API error: the server's message, or each field problem. */
+export function adminErrorText(error: unknown): string {
+  const { statusCode, data } = (error ?? {}) as {
+    statusCode?: number
+    data?: { message?: string, details?: Record<string, string> }
+  }
+  if (statusCode === 422 && data?.details) return Object.values(data.details).join(' ')
+  if (data?.message) return data.message
+  if (statusCode === 403) return 'You don\'t have permission to do this.'
+  return 'Couldn\'t reach the server. Check your connection and try again.'
+}

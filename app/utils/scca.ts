@@ -28,7 +28,8 @@ export const SCCA_REASONS = [
   { value: 'annual_review', label: 'Annual review' },
   { value: 'system_change', label: 'System change' },
 ] as const
-export type SccaReason = (typeof SCCA_REASONS)[number]['value']
+/** A reason code (V4.2: the 3 above; a configuration version can add more). */
+export type SccaReason = string
 
 /** Workbook: "On Premises/ SaaS/ PaaS/ IaaS". The API stores On Premises as `On-premise`. */
 export const SCCA_DEPLOYMENT_MODELS = [
@@ -40,7 +41,8 @@ export const SCCA_DEPLOYMENT_MODELS = [
 export type SccaDeploymentModel = (typeof SCCA_DEPLOYMENT_MODELS)[number]['value']
 
 export function deploymentModelLabel(value: string | null | undefined) {
-  return SCCA_DEPLOYMENT_MODELS.find((item) => item.value === value)?.label ?? value ?? null
+  return registeredLabel('deployment_model', value)
+    ?? SCCA_DEPLOYMENT_MODELS.find((item) => item.value === value)?.label ?? value ?? null
 }
 export const SCCA_BUSINESS_DAYS = [
   { value: 'Mon-Fri', label: 'Mon–Fri' },
@@ -54,7 +56,8 @@ export const SCCA_BUSINESS_HOURS = [
 ] as const
 
 export function reasonLabel(reason: string | null | undefined) {
-  return SCCA_REASONS.find((item) => item.value === reason)?.label ?? null
+  return registeredLabel('assessment_reason', reason)
+    ?? SCCA_REASONS.find((item) => item.value === reason)?.label ?? reason ?? null
 }
 
 export const SCCA_OVERRIDE_TYPES = ['upgrade', 'downgrade'] as const
@@ -67,7 +70,8 @@ export const SCCA_DIRECTIONS = [
 export type SccaDirection = (typeof SCCA_DIRECTIONS)[number]['value']
 
 export const SCCA_DEPENDENCIES = ['Full', 'Partial', 'No'] as const
-export type SccaDependency = (typeof SCCA_DEPENDENCIES)[number]
+/** A dependency code (V4.2: Full, Partial, No). */
+export type SccaDependency = string
 
 export const SCCA_RECOVERY_KINDS = [
   { value: 'current_it', label: 'Current IT committed values' },
@@ -178,8 +182,16 @@ export function optionsWith(current: string, options: readonly string[]) {
   return current && !options.includes(current) ? [current, ...options] : [...options]
 }
 
-/** Lower is a tighter recovery point. NA is not a commitment. */
+/** Lower is a tighter recovery point. NA is not a commitment. (V4.2; a configuration's
+ * RPO items carry their own `rank`.) */
 const RPO_RANK: Record<string, number> = { LST: 1, LDB: 2 }
+
+function rpoRanks(config?: SccaConfig | null): Record<string, number> {
+  if (!config?.lists?.rpo) return RPO_RANK
+  return Object.fromEntries(
+    config.lists.rpo.filter((item) => item.attrs?.rank != null).map((item) => [item.code, Number(item.attrs.rank)]),
+  )
+}
 
 export function firstNumber(value: string): number | null {
   const match = value.match(/\d+(?:\.\d+)?/)
@@ -199,14 +211,17 @@ export function interdependencyGap(
     workaround: string
   },
   committedRto: string,
+  config?: SccaConfig | null,
 ): string {
   if (!row.system_name.trim()) return ''
   const gaps: string[] = []
   if (!row.criticality_category || !row.rto || !row.rpo || !row.dr_capacity.trim()) {
     gaps.push('Category, RTO, RPO or DR capacity is missing.')
   }
-  if (row.dependency === 'Partial' && !row.workaround.trim()) {
-    gaps.push('Partial dependency needs a workaround.')
+  const workaround = config?.lists?.dependency ? sccaCodesWith(config, 'dependency', 'needs_workaround') : ['Partial']
+  if (row.dependency && workaround.includes(row.dependency) && !row.workaround.trim()) {
+    const label = config ? sccaListLabel(config, 'dependency', row.dependency) : row.dependency
+    gaps.push(`${label} dependency needs a workaround.`)
   }
   const rowRto = firstNumber(row.rto)
   const committed = firstNumber(committedRto)
@@ -257,10 +272,11 @@ function hoursAreWorse(committed: string, required: string, higherIsBetter: bool
   return higherIsBetter ? left < right : left > right
 }
 
-function rpoIsWorse(committed: string, required: string): boolean {
-  const requiredRank = RPO_RANK[required]
+function rpoIsWorse(committed: string, required: string, config?: SccaConfig | null): boolean {
+  const ranks = rpoRanks(config)
+  const requiredRank = ranks[required]
   if (requiredRank == null) return false
-  const committedRank = RPO_RANK[committed]
+  const committedRank = ranks[committed]
   if (committedRank == null) return true
   return committedRank > requiredRank
 }
@@ -270,6 +286,7 @@ export function recoveryGapMessages(
   it: RecoverySlice,
   business: RecoverySlice,
   regulatory: RecoverySlice,
+  config?: SccaConfig | null,
 ): string[] {
   const gaps: string[] = []
   if (hoursAreWorse(it.rto, business.rto, false)) gaps.push('IT committed RTO is longer than the business RTO.')
@@ -282,12 +299,16 @@ export function recoveryGapMessages(
   if (hoursAreWorse(it.dr_capacity, business.dr_capacity, true)) {
     gaps.push('IT committed DR capacity is below the business requirement.')
   }
-  if (rpoIsWorse(it.rpo, business.rpo)) gaps.push('IT committed RPO is weaker than the business RPO.')
-  if (rpoIsWorse(it.rpo, regulatory.rpo)) gaps.push('IT committed RPO is weaker than the regulatory RPO.')
+  if (rpoIsWorse(it.rpo, business.rpo, config)) gaps.push('IT committed RPO is weaker than the business RPO.')
+  if (rpoIsWorse(it.rpo, regulatory.rpo, config)) gaps.push('IT committed RPO is weaker than the regulatory RPO.')
   return gaps
 }
 
-function hourExceedsStandard(value: string, spec: string | null | undefined): boolean {
+function hourExceedsStandard(value: string, spec: string | null | undefined, upper?: number | null): boolean {
+  if (upper != null) {
+    const hours = firstNumber(value)
+    return hours != null && hours > upper
+  }
   if (!spec) return false
   const hours = firstNumber(value)
   const range = parseHourRange(spec)
@@ -295,9 +316,9 @@ function hourExceedsStandard(value: string, spec: string | null | undefined): bo
   return hours > range.max
 }
 
-function availabilityBelowStandard(value: string, spec: string | null | undefined): boolean {
-  if (!spec) return false
-  const floor = standardUptimeFloor(spec)
+function availabilityBelowStandard(value: string, spec: string | null | undefined, minimum?: number | null): boolean {
+  if (minimum == null && !spec) return false
+  const floor = minimum ?? standardUptimeFloor(spec ?? '')
   const actual = firstNumber(value)
   if (floor == null || actual == null) return false
   return actual < floor
@@ -308,17 +329,17 @@ export function standardGapMessages(
   category: string | null | undefined,
   it: RecoverySlice,
   business: RecoverySlice,
-  standard: { category: string, mtd: string | null, rto: string | null, uptime: string | null } | undefined,
+  standard: SccaConfigStandard | undefined,
 ): string[] {
   if (!category || category === 'Other' || !standard) return []
   const gaps: string[] = []
-  if (hourExceedsStandard(it.rto, standard.rto)) {
+  if (hourExceedsStandard(it.rto, standard.rto, standard.rto_to_h)) {
     gaps.push(`IT committed RTO is outside the CIMBN standard for ${category} (${standard.rto}).`)
   }
-  if (hourExceedsStandard(business.mtd, standard.mtd)) {
+  if (hourExceedsStandard(business.mtd, standard.mtd, standard.mtd_to_h)) {
     gaps.push(`Business MTD is outside the CIMBN standard for ${category} (${standard.mtd}).`)
   }
-  if (availabilityBelowStandard(it.availability_sla, standard.uptime)) {
+  if (availabilityBelowStandard(it.availability_sla, standard.uptime, standard.uptime_min_pct)) {
     gaps.push(`IT committed availability is below the CIMBN standard of ${standard.uptime}.`)
   }
   return gaps
@@ -341,7 +362,8 @@ export function previousTabGapMessages(input: {
   missingAnswers?: string[]
   recoveryValues?: Array<{ kind: string } & RecoverySliceInput>
   category?: string | null
-  standards?: Array<{ category: string, mtd: string | null, rto: string | null, uptime: string | null }>
+  standards?: SccaConfigStandard[]
+  config?: SccaConfig | null
   interdependencies?: Array<{
     direction: string
     system_name: string
@@ -365,6 +387,7 @@ export function previousTabGapMessages(input: {
       recoverySlice(byKind.current_it),
       recoverySlice(byKind.business),
       recoverySlice(byKind.regulatory),
+      input.config,
     ),
     ...standardGapMessages(
       input.category,
@@ -384,7 +407,7 @@ export function previousTabGapMessages(input: {
       dr_capacity: row.dr_capacity ?? '',
       dependency: row.dependency ?? undefined,
       workaround: row.workaround ?? '',
-    }, committedRto)
+    }, committedRto, input.config)
     if (message) {
       const where = row.system_name.trim() || 'An interdependency'
       gaps.push(`${where} (${row.direction}): ${message}`)
@@ -393,17 +416,22 @@ export function previousTabGapMessages(input: {
   return gaps
 }
 
+/** Sign-off steps in approval order, titled as on the SCC_Result form. The BCM reviewer step
+ * is added by BCM Tools after the IT Support PIC; at that step only the BCM reviewer can comment on
+ * the tabs other than Result and sign-off. */
 export const SCCA_SIGNOFF_ROLES = [
-  { value: 'system_user_lead', label: 'System user lead' },
-  { value: 'it_support_pic', label: 'IT support PIC' },
-  { value: 'enterprise_architecture', label: 'Enterprise architecture' },
-  { value: 'service_level_mgmt', label: 'Service level management' },
-  { value: 'app_owner_d2', label: 'Application owner (D-2)' },
-  { value: 'app_owner_d1', label: 'Application owner (D-1)' },
-  { value: 'it_support_approval', label: 'IT support approval' },
-  { value: 'bcm_acknowledgement', label: 'BCM acknowledgement' },
+  { value: 'system_user_lead', label: 'Assessment by System User / User Lead', short: 'User Lead' },
+  { value: 'it_support_pic', label: 'Assessment by IT Support PIC', short: 'IT Support PIC' },
+  { value: 'bcm_reviewer', label: 'Reviewed by BCM Reviewer', short: 'BCM Reviewer' },
+  { value: 'enterprise_architecture', label: 'Reviewed by Enterprise Architecture', short: 'Enterprise Architecture' },
+  { value: 'service_level_mgmt', label: 'Reviewed by Service Level Mgt.', short: 'Service Level Mgt.' },
+  { value: 'app_owner_d2', label: 'Approved by Application Owner / Business Unit D-2', short: 'App Owner D-2' },
+  { value: 'app_owner_d1', label: 'Approved by Application Owner / Business Unit D-1', short: 'App Owner D-1' },
+  { value: 'it_support_approval', label: 'Approved by IT Support', short: 'IT Support' },
+  { value: 'bcm_acknowledgement', label: 'Acknowledged by BCM', short: 'BCM' },
 ] as const
-export type SccaSignoffRole = (typeof SCCA_SIGNOFF_ROLES)[number]['value']
+/** A step code. V4.2 has the 9 above; a configuration version can add or rename steps. */
+export type SccaSignoffRole = string
 
 /** "5-CIA" / "4-PoLoss", as the workbook writes the levels. */
 export function sccaLevelLabel(level: number | null | undefined, kind: 'CIA' | 'POLOSS') {
@@ -419,22 +447,39 @@ const CATEGORY_RATING: Record<SccaCategory, number> = {
   'Other': 1,
 }
 
-/** I4: the number of interfaces (systems on the A3 tab) gives the rating. */
-export function interfaceRating(count: number) {
-  if (count >= 40) return 5
-  if (count >= 30) return 4
-  if (count >= 20) return 3
-  if (count >= 10) return 2
-  return 1
+/** I4: the number of interfaces (systems on the A3 tab) gives the rating. `from` holds the
+ * counts where ratings 2, 3, 4 and 5 start (V4.2: 10, 20, 30, 40). */
+export function interfaceRating(count: number, from: number[] = [10, 20, 30, 40]) {
+  let rating = 1
+  from.forEach((start, index) => {
+    if (count >= start) rating = index + 2
+  })
+  return rating
 }
 
-/** A3: the highest category among systems with a Full dependency; 1 when there are none. */
-export function interdependencyRating(rows: Array<{ dependency?: string | null, criticality_category?: string | null }>) {
+/** A3: the highest category among systems with a dependency that counts (V4.2: Full); 1 when
+ * there are none. A configuration gives each category its `a3_rating`. */
+export function interdependencyRating(
+  rows: Array<{ dependency?: string | null, criticality_category?: string | null }>,
+  config?: SccaConfig | null,
+) {
+  const counts = config?.lists?.dependency ? sccaCodesWith(config, 'dependency', 'counts_for_a3') : ['Full']
+  const rating = (category: string) => {
+    const configured = sccaListItem(config, 'category', category)?.attrs?.a3_rating
+    return configured != null ? Number(configured) : (CATEGORY_RATING[category as SccaCategory] ?? 1)
+  }
   const ratings = rows
-    .filter((row) => row.dependency === 'Full' && row.criticality_category)
-    .map((row) => CATEGORY_RATING[row.criticality_category as SccaCategory] ?? 1)
+    .filter((row) => row.dependency && counts.includes(row.dependency) && row.criticality_category)
+    .map((row) => rating(row.criticality_category!))
   return ratings.length ? Math.max(...ratings) : 1
 }
+
+const DEFAULT_NOTES: SccaRatingNote[] = [
+  { kind: 'follows', params: { question: 'C1', rating: 5, then: ['C5', 'P4'] } },
+  { kind: 'a3', params: { question: 'A3' } },
+  { kind: 'i4', params: { question: 'I4', from: [10, 20, 30, 40] } },
+]
+const RATING_WORDS: Record<number, string> = { 5: 'Critical', 4: 'High', 3: 'Medium', 2: 'Low', 1: 'Insignificant' }
 
 /**
  * The notes printed on SCC_Rating, as warnings. They don't block saving, as in the workbook:
@@ -445,25 +490,78 @@ export function interdependencyRating(rows: Array<{ dependency?: string | null, 
 export function ratingNoteWarnings(
   ratings: Record<string, number | undefined>,
   interdependencies: Array<{ dependency?: string | null, criticality_category?: string | null, system_name?: string }>,
+  config?: SccaConfig | null,
 ): { code: string, message: string }[] {
   const warnings: { code: string, message: string }[] = []
-  if (ratings.C1 === 5) {
-    for (const code of ['C5', 'P4']) {
-      if (ratings[code] != null && ratings[code] !== 5) {
-        warnings.push({ code, message: `C1 is Critical, so ${code} should be Critical too.` })
-      }
-    }
-  }
+  const notes = config?.rating_notes ?? DEFAULT_NOTES
   const rows = interdependencies.filter((row) => (row.system_name ?? '').trim() !== '')
-  if (rows.length) {
-    const a3 = interdependencyRating(rows)
-    if (ratings.A3 != null && ratings.A3 !== a3) {
-      warnings.push({ code: 'A3', message: `The A3 tab suggests ${a3}: the highest category among systems with a Full dependency.` })
-    }
-    const i4 = interfaceRating(rows.length)
-    if (ratings.I4 != null && ratings.I4 !== i4) {
-      warnings.push({ code: 'I4', message: `The A3 tab lists ${rows.length} interface${rows.length === 1 ? '' : 's'}, which suggests ${i4}.` })
+  const counted = config?.lists?.dependency
+    ? sccaCodesWith(config, 'dependency', 'counts_for_a3').map((code) => sccaListLabel(config, 'dependency', code)).join(' or ')
+    : 'Full'
+  for (const note of notes) {
+    const question = note.params.question
+    if (note.kind === 'follows') {
+      if (ratings[question] !== note.params.rating) continue
+      const word = RATING_WORDS[note.params.rating] ?? String(note.params.rating)
+      for (const code of note.params.then) {
+        if (ratings[code] != null && ratings[code] !== note.params.rating) {
+          warnings.push({ code, message: `${question} is ${word}, so ${code} should be ${word} too.` })
+        }
+      }
+    } else if (note.kind === 'a3' && rows.length) {
+      const a3 = interdependencyRating(rows, config)
+      if (ratings[question] != null && ratings[question] !== a3) {
+        warnings.push({ code: question, message: `The A3 tab suggests ${a3}: the highest category among systems with a ${counted} dependency.` })
+      }
+    } else if (note.kind === 'i4' && rows.length) {
+      const i4 = interfaceRating(rows.length, note.params.from)
+      if (ratings[question] != null && ratings[question] !== i4) {
+        warnings.push({ code: question, message: `The A3 tab lists ${rows.length} interface${rows.length === 1 ? '' : 's'}, which suggests ${i4}.` })
+      }
     }
   }
   return warnings
 }
+
+export function signoffRoleLabel(role: string | null | undefined, short = false) {
+  const configured = registeredStep(role)
+  if (configured) return short ? configured.short : configured.title
+  const found = SCCA_SIGNOFF_ROLES.find((item) => item.value === role)
+  if (!found) return role ?? ''
+  return short ? found.short : found.label
+}
+
+/** Who wrote a comment: a sign-off step, the assessor, the contributor or an admin. */
+export function commentRoleLabel(role: string | null | undefined) {
+  if (role === 'assessor') return 'Assessor'
+  if (role === 'contributor') return 'Contributor'
+  if (role === 'admin') return 'BCM admin'
+  return signoffRoleLabel(role, true)
+}
+
+export const SCCA_STATUSES = ['draft', 'in_approval', 'final'] as const
+export type SccaStatus = (typeof SCCA_STATUSES)[number]
+
+export const sccaStatus = defineStatusScale<SccaStatus>({
+  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  in_approval: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  final: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
+})
+
+export type SccaSignoffStatus = 'pending' | 'approved' | 'rejected'
+
+export const sccaSignoffStatus = defineStatusScale<SccaSignoffStatus>({
+  pending: { label: 'Pending', color: 'neutral', icon: 'i-lucide-clock' },
+  approved: { label: 'Approved', color: 'success', icon: 'i-lucide-circle-check' },
+  rejected: { label: 'Rejected', color: 'error', icon: 'i-lucide-circle-x' },
+})
+
+/** Editor tabs; comments are attached to one of them. */
+export const SCCA_TABS = [
+  { value: 'details', label: 'Application' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'interdependencies', label: 'Interdependencies' },
+  { value: 'recovery', label: 'Recovery' },
+  { value: 'result', label: 'Result and sign-off' },
+] as const
+export type SccaTab = (typeof SCCA_TABS)[number]['value']

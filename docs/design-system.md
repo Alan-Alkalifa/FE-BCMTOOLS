@@ -20,7 +20,7 @@ The visual and interaction rules for BCM Tools, CIMB Niaga's internal Business C
 | `app/utils/format.ts` | Date, number, currency and percent formatting |
 | `app/utils/chart.ts` | Chart palette and ECharts base theme |
 | `app/utils/status.ts`, `app/components/StatusBadge.vue` | Status scale pattern |
-| `app/layouts/default.vue`, `app/components/AppPage.vue`, `AppLogo.vue`, `UserMenu.vue` | App shell |
+| `app/layouts/default.vue`, `app/components/AppPage.vue`, `AppLogo.vue`, `UserMenu.vue`, `NotificationsMenu.vue` | App shell |
 
 > **Brand colours are an approximation.** The red palette is built around the two colours in the official logo (`#ED3024` and `#790008`). Confirm the official values with the CIMB Niaga brand team and update `--color-cimb-*` in `main.css`; everything else follows.
 
@@ -140,7 +140,7 @@ When a chart shows status (e.g. passed/failed), use the status colours with labe
 
 | Role | Classes | Size / line height | Use |
 |---|---|---|---|
-| Page title | set by `AppPage` | screen-reader only | `h1` for the page; shown in the browser tab, not in the top bar |
+| Page title | set by `AppPage` | 16 / 24px semibold | `h1` in the navbar, with the page's icon; also the browser tab title |
 | Display | `text-2xl font-semibold` | 24 / 32px | A person or record name heading a detail page |
 | Section heading | `text-lg font-semibold` | 18 / 28px | Card or section titles (`<h2>`) |
 | Card title | `font-semibold` | 16 / 24px | Titles inside cards (`<h3>`) |
@@ -154,7 +154,7 @@ Rules:
 - **Numbers in tables, KPIs and anything compared vertically use `tabular-nums`** so digits line up. Compact tables apply it automatically.
 - Weights: 400 regular, 500 medium (buttons, labels), 600 semibold (headings). Don't use 700+.
 - Headings are sentence case ("Recovery plans", not "Recovery Plans"). No all-caps except table headers.
-- Keep heading levels in order: one `h1` (screen-reader only, from `AppPage`), then `h2`, then `h3`.
+- Keep heading levels in order: one `h1` (the navbar title from `AppPage`), then `h2`, then `h3`.
 
 ### Spacing and layout
 
@@ -173,8 +173,8 @@ Tailwind's 4px scale. Prefer these steps:
 
 **Layout:**
 
-- App shell: a 64px top bar (logo, actions, user menu) and page content below. Modules are opened from the home page, not a sidebar. See [Navigation](#navigation-and-page-structure).
-- Page content is capped at `max-w-6xl` (1152px) and centred, so tables and forms don't stretch on wide monitors.
+- App shell: a collapsible sidebar (menu from the database) and a 64px navbar per page (title, icon, actions). See [Navigation](#navigation-and-page-structure).
+- Page content is capped at `max-w-7xl` (1280px) and centred, so tables and forms don't stretch on wide monitors.
 - Grids: `grid gap-6 md:grid-cols-2` for cards, `lg:grid-cols-4` for KPI rows.
 - Breakpoints are Tailwind's (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). The app is designed for desktop (≥1280px) but must stay usable at 768px. The module grid goes from one column to two at `sm` and three at `lg`.
 
@@ -452,7 +452,7 @@ Rules:
 
 ### Charts
 
-**Library:** [Apache ECharts](https://echarts.apache.org) through [`vue-echarts`](https://github.com/ecomfe/vue-echarts), installed when the first chart is built. Register the base theme once:
+**Library:** [Apache ECharts](https://echarts.apache.org) through [`vue-echarts`](https://github.com/ecomfe/vue-echarts). Use **`<AppChart>`** (`app/components/AppChart.vue`): it is the card with the title, the summary sentence, the *View as table* switch, the loading skeleton and the empty message at a fixed height, and it loads ECharts on demand (`app/charts/echarts.ts`, SVG renderer so text keeps its size at any width). Pass it an ECharts `option` and the same data as `table`. `SccaBarChart` and `SccaLineChart` are examples. The theme is registered once in `app/charts/echarts.ts`:
 
 ```ts
 import * as echarts from 'echarts/core'
@@ -475,22 +475,28 @@ Rules:
 **App shell** (`app/layouts/default.vue` and `AppPage`):
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│ [logo] BCM Tools                            [actions] [user] │  ← top bar
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   page content, max-w-6xl, centred                           │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+┌───────────────┬──────────────────────────────────────────────────────┐
+│ [logo] BCM    │ [⇤] Page title     [actions] │ [🔔] [avatar] Name ▾  │  ← navbar (h1)
+│ Tools         ├──────────────────────────────────────────────────────┤
+│               │ Home / Module / Page                                 │  ← breadcrumbs
+│ Home          │ One-line description                                 │
+│ SCCA        ▾ │                                                      │
+│   Assessments │   page content (<main>), max-w-7xl, centred          │
+│   New …       │                                                      │
+│ Administration│                                                      │
+└───────────────┴──────────────────────────────────────────────────────┘
 ```
 
-- **No sidebar.** The home page lists modules under the welcome section. Available modules link through; future modules show "Coming soon".
-- **Every page** is wrapped in `<AppPage title="...">`, which renders the top bar (logo linking home, an `actions` slot, and the user menu) and sets the browser tab title to "Page · BCM Tools". The title is not shown in the top bar.
-- **User menu** (`UserMenu`): avatar + name, opens a menu with the user's email, Profile and Sign out.
+- **Sidebar** (`UDashboardSidebar` + `UNavigationMenu`): built from `GET /api/me/menu`, so each user sees only what their roles allow. Groups expand; the current page is highlighted in primary. Collapsible to icons (`⇤` in the navbar), resizable, and a slide-over on small screens. Background `bg-muted/60`, a border on the right.
+- **Every page** is wrapped in `<AppPage title="..." icon="..." description="..." :crumbs="...">`. It renders the navbar (the page `h1` with its icon, and an `actions` slot), breadcrumbs and a one-line description, and sets the browser tab title to "Page · BCM Tools".
+- **Top-right of the navbar**, on every page: the page actions, a divider, the **notification bell** (`NotificationsMenu`) and the **user menu** (`UserMenu`: avatar, with name and roles from `lg` up; opens Profile, Change password and Sign out). Below `sm` (phones) the page actions move to a row under the navbar (`UDashboardToolbar`) so the title, bell and avatar always fit.
+- **Notifications** are a placeholder for now: the bell opens a panel with a "Coming soon" badge and an empty state. `composables/useNotifications.ts` holds the type, the unread count (shown as a dot on the bell) and where to plug in the future `GET /api/me/notifications`; the menu needs no change when it goes live.
+- **Menu icons** come from the database, so they must be in `utils/menu-icons.ts` (bundled at build time); the Menus admin page only offers those.
 - **Page actions** go in the `actions` slot (primary on the right).
 - **Breadcrumbs** (`AppPage` `crumbs`) on module pages, starting from Home: `Home / SCCA` on the module list, `Home / SCCA / New assessment` (or the record name) one level down. Not on Home itself. The last crumb is the current page and is not a link.
 - **Tabs** (`UTabs`) to switch between views of the same record. Don't use tabs for steps in a process (use a stepper, `UStepper`).
-- **Public pages** (login) opt out of the shell with `definePageMeta({ layout: false })` and centre a single card on `bg-muted`.
+- **Public pages** (sign-in, forgot and reset password, a forced password change) opt out of the shell with `definePageMeta({ layout: false })` and use `AuthShell`: the brand panel on the left, one card on `bg-muted` on the right.
+- **Data tables** sit edge to edge in a card (`:ui="{ body: 'p-0 sm:p-0' }"`): filters in a toolbar above the table (`border-b p-4`), "Showing x–y of z" and pagination in a footer (`border-t p-4`). Row actions go in a `⋮` menu in the last column.
 
 ---
 

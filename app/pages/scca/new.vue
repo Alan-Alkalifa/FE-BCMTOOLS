@@ -1,19 +1,11 @@
 <script setup lang="ts">
-useHead({ title: 'New assessment · BCM Tools' })
-
-function onSaved(assessment: SccaAssessment) {
-  return navigateTo(`/scca/${assessment.id}?tab=rating`)
-}
+/** New assessment moved under Manage. */
+definePageMeta({
+  permission: 'scca.create',
+  middleware: [() => navigateTo('/scca/manage/new', { replace: true })],
+})
 </script>
 
 <template>
-  <AppPage
-    title="New assessment"
-    :crumbs="[
-      { label: 'SCCA', to: '/scca' },
-      { label: 'New assessment' },
-    ]"
-  >
-    <SccaDetailsForm @saved="onSaved" />
-  </AppPage>
+  <div />
 </template>
