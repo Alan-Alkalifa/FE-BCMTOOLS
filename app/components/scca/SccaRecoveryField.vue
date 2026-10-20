@@ -1,7 +1,8 @@
 <script setup lang="ts">
 const props = defineProps<{
   control: SccaRecoveryControl
-  ariaLabel: string
+  /** Read by screen readers (the field has no visible label of its own). */
+  label: string
   modelValue: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -10,58 +11,42 @@ const value = computed({
   get: () => props.modelValue,
   set: (next: string) => emit('update:modelValue', next),
 })
+
+// Choices come from the SCCA's configuration version; the V4.2 lists are the fallback.
+const config = useSccaConfigContext()
+const LISTS: Partial<Record<SccaRecoveryControl, SccaListName>> = {
+  hours: 'hours',
+  rpo: 'rpo',
+  ha: 'ha',
+  instance: 'instance_type',
+  drType: 'dr_type',
+  drCapacity: 'dr_capacity',
+}
+const FALLBACK: Partial<Record<SccaRecoveryControl, readonly string[]>> = {
+  rpo: SCCA_RPO_OPTIONS,
+  ha: SCCA_HA_OPTIONS,
+  instance: SCCA_INSTANCE_OPTIONS,
+  drType: SCCA_DR_TYPE_OPTIONS,
+  drCapacity: SCCA_DR_CAPACITY_OPTIONS,
+}
+const items = computed(() => {
+  const list = LISTS[props.control]
+  if (list && config.value) return sccaListOptions(config.value, list, props.modelValue)
+  if (props.control === 'hours') return hourOptions(props.modelValue)
+  return optionsWith(props.modelValue, FALLBACK[props.control] ?? []).map((option) => ({ label: option, value: option }))
+})
 </script>
 
 <template>
   <USelect
-    v-if="control === 'hours'"
+    v-if="control in LISTS"
     v-model="value"
-    :items="hourOptions(modelValue)"
+    :items="items"
     value-key="value"
     label-key="label"
     class="w-full"
     placeholder="—"
-    :aria-label="ariaLabel"
-  />
-  <USelect
-    v-else-if="control === 'rpo'"
-    v-model="value"
-    :items="optionsWith(modelValue, SCCA_RPO_OPTIONS)"
-    class="w-full"
-    placeholder="—"
-    :aria-label="ariaLabel"
-  />
-  <USelect
-    v-else-if="control === 'ha'"
-    v-model="value"
-    :items="optionsWith(modelValue, SCCA_HA_OPTIONS)"
-    class="w-full"
-    placeholder="—"
-    :aria-label="ariaLabel"
-  />
-  <USelect
-    v-else-if="control === 'instance'"
-    v-model="value"
-    :items="optionsWith(modelValue, SCCA_INSTANCE_OPTIONS)"
-    class="w-full"
-    placeholder="—"
-    :aria-label="ariaLabel"
-  />
-  <USelect
-    v-else-if="control === 'drType'"
-    v-model="value"
-    :items="optionsWith(modelValue, SCCA_DR_TYPE_OPTIONS)"
-    class="w-full"
-    placeholder="—"
-    :aria-label="ariaLabel"
-  />
-  <USelect
-    v-else-if="control === 'drCapacity'"
-    v-model="value"
-    :items="optionsWith(modelValue, SCCA_DR_CAPACITY_OPTIONS)"
-    class="w-full"
-    placeholder="—"
-    :aria-label="ariaLabel"
+    :aria-label="label"
   />
   <UInput
     v-else
@@ -71,7 +56,7 @@ const value = computed({
     max="100"
     step="0.01"
     class="w-full"
-    :aria-label="ariaLabel"
+    :aria-label="label"
     @update:model-value="emit('update:modelValue', clampPercent($event))"
   />
 </template>

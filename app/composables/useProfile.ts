@@ -1,10 +1,12 @@
+import type { UserRole } from '~/composables/useAuth'
+
 export interface Profile {
-  id: string
+  id: number
+  username: string
   display_name: string | null
   given_name: string | null
   surname: string | null
   email: string | null
-  user_principal_name: string | null
   job_title: string | null
   department: string | null
   company_name: string | null
@@ -13,9 +15,11 @@ export interface Profile {
   mobile_phone: string | null
   business_phones: string[]
   preferred_language: string | null
-  roles: string[]
-  graph_profile: Record<string, unknown>
+  auth_provider: 'local' | 'ldap'
+  roles: UserRole[]
+  permissions: string[]
   has_photo: boolean
+  password_changed_at: string | null
   last_login_at: string | null
 }
 

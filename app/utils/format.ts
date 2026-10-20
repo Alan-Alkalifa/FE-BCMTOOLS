@@ -25,6 +25,14 @@ export function formatDateTime(value: DateInput) {
   return `${formatDate(date)}, ${time} WIB`
 }
 
+/** Okt 2026, from a "2026-10" month key. */
+export function formatMonth(month: string | null | undefined) {
+  const match = /^(\d{4})-(\d{2})$/.exec(month ?? '')
+  if (!match) return null
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 15))
+  return new Intl.DateTimeFormat(LOCALE, { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date)
+}
+
 /** 1.234.567,89 */
 export function formatNumber(value: number | null | undefined, maximumFractionDigits = 2) {
   return value === null || value === undefined

@@ -25,11 +25,8 @@ export interface SccaFormula {
   matrix: { cia_level: number, poloss_level: number, category: SccaCategory }[]
 }
 
-export interface SccaRecoveryStandard {
+export interface SccaRecoveryStandard extends SccaConfigStandard {
   category: SccaCategory
-  mtd: string | null
-  rto: string | null
-  uptime: string | null
 }
 
 export interface SccaScores {
@@ -71,11 +68,92 @@ export interface SccaInterdependency {
 
 export type SccaRecoveryValue = { kind: SccaRecoveryKind } & Record<SccaRecoveryField, string | null>
 
-export interface SccaSignoff {
+export interface SccaPerson {
+  id: number
+  display_name: string | null
+  email: string | null
+  job_title: string | null
+  department: string | null
+}
+
+/** What the API accepts: a user for a sign-off step (null clears it). */
+export interface SccaSignoffInput {
   role: SccaSignoffRole
+  user_id: number | null
+}
+
+/** A sign-off step as saved: the picked user's profile snapshot and the decision. */
+export interface SccaSignoff extends SccaSignoffInput {
   name: string | null
   designation: string | null
   sub_dir: string | null
+  email: string | null
+  status: SccaSignoffStatus | null
+  decided_at: string | null
+  decision_note: string | null
+  /** When the step became pending (the reminder clock). */
+  pending_since?: string | null
+  /** BCM approved this step on the approver's behalf. */
+  on_behalf_by?: string | null
+  /** An optional step nobody signs: skipped at Submit ("Not required"). */
+  skipped?: boolean
+  attachment?: SccaAttachment | null
+}
+
+/** Evidence kept with an SCCA (approval on behalf). */
+export interface SccaAttachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  url: string
+}
+
+export interface SccaRef {
+  id: number
+  ref_no: string | null
+  status: SccaStatus
+}
+
+export interface SccaComment {
+  id: number
+  tab: SccaTab
+  body: string
+  author: string | null
+  author_role: string | null
+  created_at: string
+}
+
+export type SccaApprovalAction
+  = | 'submitted'
+    | 'approved'
+    | 'rejected'
+    | 'recalled'
+    | 'finalised'
+    | 'reassigned'
+    | 'approved_on_behalf'
+    | 'nudged'
+    | 'reminded'
+    | 'escalated'
+
+export interface SccaApprovalEvent {
+  action: SccaApprovalAction
+  role: string | null
+  actor: string | null
+  note: string | null
+  from_user?: string | null
+  to_user?: string | null
+  attachment?: SccaAttachment | null
+  created_at: string
+}
+
+export interface SccaPermissions {
+  can_view: boolean
+  can_edit: boolean
+  can_set_contributor: boolean
+  can_submit: boolean
+  can_decide: boolean
+  comment_tabs: SccaTab[]
 }
 
 export interface SccaAssessmentFields {
@@ -90,6 +168,7 @@ export interface SccaAssessmentFields {
   it_support: string | null
   business_stakeholders: string | null
   assessor: string | null
+  contributor_id: number | null
   country: string | null
   vendor_name: string | null
   deployment_model: string | null
@@ -102,10 +181,43 @@ export interface SccaAssessmentFields {
   cim_ref_no: string | null
 }
 
+/** An application already assessed in SCCA: the header of its latest SCCA (GET /api/scca/applications). */
+export interface SccaApplication {
+  application_code: string | null
+  application_name: string
+  application_description: string | null
+  application_owner: string | null
+  it_support: string | null
+  business_stakeholders: string | null
+  country: string | null
+  vendor_name: string | null
+  deployment_model: string | null
+  customer_facing: boolean | null
+  business_days: string | null
+  business_hours: string | null
+  last_assessment: {
+    ref_no: string | null
+    status: SccaStatus
+    assessment_date: string | null
+    due_date: string | null
+  }
+}
+
 export interface SccaAssessment extends SccaAssessmentFields {
   id: number
-  can_delete?: boolean
+  permissions: SccaPermissions
+  status: SccaStatus
+  pending_role: SccaSignoffRole | null
+  submitted_at: string | null
+  finalised_at: string | null
+  assessor_user: SccaPerson | null
+  contributor: SccaPerson | null
+  comments: SccaComment[]
+  events: SccaApprovalEvent[]
   formula_version: string
+  /** The active configuration version; a draft on an older one can move to it. */
+  latest_version?: string | null
+  can_move_version?: boolean
   answers: SccaAnswer[]
   missing_answers: string[]
   result: SccaScores & {
@@ -120,6 +232,13 @@ export interface SccaAssessment extends SccaAssessmentFields {
   updated_by: string | null
   created_at: string
   updated_at: string
+  /** The signed-in user's part in it: they edit drafts, and only read once it is submitted. */
+  my_role?: 'assessor' | 'contributor' | null
+  /** The final SCCA this draft renews, and the renewal started from this one. */
+  renewal_of?: SccaRef | null
+  renewal?: SccaRef | null
+  renewal_opens_on?: string | null
+  can_renew?: boolean
 }
 
 export interface SccaAssessmentSummary {
@@ -134,8 +253,16 @@ export interface SccaAssessmentSummary {
   computed_category: SccaCategory | null
   final_category: SccaCategory | null
   is_complete: boolean
+  status: SccaStatus
+  pending_role: SccaSignoffRole | null
+  pending_step: string | null
+  waiting_for_me: boolean
   created_by: string | null
   updated_at: string
+  /** With `mine=1` (Manage). */
+  my_role?: 'assessor' | 'contributor' | null
+  next_step?: string | null
+  renewal_of?: SccaRef | null
 }
 
 export interface SccaPage<T> {
@@ -149,38 +276,78 @@ export interface SccaPage<T> {
 export interface SccaListQuery {
   q?: string
   category?: SccaCategory
+  status?: SccaStatus
+  /** "1": only assessments waiting for the signed-in user's approval. */
+  waiting?: '1'
+  /** "1": only the SCCAs I assess or contribute to (Manage). */
+  mine?: '1'
+  /** "1": drafts and renewals due within 90 days. */
+  needs_action?: '1'
   page: number
   per_page: number
 }
 
 export type SccaAssessmentUpdate = Partial<SccaAssessmentFields> & {
   recovery_values?: SccaRecoveryValue[]
-  signoffs?: SccaSignoff[]
+  signoffs?: SccaSignoffInput[]
 }
+
+/** Approval actions answer with the assessment and whether the notification email went out. */
+export type SccaApprovalResult = SccaAssessment & { email_sent: boolean }
 
 export type SccaAssessmentCreate = SccaAssessmentUpdate & { application_name: string }
 
 export const sccaDirtyKey: InjectionKey<Ref<boolean>> = Symbol('scca-dirty')
 export const sccaLivePreviewKey: InjectionKey<Ref<SccaPreview | null>> = Symbol('scca-live-preview')
+/** True while the open tab's form saves; the record page's Save button (top bar) shows it. */
+export const sccaSavingKey: InjectionKey<Ref<boolean>> = Symbol('scca-saving')
 
 export function useSccaDirty() {
   return inject(sccaDirtyKey, undefined)
+}
+
+export function useSccaSaving() {
+  return inject(sccaSavingKey, undefined)
 }
 
 export function useSccaLivePreview() {
   return inject(sccaLivePreviewKey, undefined)
 }
 
-export function useSccaFormula() {
+/** The configuration of the SCCA's own version (choice lists, steps, notes); the active
+ * version when `version` is empty (a new SCCA). */
+export const sccaConfigKey: InjectionKey<Ref<SccaConfig | null | undefined>> = Symbol('scca-config')
+
+export function useSccaConfig(version?: MaybeRefOrGetter<string | null | undefined>) {
+  const code = computed(() => toValue(version) || '')
+  const fetched = useFetch<SccaConfig>('/api/scca/config', {
+    key: computed(() => `scca-config-${code.value || 'active'}`),
+    query: computed(() => (code.value ? { version: code.value } : {})),
+    getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
+  })
+  watch(fetched.data, (value) => rememberSccaConfig(value), { immediate: true })
+  return fetched
+}
+
+/** The configuration a record page provided (SccaRecord), for the tab forms. */
+export function useSccaConfigContext() {
+  return inject(sccaConfigKey, ref(null))
+}
+
+export function useSccaFormula(version?: MaybeRefOrGetter<string | null | undefined>) {
+  const code = computed(() => toValue(version) || '')
   return useFetch<SccaFormula>('/api/scca/formula', {
-    key: 'scca-formula',
+    key: computed(() => `scca-formula-${code.value || 'active'}`),
+    query: computed(() => (code.value ? { version: code.value } : {})),
     getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
   })
 }
 
-export function useSccaRecoveryStandards() {
+export function useSccaRecoveryStandards(version?: MaybeRefOrGetter<string | null | undefined>) {
+  const code = computed(() => toValue(version) || '')
   return useFetch<{ items: SccaRecoveryStandard[] }>('/api/scca/recovery-standards', {
-    key: 'scca-recovery-standards',
+    key: computed(() => `scca-recovery-standards-${code.value || 'active'}`),
+    query: computed(() => (code.value ? { version: code.value } : {})),
     getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
   })
 }
@@ -201,8 +368,16 @@ export function useSccaAssessment(id: MaybeRefOrGetter<number>) {
 const BASE = '/api/scca/assessments'
 
 export const sccaApi = {
-  calculate: (ratings: Record<string, number>) =>
-    $fetch<SccaPreview>('/api/scca/calculate', { method: 'POST', body: { ratings } }),
+  applications: (q: string) =>
+    $fetch<{ items: SccaApplication[] }>('/api/scca/applications', { query: { q } }),
+  calculate: (ratings: Record<string, number>, version?: string | null) =>
+    $fetch<SccaPreview>('/api/scca/calculate', {
+      method: 'POST',
+      body: { ratings },
+      query: version ? { version } : {},
+    }),
+  moveVersion: (id: number) =>
+    $fetch<SccaAssessment & { cleared: string[] }>(`${BASE}/${id}/move-version`, { method: 'POST' }),
   create: (body: SccaAssessmentCreate) => $fetch<SccaAssessment>(BASE, { method: 'POST', body }),
   update: (id: number, body: SccaAssessmentUpdate) =>
     $fetch<SccaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
@@ -213,7 +388,26 @@ export const sccaApi = {
       method: 'PUT',
       body: { interdependencies },
     }),
-  remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),
+  submit: (id: number) => $fetch<SccaApprovalResult>(`${BASE}/${id}/submit`, { method: 'POST' }),
+  approve: (id: number, note: string | null) =>
+    $fetch<SccaApprovalResult>(`${BASE}/${id}/approve`, { method: 'POST', body: { note } }),
+  reject: (id: number, note: string) =>
+    $fetch<SccaApprovalResult>(`${BASE}/${id}/reject`, { method: 'POST', body: { note } }),
+  comment: (id: number, tab: SccaTab, body: string) =>
+    $fetch<SccaAssessment>(`${BASE}/${id}/comments`, { method: 'POST', body: { tab, body } }),
+  renew: (id: number) => $fetch<SccaAssessment>(`${BASE}/${id}/renew`, { method: 'POST' }),
+  nudge: (id: number) => $fetch<SccaApprovalResult>(`${BASE}/${id}/nudge`, { method: 'POST' }),
+  reassign: (id: number, userId: number, reason: string) =>
+    $fetch<SccaApprovalResult>(`${BASE}/${id}/reassign`, {
+      method: 'POST',
+      body: { user_id: userId, reason },
+    }),
+  approveOnBehalf: (id: number, reason: string, file: File) => {
+    const form = new FormData()
+    form.append('reason', reason)
+    form.append('file', file)
+    return $fetch<SccaApprovalResult>(`${BASE}/${id}/approve-on-behalf`, { method: 'POST', body: form })
+  },
 }
 
 export type SccaReportFormat = 'pdf' | 'xlsx'
@@ -241,7 +435,58 @@ export function apiErrorMessage(error: unknown) {
   if (statusCode === 401) return 'Your session has expired. Sign in again to continue.'
   if (statusCode === 403) return 'You don\'t have permission to do this.'
   if (statusCode === 404) return 'This assessment no longer exists.'
+  if (statusCode === 409) return 'The assessment changed state (submitted, approved or rejected). Reload to see it.'
   return 'Couldn\'t reach the server. Check your connection and try again.'
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  application_code: 'Application code',
+  application_name: 'Application name',
+  assessment_reason: 'Reason',
+  assessment_date: 'Assessment date',
+  due_date: 'Renewal due date',
+  application_owner: 'Application owner',
+  it_support: 'IT support',
+  business_stakeholders: 'Business stakeholder',
+  deployment_model: 'Deployment model',
+  customer_facing: 'Customer facing',
+  business_days: 'Business days',
+  business_hours: 'Business hours',
+  contributor_id: 'Contributor',
+  override_category: 'New category',
+  justification: 'Justification',
+  cim_ref_no: 'CIM / MKK / RA ref. no.',
+  signoffs: 'Sign-off',
+}
+
+/** A readable name for an API field path, e.g. `recovery_values.1.rto` → "Business requirements · RTO". */
+export function apiFieldLabel(path: string): string {
+  const recovery = path.match(/^recovery_values\.(\d+)\.(\w+)$/)
+  if (recovery) {
+    const kind = SCCA_RECOVERY_KINDS[Number(recovery[1])]?.label ?? 'Recovery'
+    const field = SCCA_RECOVERY_FIELDS.find((item) => item.key === recovery[2])?.label ?? recovery[2]
+    return `${kind} · ${field}`
+  }
+  const inter = path.match(/^interdependencies\.(\d+)\.(\w+)$/)
+  if (inter) return `Interdependency row ${Number(inter[1]) + 1} · ${inter[2]!.replaceAll('_', ' ')}`
+  const signoff = path.match(/^signoffs\.(\d+)\.\w+$/)
+  if (signoff) {
+    const order = registeredStepOrder()
+    const code = order.length ? order[Number(signoff[1])] : SCCA_SIGNOFF_ROLES[Number(signoff[1])]?.value
+    return `Sign-off · ${code ? signoffRoleLabel(code) : 'step'}`
+  }
+  const answer = path.match(/^answers\.(\w+)$/)
+  if (answer) return `Rating ${answer[1]}`
+  return FIELD_LABELS[path] ?? path.replaceAll('_', ' ')
+}
+
+/**
+ * The error summary for a form: the general message plus every field message from a 422,
+ * so problems on fields that this tab doesn't show are never hidden.
+ */
+export function apiErrorText(error: unknown): string {
+  const lines = apiFieldErrors(error).map((item) => `• ${apiFieldLabel(item.name ?? '')}: ${item.message}`)
+  return [apiErrorMessage(error), ...lines].join('\n')
 }
 
 /** Empty strings become null, so cleared inputs clear the saved value. */

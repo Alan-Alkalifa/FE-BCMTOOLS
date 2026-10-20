@@ -65,10 +65,6 @@ function ratingName(label: string) {
   return label.replace(/^\d+\./, '')
 }
 
-function percent(value: number | null | undefined) {
-  return formatPercent(value, 0) ?? '—'
-}
-
 /** Same figures as the workbook's SCC_Result: C, I, A and CIA with its level, then Potential Loss. */
 const summary = computed(() => {
   const preview = livePreview?.value
@@ -86,20 +82,14 @@ const summary = computed(() => {
   }
 })
 
-const summaryRows = computed(() => [
-  { label: 'Confidentiality', value: summary.value?.c },
-  { label: 'Integrity', value: summary.value?.i },
-  { label: 'Availability', value: summary.value?.a },
-  { label: 'CIA', value: summary.value?.cia, level: summary.value?.ciaLevel, strong: true },
-  { label: 'PO-LOSS', value: summary.value?.poloss, level: summary.value?.polossLevel, strong: true },
-])
-
-/** The workbook's notes on C1, A3 and I4, shown as warnings next to the question. */
+/** The workbook's notes (V4.2: C1, A3 and I4; each configuration version has its own), shown
+ * as warnings next to the question. */
+const config = useSccaConfigContext()
 const noteWarnings = computed(() => {
   const current: Record<string, number | undefined> = {}
   for (const [code, answer] of Object.entries(state.answers)) current[code] = answer.rating
   const byCode: Record<string, string[]> = {}
-  for (const warning of ratingNoteWarnings(current, props.assessment.interdependencies)) {
+  for (const warning of ratingNoteWarnings(current, props.assessment.interdependencies, config.value)) {
     (byCode[warning.code] ??= []).push(warning.message)
   }
   return byCode
@@ -147,7 +137,7 @@ watch(ratings, (value) => {
   timer = setTimeout(async () => {
     if (!livePreview) return
     try {
-      livePreview.value = await sccaApi.calculate(value)
+      livePreview.value = await sccaApi.calculate(value, props.assessment.formula_version)
     } catch {
       livePreview.value = { result: null, missing: props.formula.questions.map((q) => q.code) }
     }
@@ -155,8 +145,13 @@ watch(ratings, (value) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(timer))
 
+// The Save button sits in the page's top bar and submits this form by its id
+// (`<button form="scca-form-…">`); `saving` drives its spinner.
+const saving = useSccaSaving()
+
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   const answers = Object.entries(state.answers)
     .filter(([, answer]) => answer.rating != null)
     .map(([code, answer]) => ({
@@ -171,13 +166,16 @@ async function onSubmit() {
     toast.add({ title: 'Ratings saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
     form.value?.setErrors(apiFieldErrors(error))
-    formError.value = apiErrorMessage(error)
+    formError.value = apiErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
   <UForm
+    id="scca-form-rating"
     ref="form"
     :state="state"
     @submit="onSubmit"
@@ -190,6 +188,7 @@ async function onSubmit() {
           variant="subtle"
           icon="i-lucide-circle-alert"
           title="Couldn't save the ratings"
+          :ui="{ description: 'whitespace-pre-line' }"
           :description="formError"
         />
 
@@ -264,62 +263,10 @@ async function onSubmit() {
             </UFormField>
           </div>
         </div>
-
-        <div class="flex justify-end">
-          <UButton
-            type="submit"
-            label="Save ratings"
-            loading-auto
-          />
-        </div>
       </div>
 
       <div class="space-y-6 lg:sticky lg:top-6">
-        <UCard>
-          <template #header>
-            <h2 class="text-lg font-semibold">
-              Summary
-            </h2>
-          </template>
-          <dl class="space-y-2 text-sm">
-            <div
-              v-for="row in summaryRows"
-              :key="row.label"
-              class="flex items-center justify-between gap-3"
-            >
-              <dt :class="row.strong ? 'font-medium' : 'text-muted'">
-                {{ row.label }}
-              </dt>
-              <dd
-                class="tabular-nums"
-                :class="row.strong ? 'font-semibold' : 'font-medium'"
-              >
-                {{ percent(row.value) }}
-                <span
-                  v-if="row.level"
-                  class="font-normal text-muted"
-                > · {{ row.level }}</span>
-              </dd>
-            </div>
-            <div class="flex items-center justify-between gap-3 border-t border-default pt-2">
-              <dt class="font-medium">
-                Category
-              </dt>
-              <dd>
-                <StatusBadge
-                  v-if="summary?.category"
-                  :scale="sccaCategory"
-                  :value="summary.category"
-                  size="sm"
-                />
-                <span
-                  v-else
-                  class="text-muted"
-                >—</span>
-              </dd>
-            </div>
-          </dl>
-        </UCard>
+        <SccaScoreSummary :summary="summary" />
 
         <UCard>
           <template #header>
