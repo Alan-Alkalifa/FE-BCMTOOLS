@@ -44,13 +44,16 @@ test('declaring a crisis at a building sends the hazard, place, radius and WIB t
   await page.goto('/ra/map?place=1')
   await page.getByRole('button', { name: 'Declare crisis here' }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare a crisis' })
-  await expect(dialog.getByText('Griya CIMB Niaga 2')).toBeVisible()
+  // Declaring from a place puts the pin on it; the text says what the ring covers.
+  await expect(dialog.getByRole('button', { name: 'Crisis point' })).toBeVisible({ timeout: 30_000 })
+  await expect(dialog.getByText('-6.271633, 106.719358 · 1 place in the area: Griya CIMB Niaga 2')).toBeVisible()
   await dialog.getByRole('button', { name: 'Declare crisis' }).click()
   await expect(dialog.getByText('Choose the hazard.')).toBeVisible()
 
   await dialog.getByText('Choose one of the 33 RA hazards').click()
   await page.getByRole('option', { name: /Banjir/ }).first().click()
   await dialog.getByRole('button', { name: '5 km', exact: true }).click()
+  await expect(dialog.getByText(/^-6\.271633, 106\.719358 · 2 places in the area: Griya CIMB Niaga 2, KCP Bintaro Sektor 9$/)).toBeVisible()
   await dialog.getByLabel('Time (WIB)').fill('14:30')
   await dialog.getByLabel('What is happening').fill('Basement flooded.')
   await dialog.getByRole('button', { name: 'Declare crisis' }).click()
@@ -60,10 +63,41 @@ test('declaring a crisis at a building sends the hazard, place, radius and WIB t
   expect(log.declared[0]).toMatchObject({
     hazard_code: 'H01',
     location_id: 1,
+    latitude: -6.271633,
+    longitude: 106.719358,
     radius_m: 5000,
     description: 'Basement flooded.',
   })
   expect(log.declared[0]!.started_at).toMatch(/^\d{4}-\d{2}-\d{2}T14:30:00\+07:00$/)
+})
+
+test('the crisis point is a pin dropped on the map or put on a place', async ({ page }) => {
+  const log = await mockRaMap(page, { crisis: false })
+  await page.goto('/ra/map')
+  await page.getByRole('button', { name: 'Declare crisis' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare a crisis' })
+  await dialog.getByText('Choose one of the 33 RA hazards').click()
+  await page.getByRole('option', { name: /Banjir/ }).first().click()
+  await expect(dialog.getByText('No pin yet.')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Declare crisis' }).click()
+  await expect(dialog.getByText('Click the map to drop the pin, or choose a building or branch.')).toBeVisible()
+
+  // The list puts the pin on a place; its marker does the same.
+  await dialog.getByRole('button', { name: 'Put the pin on a building or branch' }).click()
+  await page.getByRole('option', { name: /KC Pondok Indah/ }).click()
+  await expect(dialog.getByText(/^-6\.265200, 106\.783700 · 1 place in the area: KC Pondok Indah$/)).toBeVisible()
+
+  // Clicking the map drops the pin there instead: no longer that branch, just a point.
+  const map = dialog.getByRole('region', { name: /Map for the crisis point/ })
+  const box = (await map.boundingBox())!
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.6)
+  await expect(dialog.getByText(/^-6\.265200, 106\.783700/)).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Declare crisis' }).click()
+  await expect(page).toHaveURL(/\/ra\/crises\/7$/)
+  const body = log.declared[0]!
+  expect(body.location_id).toBeNull()
+  expect(typeof body.latitude).toBe('number')
+  expect(body.latitude).not.toBe(-6.2652)
 })
 
 test('a crisis gives each affected place its instructions and keeps a history', async ({ page }) => {

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaCrisis, RaCrisisInput, RaMapPlace } from '~/composables/useRa'
+import type { RaCrisis, RaCrisisInput, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
- * Declares a crisis, or edits an open one: the hazard, where it happens (a building or branch,
- * or coordinates), the affected radius and when it started (WIB). Closes with the saved crisis,
- * or false.
+ * Declares a crisis, or edits an open one: the hazard, where it happens, the affected radius and
+ * when it started (WIB). Closes with the saved crisis, or false.
+ *
+ * Where is always a pin on the map: drop it by clicking the map, drag it, or pick a building or
+ * branch (from the list or its marker) to put the pin on it. The ring shows the affected area.
  */
 const props = withDefaults(defineProps<{
   places: RaMapPlace[]
@@ -32,12 +34,13 @@ const placeItems = computed(() => props.places.map((place) => ({
 })))
 
 const startedAt = raWibParts(props.crisis?.started_at ?? new Date())
-const atLocation = !props.crisis || props.crisis.location !== null
+const initialPlace = props.places.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
 const state = reactive({
   hazard_code: props.crisis?.hazard_code ?? '',
-  where: (atLocation ? 'location' : 'point') as 'location' | 'point',
-  location_id: props.crisis?.location?.id ?? props.locationId ?? undefined as number | undefined,
-  coordinates: props.crisis ? raFormatCoordinates({ lat: props.crisis.latitude, lng: props.crisis.longitude }) : '',
+  location_id: initialPlace?.id as number | undefined,
+  pin: (props.crisis
+    ? { lat: props.crisis.latitude, lng: props.crisis.longitude }
+    : initialPlace ? { lat: initialPlace.latitude, lng: initialPlace.longitude } : null) as RaPin | null,
   radius_km: (props.crisis?.radius_m ?? 1000) / 1000,
   date: startedAt.date,
   time: startedAt.time,
@@ -47,21 +50,70 @@ const state = reactive({
 
 const schema = z.object({
   hazard_code: z.string().min(1, 'Choose the hazard.'),
-  where: z.enum(['location', 'point']),
   location_id: z.number().optional(),
-  coordinates: z.string(),
+  pin: z.custom<RaPin | null>((value) => !!value, 'Click the map to drop the pin, or choose a building or branch.'),
   radius_km: z.number({ error: 'Enter the radius in km.' }).min(0.05, 'At least 0,05 km (50 m).').max(200, 'At most 200 km.'),
   date: z.string().min(1, 'Pick the date.'),
   time: z.string().regex(/^\d{2}:\d{2}$/, 'Enter the time, e.g. 14:30.'),
   description: z.string(),
   note: z.string(),
-}).superRefine((value, ctx) => {
-  if (value.where === 'location' && !value.location_id) {
-    ctx.addIssue({ code: 'custom', path: ['location_id'], message: 'Choose the building or branch.' })
+})
+
+const mapRef = useTemplateRef<{ fit: (pins: RaPin[]) => void }>('map')
+
+function placePin(place: RaMapPlace): RaPin {
+  return { lat: place.latitude, lng: place.longitude }
+}
+
+/** Show the whole affected area around the pin. */
+function showArea() {
+  const pin = state.pin
+  if (!pin) return
+  const radius = Math.max(state.radius_km, 0.2) * 1000
+  const dLat = radius / 111_320
+  const dLng = radius / (111_320 * Math.cos((pin.lat * Math.PI) / 180))
+  mapRef.value?.fit([
+    { lat: pin.lat + dLat, lng: pin.lng + dLng },
+    { lat: pin.lat - dLat, lng: pin.lng - dLng },
+  ])
+}
+
+/** Picking a building or branch puts the pin on it. */
+function choosePlace(id: number | undefined) {
+  state.location_id = id
+  const place = props.places.find((item) => item.id === id)
+  if (place) {
+    state.pin = placePin(place)
+    nextTick(showArea)
   }
-  if (value.where === 'point' && !raParseCoordinates(value.coordinates)) {
-    ctx.addIssue({ code: 'custom', path: ['coordinates'], message: 'Enter latitude and longitude, e.g. -6.271633, 106.719358.' })
-  }
+}
+
+// A pin moved off the chosen place is a point of its own, not that building or branch.
+watch(() => state.pin, (pin) => {
+  const place = props.places.find((item) => item.id === state.location_id)
+  if (place && (!pin || pin.lat !== place.latitude || pin.lng !== place.longitude)) state.location_id = undefined
+})
+
+const markers = computed<RaMapMarker[]>(() => props.places.map((place) => ({
+  id: place.id,
+  lat: place.latitude,
+  lng: place.longitude,
+  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the crisis here.`,
+  level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
+  variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
+})))
+const circles = computed(() => (state.pin && state.radius_km > 0
+  ? [{ id: 0, ...state.pin, radiusM: state.radius_km * 1000, crisis: true }]
+  : []))
+
+/** The places inside the ring, nearest first: what the crisis will affect. */
+const affected = computed(() => {
+  const pin = state.pin
+  if (!pin) return []
+  return props.places
+    .map((place) => ({ place, distanceM: raDistanceKm(pin, placePin(place)) * 1000 }))
+    .filter((row) => row.distanceM <= state.radius_km * 1000)
+    .sort((a, b) => a.distanceM - b.distanceM)
 })
 
 /** DatePicker speaks CalendarDate; the form keeps the ISO date. */
@@ -79,11 +131,11 @@ const RADIUS_PRESETS = [0.5, 1, 5, 10, 25]
 async function onSubmit() {
   formError.value = null
   fieldErrors.value = {}
-  const point = state.where === 'point' ? raParseCoordinates(state.coordinates) : null
   const body: RaCrisisInput = {
     hazard_code: state.hazard_code,
-    location_id: state.where === 'location' ? state.location_id ?? null : null,
-    ...(point ? { latitude: point.lat, longitude: point.lng } : {}),
+    location_id: state.location_id ?? null,
+    latitude: state.pin!.lat,
+    longitude: state.pin!.lng,
     radius_m: Math.round(state.radius_km * 1000),
     started_at: raWibToIso(state.date, state.time),
     description: state.description.trim() || null,
@@ -110,7 +162,7 @@ async function onSubmit() {
     :description="editing
       ? 'What changes is added to the crisis history.'
       : 'Everyone sees it on the location map until it is closed. Each affected place gets its instructions.'"
-    :ui="{ content: 'sm:max-w-xl' }"
+    :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >
     <template #body>
@@ -147,49 +199,55 @@ async function onSubmit() {
 
         <UFormField
           label="Where"
-          name="where"
-        >
-          <URadioGroup
-            v-model="state.where"
-            orientation="horizontal"
-            :items="[
-              { label: 'At a building or branch', value: 'location' },
-              { label: 'At coordinates', value: 'point' },
-            ]"
-          />
-        </UFormField>
-
-        <UFormField
-          v-if="state.where === 'location'"
-          label="Building or branch"
-          name="location_id"
+          name="pin"
           required
-          help="The crisis is centred on its map pin. Places without a pin aren't listed."
-          :error="fieldErrors.location_id"
-        >
-          <USelectMenu
-            v-model="state.location_id"
-            :items="placeItems"
-            value-key="value"
-            placeholder="Search by name"
-            class="w-full"
-          />
-        </UFormField>
-
-        <UFormField
-          v-else
-          label="Coordinates"
-          name="coordinates"
-          required
-          help="Latitude, longitude, as Google Maps copies them."
+          help="Click the map to drop the pin, or drag it. Choosing a building or branch puts the pin on it."
           :error="fieldErrors.location_id || fieldErrors.latitude"
         >
-          <UInput
-            v-model="state.coordinates"
-            placeholder="-6.271633, 106.719358"
-            inputmode="decimal"
-            class="w-full"
-          />
+          <div class="space-y-2">
+            <USelectMenu
+              :model-value="state.location_id"
+              :items="placeItems"
+              value-key="value"
+              icon="i-lucide-search"
+              placeholder="Put the pin on a building or branch"
+              aria-label="Put the pin on a building or branch"
+              class="w-full"
+              @update:model-value="(id: number) => choosePlace(id)"
+            />
+            <RaMap
+              ref="map"
+              v-model:pin="state.pin"
+              editable
+              pin-variant="crisis"
+              :auto-fit="false"
+              :recentre="false"
+              :markers="markers"
+              :circles="circles"
+              :selected="state.location_id ?? null"
+              label="Map for the crisis point. Click to drop the pin, or select a building or branch."
+              height-class="h-72"
+              @select="(id: number) => choosePlace(id)"
+              @ready="showArea"
+            />
+            <p class="text-sm text-muted">
+              <template v-if="state.pin">
+                {{ raFormatCoordinates(state.pin) }} ·
+                <template v-if="affected.length">
+                  {{ affected.length }} {{ affected.length === 1 ? 'place' : 'places' }} in the area:
+                  {{ affected.slice(0, 4).map((row) => row.place.name).join(', ') }}<template v-if="affected.length > 4">
+                    and {{ affected.length - 4 }} more
+                  </template>
+                </template>
+                <template v-else>
+                  no building or branch in the area yet
+                </template>
+              </template>
+              <template v-else>
+                No pin yet.
+              </template>
+            </p>
+          </div>
         </UFormField>
 
         <UFormField
@@ -218,7 +276,7 @@ async function onSubmit() {
               size="sm"
               :label="`${formatNumber(preset, 1)} km`"
               :aria-pressed="state.radius_km === preset"
-              @click="state.radius_km = preset"
+              @click="state.radius_km = preset; nextTick(showArea)"
             />
           </div>
         </UFormField>

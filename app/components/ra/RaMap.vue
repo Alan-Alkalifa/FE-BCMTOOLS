@@ -21,6 +21,12 @@ const props = withDefaults(defineProps<{
   label: string
   selected?: number | null
   heightClass?: string
+  /** Refit the view whenever the markers or rings change (off where the user is placing a pin). */
+  autoFit?: boolean
+  /** Move the view to the pin when it jumps far (typed coordinates, a reset). */
+  recentre?: boolean
+  /** The editable pin's look: a building pin, or a crisis point. */
+  pinVariant?: 'location' | 'crisis'
 }>(), {
   markers: () => [],
   circles: () => [],
@@ -28,9 +34,12 @@ const props = withDefaults(defineProps<{
   editable: false,
   selected: null,
   heightClass: 'h-96',
+  autoFit: true,
+  recentre: true,
+  pinVariant: 'location',
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
-const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']] }>()
+const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], ready: [] }>()
 
 const { data: settings, error: settingsError } = useRaMapSettings()
 const container = useTemplateRef<HTMLDivElement>('container')
@@ -153,12 +162,14 @@ function drawPin(recentre: boolean) {
     return
   }
   if (!editMarker) {
+    const crisis = props.pinVariant === 'crisis'
     editMarker = L.marker([value.lat, value.lng], {
-      icon: icon('none', true),
+      icon: crisis ? crisisIcon() : icon('none', true),
       draggable: true,
       keyboard: true,
-      title: 'Location pin. Drag to move.',
-      alt: 'Location pin',
+      zIndexOffset: 1000,
+      title: crisis ? 'Crisis point. Drag to move.' : 'Location pin. Drag to move.',
+      alt: crisis ? 'Crisis point' : 'Location pin',
     }).addTo(map)
     editMarker.on('dragend', () => {
       const position = editMarker!.getLatLng()
@@ -167,7 +178,7 @@ function drawPin(recentre: boolean) {
   } else {
     editMarker.setLatLng([value.lat, value.lng])
   }
-  if (recentre) map.setView([value.lat, value.lng], Math.max(map.getZoom(), PIN_ZOOM))
+  if (recentre && props.recentre) map.setView([value.lat, value.lng], Math.max(map.getZoom(), PIN_ZOOM))
 }
 
 function round(lat: number, lng: number): RaPin {
@@ -206,11 +217,20 @@ async function init() {
   }
   drawMarkers(true)
   drawPin(true)
+  emit('ready')
 }
 
-onMounted(init)
+// A map opened in a dialog starts while the dialog animates: re-measure when its size settles.
+let resizeObserver: ResizeObserver | undefined
+onMounted(() => {
+  init()
+  if (container.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => map?.invalidateSize())
+    resizeObserver.observe(container.value)
+  }
+})
 watch(settings, () => init())
-watch(() => [props.markers, props.circles], () => drawMarkers(true), { deep: true })
+watch(() => [props.markers, props.circles], () => drawMarkers(props.autoFit), { deep: true })
 watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
 watch(pin, (value, previous) => {
@@ -220,6 +240,7 @@ watch(pin, (value, previous) => {
 })
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
   map?.remove()
   map = undefined
 })
