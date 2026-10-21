@@ -66,7 +66,7 @@ async function remove(location: RaLocation) {
 <template>
   <AppPage
     :title="`${ra.title} ${ra.location.lowerPlural}`"
-    :crumbs="[{ label: ra.title, to: ra.base }, { label: ra.location.plural }]"
+    :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: ra.location.plural }]"
   >
     <SkeletonTable
       v-if="showSkeleton"
@@ -165,7 +165,7 @@ async function remove(location: RaLocation) {
             class="flex items-center gap-2"
           >
             <NuxtLink
-              :to="`${ra.base}/${row.original.latest_assessment.id}`"
+              :to="raRecordPath(ra.kind, row.original.latest_assessment)"
               class="whitespace-nowrap text-primary hover:underline"
             >
               {{ row.original.latest_assessment.ref_no }}

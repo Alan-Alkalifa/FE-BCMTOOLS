@@ -117,7 +117,7 @@ async function onSubmit() {
       ...Object.fromEntries(TEAM_FIELDS.map((field) => [field, state[field].trim()])),
     })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(`${ra.value.base}/${created.id}`)
+    await navigateTo(raPath(ra.value.kind, 'manage', created.id))
   } catch (error) {
     form.value?.setErrors(apiFieldErrors(error))
     formError.value = apiErrorMessage(error)
@@ -128,17 +128,18 @@ async function onSubmit() {
 <template>
   <AppPage
     :title="`New ${ra.title} assessment`"
-    :crumbs="[{ label: ra.title, to: ra.base }, { label: 'New assessment' }]"
+    :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage', to: raPath(ra.kind, 'manage') }, { label: 'New assessment' }]"
   >
     <UForm
       ref="form"
       :schema="schema"
       :state="state"
-      class="max-w-xl space-y-6"
+      class="grid max-w-6xl items-start gap-6 lg:grid-cols-2"
       @submit="onSubmit"
     >
       <UAlert
         v-if="formError"
+        class="lg:col-span-2"
         color="error"
         variant="subtle"
         icon="i-lucide-circle-alert"
@@ -225,97 +226,99 @@ async function onSubmit() {
         </div>
       </UCard>
 
-      <UCard>
-        <template #header>
-          <h2 class="text-lg font-semibold">
-            Location incident team
-          </h2>
-          <p class="text-sm text-muted">
-            Who leads the response at this {{ ra.location.lower }}. Both are required.
-          </p>
-        </template>
-        <div class="space-y-4">
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-medium text-highlighted">
-              {{ ra.lic.label }}
-              <span class="block text-xs font-normal text-muted">{{ ra.lic.hint }}</span>
-            </legend>
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField
-                label="Name"
-                name="lic_name"
-                required
-                eager-validation
-              >
-                <UInput
-                  v-model="state.lic_name"
-                  autocomplete="off"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField
-                label="Mobile number"
-                name="lic_phone"
-                required
-                eager-validation
-              >
-                <UInput
-                  v-model="state.lic_phone"
-                  type="tel"
-                  autocomplete="off"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-          </fieldset>
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-medium text-highlighted">
-              {{ ra.licom.label }}
-              <span class="block text-xs font-normal text-muted">{{ ra.licom.hint }}</span>
-            </legend>
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField
-                label="Name"
-                name="licom_name"
-                required
-                eager-validation
-              >
-                <UInput
-                  v-model="state.licom_name"
-                  autocomplete="off"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField
-                label="Mobile number"
-                name="licom_phone"
-                required
-                eager-validation
-              >
-                <UInput
-                  v-model="state.licom_phone"
-                  type="tel"
-                  autocomplete="off"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-          </fieldset>
-        </div>
-      </UCard>
+      <div class="space-y-6">
+        <UCard>
+          <template #header>
+            <h2 class="text-lg font-semibold">
+              Location incident team
+            </h2>
+            <p class="text-sm text-muted">
+              Who leads the response at this {{ ra.location.lower }}. Both are required.
+            </p>
+          </template>
+          <div class="space-y-4">
+            <fieldset class="space-y-3">
+              <legend class="text-sm font-medium text-highlighted">
+                {{ ra.lic.label }}
+                <span class="block text-xs font-normal text-muted">{{ ra.lic.hint }}</span>
+              </legend>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField
+                  label="Name"
+                  name="lic_name"
+                  required
+                  eager-validation
+                >
+                  <UInput
+                    v-model="state.lic_name"
+                    autocomplete="off"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Mobile number"
+                  name="lic_phone"
+                  required
+                  eager-validation
+                >
+                  <UInput
+                    v-model="state.lic_phone"
+                    type="tel"
+                    autocomplete="off"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </fieldset>
+            <fieldset class="space-y-3">
+              <legend class="text-sm font-medium text-highlighted">
+                {{ ra.licom.label }}
+                <span class="block text-xs font-normal text-muted">{{ ra.licom.hint }}</span>
+              </legend>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField
+                  label="Name"
+                  name="licom_name"
+                  required
+                  eager-validation
+                >
+                  <UInput
+                    v-model="state.licom_name"
+                    autocomplete="off"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Mobile number"
+                  name="licom_phone"
+                  required
+                  eager-validation
+                >
+                  <UInput
+                    v-model="state.licom_phone"
+                    type="tel"
+                    autocomplete="off"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </fieldset>
+          </div>
+        </UCard>
 
-      <div class="flex justify-end gap-2">
-        <UButton
-          :to="ra.base"
-          color="neutral"
-          variant="outline"
-          label="Cancel"
-        />
-        <UButton
-          type="submit"
-          label="Create assessment"
-          loading-auto
-        />
+        <div class="flex justify-end gap-2">
+          <UButton
+            :to="raPath(ra.kind, 'manage')"
+            color="neutral"
+            variant="outline"
+            label="Cancel"
+          />
+          <UButton
+            type="submit"
+            label="Create assessment"
+            loading-auto
+          />
+        </div>
       </div>
     </UForm>
   </AppPage>

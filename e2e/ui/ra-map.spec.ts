@@ -185,5 +185,5 @@ test('the sidebar marks only the section of the page as current', async ({ page 
   await page.goto('/ra/locations')
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Locations' })).toHaveAttribute('aria-current', 'page', { timeout: 30_000 })
-  await expect(nav.getByRole('link', { name: 'Assessments' }).first()).not.toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: 'Monitoring' }).first()).not.toHaveAttribute('aria-current', 'page')
 })

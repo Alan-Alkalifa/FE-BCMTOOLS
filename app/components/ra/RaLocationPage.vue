@@ -148,7 +148,7 @@ async function removeLocation() {
 }
 
 function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
-  navigateTo(`${ra.value.base}/${row.original.id}`)
+  navigateTo(raRecordPath(ra.value.kind, row.original))
 }
 </script>
 
@@ -156,7 +156,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   <AppPage
     :title="location?.name ?? ra.location.single"
     :crumbs="[
-      { label: ra.title, to: ra.base },
+      { label: ra.title, to: raPath(ra.kind, 'monitoring') },
       { label: ra.location.plural, to: `${ra.base}/locations` },
       ...(location ? [{ label: location.name }] : []),
     ]"
@@ -164,7 +164,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
     <template #actions>
       <UButton
         v-if="location?.is_active && canEdit"
-        :to="`${ra.base}/new?location_id=${location.id}`"
+        :to="{ path: raPath(ra.kind, 'manage', 'new'), query: { location_id: location.id } }"
         color="neutral"
         variant="outline"
         icon="i-lucide-plus"
@@ -226,12 +226,12 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           :value="location.is_active ? 'active' : 'inactive'"
         />
         <span class="text-sm text-muted">
+          <template v-if="ra.hasRegion && location.region">
+            {{ location.region }} ·
+          </template>
           <template v-if="ra.hasLcp">
             {{ formatNumber(location.occupant_summary.units, 0) }} units ·
             {{ formatNumber(location.occupant_summary.employees, 0) }} employees ·
-          </template>
-          <template v-else-if="location.region">
-            {{ location.region }} ·
           </template>
           {{ formatNumber(location.assessments.length, 0) }} {{ location.assessments.length === 1 ? 'assessment' : 'assessments' }}
         </span>
@@ -283,7 +283,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
                 >
                   <template #ref_no-cell="{ row }">
                     <NuxtLink
-                      :to="`${ra.base}/${row.original.id}`"
+                      :to="raRecordPath(ra.kind, row.original)"
                       class="font-medium whitespace-nowrap text-primary hover:underline"
                     >
                       {{ row.original.ref_no || 'Assessment' }}

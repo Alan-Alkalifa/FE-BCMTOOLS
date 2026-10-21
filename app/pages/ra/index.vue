@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.access' })
+/** The assessment list moved to Monitoring, Manage and Approval; old links land on Monitoring. */
+definePageMeta({
+  permission: 'ra.access',
+  redirect: (to) => ({ path: '/ra/monitoring', query: to.query }),
+})
 </script>
 
 <template>
-  <RaListPage />
+  <div />
 </template>

@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.edit' })
+/** New assessment moved under Manage: old links keep working. */
+definePageMeta({
+  permission: 'ra.edit',
+  redirect: (to) => ({ path: '/ra-branch/manage/new', query: to.query }),
+})
 </script>
 
 <template>
-  <RaNewPage />
+  <div />
 </template>

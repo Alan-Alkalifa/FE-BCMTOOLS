@@ -8,7 +8,7 @@ const forAssessment = computed(() => route.query.then === 'assessment')
 
 function onSaved(location: RaLocationDetail) {
   return navigateTo(forAssessment.value
-    ? `${ra.value.base}/new?location_id=${location.id}`
+    ? { path: raPath(ra.value.kind, 'manage', 'new'), query: { location_id: location.id } }
     : `${ra.value.base}/locations/${location.id}?tab=contacts`)
 }
 </script>
@@ -17,7 +17,7 @@ function onSaved(location: RaLocationDetail) {
   <AppPage
     :title="`New ${ra.location.lower}`"
     :crumbs="[
-      { label: ra.title, to: ra.base },
+      { label: ra.title, to: raPath(ra.kind, 'monitoring') },
       { label: ra.location.plural, to: `${ra.base}/locations` },
       { label: `New ${ra.location.lower}` },
     ]"

@@ -174,14 +174,14 @@ function locationUrl(place: { id: number, kind: string }) {
 }
 
 function assessmentUrl(place: RaMapPlace) {
-  return place.kind === 'branch' ? `/ra-branch/${place.latest!.id}` : `/ra/${place.latest!.id}`
+  return raRecordPath(place.kind, place.latest!)
 }
 </script>
 
 <template>
   <AppPage
     title="Location map"
-    :crumbs="[{ label: 'RA', to: '/ra' }, { label: 'Location map' }]"
+    :crumbs="[{ label: 'RA', to: '/ra/monitoring' }, { label: 'Location map' }]"
   >
     <template #actions>
       <UButton

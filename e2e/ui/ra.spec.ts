@@ -9,27 +9,106 @@ test('the home page links to the RA module', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'RA', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
   await expect(main.getByRole('link', { name: 'Location map' })).toHaveAttribute('href', '/ra/map')
-  await main.getByRole('link', { name: 'Assessments' }).first().click()
-  await expect(page).toHaveURL(/\/ra$/)
+  await expect(main.locator('a[href="/ra/manage"]')).toHaveText('Manage')
+  await expect(main.locator('a[href="/ra/approval"]')).toHaveText('Approval')
+  await main.locator('a[href="/ra/monitoring"]').click()
+  await expect(page).toHaveURL(/\/ra\/monitoring$/)
 })
 
-test('the list shows the highest residual risk and keeps filters in the URL', async ({ page }) => {
+test('Manage lists the drafts and keeps its filters in the URL', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra')
+  const request = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.method() === 'GET')
+  await page.goto('/ra/manage')
+  expect(new URL((await request).url()).searchParams.get('status')).toBe('draft')
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('Griya CIMB Niaga 2')).toBeVisible()
   await expect(page.getByText('32 of 33')).toBeVisible()
-  await expect(page.getByText('Draft')).toBeVisible()
+  await expect(page.getByRole('cell', { name: /Draft/ })).toBeVisible()
 
-  await page.getByLabel('Filter by highest residual level').click()
-  await page.getByRole('option', { name: 'Medium' }).click()
-  await expect(page).toHaveURL(/level=Medium/)
-  await expect(page.getByText('No assessments match these filters.')).toBeVisible()
+  const mine = page.waitForRequest((r) => r.url().includes('mine=1'))
+  await page.getByLabel('Whose drafts').click()
+  await page.getByRole('option', { name: 'Created by me' }).click()
+  await mine
+  await expect(page).toHaveURL(/mine=1/)
+
+  await page.getByRole('link', { name: 'RA-2025-0001' }).click()
+  await expect(page).toHaveURL(/\/ra\/manage\/1$/)
+})
+
+test('Monitoring shows the portfolio, renewals, the register and waiting sign-offs', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/monitoring')
+  await expect(page.getByRole('heading', { name: 'RA monitoring' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('Overdue renewals: 1')).toBeVisible()
+  await expect(page.getByLabel('Never approved: 1')).toBeVisible()
+  await page.getByLabel('Never approved: 1').click()
+  await expect(page).toHaveURL(/tab=register/)
+  await expect(page).toHaveURL(/state=none/)
+  await expect(page.getByText('Graha CIMB Niaga')).toBeVisible()
+  expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('state=none'))).toBe(true)
+
+  await page.getByRole('tab', { name: 'Renewals' }).click()
+  await expect(page.getByText('Griya CIMB Niaga 2').first()).toBeVisible()
+  await expect(page.getByText('Overdue', { exact: true }).first()).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Bottlenecks' }).click()
+  await expect(page.getByText('Budi Hartono')).toBeVisible()
+  await expect(page.getByText('6 working days').first()).toBeVisible()
+})
+
+test('a monitoring record is read-only and offers Approval to the signer', async ({ page }) => {
+  await mockRa(page, { status: 'in_signoff' })
+  await page.goto('/ra/monitoring/1')
+  await expect(page.getByText(/read-only/i).first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Open in Approval' })).toHaveAttribute('href', '/ra/approval/1')
+  await expect(page.getByRole('button', { name: 'Delete assessment' })).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Sign-off' }).click()
+  await expect(page.getByRole('button', { name: /^Approve/ })).toHaveCount(0)
+})
+
+test('Approval shows my inbox, what is coming, my history and the BCM board', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/approval')
+  await expect(page.getByRole('heading', { name: 'Waiting for my sign-off' })).toBeVisible({ timeout: 60_000 })
+  const inbox = page.getByRole('table').first()
+  await expect(inbox.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/approval/1')
+  await expect(inbox.getByText('2 working days')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Coming up' })).toBeVisible()
+
+  await page.getByRole('tab', { name: 'My history' }).click()
+  await expect(page.getByText('Checked with the floor wardens.')).toBeVisible()
+  await page.getByLabel('Action').click()
+  await page.getByRole('option', { name: 'Submitted' }).click()
+  await expect(page).toHaveURL(/action=submitted/)
+  await expect(page.getByText('Checked with the floor wardens.')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'BCM board' }).click()
+  await expect(page.getByRole('link', { name: 'Open sign-off' })).toHaveAttribute('href', '/ra/approval/1')
+  await page.getByLabel('Step').click()
+  await page.getByRole('option', { name: /Prepared by/ }).click()
+  await expect(page.getByText('No RA is in sign-off at this step.')).toBeVisible()
+})
+
+test('an approval record opens on the Sign-off tab', async ({ page }) => {
+  await mockRa(page, { status: 'in_signoff' })
+  await page.goto('/ra/approval/1')
+  await expect(page.getByRole('button', { name: /^Approve/ })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('tab', { name: 'Sign-off' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('old links land in the right section', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra')
+  await expect(page).toHaveURL(/\/ra\/monitoring$/, { timeout: 60_000 })
+  await page.goto('/ra/new?location_id=1')
+  await expect(page).toHaveURL(/\/ra\/manage\/new\?location_id=1$/, { timeout: 60_000 })
+  await page.goto('/ra/manage/1?tab=summary')
+  await expect(page).toHaveURL(/\/ra\/manage\/1\?tab=summary$/, { timeout: 60_000 })
 })
 
 test('creating an assessment can start from the previous cycle', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/new')
+  await page.goto('/ra/manage/new')
   await expect(page.getByRole('heading', { name: 'Assessment', exact: true })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: /^Location\*?$/ }).click()
   await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
@@ -39,12 +118,12 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
   expect((await request).postDataJSON()).toMatchObject({ location_id: 1, copy_from_id: 1, lic_name: 'Legiran', licom_name: 'Crispina Arumardi' })
-  await expect(page).toHaveURL(/\/ra\/1$/)
+  await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
 test('rating a hazard updates its level and saves only that hazard', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/1?tab=hazards&hazard=H03')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   await expect(page.getByRole('heading', { name: '3. Gempa Bumi' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('3 × 4', { exact: true }).filter({ visible: true })).toBeVisible()
 
@@ -61,7 +140,7 @@ test('rating a hazard updates its level and saves only that hazard', async ({ pa
 
 test('the action plan is optional, also for a high residual risk', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=hazards&hazard=H28')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H28')
   await expect(page.getByRole('heading', { name: '28. Peretasan Sistem Komputer' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('High', { exact: true }).filter({ visible: true }).first()).toBeVisible()
   await expect(page.getByText('Optional. A high residual risk is followed up through CIM.')).toBeVisible()
@@ -71,7 +150,7 @@ test('the action plan is optional, also for a high residual risk', async ({ page
 
 test('the questionnaire guide opens the Lampiran tables', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=hazards')
+  await page.goto('/ra/manage/1?tab=hazards')
   await page.getByRole('button', { name: 'How to fill in the questionnaire' }).click({ timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'How to fill in the questionnaire' })
   await expect(dialog.getByRole('tab')).toHaveText(['Historical', 'Probability', 'Impact', 'Mitigation'])
@@ -91,7 +170,7 @@ test('the questionnaire guide opens the Lampiran tables', async ({ page }) => {
 
 test('marking a hazard not applicable clears it from the heat map', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=hazards&hazard=H06')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
   await expect(page.getByRole('heading', { name: '6. Cuaca Ekstream' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
   await expect(page.getByText('N/A · Not applicable').first()).toBeVisible()
@@ -100,7 +179,7 @@ test('marking a hazard not applicable clears it from the heat map', async ({ pag
 
 test('leaving a tab with unsaved ratings asks first', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=hazards&hazard=H01')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
   await expect(page.getByRole('heading', { name: '1. Banjir/ Banjir Bandang' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
   await page.getByRole('tab', { name: 'Sign-off' }).click()
@@ -111,7 +190,7 @@ test('leaving a tab with unsaved ratings asks first', async ({ page }) => {
 
 test('the heat maps place hazards and open them', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=summary')
+  await page.goto('/ra/manage/1?tab=summary')
   await expect(page.getByRole('heading', { name: 'Gross risk heat map' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('Follow up high residual risks through CIM')).toBeVisible()
   const gross = page.getByRole('table', { name: /Gross risk heat map/ })
@@ -135,11 +214,11 @@ test('a location with assessments cannot be deleted', async ({ page }) => {
 
 test('deleting an assessment returns to the list', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1')
+  await page.goto('/ra/manage/1')
   await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Delete assessment' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete assessment' }).click()
-  await expect(page).toHaveURL(/\/ra$/)
+  await expect(page).toHaveURL(/\/ra\/manage$/)
 })
 
 test('the occupants tab shows the workbook totals and both views', async ({ page }) => {
@@ -234,7 +313,7 @@ test('the location page lists its assessments and edits its details', async ({ p
   await page.goto('/ra/locations/1')
   await expect(page.getByText('39 units · 1.725 employees · 1 assessment')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/new?location_id=1')
+  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new?location_id=1')
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
   await page.getByRole('textbox', { name: 'Address' }).fill('Jl. Wahid Hasyim, Bintaro')
   await page.getByRole('button', { name: 'Save location' }).click()
@@ -243,20 +322,20 @@ test('the location page lists its assessments and edits its details', async ({ p
 
 test('the assessment links to the location profile', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1')
+  await page.goto('/ra/manage/1')
   await expect(page.getByRole('link', { name: 'Open location profile' })).toHaveAttribute('href', '/ra/locations/1', { timeout: 60_000 })
   await expect(page.getByRole('tab', { name: 'Occupants' })).toHaveCount(0)
 })
 
-test('the list puts View locations and New assessment right above the table', async ({ page }) => {
+test('Manage puts View locations and New assessment right above the table', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra')
+  await page.goto('/ra/manage')
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
   const card = page.locator('main').filter({ has: page.getByRole('table') })
   const view = card.getByRole('link', { name: 'View locations' })
   const create = card.getByRole('link', { name: 'New assessment' })
   await expect(view).toHaveAttribute('href', '/ra/locations')
-  await expect(create).toHaveAttribute('href', '/ra/new')
+  await expect(create).toHaveAttribute('href', '/ra/manage/new')
   await expect(page.getByRole('banner').getByRole('link', { name: 'New assessment' })).toHaveCount(0)
   const table = await page.getByRole('table').boundingBox()
   const button = await create.boundingBox()
@@ -266,7 +345,7 @@ test('the list puts View locations and New assessment right above the table', as
 
 test('hazards are picked by group, then by hazard', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1?tab=hazards&hazard=H03')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   await expect(page.getByRole('heading', { name: '3. Gempa Bumi' })).toBeVisible({ timeout: 60_000 })
   const groups = page.getByRole('group', { name: 'Hazard groups' })
   await expect(groups.getByRole('button')).toHaveCount(6)
@@ -289,7 +368,7 @@ test('hazards are picked by group, then by hazard', async ({ page }) => {
 
 test('the location incident team is required', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1')
+  await page.goto('/ra/manage/1')
   const lic = page.getByRole('textbox', { name: /Location incident coordinator/ })
   await expect(lic).toHaveValue('Legiran', { timeout: 60_000 })
   let saved = false
@@ -304,7 +383,7 @@ test('the location incident team is required', async ({ page }) => {
 
 test('a new assessment without an earlier cycle asks for the team', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/new?location_id=2')
+  await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Create assessment' }).click()
   await expect(page.getByText('Enter the LIC name.')).toBeVisible()
@@ -314,7 +393,7 @@ test('a new assessment without an earlier cycle asks for the team', async ({ pag
 
 test('signers are chosen per role; an incomplete assessment cannot be submitted', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/1?tab=signoff')
+  await page.goto('/ra/manage/1?tab=signoff')
   await expect(page.getByText('Complete the hazards before submitting')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Submit for sign-off' })).toBeDisabled()
   await expect(page.getByText('4 roles still need a signer.')).toBeVisible()
@@ -333,7 +412,7 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
 
 test('submitting, approving and returning an assessment', async ({ page }) => {
   const log = await mockRa(page, { ready: true })
-  await page.goto('/ra/1?tab=signoff')
+  await page.goto('/ra/manage/1?tab=signoff')
   await page.getByRole('button', { name: 'Submit for sign-off' }).click({ timeout: 60_000 })
   await expect(page.getByText('Waiting for Prepared by (Location Incident Coordinator (LIC))')).toBeVisible()
   await expect(page.getByText('In sign-off', { exact: true }).first()).toBeVisible()
@@ -359,7 +438,7 @@ test('submitting, approving and returning an assessment', async ({ page }) => {
 
 test('an assessment in sign-off is locked', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
-  await page.goto('/ra/1')
+  await page.goto('/ra/manage/1')
   await expect(page.getByText(/In sign-off: waiting for Legiran/)).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('textbox', { name: /Location incident coordinator/ })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Save assessment' })).toHaveCount(0)
@@ -367,18 +446,6 @@ test('an assessment in sign-off is locked', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Save ratings' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Mark as not applicable' })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: /Existing mitigation measures/ })).toBeDisabled()
-})
-
-test('the list filters by status and by what waits for me', async ({ page }) => {
-  await mockRa(page)
-  await page.goto('/ra')
-  await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('cell', { name: 'Draft' })).toBeVisible()
-  const request = page.waitForRequest((r) => r.url().includes('awaiting=me'))
-  await page.getByLabel('Filter by status').click()
-  await page.getByRole('option', { name: 'Waiting for my sign-off' }).click()
-  await request
-  await expect(page).toHaveURL(/status=awaiting/)
 })
 
 test('a location gets its map pin on the Map tab', async ({ page }) => {
@@ -419,7 +486,7 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
 
 test('an assessment shows its location pin, or where to add one', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/1')
+  await page.goto('/ra/manage/1')
   await expect(page.getByRole('link', { name: 'Add it on the location\'s Map tab' })).toHaveAttribute('href', '/ra/locations/1?tab=map', { timeout: 60_000 })
 })
 
@@ -428,4 +495,29 @@ test('the location register links to the location map instead of its own map', a
   await page.goto('/ra/locations')
   await expect(page.getByRole('link', { name: 'Location map' }).last()).toHaveAttribute('href', '/ra/map', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
+})
+
+test('the assessment downloads as PDF or as the filled workbook', async ({ page }) => {
+  await mockRa(page)
+  const requested: string[] = []
+  await page.route(/\/api\/ra\/assessments\/1\/report\.(pdf|xlsx)$/, (route) => {
+    const format = route.request().url().endsWith('.pdf') ? 'pdf' : 'xlsx'
+    requested.push(format)
+    return route.fulfill({
+      body: Buffer.from('%PDF-1.4'),
+      contentType: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      headers: { 'Content-Disposition': `attachment; filename=RA_RA-2025-0001_Griya-CIMB-Niaga-2.${format}` },
+    })
+  })
+  await page.goto('/ra/monitoring/1')
+  await page.getByRole('button', { name: 'Download' }).click({ timeout: 60_000 })
+  await expect(page.getByText('The saved assessment')).toBeVisible()
+  const pdf = page.waitForEvent('download')
+  await page.getByRole('menuitem', { name: /PDF report/ }).click()
+  expect((await pdf).suggestedFilename()).toBe('RA_RA-2025-0001_Griya-CIMB-Niaga-2.pdf')
+  await page.getByRole('button', { name: 'Download' }).click()
+  const xlsx = page.waitForEvent('download')
+  await page.getByRole('menuitem', { name: /Excel workbook/ }).click()
+  expect((await xlsx).suggestedFilename()).toBe('RA_RA-2025-0001_Griya-CIMB-Niaga-2.xlsx')
+  expect(requested).toEqual(['pdf', 'xlsx'])
 })

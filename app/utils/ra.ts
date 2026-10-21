@@ -146,7 +146,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     location: { single: 'Branch', plural: 'Branches', lower: 'branch', lowerPlural: 'branches' },
     refPrefix: 'RAB',
     singleRisk: true,
-    hasLcp: false,
+    hasLcp: true,
     hasRegion: true,
     lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number.' },
     licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number.' },
@@ -425,3 +425,36 @@ export function raWibParts(value: string | Date = new Date()) {
 export function raWibToIso(date: string, time: string) {
   return `${date}T${time}:00+07:00`
 }
+
+/** RA and RA Branch have three sections, as SCCA: Monitoring, Manage and Approval. */
+export type RaSection = 'monitoring' | 'manage' | 'approval'
+
+export const RA_SECTIONS: Record<RaSection, { label: string, icon: string }> = {
+  monitoring: { label: 'Monitoring', icon: 'i-lucide-chart-column' },
+  manage: { label: 'Manage', icon: 'i-lucide-list-checks' },
+  approval: { label: 'Approval', icon: 'i-lucide-badge-check' },
+}
+
+/** `/ra/manage/12`, `/ra-branch/monitoring`, `/ra/manage/new`. */
+export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
+  return `${RA_MODULES[kind].base}/${section}${id === undefined ? '' : `/${id}`}`
+}
+
+/** Where an assessment opens from elsewhere (a location, the map, a crisis): a draft in Manage
+ *  to work on it, anything else in Monitoring to read it. */
+export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
+  return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
+}
+
+/** The sign-off waiting time: "Today", "1 working day", "4 working days". */
+export function raWaiting(days: number) {
+  if (days <= 0) return 'Today'
+  return `${days} working ${days === 1 ? 'day' : 'days'}`
+}
+
+export const raRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_90' | 'later'>({
+  overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
+  due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
+  due_90: { label: 'Due in 31–90 days', color: 'info', icon: 'i-lucide-calendar' },
+  later: { label: 'Not due yet', color: 'neutral', icon: 'i-lucide-calendar-check' },
+})

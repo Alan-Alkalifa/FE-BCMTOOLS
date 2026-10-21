@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
+import type { RaReportFormat } from '~/composables/useRa'
+
 const TABS = ['details', 'hazards', 'summary', 'signoff'] as const
 type Tab = (typeof TABS)[number]
+
+/**
+ * One RA cycle, opened from a section: Manage edits a draft, Monitoring reads any assessment,
+ * Approval opens on the Sign-off tab for the signer. Locking and permissions still come from the
+ * assessment itself (`can_edit`, `can_approve`, ...); Monitoring is read-only on top of that.
+ */
+const props = withDefaults(defineProps<{ section?: RaSection }>(), { section: 'manage' })
 
 const ra = useRaModule()
 const route = useRoute()
@@ -15,7 +25,7 @@ const { data: formula, status: formulaStatus, error: formulaError, refresh: refr
 // A branch assessment opened under /ra (or the reverse): show it in its own module.
 watch(() => assessment.value?.kind, (kind) => {
   if (kind && kind !== ra.value.kind) {
-    router.replace({ path: `${RA_MODULES[kind].base}/${id.value}`, query: route.query })
+    router.replace({ path: raPath(kind, props.section, id.value), query: route.query })
   }
 }, { immediate: true })
 const ready = computed(() => assessment.value && formula.value && assessment.value.kind === formula.value.kind)
@@ -31,8 +41,17 @@ provide(raDirtyKey, dirty)
 
 const tab = computed<Tab>(() => {
   const value = route.query.tab
-  return typeof value === 'string' && TABS.includes(value as Tab) ? value as Tab : 'details'
+  if (typeof value === 'string' && TABS.includes(value as Tab)) return value as Tab
+  return props.section === 'approval' ? 'signoff' : 'details'
 })
+
+/** What this section may do with the assessment: Monitoring only reads it. */
+const view = computed(() => {
+  const value = assessment.value
+  if (!value || props.section !== 'monitoring') return value
+  return { ...value, can_edit: false, can_submit: false, can_approve: false, can_return: false, can_delete: false }
+})
+const section = computed(() => RA_SECTIONS[props.section])
 const hazardParam = computed(() => typeof route.query.hazard === 'string' ? route.query.hazard : undefined)
 
 const title = computed(() =>
@@ -90,6 +109,29 @@ function onSaved(saved: RaAssessment) {
   dirty.value = false
 }
 
+const downloading = ref<RaReportFormat | null>(null)
+async function download(format: RaReportFormat) {
+  if (!assessment.value || downloading.value) return
+  downloading.value = format
+  try {
+    await downloadRaReport(assessment.value.id, format)
+  } catch (err) {
+    toast.add({ title: 'Could not download the report', description: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
+  } finally {
+    downloading.value = null
+  }
+}
+/** Both downloads show the saved assessment; the PDF marks one that is not approved yet. */
+const downloadItems = computed<DropdownMenuItem[][]>(() => [
+  [
+    { type: 'label', label: dirty.value ? 'Save first: downloads show the saved assessment' : 'The saved assessment' },
+  ],
+  [
+    { label: 'PDF report', description: 'Printable, laid out like the workbook', icon: 'i-lucide-file-text', onSelect: () => download('pdf') },
+    { label: 'Excel workbook', description: `The official ${ra.value.kind === 'branch' ? 'Cabang' : 'HO'} RA workbook, filled in`, icon: 'i-lucide-file-spreadsheet', onSelect: () => download('xlsx') },
+  ],
+])
+
 async function removeAssessment() {
   if (!assessment.value) return
   const ok = await confirm({
@@ -103,7 +145,7 @@ async function removeAssessment() {
     dirty.value = false
     await raApi.remove(assessment.value.id)
     toast.add({ title: 'Assessment deleted', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(ra.value.base)
+    await navigateTo(raPath(ra.value.kind, 'manage'))
   } catch (err) {
     toast.add({ title: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
   }
@@ -114,13 +156,44 @@ async function removeAssessment() {
   <AppPage
     :title="title"
     :crumbs="[
-      { label: ra.title, to: ra.base },
+      { label: ra.title, to: raPath(ra.kind, 'monitoring') },
+      { label: section.label, to: raPath(ra.kind, props.section) },
       ...(assessment ? [{ label: assessment.ref_no ?? title }] : []),
     ]"
   >
     <template #actions>
       <UButton
-        v-if="assessment?.can_delete"
+        v-if="props.section === 'monitoring' && assessment?.status === 'draft' && assessment.can_edit"
+        :to="raPath(ra.kind, 'manage', assessment.id)"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-pencil"
+        label="Open in Manage"
+      />
+      <UButton
+        v-else-if="props.section === 'monitoring' && assessment?.can_approve"
+        :to="raPath(ra.kind, 'approval', assessment.id)"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-badge-check"
+        label="Open in Approval"
+      />
+      <UDropdownMenu
+        v-if="assessment"
+        :items="downloadItems"
+        :content="{ align: 'end' }"
+      >
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-download"
+          trailing-icon="i-lucide-chevron-down"
+          label="Download"
+          :loading="downloading !== null"
+        />
+      </UDropdownMenu>
+      <UButton
+        v-if="view?.can_delete"
         color="error"
         variant="soft"
         icon="i-lucide-trash-2"
@@ -195,7 +268,17 @@ async function removeAssessment() {
       </div>
 
       <UAlert
-        v-if="assessment.status !== 'draft' && tab !== 'signoff'"
+        v-if="props.section === 'monitoring'"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-eye"
+        title="Monitoring is read-only"
+        :description="assessment.status === 'draft'
+          ? 'Drafts are worked on in Manage.'
+          : assessment.status === 'in_signoff' ? 'Signers approve it in Approval.' : undefined"
+      />
+      <UAlert
+        v-else-if="assessment.status !== 'draft' && tab !== 'signoff'"
         color="info"
         variant="subtle"
         :icon="assessment.status === 'approved' ? 'i-lucide-badge-check' : 'i-lucide-lock'"
@@ -245,14 +328,14 @@ async function removeAssessment() {
         <template #details>
           <RaHeaderForm
             :key="`details-${formKey}`"
-            :assessment="assessment"
+            :assessment="view!"
             @saved="onSaved"
           />
         </template>
         <template #hazards>
           <RaHazardForm
             :key="`hazards-${formKey}`"
-            :assessment="assessment"
+            :assessment="view!"
             :formula="formula"
             :initial-hazard="hazardParam"
             @saved="onSaved"
@@ -287,7 +370,7 @@ async function removeAssessment() {
         <template #signoff>
           <RaSignoffForm
             :key="`signoff-${formKey}`"
-            :assessment="assessment"
+            :assessment="view!"
             :formula="formula"
             @saved="onSaved"
           />

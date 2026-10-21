@@ -3,5 +3,5 @@ definePageMeta({ permission: 'ra.access' })
 </script>
 
 <template>
-  <RaAssessmentPage />
+  <RaResolve />
 </template>

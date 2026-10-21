@@ -4,6 +4,8 @@ import type { RaOccupant } from '~/composables/useRa'
 
 const props = defineProps<{ occupant?: RaOccupant, directorates: string[] }>()
 const emit = defineEmits<{ close: [occupant: RaOccupant | false] }>()
+const ra = useRaModule()
+const place = computed(() => (ra.value.kind === 'branch' ? 'branch' : 'building'))
 
 const count = z.number().int('Enter a whole number.').min(0, 'Cannot be negative.').nullable()
 
@@ -91,7 +93,7 @@ function onSubmit() {
 <template>
   <UModal
     :title="occupant ? 'Edit unit' : 'Add unit'"
-    description="A unit working in this building, and how it continues work if the building can't be used."
+    :description="`A unit working in this ${place}, and how it continues work if the ${place} can't be used.`"
     :ui="{ content: 'sm:max-w-2xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >

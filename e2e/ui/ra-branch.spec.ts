@@ -3,7 +3,7 @@ import { BRANCH_ASSESSMENT_ID, BRANCH_ID, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
-const ASSESSMENT = `/ra-branch/${BRANCH_ASSESSMENT_ID}`
+const ASSESSMENT = `/ra-branch/manage/${BRANCH_ASSESSMENT_ID}`
 
 test('the home page links to RA Branch', async ({ page }) => {
   await mockRa(page)
@@ -13,16 +13,16 @@ test('the home page links to RA Branch', async ({ page }) => {
   await expect(page).toHaveURL(/\/ra-branch\/locations$/)
 })
 
-test('the branch list shows branch assessments with their region', async ({ page }) => {
+test('the branch drafts show their region', async ({ page }) => {
   await mockRa(page)
   const request = page.waitForRequest((r) => r.url().includes('/api/ra/assessments') && r.method() === 'GET')
-  await page.goto('/ra-branch')
+  await page.goto('/ra-branch/manage')
   expect(new URL((await request).url()).searchParams.get('kind')).toBe('branch')
   await expect(page.getByRole('link', { name: 'RAB-2025-0001' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('Region Jabar')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Branch' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'View branches' })).toHaveAttribute('href', '/ra-branch/locations')
-  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra-branch/new')
+  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra-branch/manage/new')
 })
 
 test('a branch hazard is one risk on the branch matrix', async ({ page }) => {
@@ -77,14 +77,26 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   expect(roles).toEqual(['prepared_by', 'approved_by', 'reviewed_by'])
 })
 
-test('a branch has a region and only emergency contacts', async ({ page }) => {
+test('a branch has a region, occupants, a recovery team and a call tree', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/ra-branch/locations/${BRANCH_ID}`)
   await expect(page.getByRole('textbox', { name: /Region/ })).toHaveValue('Region Jabar', { timeout: 60_000 })
-  await expect(page.getByRole('tab', { name: 'Emergency contacts' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Occupants' })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: 'Call tree' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', `/ra-branch/new?location_id=${BRANCH_ID}`)
+  for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
+    await expect(page.getByRole('tab', { name })).toBeVisible()
+  }
+  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', `/ra-branch/manage/new?location_id=${BRANCH_ID}`)
+  await page.getByRole('tab', { name: 'Occupants' }).click()
+  await expect(page.getByRole('button', { name: /Add/ }).first()).toBeVisible()
+})
+
+test('RA Branch has its own Monitoring, Manage and Approval', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra-branch/monitoring')
+  await expect(page.getByRole('heading', { name: 'RA Branch monitoring' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('Region')).toBeVisible()
+  expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/overview') && path.includes('kind=branch'))).toBe(true)
+  await page.goto('/ra-branch/approval')
+  await expect(page.getByRole('link', { name: 'KCP Bogor Pajajaran' }).first()).toHaveAttribute('href', `/ra-branch/approval/${BRANCH_ASSESSMENT_ID}`, { timeout: 60_000 })
 })
 
 test('adding a branch needs a region and sends the branch kind', async ({ page }) => {
@@ -104,6 +116,6 @@ test('adding a branch needs a region and sends the branch kind', async ({ page }
 test('a branch assessment opened under RA moves to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/ra/${BRANCH_ASSESSMENT_ID}?tab=summary`)
-  await expect(page).toHaveURL(new RegExp(`/ra-branch/${BRANCH_ASSESSMENT_ID}\\?tab=summary$`), { timeout: 60_000 })
+  await expect(page).toHaveURL(new RegExp(`/ra-branch/manage/${BRANCH_ASSESSMENT_ID}\\?tab=summary$`), { timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA Branch' })).toBeVisible()
 })

@@ -5,6 +5,7 @@ import RaOccupantModal from '~/components/ra/RaOccupantModal.vue'
 
 const props = defineProps<{ location: RaLocationDetail }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
+const ra = useRaModule()
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -13,7 +14,7 @@ const saving = ref(false)
 const saveError = ref<string | null>(null)
 
 const VIEWS = [
-  { label: 'Building occupants', value: 'profile', icon: 'i-lucide-users' },
+  { label: 'Occupants', value: 'profile', icon: 'i-lucide-users' },
   { label: 'Continuity strategy', value: 'strategy', icon: 'i-lucide-route' },
 ]
 const view = ref<'profile' | 'strategy'>('profile')
@@ -137,10 +138,10 @@ async function remove(row: Row) {
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="text-lg font-semibold">
-              Units in this building
+              Units in this {{ ra.location.lower === 'branch' ? 'branch' : 'building' }}
             </h2>
             <p class="text-sm text-muted">
-              LCP Section C (building occupants) and Section F (business continuity strategy).
+              LCP Section C (occupants) and Section F (business continuity strategy).
             </p>
           </div>
           <UButton
@@ -262,18 +263,15 @@ async function remove(row: Row) {
             </UTooltip>
           </div>
         </template>
+        <template #empty>
+          <p class="py-6 text-center text-sm text-muted">
+            {{ search ? 'No units match this search.' : `No units yet. Add the units that work in this ${ra.location.lower === 'branch' ? 'branch' : 'building'}.` }}
+          </p>
+        </template>
       </UTable>
 
-      <div
-        v-if="!rows.length"
-        class="py-10 text-center"
-      >
-        <p class="text-sm text-muted">
-          {{ search ? 'No units match this search.' : 'No units yet. Add the units that work in this building.' }}
-        </p>
-      </div>
       <p
-        v-else
+        v-if="rows.length"
         class="mt-4 text-sm text-muted"
       >
         Showing {{ formatNumber(rows.length, 0) }} of {{ formatNumber(location.occupants.length, 0) }} units

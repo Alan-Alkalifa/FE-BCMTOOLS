@@ -20,8 +20,22 @@ const props = withDefaults(defineProps<{
   height?: number
 }>(), { summary: '', loading: false, empty: null, height: 280 })
 
-// ECharts is large: load it with the first chart on the page, not with the app.
-const VChart = defineAsyncComponent(() => import('~/charts/echarts'))
+// ECharts is large: load it with the first chart on the page, not with the app. If the chunk
+// can't be fetched (a dropped connection, or a dev server that rebuilt its dependencies), try
+// twice more, then say so instead of leaving an empty card; "View as table" still works.
+const VChart = defineAsyncComponent({
+  loader: () => import('~/charts/echarts'),
+  onError(error, retry, fail, attempts) {
+    if (attempts <= 2) setTimeout(retry, 500 * attempts)
+    else fail()
+  },
+  errorComponent: defineComponent({
+    setup: () => () => h('div', { class: 'flex size-full flex-col items-center justify-center gap-1 text-center text-sm text-muted' }, [
+      h('p', 'The chart could not be drawn.'),
+      h('p', 'Reload the page, or use View as table.'),
+    ]),
+  }),
+})
 
 const asTable = ref(false)
 const id = useId()

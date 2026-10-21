@@ -192,6 +192,8 @@ export interface RaMockLog {
   /** Bodies of PUT /api/ra/locations/{id}/contacts, /occupants, /recovery-team and /call-tree. */
   lists: Record<string, Record<string, unknown[]>[]>
   deletedLocations: number[]
+  /** Paths and queries of GET /api/ra/monitoring/* and /api/ra/approvals/*. */
+  workflow: string[]
 }
 
 /**
@@ -202,7 +204,7 @@ export async function mockRa(
   page: Page,
   options: { locationInUse?: boolean, ready?: boolean, status?: 'in_signoff' | 'approved' } = {},
 ) {
-  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [] }
+  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [] }
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
   const branchCurrent = structuredClone(BRANCH_ASSESSMENT) as typeof BRANCH_ASSESSMENT & MockAssessment
   if (options.ready || options.status) readyToSubmit(current)
@@ -330,7 +332,103 @@ export async function mockRa(
     }
     await route.fulfill({ json: assessment })
   })
+  await mockRaWorkflow(page, log)
   return log
+}
+
+/** A head office (or branch) RA as Monitoring and Approval list it. */
+function workflowRef(branch: boolean, status: string, role: string | null = null) {
+  return {
+    id: branch ? BRANCH_ASSESSMENT_ID : 1,
+    ref_no: branch ? 'RAB-2025-0001' : 'RA-2025-0001',
+    period_year: 2025,
+    assessment_date: '2025-03-10',
+    status,
+    current_signoff_role: role,
+    highest_residual_level: 'Medium',
+    approved_at: status === 'approved' ? '2025-03-20T03:00:00Z' : null,
+    is_returned: false,
+  }
+}
+
+function workflowLocations(branch: boolean) {
+  const first = branch
+    ? { id: BRANCH_ID, kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
+    : { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
+  const second = branch
+    ? { id: 31, kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
+    : { id: 2, kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
+  return [
+    { location: first, approved: workflowRef(branch, 'approved'), open: null, assessment_count: 1, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', lic_name: 'Legiran' },
+    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, lic_name: null },
+  ]
+}
+
+function waitingRow(branch: boolean, step: string, signerId: number, days: number) {
+  return {
+    ...workflowRef(branch, 'in_signoff', step),
+    location: workflowLocations(branch)[0]!.location,
+    step,
+    signer: userRef(signerId),
+    waiting_since: '2026-10-12T03:00:00Z',
+    working_days_waiting: days,
+    working_days_in_signoff: days + 2,
+    submitted_at: '2026-10-08T03:00:00Z',
+    submitted_by: 'Rina Kartika',
+  }
+}
+
+function paged<T>(items: T[], extra: Record<string, unknown> = {}) {
+  return { items, page: 1, per_page: 25, total: items.length, pages: 1, ...extra }
+}
+
+/** Mocks the RA Monitoring (overview, renewals, register, bottlenecks) and Approval lists. */
+async function mockRaWorkflow(page: Page, log: RaMockLog) {
+  await page.route(/\/api\/ra\/(monitoring|approvals)\//, async (route) => {
+    const url = new URL(route.request().url())
+    log.workflow.push(`${url.pathname}${url.search}`)
+    const branch = url.searchParams.get('kind') === 'branch'
+    const roles = branch ? BRANCH_ROLES : HO_ROLES
+    const name = url.pathname.split('/').slice(-2).join('/')
+    const locations = workflowLocations(branch)
+    const waiting = [waitingRow(branch, roles[2]!, 3, 6)]
+    const step = url.searchParams.get('step')
+    if (name === 'monitoring/overview') {
+      await route.fulfill({
+        json: {
+          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0 },
+          by_level: [{ level: 'Low', locations: 0 }, { level: 'Medium', locations: 1 }, { level: 'High', locations: 0 }, { level: 'none', locations: 1 }],
+          approved_per_month: Array.from({ length: 12 }, (_, index) => ({
+            month: `${index < 2 ? 2025 : 2026}-${String(((index + 10) % 12) + 1).padStart(2, '0')}`,
+            assessments: index === 4 ? 1 : 0,
+          })),
+        },
+      })
+    } else if (name === 'monitoring/renewals') {
+      await route.fulfill({ json: paged([locations[0]], { counts: { overdue: 1, due_30: 0, due_90: 0, later: 0 } }) })
+    } else if (name === 'monitoring/register') {
+      const state = url.searchParams.get('state')
+      const rows = state === 'none' ? [locations[1]] : state === 'approved' ? [locations[0]] : state ? [] : locations
+      await route.fulfill({ json: paged(rows) })
+    } else if (name === 'monitoring/regions') {
+      await route.fulfill({ json: { items: branch ? ['Jabodetabek'] : [] } })
+    } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
+      await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
+    } else if (name === 'approvals/inbox') {
+      await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
+    } else if (name === 'approvals/upcoming') {
+      await route.fulfill({ json: paged(waiting) })
+    } else if (name === 'approvals/history') {
+      const rows = [
+        { action: 'approved', role: roles[0], comment: 'Checked with the floor wardens.', at: '2026-10-14T03:00:00Z', assessment: { ...workflowRef(branch, 'in_signoff', roles[1]!), location: locations[0]!.location } },
+        { action: 'submitted', role: null, comment: null, at: '2026-10-08T03:00:00Z', assessment: { ...workflowRef(branch, 'in_signoff', roles[1]!), location: locations[0]!.location } },
+      ]
+      const action = url.searchParams.get('action')
+      await route.fulfill({ json: paged(action ? rows.filter((row) => row.action === action) : rows) })
+    } else {
+      await route.fulfill({ status: 404, json: { error: 'not_found' } })
+    }
+  })
 }
 
 const PLACE = (id: number, kind: 'head_office' | 'branch', name: string, latitude: number, longitude: number, level: string | null = null) => ({

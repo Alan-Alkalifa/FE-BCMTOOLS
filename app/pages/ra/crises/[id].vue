@@ -81,7 +81,7 @@ function teamLabel(team: string) {
 }
 
 function assessmentUrl(row: RaCrisisPlace) {
-  return row.location.kind === 'branch' ? `/ra-branch/${row.assessment!.id}` : `/ra/${row.assessment!.id}`
+  return raRecordPath(row.assessment!.kind, row.assessment!)
 }
 
 function locationUrl(location: { id: number, kind: string }) {
@@ -188,7 +188,7 @@ const historyIcon: Record<string, string> = {
   <AppPage
     :title="crisis?.ref_no ?? 'Crisis'"
     :crumbs="[
-      { label: 'RA', to: '/ra' },
+      { label: 'RA', to: '/ra/monitoring' },
       { label: 'Crises', to: '/ra/crises' },
       ...(crisis ? [{ label: crisis.ref_no }] : []),
     ]"
@@ -626,7 +626,7 @@ const historyIcon: Record<string, string> = {
                       v-else
                       class="mt-2 text-sm text-muted"
                     >
-                      {{ item.row.location.kind === 'branch' ? 'Branches have no call tree in RA.' : 'None recorded.' }}
+                      None recorded.
                     </p>
 
                     <template v-if="item.row.recovery_team.length">

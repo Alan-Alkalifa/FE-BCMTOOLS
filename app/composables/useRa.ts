@@ -404,6 +404,8 @@ export interface RaListQuery {
   level?: RaLevel
   status?: RaStatus
   awaiting?: 'me'
+  /** Only the assessments the user created (Manage). */
+  mine?: '1'
   page: number
   per_page: number
 }
@@ -516,6 +518,28 @@ export function useRaAssessment(id: MaybeRefOrGetter<number>) {
   })
 }
 
+export type RaReportFormat = 'pdf' | 'xlsx'
+
+/** The PDF report or the filled official workbook of an assessment. */
+export function raReportUrl(id: number, format: RaReportFormat) {
+  return `${BASE}/${id}/report.${format}`
+}
+
+/** Download a report as a file named by the server; throws when the server refuses. */
+export async function downloadRaReport(id: number, format: RaReportFormat) {
+  const response = await $fetch.raw<Blob>(raReportUrl(id, format), { responseType: 'blob' })
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
+  const url = URL.createObjectURL(response._data!)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name ? decodeURIComponent(name) : `RA-${id}.${format}`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
 const CRISES = '/api/ra/crises'
 
 export function useRaMap() {
@@ -587,4 +611,132 @@ export function raStatusMessage(error: unknown) {
 /** 409 from deleting a location that still has assessments. */
 export function raIsConflict(error: unknown) {
   return (error as { statusCode?: number } | null)?.statusCode === 409
+}
+
+// --- Monitoring and Approval ------------------------------------------------------------------
+
+/** An assessment as the Monitoring and Approval lists show it. */
+export interface RaAssessmentRef {
+  id: number
+  ref_no: string | null
+  period_year: number
+  assessment_date: string | null
+  status: RaStatus
+  current_signoff_role: string | null
+  highest_residual_level: RaLevel | null
+  approved_at: string | null
+  is_returned: boolean
+}
+
+export type RaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
+
+/** A location with its RA in force (`approved`) and the RA being worked on (`open`). */
+export interface RaMonitorLocation {
+  location: RaLocationRef
+  approved: RaAssessmentRef | null
+  open: RaAssessmentRef | null
+  assessment_count: number
+  renewal_date: string | null
+  days_left: number | null
+  bucket: RaRenewalBucket | null
+  lic_name: string | null
+}
+
+/** An RA in sign-off and whose step it is. */
+export interface RaSignoffWaiting extends RaAssessmentRef {
+  location: RaLocationRef
+  step: string
+  signer: RaUserRef | null
+  waiting_since: string | null
+  working_days_waiting: number
+  working_days_in_signoff: number
+  submitted_at: string | null
+  submitted_by: string | null
+}
+
+export interface RaHistoryRow {
+  action: 'approved' | 'returned' | 'submitted'
+  role: string | null
+  comment: string | null
+  at: string
+  assessment: RaAssessmentRef & { location: RaLocationRef }
+}
+
+export interface RaMonitoringFilters {
+  kind: RaKind
+  q?: string
+  region?: string
+  level?: RaLevel | 'none'
+  state?: 'approved' | 'draft' | 'in_signoff' | 'none'
+}
+
+export interface RaOverview {
+  cards: {
+    locations: number
+    assessed: number
+    not_assessed: number
+    drafts: number
+    in_signoff: number
+    overdue_renewals: number
+    due_in_90_days: number
+    high_residual: number
+  }
+  by_level: { level: RaLevel | 'none', locations: number }[]
+  approved_per_month: { month: string, assessments: number }[]
+}
+
+type Paged<T> = MaybeRefOrGetter<T & { page: number, per_page: number }>
+
+function useRaList<T>(path: string, query: MaybeRefOrGetter<object>) {
+  return useFetch<RaPage<T> & { counts?: Record<string, number> }>(path, {
+    key: computed(() => `${path}-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query) as Record<string, unknown>),
+  })
+}
+
+export function useRaOverview(filters: MaybeRefOrGetter<RaMonitoringFilters>) {
+  return useFetch<RaOverview>('/api/ra/monitoring/overview', {
+    key: computed(() => `ra-overview-${JSON.stringify(toValue(filters))}`),
+    query: computed(() => toValue(filters)),
+  })
+}
+
+export function useRaRenewals(query: Paged<RaMonitoringFilters>) {
+  return useRaList<RaMonitorLocation>('/api/ra/monitoring/renewals', query)
+}
+
+export function useRaRegister(query: Paged<RaMonitoringFilters>) {
+  return useRaList<RaMonitorLocation>('/api/ra/monitoring/register', query)
+}
+
+export function useRaBottlenecks(query: Paged<{ kind: RaKind, q?: string, step?: string }>) {
+  return useRaList<RaSignoffWaiting>('/api/ra/monitoring/bottlenecks', query)
+}
+
+export function useRaRegions(kind: MaybeRefOrGetter<RaKind>) {
+  return useFetch<{ items: string[] }>('/api/ra/monitoring/regions', {
+    key: computed(() => `ra-regions-${toValue(kind)}`),
+    query: computed(() => ({ kind: toValue(kind) })),
+  })
+}
+
+export function useRaInbox(query: Paged<{ kind: RaKind }>) {
+  return useRaList<RaSignoffWaiting>('/api/ra/approvals/inbox', query)
+}
+
+export function useRaUpcoming(query: Paged<{ kind: RaKind }>) {
+  return useRaList<RaSignoffWaiting>('/api/ra/approvals/upcoming', query)
+}
+
+export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryRow['action'] }>) {
+  return useRaList<RaHistoryRow>('/api/ra/approvals/history', query)
+}
+
+export function useRaBoard(query: Paged<{ kind: RaKind, step?: string }>, enabled: MaybeRefOrGetter<boolean>) {
+  return useFetch<RaPage<RaSignoffWaiting>>('/api/ra/approvals/board', {
+    key: computed(() => `ra-board-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query)),
+    immediate: toValue(enabled),
+    watch: [() => toValue(enabled)],
+  })
 }

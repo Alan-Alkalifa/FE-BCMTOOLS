@@ -72,7 +72,7 @@ async function declare() {
 <template>
   <AppPage
     title="Crises"
-    :crumbs="[{ label: 'RA', to: '/ra' }, { label: 'Crises' }]"
+    :crumbs="[{ label: 'RA', to: '/ra/monitoring' }, { label: 'Crises' }]"
   >
     <template #actions>
       <UButton
