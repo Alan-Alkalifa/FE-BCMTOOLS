@@ -354,8 +354,8 @@ export const RA_PIN_CLASS: Record<RaLevel | 'na' | 'none', string> = {
   none: 'text-muted',
 }
 
-/** "Nearby" for the branch overlay on the RA register map. */
-export const RA_NEARBY_RADIUS_KM = 5
+/** Distance rings the location map can draw around the selected place, in km. */
+export const RA_RING_KM = [1, 2, 5, 10, 25] as const
 
 /** Great-circle distance in km (haversine), plenty accurate at city scale. */
 export function raDistanceKm(a: { lat: number, lng: number }, b: { lat: number, lng: number }) {
@@ -364,4 +364,64 @@ export function raDistanceKm(a: { lat: number, lng: number }, b: { lat: number, 
   const dLng = (b.lng - a.lng) * rad
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2
   return 6371.0088 * 2 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** "1,7 km", "850 m": distances in Indonesian number format. */
+export function raFormatDistance(metres: number) {
+  if (metres < 1000) return `${formatNumber(Math.round(metres / 10) * 10, 0)} m`
+  return `${formatNumber(metres / 1000, metres < 10_000 ? 1 : 0)} km`
+}
+
+/** Driving directions between two pins in Google Maps (road distance and time). */
+export function raDirectionsUrl(from: { lat: number, lng: number }, to: { lat: number, lng: number }) {
+  return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`
+}
+
+export const raCrisisStatus = defineStatusScale<'open' | 'closed'>({
+  open: { label: 'Open', color: 'error', icon: 'i-lucide-siren' },
+  closed: { label: 'Closed', color: 'neutral', icon: 'i-lucide-circle-check' },
+})
+
+export const raPlaybookReview = defineStatusScale<'reviewed' | 'starter'>({
+  reviewed: { label: 'Reviewed by BCM', color: 'success', icon: 'i-lucide-badge-check' },
+  starter: { label: 'Starter steps', color: 'warning', icon: 'i-lucide-file-pen' },
+})
+
+export const RA_PLAYBOOK_PHASES = [
+  { value: 'immediate', label: 'Right away', description: 'Keep people safe and raise the alarm.' },
+  { value: 'stabilise', label: 'Within the first hours', description: 'Account for everyone, start the call tree, assess the damage.' },
+  { value: 'recover', label: 'Recovery', description: 'Move to alternate sites and return to the building.' },
+] as const
+
+export const RA_PLACE_KIND_LABEL: Record<RaKind, string> = {
+  head_office: 'Head office building',
+  branch: 'Branch',
+}
+
+export const RA_CRISIS_ACTION_LABEL: Record<string, string> = {
+  declared: 'Declared',
+  updated: 'Updated',
+  note: 'Update',
+  closed: 'Closed',
+  reopened: 'Reopened',
+}
+
+/** The date ("2026-10-21") and time ("14:05") in WIB of a UTC timestamp, for the form fields. */
+export function raWibParts(value: string | Date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(typeof value === 'string' ? new Date(value) : value)
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? ''
+  return { date: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` }
+}
+
+/** A WIB date and time as an ISO timestamp with its offset (WIB is UTC+7 all year). */
+export function raWibToIso(date: string, time: string) {
+  return `${date}T${time}:00+07:00`
 }

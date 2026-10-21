@@ -121,6 +121,9 @@ function saveCallTree(rows: RowValues[]) {
   return raApi.setCallTree(id.value, rows as unknown as RaCallTreeEntry[])
 }
 
+const { can } = useAuth()
+/** Without ra.edit the profile is read-only (the API refuses changes too). */
+const canEdit = computed(() => can('ra.edit'))
 const canDelete = computed(() => Boolean(location.value?.can_delete && !location.value.assessments.length))
 
 async function removeLocation() {
@@ -160,7 +163,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   >
     <template #actions>
       <UButton
-        v-if="location?.is_active"
+        v-if="location?.is_active && canEdit"
         :to="`${ra.base}/new?location_id=${location.id}`"
         color="neutral"
         variant="outline"
@@ -234,6 +237,15 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
         </span>
       </div>
 
+      <UAlert
+        v-if="!canEdit"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-eye"
+        :title="`You can view this ${ra.location.lower}`"
+        description="Changing it needs the RA edit permission (ra.edit)."
+      />
+
       <UTabs
         :model-value="tab"
         :items="tabItems"
@@ -243,126 +255,156 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
         @update:model-value="selectTab"
       >
         <template #details>
-          <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <RaLocationForm
-              :key="`details-${formKey}`"
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <RaLocationForm
+                :key="`details-${formKey}`"
+                :location="location"
+                @saved="onSaved"
+              />
+              <UCard>
+                <template #header>
+                  <h2 class="text-lg font-semibold">
+                    Assessments
+                  </h2>
+                  <p class="text-sm text-muted">
+                    RA cycles of this {{ ra.location.lower }}, newest first. {{ ra.hasLcp ? 'They all use the profile on the other tabs.' : 'They all use its emergency contacts.' }}
+                  </p>
+                </template>
+                <UTable
+                  v-if="location.assessments.length"
+                  :data="location.assessments"
+                  :columns="assessmentColumns"
+                  class="cursor-pointer"
+                  :on-select="openAssessment"
+                >
+                  <template #ref_no-cell="{ row }">
+                    <NuxtLink
+                      :to="`${ra.base}/${row.original.id}`"
+                      class="font-medium whitespace-nowrap text-primary hover:underline"
+                    >
+                      {{ row.original.ref_no || 'Assessment' }}
+                    </NuxtLink>
+                  </template>
+                  <template #due_date-cell="{ row }">
+                    {{ formatDate(row.original.due_date) || '—' }}
+                  </template>
+                  <template #highest_residual_level-cell="{ row }">
+                    <StatusBadge
+                      v-if="row.original.highest_residual_level"
+                      :scale="raRiskLevel"
+                      :value="row.original.highest_residual_level"
+                      size="sm"
+                    />
+                    <span
+                      v-else
+                      class="text-muted"
+                    >—</span>
+                  </template>
+                  <template #status-cell="{ row }">
+                    <StatusBadge
+                      :scale="raStatus"
+                      :value="raStatusKey(row.original)"
+                      size="sm"
+                    />
+                  </template>
+                </UTable>
+                <p
+                  v-else
+                  class="py-6 text-center text-sm text-muted"
+                >
+                  No assessments yet.
+                </p>
+              </UCard>
+            </div>
+          </fieldset>
+        </template>
+        <template #map>
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <RaLocationMapTab
+              :key="`map-${formKey}`"
               :location="location"
               @saved="onSaved"
             />
-            <UCard>
-              <template #header>
-                <h2 class="text-lg font-semibold">
-                  Assessments
-                </h2>
-                <p class="text-sm text-muted">
-                  RA cycles of this {{ ra.location.lower }}, newest first. {{ ra.hasLcp ? 'They all use the profile on the other tabs.' : 'They all use its emergency contacts.' }}
-                </p>
-              </template>
-              <UTable
-                v-if="location.assessments.length"
-                :data="location.assessments"
-                :columns="assessmentColumns"
-                class="cursor-pointer"
-                :on-select="openAssessment"
-              >
-                <template #ref_no-cell="{ row }">
-                  <NuxtLink
-                    :to="`${ra.base}/${row.original.id}`"
-                    class="font-medium whitespace-nowrap text-primary hover:underline"
-                  >
-                    {{ row.original.ref_no || 'Assessment' }}
-                  </NuxtLink>
-                </template>
-                <template #due_date-cell="{ row }">
-                  {{ formatDate(row.original.due_date) || '—' }}
-                </template>
-                <template #highest_residual_level-cell="{ row }">
-                  <StatusBadge
-                    v-if="row.original.highest_residual_level"
-                    :scale="raRiskLevel"
-                    :value="row.original.highest_residual_level"
-                    size="sm"
-                  />
-                  <span
-                    v-else
-                    class="text-muted"
-                  >—</span>
-                </template>
-                <template #status-cell="{ row }">
-                  <StatusBadge
-                    :scale="raStatus"
-                    :value="raStatusKey(row.original)"
-                    size="sm"
-                  />
-                </template>
-              </UTable>
-              <p
-                v-else
-                class="py-6 text-center text-sm text-muted"
-              >
-                No assessments yet.
-              </p>
-            </UCard>
-          </div>
-        </template>
-        <template #map>
-          <RaLocationMapTab
-            :key="`map-${formKey}`"
-            :location="location"
-            @saved="onSaved"
-          />
+          </fieldset>
         </template>
         <template #contacts>
-          <RaContactsForm
-            :key="`contacts-${formKey}`"
-            :location="location"
-            @saved="onSaved"
-          />
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <RaContactsForm
+              :key="`contacts-${formKey}`"
+              :location="location"
+              @saved="onSaved"
+            />
+          </fieldset>
         </template>
         <template
           v-if="ra.hasLcp"
           #occupants
         >
-          <RaOccupantsTab
-            :location="location"
-            @saved="onSaved"
-          />
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <RaOccupantsTab
+              :location="location"
+              @saved="onSaved"
+            />
+          </fieldset>
         </template>
         <template
           v-if="ra.hasLcp"
           #team
         >
-          <RaGroupedRowsForm
-            :key="`team-${formKey}`"
-            :groups="RA_RECOVERY_TEAMS"
-            group-key="team"
-            :fields="teamFields"
-            :initial="teamRows"
-            item-label="member"
-            save-label="Save recovery team"
-            saved-message="Recovery team saved"
-            error-title="Couldn't save the recovery team"
-            :save="saveTeam"
-            @saved="onSaved"
-          />
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <RaGroupedRowsForm
+              :key="`team-${formKey}`"
+              :groups="RA_RECOVERY_TEAMS"
+              group-key="team"
+              :fields="teamFields"
+              :initial="teamRows"
+              item-label="member"
+              save-label="Save recovery team"
+              saved-message="Recovery team saved"
+              error-title="Couldn't save the recovery team"
+              :save="saveTeam"
+              @saved="onSaved"
+            />
+          </fieldset>
         </template>
         <template
           v-if="ra.hasLcp"
           #calltree
         >
-          <RaGroupedRowsForm
-            :key="`calltree-${formKey}`"
-            :groups="callTreeLevels"
-            group-key="level"
-            :fields="callTreeFields"
-            :initial="callTreeRows"
-            item-label="contact"
-            save-label="Save call tree"
-            saved-message="Call tree saved"
-            error-title="Couldn't save the call tree"
-            :save="saveCallTree"
-            @saved="onSaved"
-          />
+          <fieldset
+            :disabled="!canEdit"
+            class="min-w-0"
+          >
+            <RaGroupedRowsForm
+              :key="`calltree-${formKey}`"
+              :groups="callTreeLevels"
+              group-key="level"
+              :fields="callTreeFields"
+              :initial="callTreeRows"
+              item-label="contact"
+              save-label="Save call tree"
+              saved-message="Call tree saved"
+              error-title="Couldn't save the call tree"
+              :save="saveCallTree"
+              @saved="onSaved"
+            />
+          </fieldset>
         </template>
       </UTabs>
     </template>

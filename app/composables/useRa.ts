@@ -197,14 +197,122 @@ export interface RaMapMarker extends RaPin {
   label: string
   /** Pin colour: the latest highest residual level, "na", or "none" without an assessment. */
   level?: RaLevel | 'na' | 'none' | null
-  /** A building or branch of the register being mapped (pin), or a branch shown nearby (square). */
-  variant?: 'location' | 'branch'
+  /** A head office building (pin), a branch (square), or a crisis point (siren). */
+  variant?: 'location' | 'branch' | 'crisis'
 }
 
 export interface RaMapCircle extends RaPin {
   id: number
   radiusM: number
   active?: boolean
+  /** A crisis's affected area (error colour) rather than a distance ring. */
+  crisis?: boolean
+}
+
+/** A pinned building or branch on the location map. */
+export interface RaPlace {
+  id: number
+  kind: RaKind
+  name: string
+  region: string | null
+  address: string | null
+  latitude: number
+  longitude: number
+}
+
+export interface RaMapPlace extends RaPlace {
+  latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
+}
+
+export interface RaHazardRef {
+  code: string
+  no: number | null
+  short_name: string
+  name: string
+  category: { code: string, label: string } | null
+}
+
+export type RaCrisisStatus = 'open' | 'closed'
+export type RaPlaybookPhase = 'immediate' | 'stabilise' | 'recover'
+
+export interface RaPlaybookSteps {
+  reviewed: boolean
+  steps: Record<RaPlaybookPhase, string[]>
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export type RaPlaybookEntry = RaHazardRef & RaPlaybookSteps
+
+export interface RaCrisisSummary {
+  id: number
+  ref_no: string
+  hazard_code: string
+  hazard: RaHazardRef
+  location: { id: number, kind: RaKind, name: string } | null
+  latitude: number
+  longitude: number
+  radius_m: number
+  description: string | null
+  started_at: string
+  status: RaCrisisStatus
+  closed_at: string | null
+  affected_count: number
+  declared_by: string | null
+}
+
+export interface RaCrisisPlace {
+  location: RaPlace
+  distance_m: number
+  assessment: {
+    id: number
+    kind: RaKind
+    ref_no: string | null
+    period_year: number
+    status: RaStatus
+    rating: {
+      gross_level: RaLevel | null
+      residual_probability: number | null
+      residual_impact: number | null
+      residual_level: RaLevel | null
+      mitigation: string | null
+      action_plan: string | null
+      cim_ref_no: string | null
+    } | null
+  } | null
+  contacts: RaContact[]
+  call_tree: RaCallTreeEntry[]
+  recovery_team: RaRecoveryTeamMember[]
+  alternates: { location: RaPlace, distance_m: number }[]
+}
+
+export interface RaCrisis extends RaCrisisSummary {
+  closing_note: string | null
+  closed_by: string | null
+  updated_at: string
+  can_manage: boolean
+  can_delete: boolean
+  playbook: RaPlaybookSteps
+  affected: RaCrisisPlace[]
+  history: { action: 'declared' | 'updated' | 'note' | 'closed' | 'reopened', note: string | null, user: string | null, at: string }[]
+}
+
+export interface RaMapData {
+  places: RaMapPlace[]
+  unpinned: Record<RaKind, number>
+  crises: RaCrisisSummary[]
+  can_declare: boolean
+}
+
+export interface RaCrisisInput {
+  hazard_code?: string
+  location_id?: number | null
+  latitude?: number | null
+  longitude?: number | null
+  radius_m?: number
+  started_at?: string
+  description?: string | null
+  note?: string | null
 }
 
 export interface RaMapSettings {
@@ -406,6 +514,40 @@ export function useRaAssessment(id: MaybeRefOrGetter<number>) {
   return useFetch<RaAssessment>(() => `/api/ra/assessments/${toValue(id)}`, {
     key: computed(() => `ra-assessment-${toValue(id)}`),
   })
+}
+
+const CRISES = '/api/ra/crises'
+
+export function useRaMap() {
+  return useFetch<RaMapData>('/api/ra/map', { key: 'ra-map' })
+}
+
+export function useRaCrises(query: MaybeRefOrGetter<{ status?: RaCrisisStatus, q?: string, page: number, per_page?: number }>) {
+  return useFetch<RaPage<RaCrisisSummary>>(CRISES, {
+    key: computed(() => `ra-crises-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query)),
+  })
+}
+
+export function useRaCrisis(id: MaybeRefOrGetter<number>) {
+  return useFetch<RaCrisis>(() => `${CRISES}/${toValue(id)}`, {
+    key: computed(() => `ra-crisis-${toValue(id)}`),
+  })
+}
+
+export function useRaPlaybook() {
+  return useFetch<{ items: RaPlaybookEntry[], can_edit: boolean }>('/api/ra/playbook', { key: 'ra-playbook' })
+}
+
+export const raCrisisApi = {
+  declare: (body: RaCrisisInput) => $fetch<RaCrisis>(CRISES, { method: 'POST', body }),
+  update: (id: number, body: RaCrisisInput) => $fetch<RaCrisis>(`${CRISES}/${id}`, { method: 'PUT', body }),
+  addNote: (id: number, note: string) => $fetch<RaCrisis>(`${CRISES}/${id}/notes`, { method: 'POST', body: { note } }),
+  close: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/close`, { method: 'POST', body: { note } }),
+  reopen: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/reopen`, { method: 'POST', body: { note } }),
+  remove: (id: number) => $fetch(`${CRISES}/${id}`, { method: 'DELETE' }),
+  savePlaybook: (code: string, steps: { phase: RaPlaybookPhase, text: string }[]) =>
+    $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
 
 export const raApi = {

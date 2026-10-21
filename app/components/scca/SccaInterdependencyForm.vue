@@ -102,11 +102,16 @@ function payload(rows: FormRow[]) {
 }
 
 function rowGap(row: FormRow) {
-  return interdependencyGap(row, committedRto.value)
+  return interdependencyGap(row, committedRto.value, config.value)
 }
+
+// The Save button sits in the page's top bar and submits this form by its id
+// (`<button form="scca-form-…">`); `saving` drives its spinner.
+const saving = useSccaSaving()
 
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   try {
     const saved = await sccaApi.setInterdependencies(props.assessment.id, [
       ...payload(state.upstream),
@@ -116,21 +121,29 @@ async function onSubmit() {
     nextTick(reset)
     toast.add({ title: 'Interdependencies saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
-    formError.value = apiErrorMessage(error)
+    formError.value = apiErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 
-const categoryItems = SCCA_CATEGORIES.map((category) => ({
-  label: sccaCategory[category].label,
-  value: category,
-}))
-const processingItems = ['Online', 'Batch']
-const dependencyItems = [...SCCA_DEPENDENCIES]
-const rpoItems = [...SCCA_RPO_OPTIONS]
+// Choices come from the SCCA's configuration version; the V4.2 lists are the fallback.
+const config = useSccaConfigContext()
+const categoryItems = computed(() => config.value
+  ? sccaListOptions(config.value, 'category')
+  : SCCA_CATEGORIES.map((category) => ({ label: sccaCategory[category].label, value: category })))
+function choices(name: SccaListName, current: string | null | undefined, fallback: readonly string[]) {
+  if (config.value) return sccaListOptions(config.value, name, current)
+  return optionsWith(current ?? '', fallback).map((option) => ({ label: option, value: option }))
+}
+function hourChoices(current: string) {
+  return config.value ? sccaListOptions(config.value, 'hours', current) : hourOptions(current)
+}
 </script>
 
 <template>
   <form
+    id="scca-form-interdependencies"
     class="space-y-6"
     @submit.prevent="onSubmit"
   >
@@ -140,6 +153,7 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
       variant="subtle"
       icon="i-lucide-circle-alert"
       title="Couldn't save the interdependencies"
+      :ui="{ description: 'whitespace-pre-line' }"
       :description="formError"
     />
 
@@ -252,6 +266,8 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
                 <USelect
                   v-model="row.criticality_category"
                   :items="categoryItems"
+                  value-key="value"
+                  label-key="label"
                   class="min-w-40"
                   placeholder="—"
                 />
@@ -259,7 +275,7 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
               <td class="px-3 py-2 align-top">
                 <USelect
                   v-model="row.rto"
-                  :items="hourOptions(row.rto)"
+                  :items="hourChoices(row.rto)"
                   value-key="value"
                   label-key="label"
                   class="min-w-32"
@@ -270,7 +286,9 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
               <td class="px-3 py-2 align-top">
                 <USelect
                   v-model="row.rpo"
-                  :items="optionsWith(row.rpo, rpoItems)"
+                  :items="choices('rpo', row.rpo, SCCA_RPO_OPTIONS)"
+                  value-key="value"
+                  label-key="label"
                   class="min-w-24"
                   placeholder="—"
                   :aria-label="`RPO ${index + 1}`"
@@ -291,7 +309,9 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
               <td class="px-3 py-2 align-top">
                 <USelect
                   v-model="row.processing_mode"
-                  :items="processingItems"
+                  :items="choices('processing_mode', row.processing_mode, ['Online', 'Batch'])"
+                  value-key="value"
+                  label-key="label"
                   class="min-w-28"
                   placeholder="—"
                 />
@@ -299,7 +319,9 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
               <td class="px-3 py-2 align-top">
                 <USelect
                   v-model="row.dependency"
-                  :items="dependencyItems"
+                  :items="choices('dependency', row.dependency, SCCA_DEPENDENCIES)"
+                  value-key="value"
+                  label-key="label"
                   class="min-w-28"
                   placeholder="—"
                 />
@@ -334,13 +356,5 @@ const rpoItems = [...SCCA_RPO_OPTIONS]
         </table>
       </div>
     </UCard>
-
-    <div class="flex justify-end">
-      <UButton
-        type="submit"
-        label="Save interdependencies"
-        loading-auto
-      />
-    </div>
   </form>
 </template>

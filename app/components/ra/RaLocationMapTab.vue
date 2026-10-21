@@ -10,6 +10,7 @@ const props = defineProps<{ location: RaLocationDetail }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 
 const ra = useRaModule()
+const { can } = useAuth()
 const toast = useToast()
 const dirty = useRaDirty()
 const formError = ref<string | null>(null)
@@ -103,7 +104,7 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
 
         <RaMap
           v-model:pin="pin"
-          editable
+          :editable="can('ra.edit')"
           :label="`Map of ${location.name}. Click to place the pin.`"
           height-class="h-[28rem]"
         />

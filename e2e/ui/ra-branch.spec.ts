@@ -9,8 +9,8 @@ test('the home page links to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'RA Branch' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('link', { name: 'Open RA Branch' }).click()
-  await expect(page).toHaveURL(/\/ra-branch$/)
+  await page.getByRole('main').getByRole('link', { name: 'Branches' }).click()
+  await expect(page).toHaveURL(/\/ra-branch\/locations$/)
 })
 
 test('the branch list shows branch assessments with their region', async ({ page }) => {

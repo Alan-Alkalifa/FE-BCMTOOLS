@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SccaAssessment, SccaRecoveryStandard, SccaRecoveryValue } from '~/composables/useScca'
+import { sccaLevelLabel } from '~/utils/scca'
 
 const props = defineProps<{
   assessment: SccaAssessment
@@ -84,10 +85,27 @@ const currentStandard = computed(() =>
   props.standards.find((row) => row.category === category.value),
 )
 
+const config = useSccaConfigContext()
+
 const recoveryGaps = computed(() => [
-  ...recoveryGapMessages(state.current_it, state.business, state.regulatory),
+  ...recoveryGapMessages(state.current_it, state.business, state.regulatory, config.value),
   ...standardGapMessages(category.value, state.current_it, state.business, currentStandard.value),
 ])
+
+const scoreSummary = computed(() => {
+  const scores = props.assessment.result
+  if (!scores || (scores.cia_score == null && scores.poloss_score == null)) return null
+  return {
+    c: scores.confidentiality_score,
+    i: scores.integrity_score,
+    a: scores.availability_score,
+    cia: scores.cia_score,
+    ciaLevel: sccaLevelLabel(scores.cia_level, 'CIA'),
+    poloss: scores.poloss_score,
+    polossLevel: sccaLevelLabel(scores.poloss_level, 'POLOSS'),
+    category: scores.final_category ?? scores.computed_category,
+  }
+})
 
 const customerFacingItems = [
   { label: 'Yes', value: 'yes' },
@@ -105,12 +123,22 @@ function fillFromStandard() {
   state.cimbn_standard.availability_sla = standardUptimeFloor(uptime) == null ? '' : clampPercent(uptime)
 }
 
+/** Only the fields this block shows; the others are sent as null so stale hidden values are cleared. */
 function recoveryPayload(kind: (typeof EDITED_KINDS)[number]) {
-  return blankToNull({ kind, ...state[kind] }) as SccaRecoveryValue
+  const shown = new Set<string>(SCCA_RECOVERY_SECTIONS[kind].map((field) => field.key))
+  const values = Object.fromEntries(
+    Object.entries(state[kind]).map(([key, value]) => [key, shown.has(key) ? value : '']),
+  )
+  return blankToNull({ kind, ...values }) as SccaRecoveryValue
 }
+
+// The Save button sits in the page's top bar and submits this form by its id
+// (`<button form="scca-form-…">`); `saving` drives its spinner.
+const saving = useSccaSaving()
 
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   try {
     const saved = await sccaApi.update(props.assessment.id, {
       customer_facing: state.customer_facing === 'yes'
@@ -122,13 +150,16 @@ async function onSubmit() {
     nextTick(reset)
     toast.add({ title: 'Recovery saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
-    formError.value = apiErrorMessage(error)
+    formError.value = apiErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
   <form
+    id="scca-form-recovery"
     class="space-y-6"
     @submit.prevent="onSubmit"
   >
@@ -138,6 +169,7 @@ async function onSubmit() {
       variant="subtle"
       icon="i-lucide-circle-alert"
       title="Couldn't save the recovery values"
+      :ui="{ description: 'whitespace-pre-line' }"
       :description="formError"
     />
 
@@ -256,7 +288,7 @@ async function onSubmit() {
               <SccaRecoveryField
                 v-model="state[kind][field.key]"
                 :control="field.control"
-                :ariaLabel="`${kindLabel(kind)} ${field.label}`"
+                :label="`${kindLabel(kind)} ${field.label}`"
               />
             </UFormField>
             <UFormField
@@ -277,42 +309,38 @@ async function onSubmit() {
         </UCard>
       </div>
 
-      <UCard class="lg:sticky lg:top-6">
-        <template #header>
-          <h3 class="font-semibold">
-            {{ kindLabel('final') }}
-          </h3>
-        </template>
-        <div class="space-y-4">
-          <UFormField
-            v-for="field in SCCA_RECOVERY_SECTIONS.final"
-            :key="field.key"
-            :label="field.label"
-          >
-            <SccaRecoveryField
-              v-model="state.final[field.key]"
-              :control="field.control"
-              :ariaLabel="`${kindLabel('final')} ${field.label}`"
-            />
-          </UFormField>
-          <UAlert
-            v-if="recoveryGaps.length"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-triangle-alert"
-            title="Recovery gap"
-            :description="recoveryGaps.join(' ')"
-          />
-        </div>
-      </UCard>
-    </div>
+      <div class="space-y-6 lg:sticky lg:top-6">
+        <SccaScoreSummary :summary="scoreSummary" />
 
-    <div class="flex justify-end">
-      <UButton
-        type="submit"
-        label="Save recovery"
-        loading-auto
-      />
+        <UCard>
+          <template #header>
+            <h3 class="font-semibold">
+              {{ kindLabel('final') }}
+            </h3>
+          </template>
+          <div class="space-y-4">
+            <UFormField
+              v-for="field in SCCA_RECOVERY_SECTIONS.final"
+              :key="field.key"
+              :label="field.label"
+            >
+              <SccaRecoveryField
+                v-model="state.final[field.key]"
+                :control="field.control"
+                :label="`${kindLabel('final')} ${field.label}`"
+              />
+            </UFormField>
+            <UAlert
+              v-if="recoveryGaps.length"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-triangle-alert"
+              title="Recovery gap"
+              :description="recoveryGaps.join(' ')"
+            />
+          </div>
+        </UCard>
+      </div>
     </div>
   </form>
 </template>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type { SccaAssessment, SccaFormula, SccaRecoveryStandard, SccaSignoff } from '~/composables/useScca'
+import type { PickedUser } from '~/components/UserPicker.vue'
+import type { SccaAssessment, SccaFormula, SccaRecoveryStandard } from '~/composables/useScca'
+import type { SccaConfigStep } from '~/utils/scca-config'
 
 const props = defineProps<{
   assessment: SccaAssessment
@@ -45,16 +47,57 @@ const schema = z.object({
   }
 })
 
-function signoffsFrom(assessment: SccaAssessment) {
-  return SCCA_SIGNOFF_ROLES.map((role) => {
+interface SignoffState {
+  role: SccaSignoffRole
+  user_id: number | null
+  /** The picked user, for the label, designation and sub-directorate shown under the picker. */
+  person: PickedUser | null
+}
+
+// The steps, their order, whether each is required and who picks the signer come from the
+// SCCA's configuration version (V4.2: 9 required steps, all chosen by the assessor).
+const config = useSccaConfigContext()
+const steps = computed<SccaConfigStep[]>(() => config.value?.steps ?? SCCA_SIGNOFF_ROLES.map((role) => ({
+  code: role.value,
+  title: role.label,
+  short: role.short,
+  mandatory: true,
+  signer_mode: 'chosen' as const,
+  signer_roles: [],
+  excel_box: null,
+  comments_all_tabs: role.value === 'bcm_reviewer',
+})))
+function stepOf(role: string) {
+  return steps.value.find((step) => step.code === role)
+}
+
+function signoffsFrom(assessment: SccaAssessment): SignoffState[] {
+  return steps.value.map((step) => {
+    const role = { value: step.code }
     const saved = assessment.signoffs.find((row) => row.role === role.value)
-    return {
-      role: role.value,
-      name: saved?.name ?? '',
-      designation: saved?.designation ?? '',
-      sub_dir: saved?.sub_dir ?? '',
-    }
+    const person = saved?.user_id
+      ? {
+          id: saved.user_id,
+          display_name: saved.name,
+          email: saved.email,
+          job_title: saved.designation,
+          department: saved.sub_dir,
+        }
+      : null
+    return { role: role.value, user_id: saved?.user_id ?? null, person }
   })
+}
+
+function roleName(code: string) {
+  return code.replaceAll('_', ' ').replace(/^bcm/, 'BCM')
+}
+
+function savedSignoff(role: SccaSignoffRole) {
+  return props.assessment.signoffs.find((row) => row.role === role)
+}
+
+function pick(row: SignoffState, user: PickedUser | null) {
+  row.person = user
 }
 
 function fromAssessment() {
@@ -76,6 +119,7 @@ const previousGaps = computed(() => previousTabGapMessages({
   recoveryValues: props.assessment.recovery_values,
   category: props.assessment.result.final_category ?? props.assessment.result.computed_category,
   standards: props.standards ?? [],
+  config: config.value,
   interdependencies: props.assessment.interdependencies,
 }))
 
@@ -116,33 +160,39 @@ function percent(value: number | null | undefined) {
   return formatPercent(value, 0) ?? '—'
 }
 
+// The Save button sits in the page's top bar and submits this form by its id
+// (`<button form="scca-form-…">`); `saving` drives its spinner.
+const saving = useSccaSaving()
+
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   try {
     const saved = await sccaApi.update(props.assessment.id, {
       override_type: state.override_type === 'none' ? null : state.override_type,
       override_category: state.override_type === 'none' ? null : state.override_category ?? null,
       justification: state.justification.trim() || null,
       cim_ref_no: state.cim_ref_no.trim() || null,
-      signoffs: state.signoffs.map((row) => blankToNull({
-        role: row.role,
-        name: row.name,
-        designation: row.designation,
-        sub_dir: row.sub_dir,
-      }) as SccaSignoff),
+      // Fixed steps are set by BCM; they are not sent.
+      signoffs: state.signoffs
+        .filter((row) => stepOf(row.role)?.signer_mode !== 'fixed')
+        .map((row) => ({ role: row.role, user_id: row.user_id })),
     })
     emit('saved', saved)
     nextTick(reset)
     toast.add({ title: 'Result saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
     form.value?.setErrors(apiFieldErrors(error))
-    formError.value = apiErrorMessage(error)
+    formError.value = apiErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
   <UForm
+    id="scca-form-result"
     ref="form"
     :schema="schema"
     :state="state"
@@ -155,6 +205,7 @@ async function onSubmit() {
       variant="subtle"
       icon="i-lucide-circle-alert"
       title="Couldn't save the result"
+      :ui="{ description: 'whitespace-pre-line' }"
       :description="formError"
     />
 
@@ -348,60 +399,106 @@ async function onSubmit() {
           <h2 class="text-lg font-semibold">
             Sign-off
           </h2>
+          <p class="mt-1 text-sm text-muted">
+            Pick a user for each step. They approve in this order; designation and sub-directorate come from their profile.
+            <template v-if="steps.some((step) => !step.mandatory)">
+              An optional step without a user is skipped.
+            </template>
+          </p>
         </template>
-        <div class="space-y-5">
-          <div
+        <ol class="space-y-4">
+          <li
             v-for="(row, index) in state.signoffs"
             :key="row.role"
-            class="space-y-3"
+            class="space-y-1.5"
           >
-            <h3 class="text-sm font-medium">
-              {{ SCCA_SIGNOFF_ROLES[index]!.label }}
-            </h3>
-            <UFormField label="Name">
-              <UInput
-                v-model="row.name"
-                class="w-full"
-                :aria-label="`${SCCA_SIGNOFF_ROLES[index]!.label} name`"
+            <div class="flex items-start justify-between gap-2">
+              <h3 class="text-sm font-medium">
+                {{ index + 1 }}. {{ stepOf(row.role)?.title ?? signoffRoleLabel(row.role) }}
+                <UBadge
+                  v-if="stepOf(row.role) && !stepOf(row.role)!.mandatory"
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                  label="Optional"
+                  class="ms-1 align-middle"
+                />
+              </h3>
+              <StatusBadge
+                v-if="savedSignoff(row.role)?.status"
+                :scale="sccaSignoffStatus"
+                :value="savedSignoff(row.role)!.status"
+                size="sm"
+              />
+              <UBadge
+                v-else-if="savedSignoff(row.role)?.skipped"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                label="Not required"
+              />
+            </div>
+            <template v-if="stepOf(row.role)?.signer_mode === 'fixed'">
+              <p class="flex items-center gap-1.5 text-sm">
+                <UIcon
+                  name="i-lucide-lock"
+                  class="size-4 text-muted"
+                />
+                <span class="font-medium">{{ row.person?.display_name ?? stepOf(row.role)?.signer?.display_name ?? 'Not set yet' }}</span>
+              </p>
+              <p class="text-xs text-muted">
+                Fixed signer, set by BCM in the SCCA configuration. It is applied at Submit.
+              </p>
+            </template>
+            <UFormField
+              v-else
+              :name="`signoffs.${index}.user_id`"
+              :help="stepOf(row.role)?.signer_mode === 'default' ? 'Filled in from the SCCA configuration; you can change it.' : undefined"
+            >
+              <UserPicker
+                v-model="row.user_id"
+                :selected="row.person"
+                :disabled="!assessment.permissions.can_edit"
+                :aria-label="`${stepOf(row.role)?.title ?? signoffRoleLabel(row.role)} user`"
+                :placeholder="stepOf(row.role)?.mandatory === false ? 'Optional: leave empty to skip' : undefined"
+                permission="scca.access"
+                @pick="(user) => pick(row, user)"
               />
             </UFormField>
-            <UFormField label="Designation">
-              <UInput
-                v-model="row.designation"
-                class="w-full"
-                :aria-label="`${SCCA_SIGNOFF_ROLES[index]!.label} designation`"
+            <p
+              v-if="stepOf(row.role)?.signer_roles.length && stepOf(row.role)?.signer_mode !== 'fixed'"
+              class="text-xs text-muted"
+            >
+              Only a user with the role {{ stepOf(row.role)!.signer_roles.map(roleName).join(' or ') }}.
+            </p>
+            <p
+              v-if="row.person"
+              class="text-xs text-muted"
+            >
+              {{ row.person.job_title || 'No designation' }} · {{ row.person.department || 'No sub-directorate' }}
+            </p>
+            <p
+              v-if="savedSignoff(row.role)?.decided_at"
+              class="text-xs text-muted"
+            >
+              {{ savedSignoff(row.role)!.status === 'rejected' ? 'Rejected' : 'Approved' }}
+              {{ formatDateTime(savedSignoff(row.role)!.decided_at) }}<span v-if="savedSignoff(row.role)!.on_behalf_by"> on behalf, by {{ savedSignoff(row.role)!.on_behalf_by }}</span><span v-if="savedSignoff(row.role)!.decision_note">: “{{ savedSignoff(row.role)!.decision_note }}”</span>
+            </p>
+            <a
+              v-if="savedSignoff(row.role)?.attachment"
+              :href="savedSignoff(row.role)!.attachment!.url"
+              class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              download
+            >
+              <UIcon
+                name="i-lucide-paperclip"
+                class="size-3.5"
               />
-            </UFormField>
-            <UFormField label="Sub-directorate">
-              <UInput
-                v-model="row.sub_dir"
-                class="w-full"
-                :aria-label="`${SCCA_SIGNOFF_ROLES[index]!.label} sub-directorate`"
-              />
-            </UFormField>
-          </div>
-        </div>
+              Evidence: {{ savedSignoff(row.role)!.attachment!.filename }}
+            </a>
+          </li>
+        </ol>
       </UCard>
-    </div>
-
-    <div class="flex flex-wrap justify-end gap-2">
-      <UTooltip text="Approval will be added in a later release.">
-        <span class="inline-flex">
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-send"
-            label="Submit for approval"
-            disabled
-          />
-        </span>
-      </UTooltip>
-      <UButton
-        type="submit"
-        label="Save result"
-        loading-auto
-      />
     </div>
   </UForm>
 </template>

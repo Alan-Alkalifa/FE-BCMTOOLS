@@ -2,8 +2,8 @@
 import type { RaUserRef } from '~/composables/useRa'
 
 /**
- * Picks the BCM Tools user who signs a role; the model is their users.id. Only people who have
- * signed in to BCM Tools at least once are listed.
+ * Picks the BCM Tools user who signs a role; the model is their users.id. Only active users who
+ * hold `ra.access` (and so can open the assessment to approve it) are listed.
  */
 const model = defineModel<number | null>({ required: true })
 
@@ -56,7 +56,7 @@ const items = computed(() => {
 
 async function load(term: string) {
   try {
-    const data = await $fetch<{ items: DirectoryUser[] }>('/api/users', { query: { q: term } })
+    const data = await $fetch<{ items: DirectoryUser[] }>('/api/users', { query: { q: term, permission: 'ra.access' } })
     found.value = data.items.map((user) => toItem({
       id: user.id,
       name: user.display_name,

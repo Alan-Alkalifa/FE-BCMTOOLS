@@ -3,6 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { RaAssessmentSummary, RaListQuery } from '~/composables/useRa'
 
 const ra = useRaModule()
+const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
 
@@ -208,6 +209,7 @@ const searchLabel = computed(() => `Search ${ra.value.location.lower} or ref. no
             :label="`View ${ra.location.lowerPlural}`"
           />
           <UButton
+            v-if="can('ra.edit')"
             :to="`${ra.base}/new`"
             icon="i-lucide-plus"
             label="New assessment"

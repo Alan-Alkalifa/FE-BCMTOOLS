@@ -3,13 +3,9 @@ import type { TableColumn } from '@nuxt/ui'
 import type { RaLocation } from '~/composables/useRa'
 
 const ra = useRaModule()
-const route = useRoute()
-const router = useRouter()
-/** Table or map, kept in the URL (?view=map). */
-const view = computed(() => (route.query.view === 'map' ? 'map' : 'table'))
-function setView(next: 'table' | 'map') {
-  router.replace({ query: { ...route.query, view: next === 'map' ? 'map' : undefined } })
-}
+const { can } = useAuth()
+const canEdit = computed(() => can('ra.edit'))
+const canDelete = computed(() => can('ra.edit', 'ra.manage'))
 const confirm = useConfirm()
 const toast = useToast()
 
@@ -116,41 +112,24 @@ async function remove(location: RaLocation) {
           class="w-full sm:w-72"
           :aria-label="searchLabel"
         />
-        <UFieldGroup
-          class="sm:ml-auto"
-          aria-label="View"
-        >
+        <div class="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
           <UButton
+            to="/ra/map"
             color="neutral"
-            :variant="view === 'table' ? 'subtle' : 'outline'"
-            icon="i-lucide-table"
-            label="Table"
-            :aria-pressed="view === 'table'"
-            @click="setView('table')"
-          />
-          <UButton
-            color="neutral"
-            :variant="view === 'map' ? 'subtle' : 'outline'"
+            variant="outline"
             icon="i-lucide-map"
-            label="Map"
-            :aria-pressed="view === 'map'"
-            @click="setView('map')"
+            label="Location map"
           />
-        </UFieldGroup>
-        <UButton
-          :to="`${ra.base}/locations/new`"
-          icon="i-lucide-plus"
-          :label="`Add ${ra.location.lower}`"
-        />
+          <UButton
+            v-if="canEdit"
+            :to="`${ra.base}/locations/new`"
+            icon="i-lucide-plus"
+            :label="`Add ${ra.location.lower}`"
+          />
+        </div>
       </div>
 
-      <RaLocationsMap
-        v-if="view === 'map' && data"
-        :locations="data.items"
-      />
-
       <UTable
-        v-else
         :data="data?.items ?? []"
         :columns="columns"
         :loading="status === 'pending'"
@@ -212,18 +191,21 @@ async function remove(location: RaLocation) {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-1">
-            <UTooltip :text="`Edit ${ra.location.lower}`">
+            <UTooltip :text="canEdit ? `Edit ${ra.location.lower}` : `Open ${ra.location.lower}`">
               <UButton
                 :to="`${ra.base}/locations/${row.original.id}`"
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                icon="i-lucide-pencil"
-                :aria-label="`Edit ${row.original.name}`"
+                :icon="canEdit ? 'i-lucide-pencil' : 'i-lucide-eye'"
+                :aria-label="`${canEdit ? 'Edit' : 'Open'} ${row.original.name}`"
                 @click.stop
               />
             </UTooltip>
-            <UTooltip :text="`Delete ${ra.location.lower}`">
+            <UTooltip
+              v-if="canDelete"
+              :text="`Delete ${ra.location.lower}`"
+            >
               <UButton
                 color="error"
                 variant="ghost"
@@ -238,7 +220,7 @@ async function remove(location: RaLocation) {
       </UTable>
 
       <div
-        v-if="data && !data.items.length && view === 'table'"
+        v-if="data && !data.items.length"
         class="py-10 text-center"
       >
         <p class="text-sm text-muted">

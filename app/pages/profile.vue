@@ -2,13 +2,17 @@
 import type { ProfileField } from '~/components/ProfileFields.vue'
 import { PROFILE_PHOTO_URL, type Profile } from '~/composables/useProfile'
 
-const { data: profile, status, error } = useProfile()
+const { data: profile, status, error, refresh } = useProfile()
+const { fetchUser } = useAuth()
+const toast = useToast()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending')
+const photoInput = useTemplateRef<HTMLInputElement>('photoInput')
+const photoBusy = ref(false)
+const photoVersion = ref(0)
 
-const SHOWN_GRAPH_FIELDS = new Set([
-  'id', 'displayName', 'givenName', 'surname', 'mail', 'userPrincipalName', 'jobTitle', 'department',
-  'companyName', 'officeLocation', 'employeeId', 'mobilePhone', 'businessPhones', 'preferredLanguage',
-])
+const photoUrl = computed(() =>
+  profile.value?.has_photo ? `${PROFILE_PHOTO_URL}?v=${photoVersion.value}` : undefined,
+)
 
 function sections(p: Profile): { title: string, icon: string, fields: ProfileField[] }[] {
   return [
@@ -28,7 +32,6 @@ function sections(p: Profile): { title: string, icon: string, fields: ProfileFie
       icon: 'i-lucide-mail',
       fields: [
         { label: 'Email', value: p.email },
-        { label: 'User principal name', value: p.user_principal_name },
         { label: 'Mobile phone', value: p.mobile_phone },
         { label: 'Business phones', value: p.business_phones.join(', ') },
         { label: 'Preferred language', value: p.preferred_language },
@@ -37,39 +40,56 @@ function sections(p: Profile): { title: string, icon: string, fields: ProfileFie
   ]
 }
 
-const otherFields = computed<ProfileField[]>(() =>
-  Object.entries(profile.value?.graph_profile ?? {})
-    .filter(([key]) => !SHOWN_GRAPH_FIELDS.has(key))
-    .map(([key, value]) => ({
-      label: key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()),
-      value: formatValue(value),
-    })),
-)
+const accountFields = computed<ProfileField[]>(() => [
+  { label: 'ID', value: profile.value?.username },
+  { label: 'Sign-in', value: profile.value?.auth_provider === 'ldap' ? 'LDAP' : 'BCM Tools password' },
+  { label: 'Last sign-in', value: formatDateTime(profile.value?.last_login_at) },
+  { label: 'Password changed', value: formatDateTime(profile.value?.password_changed_at) },
+])
 
-function formatValue(value: unknown) {
-  if (value === null || value === undefined || value === '') return null
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (Array.isArray(value)) return value.join(', ') || null
-  return String(value)
+async function uploadPhoto(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('photo', file)
+  photoBusy.value = true
+  try {
+    await $fetch('/api/me/photo', { method: 'PUT', body })
+    photoVersion.value += 1
+    await Promise.all([refresh(), fetchUser()])
+    toast.add({ title: 'Photo updated', color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  } finally {
+    photoBusy.value = false
+    if (photoInput.value) photoInput.value.value = ''
+  }
 }
 
-const accessFields = computed<ProfileField[]>(() => [
-  {
-    label: 'Last sign-in',
-    value: formatDateTime(profile.value?.last_login_at),
-  },
-])
+async function removePhoto() {
+  photoBusy.value = true
+  try {
+    await $fetch('/api/me/photo', { method: 'DELETE' })
+    await Promise.all([refresh(), fetchUser()])
+  } finally {
+    photoBusy.value = false
+  }
+}
 </script>
 
 <template>
-  <AppPage title="Profile">
+  <AppPage
+    title="Profile"
+    icon="i-lucide-user"
+    :crumbs="[{ label: 'Profile' }]"
+  >
     <SkeletonGroup
       v-if="showSkeleton"
       label="Loading profile"
       class="space-y-6"
     >
       <div class="flex items-center gap-4">
-        <div class="skeleton size-12 rounded-full" />
+        <div class="skeleton size-16 rounded-full" />
         <div class="space-y-2">
           <div class="skeleton h-6 w-48" />
           <div class="skeleton h-4 w-32" />
@@ -77,22 +97,13 @@ const accessFields = computed<ProfileField[]>(() => [
       </div>
       <div class="grid gap-6 md:grid-cols-2">
         <SkeletonCard
-          v-for="n in 4"
+          v-for="n in 3"
           :key="n"
           fields
-          :lines="5"
+          :lines="4"
         />
       </div>
     </SkeletonGroup>
-
-    <UAlert
-      v-else-if="error?.statusCode === 404"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-user-x"
-      title="No profile saved yet"
-      description="Your Microsoft profile is saved when you sign in. Sign out and sign in again to load it."
-    />
 
     <UAlert
       v-else-if="error"
@@ -104,30 +115,76 @@ const accessFields = computed<ProfileField[]>(() => [
     />
 
     <template v-else-if="profile">
-      <div class="flex items-center gap-4">
-        <UAvatar
-          :src="profile.has_photo ? PROFILE_PHOTO_URL : undefined"
-          :alt="profile.display_name ?? undefined"
-          size="3xl"
-        />
-        <div>
-          <h2 class="text-2xl font-semibold">
-            {{ profile.display_name }}
-          </h2>
-          <p class="text-muted">
-            {{ [profile.job_title, profile.department].filter(Boolean).join(' · ') || profile.email }}
-          </p>
+      <UCard>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <UAvatar
+            :src="photoUrl"
+            :alt="profile.display_name ?? undefined"
+            size="3xl"
+          />
+          <div class="min-w-0 flex-1">
+            <h2 class="text-xl font-semibold text-highlighted">
+              {{ profile.display_name }}
+            </h2>
+            <p class="text-sm text-muted">
+              {{ [profile.job_title, profile.department].filter(Boolean).join(' · ') || profile.email }}
+            </p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <UBadge
+                v-for="role in profile.roles"
+                :key="role.code"
+                :label="role.name"
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-shield"
+              />
+              <span
+                v-if="!profile.roles.length"
+                class="text-sm text-muted"
+              >No role assigned yet</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <input
+              ref="photoInput"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="sr-only"
+              aria-label="Choose a profile photo"
+              @change="uploadPhoto"
+            >
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-image-up"
+              :label="profile.has_photo ? 'Change photo' : 'Add photo'"
+              :loading="photoBusy"
+              @click="photoInput?.click()"
+            />
+            <UButton
+              v-if="profile.has_photo"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-trash-2"
+              label="Remove"
+              :disabled="photoBusy"
+              @click="removePhoto"
+            />
+          </div>
         </div>
-      </div>
+      </UCard>
 
-      <div class="grid gap-6 md:grid-cols-2">
+      <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <UCard
           v-for="section in sections(profile)"
           :key="section.title"
         >
           <template #header>
-            <h3 class="flex items-center gap-2 font-semibold">
-              <UIcon :name="section.icon" /> {{ section.title }}
+            <h3 class="flex items-center gap-2 font-semibold text-highlighted">
+              <UIcon
+                :name="section.icon"
+                class="text-muted"
+              /> {{ section.title }}
             </h3>
           </template>
           <ProfileFields :fields="section.fields" />
@@ -135,37 +192,29 @@ const accessFields = computed<ProfileField[]>(() => [
 
         <UCard>
           <template #header>
-            <h3 class="flex items-center gap-2 font-semibold">
-              <UIcon name="i-lucide-shield-check" /> Access
+            <h3 class="flex items-center gap-2 font-semibold text-highlighted">
+              <UIcon
+                name="i-lucide-shield-check"
+                class="text-muted"
+              /> Account
             </h3>
           </template>
-          <div class="flex flex-wrap gap-1 mb-3">
-            <UBadge
-              v-for="role in profile.roles"
-              :key="role"
-              :label="role"
-              variant="subtle"
+          <ProfileFields :fields="accountFields" />
+          <template #footer>
+            <UButton
+              to="/account/password"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-key-round"
+              label="Change password"
+              size="sm"
             />
-            <span
-              v-if="!profile.roles.length"
-              class="text-sm text-muted"
-            >No app roles assigned</span>
-          </div>
-          <ProfileFields :fields="accessFields" />
-        </UCard>
-
-        <UCard v-if="otherFields.length">
-          <template #header>
-            <h3 class="flex items-center gap-2 font-semibold">
-              <UIcon name="i-lucide-map-pin" /> Other Microsoft profile fields
-            </h3>
           </template>
-          <ProfileFields :fields="otherFields" />
         </UCard>
       </div>
 
       <p class="text-xs text-muted">
-        From your Microsoft Entra ID profile, refreshed each time you sign in. Empty fields haven't been filled in by your organisation.
+        Work and contact details are kept by your BCM Tools administrator. Ask them if something is out of date.
       </p>
     </template>
   </AppPage>

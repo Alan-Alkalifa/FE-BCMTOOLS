@@ -332,3 +332,171 @@ export async function mockRa(
   })
   return log
 }
+
+const PLACE = (id: number, kind: 'head_office' | 'branch', name: string, latitude: number, longitude: number, level: string | null = null) => ({
+  id,
+  kind,
+  name,
+  region: kind === 'branch' ? 'Jabodetabek' : null,
+  address: null,
+  latitude,
+  longitude,
+  latest: level ? { id: id * 10, ref_no: `RA-2025-00${id}`, period_year: 2025, status: 'approved', highest_residual_level: level } : null,
+})
+
+/** The location map: two buildings and three branches; Griya to KC Pondok Indah is 7,1 km. */
+export const MAP_PLACES = [
+  PLACE(1, 'head_office', 'Griya CIMB Niaga 2', -6.271633, 106.719358, 'Medium'),
+  PLACE(2, 'head_office', 'Graha CIMB Niaga', -6.226012, 106.808215, 'High'),
+  PLACE(11, 'branch', 'KCP Bintaro Sektor 9', -6.2716, 106.7375),
+  PLACE(12, 'branch', 'KC Pondok Indah', -6.2652, 106.7837),
+  PLACE(13, 'branch', 'KC Bandung Asia Afrika', -6.9214, 107.607),
+]
+
+const HAZARD = { code: 'H01', no: 1, short_name: 'Banjir/ Banjir Bandang', name: 'Banjir/ Banjir Bandang', category: { code: 'NAT', label: 'Natural disasters' } }
+const STEPS = {
+  immediate: ['Move people, documents and equipment to upper floors.', 'Call the emergency services (112) if anyone is hurt.'],
+  stabilise: ['LIC: start the call tree.'],
+  recover: ['Decide with the BCM team whether units move to their alternate site.'],
+}
+
+export const CRISIS = {
+  id: 7,
+  ref_no: 'CR-2026-0001',
+  hazard_code: 'H01',
+  hazard: HAZARD,
+  location: { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2' },
+  latitude: -6.271633,
+  longitude: 106.719358,
+  radius_m: 5000,
+  description: 'Kali Pesanggrahan overflowing.',
+  started_at: '2026-10-21T04:52:00Z',
+  status: 'open',
+  closed_at: null,
+  affected_count: 2,
+  declared_by: 'Test User',
+  closing_note: null,
+  closed_by: null,
+  updated_at: '2026-10-21T04:52:00Z',
+  can_manage: true,
+  can_delete: true,
+  playbook: { reviewed: false, steps: STEPS, updated_at: null, updated_by: null },
+  affected: [
+    {
+      location: { ...MAP_PLACES[0], latest: undefined },
+      distance_m: 0,
+      assessment: {
+        id: 1,
+        kind: 'head_office',
+        ref_no: 'RA-2025-0001',
+        period_year: 2025,
+        status: 'approved',
+        rating: {
+          gross_level: 'Medium',
+          residual_probability: 1,
+          residual_impact: 2,
+          residual_level: 'Low',
+          mitigation: 'Pompa Buang (8 sampit) dan genset di GF',
+          action_plan: null,
+          cim_ref_no: null,
+        },
+      },
+      contacts: [{ kind: 'fire_brigade', seq: 1, name: 'Damkar Tangerang Selatan', phone: '113', group_name: null, floor: null, address: null }],
+      call_tree: [{ seq: 1, level: 1, caller: 'LICOM', contact_name: 'Budi Santoso', division: 'LIC', mobile: '0812-1111-2222', home_phone: null }],
+      recovery_team: [],
+      alternates: [{ location: { ...MAP_PLACES[3], latest: undefined }, distance_m: 7100 }],
+    },
+    {
+      location: { ...MAP_PLACES[2], latest: undefined },
+      distance_m: 2000,
+      assessment: null,
+      contacts: [],
+      call_tree: [],
+      recovery_team: [],
+      alternates: [],
+    },
+  ],
+  history: [{ action: 'declared', note: null, user: 'Test User', at: '2026-10-21T04:52:00Z' }],
+}
+
+const PLAYBOOK = ['H01', 'H02', 'H03'].map((code, index) => ({
+  ...HAZARD,
+  code,
+  no: index + 1,
+  short_name: ['Banjir/ Banjir Bandang', 'Tanah Longsor', 'Gempa Bumi'][index]!,
+  name: ['Banjir/ Banjir Bandang', 'Tanah Longsor', 'Gempa Bumi'][index]!,
+  reviewed: false,
+  steps: STEPS,
+  updated_at: null,
+  updated_by: null,
+}))
+
+export interface RaMapLog {
+  declared: Record<string, unknown>[]
+  closed: unknown[]
+  notes: unknown[]
+  playbook: [string, unknown][]
+}
+
+/**
+ * Mocks the location map, crises and the playbook. `crisis: false` starts with no open crisis;
+ * `declare: false` signs in without ra.crisis.declare and ra.manage.
+ */
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean } = {}) {
+  const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [] }
+  const canDeclare = options.declare !== false
+  await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
+  await page.route('**/api/ra/map-settings', (route) =>
+    route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
+  )
+  await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
+  await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: FORMULA }))
+  const crisis = structuredClone({ ...CRISIS, can_manage: canDeclare, can_delete: canDeclare })
+  const open = () => (options.crisis === false || crisis.status !== 'open' ? [] : [crisis])
+  await page.route('**/api/ra/map', (route) => route.fulfill({
+    json: { places: MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
+  }))
+  await page.route(/\/api\/ra\/crises/, async (route) => {
+    const url = new URL(route.request().url())
+    const method = route.request().method()
+    const body = route.request().postDataJSON?.() as Record<string, unknown> | null
+    if (/\/crises\/?$/.test(url.pathname) && method === 'POST') {
+      log.declared.push(body!)
+      await route.fulfill({ status: 201, json: crisis })
+      return
+    }
+    if (/\/crises\/?$/.test(url.pathname)) {
+      await route.fulfill({ json: { items: [crisis], page: 1, per_page: 25, total: 1, pages: 1 } })
+      return
+    }
+    if (url.pathname.endsWith('/close')) {
+      log.closed.push(body)
+      Object.assign(crisis, { status: 'closed', closed_at: '2026-10-21T08:00:00Z', closed_by: 'Test User', closing_note: (body as { note?: string })?.note ?? null })
+      crisis.history.push({ action: 'closed', note: crisis.closing_note, user: 'Test User', at: '2026-10-21T08:00:00Z' })
+    }
+    if (url.pathname.endsWith('/notes')) {
+      log.notes.push(body)
+      crisis.history.push({ action: 'note', note: (body as { note: string }).note, user: 'Test User', at: '2026-10-21T06:00:00Z' })
+    }
+    await route.fulfill({ json: crisis })
+  })
+  const playbook = structuredClone(PLAYBOOK)
+  await page.route(/\/api\/ra\/playbook/, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'PUT') {
+      const code = url.pathname.split('/').pop()!
+      const body = route.request().postDataJSON() as { steps: { phase: 'immediate' | 'stabilise' | 'recover', text: string }[] }
+      log.playbook.push([code, body])
+      const entry = playbook.find((item) => item.code === code)!
+      entry.reviewed = true
+      entry.updated_by = 'Test User'
+      entry.updated_at = '2026-10-21T05:00:00Z' as never
+      entry.steps = { immediate: [], stabilise: [], recover: [] } as never
+      for (const step of body.steps) (entry.steps[step.phase] as string[]).push(step.text)
+      await route.fulfill({ json: entry })
+      return
+    }
+    await route.fulfill({ json: { items: playbook, can_edit: canDeclare } })
+  })
+  return log
+}

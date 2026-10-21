@@ -151,10 +151,10 @@ async function sendBack() {
 }
 
 const currentRole = computed(() => roles.value.find((role) => role.value === props.assessment.current_signoff_role))
-/** A BCM.Admin approving someone else's step. */
+/** Someone with ra.manage approving another person's step. */
 const onBehalf = computed(() => {
   const signer = props.assessment.awaiting_signer
-  return Boolean(signer && user.value?.email && signer.email?.toLowerCase() !== user.value.email.toLowerCase())
+  return Boolean(signer && user.value && signer.id !== user.value.id)
 })
 
 const raSignoffStep = defineStatusScale({

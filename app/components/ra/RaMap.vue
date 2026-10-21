@@ -12,8 +12,10 @@ import 'leaflet/dist/leaflet.css'
  */
 const props = withDefaults(defineProps<{
   markers?: RaMapMarker[]
-  /** Radius rings, e.g. 5 km around each building when nearby branches are shown. */
+  /** Rings: a distance around the selected place, or a crisis's affected area. */
   circles?: RaMapCircle[]
+  /** A dashed line between two places, e.g. the distance being measured. */
+  line?: [RaPin, RaPin] | null
   editable?: boolean
   /** Accessible name of the map region. */
   label: string
@@ -22,12 +24,13 @@ const props = withDefaults(defineProps<{
 }>(), {
   markers: () => [],
   circles: () => [],
+  line: null,
   editable: false,
   selected: null,
   heightClass: 'h-96',
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
-const emit = defineEmits<{ select: [id: number] }>()
+const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']] }>()
 
 const { data: settings, error: settingsError } = useRaMapSettings()
 const container = useTemplateRef<HTMLDivElement>('container')
@@ -65,6 +68,22 @@ const BRANCH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
   + '<path fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 17.5h12M7.5 15v-4.5M10.5 15v-4.5M13.5 15v-4.5M16.5 15v-4.5M5.5 9 12 5.5 18.5 9Z"/>'
   + '</svg>'
 
+/** A crisis point: a siren in a circle, in the error colour. */
+const CRISIS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">'
+  + '<circle cx="12" cy="12" r="10.5" fill="currentColor" stroke="white" stroke-width="1.5"/>'
+  + '<path fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M8 16.5v-4a4 4 0 0 1 8 0v4M6.5 16.5h11M12 5.5v1.2M6.7 7.7l.8.8M17.3 7.7l-.8.8"/>'
+  + '</svg>'
+
+function crisisIcon() {
+  return L!.divIcon({
+    html: CRISIS_SVG,
+    className: 'ra-pin ra-pin-crisis text-error',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    tooltipAnchor: [0, -14],
+  })
+}
+
 function branchIcon(level: RaMapMarker['level'], active: boolean) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
@@ -89,15 +108,22 @@ function drawMarkers(fit: boolean) {
   for (const ring of props.circles) {
     layer.addLayer(L.circle([ring.lat, ring.lng], {
       radius: ring.radiusM,
-      className: ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
+      className: ring.crisis ? 'ra-radius ra-radius-crisis' : ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
+      interactive: false,
+    }))
+  }
+  if (props.line) {
+    layer.addLayer(L.polyline(props.line.map((point) => [point.lat, point.lng] as [number, number]), {
+      className: 'ra-measure',
       interactive: false,
     }))
   }
   for (const item of props.markers) {
-    const branch = item.variant === 'branch'
-    const active = item.id === props.selected
+    const active = item.variant !== 'crisis' && item.id === props.selected
     const marker = L.marker([item.lat, item.lng], {
-      icon: branch ? branchIcon(item.level, active) : icon(item.level, active),
+      icon: item.variant === 'crisis'
+        ? crisisIcon()
+        : item.variant === 'branch' ? branchIcon(item.level, active) : icon(item.level, active),
       title: item.label,
       alt: item.label,
       keyboard: true,
@@ -105,7 +131,7 @@ function drawMarkers(fit: boolean) {
     })
     marker.bindTooltip(tooltip(item.label), { direction: 'top' })
     // Leaflet turns Enter on a focused marker into a click.
-    marker.on('click', () => emit('select', item.id))
+    marker.on('click', () => emit('select', item.id, item.variant))
     layer.addLayer(marker)
   }
   if (!fit) return
@@ -185,6 +211,7 @@ async function init() {
 onMounted(init)
 watch(settings, () => init())
 watch(() => [props.markers, props.circles], () => drawMarkers(true), { deep: true })
+watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
 watch(pin, (value, previous) => {
   // Typed or reset coordinates move the view; a click or drag already shows the spot.
@@ -201,6 +228,11 @@ defineExpose({
   /** Zoom to a marker, e.g. when it is picked from the list next to the map. */
   focus(pinToShow: RaPin) {
     map?.setView([pinToShow.lat, pinToShow.lng], Math.max(map.getZoom(), 15))
+  },
+  /** Show all of these points, e.g. the two ends of a measured distance. */
+  fit(pins: RaPin[]) {
+    if (!L || !map || !pins.length) return
+    map.fitBounds(L.latLngBounds(pins.map((item) => [item.lat, item.lng] as [number, number])), { padding: [60, 60], maxZoom: 16 })
   },
 })
 </script>
@@ -259,6 +291,20 @@ defineExpose({
   stroke-width: 2;
   fill: var(--ui-primary);
   fill-opacity: 0.08;
+}
+
+.ra-radius-crisis {
+  stroke: var(--ui-error);
+  stroke-width: 2;
+  fill: var(--ui-error);
+  fill-opacity: 0.1;
+}
+
+.ra-measure {
+  stroke: var(--ui-primary);
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+  fill: none;
 }
 
 .ra-pin-active svg {

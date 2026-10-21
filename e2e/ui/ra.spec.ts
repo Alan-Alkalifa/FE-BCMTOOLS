@@ -7,7 +7,9 @@ test('the home page links to the RA module', async ({ page }) => {
   await mockRa(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'RA', exact: true })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('link', { name: 'Open RA', exact: true }).click()
+  const main = page.getByRole('main')
+  await expect(main.getByRole('link', { name: 'Location map' })).toHaveAttribute('href', '/ra/map')
+  await main.getByRole('link', { name: 'Assessments' }).first().click()
   await expect(page).toHaveURL(/\/ra$/)
 })
 
@@ -415,60 +417,15 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   expect(log.lists).toEqual({})
 })
 
-test('the register shows its locations on a map', async ({ page }) => {
-  await mockRa(page)
-  await page.goto('/ra/locations')
-  await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Map' }).click()
-  await expect(page).toHaveURL(/view=map/)
-  await expect(page.getByRole('region', { name: 'Map of 1 location' })).toBeVisible()
-  await expect(page.getByText('1 of 2 locations')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Graha CIMB Niaga' })).toHaveAttribute('href', '/ra/locations/2?tab=map')
-  await page.getByRole('button', { name: 'Griya CIMB Niaga 2' }).last().click()
-  await expect(page.getByRole('link', { name: 'Open location' })).toHaveAttribute('href', '/ra/locations/1')
-  await page.getByRole('button', { name: 'Table' }).click()
-  await expect(page).not.toHaveURL(/view=map/)
-  await expect(page.getByRole('table')).toBeVisible()
-})
-
 test('an assessment shows its location pin, or where to add one', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/1')
   await expect(page.getByRole('link', { name: 'Add it on the location\'s Map tab' })).toHaveAttribute('href', '/ra/locations/1?tab=map', { timeout: 60_000 })
 })
 
-test('the register map can show the branches within 5 km', async ({ page }) => {
+test('the location register links to the location map instead of its own map', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/locations?view=map')
-  const toggle = page.getByRole('switch', { name: 'Show nearby branches (within 5 km)' })
-  await expect(toggle).not.toBeChecked({ timeout: 60_000 })
-  const request = page.waitForRequest((r) => r.url().includes('/api/ra/locations') && r.url().includes('kind=branch'))
-  await toggle.click()
-  await request
-  await expect(page).toHaveURL(/nearby=branches/)
-  // Bintaro is 1.7 km from Griya CIMB Niaga 2; Pondok Indah (7.1 km) and Bandung are outside 5 km.
-  await expect(page.getByText(/^1 branch within 5 km of a building\. 1 without a map pin can't be placed\.$/)).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Map of 1 location, with 1 branch within 5 km' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'KCP Bintaro Sektor 9 (branch, 1,7 km)' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /KCP Pondok Indah/ })).toHaveCount(0)
-  const nearby = page.getByRole('button', { name: /KCP Bintaro Sektor 9.*from Griya CIMB Niaga 2/ })
-  await expect(nearby).toContainText('1,7 km from Griya CIMB Niaga 2')
-  await nearby.click()
-  await expect(page.getByText('Nearest building')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Open branch' })).toHaveAttribute('href', '/ra-branch/locations/31')
-
-  await page.getByRole('button', { name: 'Griya CIMB Niaga 2', exact: true }).last().click()
-  await expect(page.getByText('Branches within 5 km', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'KCP Bintaro Sektor 9' })).toHaveAttribute('href', '/ra-branch/locations/31')
-
-  await toggle.click()
-  await expect(page).not.toHaveURL(/nearby=branches/)
-  await expect(page.getByRole('heading', { name: 'Nearby branches' })).toHaveCount(0)
-})
-
-test('the branch register has no nearby-branches switch', async ({ page }) => {
-  await mockRa(page)
-  await page.goto('/ra-branch/locations?view=map')
-  await expect(page.getByRole('region', { name: /Map of/ })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('switch')).toHaveCount(0)
+  await page.goto('/ra/locations')
+  await expect(page.getByRole('link', { name: 'Location map' }).last()).toHaveAttribute('href', '/ra/map', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
