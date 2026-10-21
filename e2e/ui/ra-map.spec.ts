@@ -152,9 +152,12 @@ test('the crisis history lists crises with their status', async ({ page }) => {
   await expect(row).toContainText('Open')
 })
 
-test('the playbook is edited per hazard, one step per line', async ({ page }) => {
+test('the guidebook is edited per hazard, one step per line', async ({ page }) => {
   const log = await mockRaMap(page)
   await page.goto('/ra/playbook')
+  // The old address opens the guidebook.
+  await expect(page).toHaveURL(/\/ra\/guidebook$/, { timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Crisis guidebook' })).toBeVisible()
   // Hazards are grouped; every group starts closed and opens on click.
   const group = page.getByRole('button', { name: /Natural disasters/ })
   await expect(group).toHaveAttribute('aria-expanded', 'false', { timeout: 30_000 })

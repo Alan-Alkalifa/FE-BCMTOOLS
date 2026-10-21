@@ -20,7 +20,7 @@ const PERMISSIONS = [
   { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
   { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close crisis events on the location map' },
   { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
-  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the crisis playbook' },
+  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the crisis guidebook' },
   { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
   { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
   { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },

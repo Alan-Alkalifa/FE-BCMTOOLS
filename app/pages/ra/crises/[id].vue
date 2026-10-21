@@ -5,7 +5,7 @@ import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
 
 /**
  * One crisis: where and what, the affected area on the map, and for every affected building or
- * branch what to do — BCM's playbook steps, its own RA for the hazard, its contacts, call tree
+ * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
  */
 definePageMeta({ permission: 'ra.access' })
@@ -332,7 +332,7 @@ const historyIcon: Record<string, string> = {
                     What to do
                   </h2>
                   <p class="text-sm text-muted">
-                    BCM's playbook for <span lang="id">{{ crisis.hazard.short_name }}</span>, for every affected place.
+                    BCM's guidebook for <span lang="id">{{ crisis.hazard.short_name }}</span>, for every affected place.
                   </p>
                 </div>
                 <StatusBadge
@@ -380,10 +380,10 @@ const historyIcon: Record<string, string> = {
             </div>
             <template #footer>
               <UButton
-                to="/ra/playbook"
+                to="/ra/guidebook"
                 variant="link"
                 trailing-icon="i-lucide-arrow-right"
-                label="Crisis playbook"
+                label="Crisis guidebook"
                 class="px-0"
               />
             </template>

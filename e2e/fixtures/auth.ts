@@ -57,7 +57,7 @@ const MENUS = [
   { code: 'ra.locations', label: 'Locations', icon: 'i-lucide-building', route: '/ra/locations', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.map', label: 'Location map', icon: 'i-lucide-map', route: '/ra/map', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.crises', label: 'Crises', icon: 'i-lucide-siren', route: '/ra/crises', parent: 'ra', permission: 'ra.access' },
-  { code: 'ra.playbook', label: 'Crisis playbook', icon: 'i-lucide-book-marked', route: '/ra/playbook', parent: 'ra', permission: 'ra.access' },
+  { code: 'ra.playbook', label: 'Crisis guidebook', icon: 'i-lucide-book-marked', route: '/ra/guidebook', parent: 'ra', permission: 'ra.access' },
   { code: 'ra_branch', label: 'RA Branch', icon: 'i-lucide-landmark', route: null, parent: null, permission: null },
   { code: 'ra_branch.assessments', label: 'Assessments', icon: 'i-lucide-clipboard-list', route: '/ra-branch', parent: 'ra_branch', permission: 'ra.access' },
   { code: 'ra_branch.locations', label: 'Branches', icon: 'i-lucide-landmark', route: '/ra-branch/locations', parent: 'ra_branch', permission: 'ra.access' },
