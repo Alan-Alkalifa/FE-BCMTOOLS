@@ -14,14 +14,23 @@ const { data, status, error, refresh } = useRaPlaybook()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 
 const groups = computed(() => {
-  const byCategory = new Map<string, { label: string, items: RaPlaybookEntry[] }>()
+  const byCategory = new Map<string, { code: string, label: string, items: RaPlaybookEntry[] }>()
   for (const item of data.value?.items ?? []) {
     const key = item.category?.code ?? '-'
-    if (!byCategory.has(key)) byCategory.set(key, { label: item.category?.label ?? 'Other', items: [] })
+    if (!byCategory.has(key)) byCategory.set(key, { code: key, label: item.category?.label ?? 'Other', items: [] })
     byCategory.get(key)!.items.push(item)
   }
   return [...byCategory.values()]
 })
+
+/** Hazard groups fold like an accordion: all closed when the page loads, one open at a time. */
+const openGroup = ref<string | null>(null)
+function isOpen(code: string) {
+  return openGroup.value === code
+}
+function toggleGroup(code: string) {
+  openGroup.value = isOpen(code) ? null : code
+}
 
 const selectedCode = computed({
   get: () => (typeof route.query.hazard === 'string' ? route.query.hazard : data.value?.items[0]?.code),
@@ -109,13 +118,30 @@ async function save() {
           <nav aria-label="Hazards">
             <div
               v-for="group in groups"
-              :key="group.label"
-              class="mb-2 last:mb-0"
+              :key="group.code"
+              class="border-b border-default last:border-b-0"
             >
-              <h2 class="px-2 py-1.5 text-xs font-medium text-muted uppercase">
-                {{ group.label }}
+              <h2>
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-xs font-medium text-muted uppercase hover:bg-elevated/60 focus-visible:outline-2 focus-visible:outline-primary"
+                  :aria-expanded="isOpen(group.code)"
+                  :aria-controls="`hazards-${group.code}`"
+                  @click="toggleGroup(group.code)"
+                >
+                  <span class="min-w-0 flex-1">{{ group.label }}</span>
+                  <UIcon
+                    name="i-lucide-chevron-down"
+                    class="size-4 shrink-0 transition-transform"
+                    :class="{ '-rotate-180': isOpen(group.code) }"
+                  />
+                </button>
               </h2>
-              <ul>
+              <ul
+                v-show="isOpen(group.code)"
+                :id="`hazards-${group.code}`"
+                class="pb-2"
+              >
                 <li
                   v-for="item in group.items"
                   :key="item.code"
