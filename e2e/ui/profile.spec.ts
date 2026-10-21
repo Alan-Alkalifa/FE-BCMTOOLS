@@ -39,7 +39,8 @@ test('home shows job title and department', async ({ page }) => {
   await expect(page.getByText('Engineer · IT')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('heading', { name: 'Modules' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'SCCA' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/scca')
+  await expect(page.getByRole('link', { name: 'Open SCCA' })).toHaveAttribute('href', '/scca')
+  await expect(page.getByRole('link', { name: 'Open RA', exact: true })).toHaveAttribute('href', '/ra')
   await expect(page.getByText('Coming soon')).toHaveCount(0)
 })
 

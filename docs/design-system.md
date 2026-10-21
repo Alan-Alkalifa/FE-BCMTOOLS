@@ -536,6 +536,32 @@ Target: **WCAG 2.2 AA**. Check every new screen against this list.
 
 SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), Very Important (`warning`), Important (`info`), Necessary and Other (`neutral`).
 
+### Glossary (RA)
+
+| Term | Meaning |
+|---|---|
+| RA | Risk Assessment of a work location (office building) |
+| RA Branch | The same assessment for a branch, from the Cabang workbook: one residual risk per hazard and three sign-offs |
+| LRP | Location Risk Profile, the RA scorecard workbook |
+| LIC | Location Incident Coordinator |
+| LICOM | Location Incident Commander |
+| CBF | Critical business function |
+| Gross risk | Probability × impact before the existing mitigation measures |
+| Residual risk | Probability × impact after the existing mitigation measures |
+| CIM | Control Issue Management, the follow-up for a high residual risk |
+| DAT / ERT | Damage Assessment Team / Emergency Response Team |
+| IMT / RTF | Incident Management Team / Recovery Task Force of a critical business function |
+| LCP | Location Continuity Plan: the building's occupants, continuity strategy, recovery team and call tree (RA only) |
+| BOSM / BM / NRSOH | Branch roles in RA Branch: the BOSM is the LIC and prepares the RA, the branch manager (BM) approves it, the NRSOH is the LICOM and reviews it |
+
+Maps (`RaMap.vue`, Leaflet) are a supplement, never the only way to see something: every pin also appears as text next to the map (a list, a table or the location card), and the map region has an accessible name. Pins use the semantic risk colours (`RA_PIN_CLASS`: High `text-error`, Medium `text-warning`, Low `text-info`, none `text-muted`) with a legend in words. Scroll-wheel zoom is off so the page scrolls normally; use the + / − buttons or the keyboard. Names go into tooltips as text, never HTML. A second kind of place on the same map gets a different shape, not only a different colour: RA Branch branches shown near head office buildings are rounded squares with a bank glyph, and the 5 km radius is a dashed ring (`.ra-radius`, the selected building's ring in `primary`).
+
+RA sign-off statuses use `raStatus`: Draft (`neutral`), Returned (`warning`), In sign-off (`info`), Approved (`success`); `raCompletion` (Complete / Incomplete) only says whether a draft is ready to submit. A locked (in sign-off or approved) assessment shows its forms with disabled controls and no save buttons, plus one banner naming who is up next — not an error. Approve is the primary action of the sign-off step; Return for changes is a destructive outline button that always asks for a comment.
+
+RA risk levels use `raRiskLevel` in `app/utils/ra.ts`: High (`error`), Medium (`warning`), Low (`info`), Not applicable (`neutral`). Heat-map cells add a light tint of the same semantic colour (`bg-error/10`, `bg-warning/10`, `bg-info/5`), always with the level badge, so the level never depends on colour alone. Workbook content (hazard names, rating guidance, the sign-off statement) stays in Indonesian as data; the interface around it is English.
+
+RA and RA Branch share their screens (`app/components/ra/Ra*Page.vue`, used by thin pages under `pages/ra/` and `pages/ra-branch/`). Anything that differs on screen — titles, "location" or "branch", the LIC/LICOM hints, the sign-off roles, the LCP tabs, the region field — comes from `RA_MODULES` in `app/utils/ra.ts` through `useRaModule()`; don't branch on the route in a component. Add and view buttons of a list sit in the table card's toolbar, right above the table, not in the page header. On the Hazards tab the user picks a hazard group first (one card per category, with its rated count), then a hazard of that group.
+
 ---
 
 ## Changing the system

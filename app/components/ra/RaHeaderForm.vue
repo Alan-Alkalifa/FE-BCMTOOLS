@@ -1,0 +1,317 @@
+<script setup lang="ts">
+import { parseDate, type CalendarDate } from '@internationalized/date'
+import { z } from 'zod'
+import type { RaAssessment } from '~/composables/useRa'
+
+const props = defineProps<{ assessment: RaAssessment }>()
+const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
+
+const ra = useRaModule()
+/** In sign-off or approved: shown, not edited. */
+const locked = computed(() => !props.assessment.can_edit)
+/** The location's pin, shown for reference; it is edited on the location's Map tab. */
+const locationPin = computed(() => raPin(props.assessment.location))
+const toast = useToast()
+const form = useTemplateRef('form')
+const dirty = useRaDirty()
+const formError = ref<string | null>(null)
+const snapshot = ref('')
+
+const schema = z.object({
+  period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
+  assessment_date: z.string().min(1, 'Enter the assessment date.'),
+  due_date: z.string().nullable(),
+  lic_name: z.string().trim().min(1, 'Enter the LIC name.'),
+  lic_phone: z.string().trim().min(1, 'Enter the LIC mobile number.'),
+  licom_name: z.string().trim().min(1, 'Enter the LICOM name.'),
+  licom_phone: z.string().trim().min(1, 'Enter the LICOM mobile number.'),
+}).refine((value) => !value.due_date || value.due_date >= value.assessment_date, {
+  path: ['due_date'],
+  message: 'Cannot be before the assessment date.',
+})
+type State = z.infer<typeof schema>
+
+function fromAssessment(assessment: RaAssessment): State {
+  return {
+    period_year: assessment.period_year,
+    assessment_date: assessment.assessment_date ?? '',
+    due_date: assessment.due_date,
+    lic_name: assessment.lic_name ?? '',
+    lic_phone: assessment.lic_phone ?? '',
+    licom_name: assessment.licom_name ?? '',
+    licom_phone: assessment.licom_phone ?? '',
+  }
+}
+
+const state = reactive<State>(fromAssessment(props.assessment))
+
+const assessmentDate = computed({
+  get: () => state.assessment_date ? parseDate(state.assessment_date) : undefined,
+  set: (value: CalendarDate | null | undefined) => {
+    state.assessment_date = value ? value.toString() : ''
+  },
+})
+
+const dueDate = computed({
+  get: () => state.due_date ? parseDate(state.due_date) : undefined,
+  set: (value: CalendarDate | null | undefined) => {
+    state.due_date = value ? value.toString() : null
+  },
+})
+
+function reset(assessment: RaAssessment) {
+  Object.assign(state, fromAssessment(assessment))
+  snapshot.value = JSON.stringify(state)
+  if (dirty) dirty.value = false
+}
+
+watch(() => props.assessment, (assessment) => reset(assessment), { immediate: true })
+watch(state, () => {
+  if (dirty) dirty.value = JSON.stringify(state) !== snapshot.value
+}, { deep: true })
+
+async function onSubmit() {
+  formError.value = null
+  try {
+    const saved = await raApi.update(props.assessment.id, blankToNull({ ...state }))
+    reset(saved)
+    toast.add({ title: 'Assessment saved', color: 'success', icon: 'i-lucide-circle-check' })
+    emit('saved', saved)
+  } catch (error) {
+    form.value?.setErrors(apiFieldErrors(error))
+    formError.value = apiErrorMessage(error)
+  }
+}
+</script>
+
+<template>
+  <UForm
+    ref="form"
+    :schema="schema"
+    :state="state"
+    class="space-y-6"
+    @submit="onSubmit"
+  >
+    <UAlert
+      v-if="formError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      title="Couldn't save the assessment"
+      :description="formError"
+    />
+
+    <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div class="space-y-6">
+        <UCard>
+          <template #header>
+            <h2 class="text-lg font-semibold">
+              Assessment
+            </h2>
+          </template>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              label="RA ref. no."
+              name="ref_no"
+            >
+              <UInput
+                :model-value="assessment.ref_no ?? ''"
+                disabled
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="RA period"
+              name="period_year"
+              required
+            >
+              <UInputNumber
+                v-model="state.period_year"
+                :disabled="locked"
+                :min="2000"
+                :max="2100"
+                :format-options="{ useGrouping: false }"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="Assessment date"
+              name="assessment_date"
+              required
+            >
+              <UInputDate
+                v-model="assessmentDate"
+                :disabled="locked"
+                locale="id-ID"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="Renewal due"
+              name="due_date"
+              help="Defaults to one year after the assessment date."
+            >
+              <UInputDate
+                v-model="dueDate"
+                :disabled="locked"
+                locale="id-ID"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <UCard>
+          <template #header>
+            <h2 class="text-lg font-semibold">
+              Location incident team
+            </h2>
+            <p class="text-sm text-muted">
+              Section A of the LRP scorecard. Both are required.
+            </p>
+          </template>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              :label="ra.lic.label"
+              name="lic_name"
+              :help="ra.lic.hint"
+              required
+              eager-validation
+            >
+              <UInput
+                v-model="state.lic_name"
+                :disabled="locked"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="LIC mobile number"
+              name="lic_phone"
+              required
+              eager-validation
+            >
+              <UInput
+                v-model="state.lic_phone"
+                :disabled="locked"
+                type="tel"
+                placeholder="e.g. 0813 1226 2739"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              :label="ra.licom.label"
+              name="licom_name"
+              :help="ra.licom.hint"
+              required
+              eager-validation
+            >
+              <UInput
+                v-model="state.licom_name"
+                :disabled="locked"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="LICOM mobile number"
+              name="licom_phone"
+              required
+              eager-validation
+            >
+              <UInput
+                v-model="state.licom_phone"
+                :disabled="locked"
+                type="tel"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+        </UCard>
+      </div>
+
+      <UCard>
+        <template #header>
+          <h2 class="text-lg font-semibold">
+            {{ ra.location.single }}
+          </h2>
+        </template>
+        <div class="mb-4">
+          <RaMap
+            v-if="locationPin"
+            :markers="[{ id: assessment.location.id, label: assessment.location.name, level: assessment.summary.highest_residual_level ?? 'none', ...locationPin }]"
+            :label="`Map of ${assessment.location.name}`"
+            height-class="h-48"
+          />
+          <p
+            v-else
+            class="flex items-start gap-2 rounded-md bg-elevated p-3 text-sm text-muted"
+          >
+            <UIcon
+              name="i-lucide-map-pin-off"
+              class="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              No map pin yet.
+              <NuxtLink
+                :to="`${ra.base}/locations/${assessment.location.id}?tab=map`"
+                class="text-primary hover:underline"
+              >Add it on the {{ ra.location.lower }}'s Map tab</NuxtLink>.
+            </span>
+          </p>
+        </div>
+        <dl class="space-y-3 text-sm">
+          <div>
+            <dt class="text-muted">
+              {{ ra.kind === 'branch' ? 'Branch' : 'Building' }}
+            </dt>
+            <dd class="font-medium text-highlighted">
+              {{ assessment.location.name }}
+            </dd>
+          </div>
+          <div v-if="ra.hasRegion">
+            <dt class="text-muted">
+              Region
+            </dt>
+            <dd>{{ assessment.location.region || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-muted">
+              Address
+            </dt>
+            <dd>{{ assessment.location.address || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-muted">
+              Formula version
+            </dt>
+            <dd>{{ assessment.formula_version }}</dd>
+          </div>
+        </dl>
+        <p class="mt-4 text-sm text-muted">
+          {{ ra.hasLcp
+            ? 'Emergency contacts, occupants, the recovery team and the call tree are kept on the location and shared by every RA cycle.'
+            : 'Emergency contacts are kept on the branch and shared by every RA cycle.' }}
+        </p>
+        <template #footer>
+          <UButton
+            :to="`${ra.base}/locations/${assessment.location.id}`"
+            variant="link"
+            trailing-icon="i-lucide-arrow-right"
+            :label="`Open ${ra.location.lower} profile`"
+            class="px-0"
+          />
+        </template>
+      </UCard>
+    </div>
+
+    <div
+      v-if="!locked"
+      class="flex justify-end"
+    >
+      <UButton
+        type="submit"
+        label="Save assessment"
+        loading-auto
+      />
+    </div>
+  </UForm>
+</template>

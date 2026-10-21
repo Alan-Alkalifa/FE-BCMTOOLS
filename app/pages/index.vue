@@ -14,6 +14,20 @@ const modules = [
     icon: 'i-lucide-shield-check',
     available: true,
   },
+  {
+    title: 'RA',
+    description: 'Location risk assessment and risk profile for an office building.',
+    to: '/ra',
+    icon: 'i-lucide-building-2',
+    available: true,
+  },
+  {
+    title: 'RA Branch',
+    description: 'Location risk assessment for a branch.',
+    to: '/ra-branch',
+    icon: 'i-lucide-landmark',
+    available: true,
+  },
 ]
 </script>
 
@@ -65,6 +79,7 @@ const modules = [
               variant="link"
               trailing-icon="i-lucide-arrow-right"
               label="Open"
+              :aria-label="`Open ${module.title}`"
               class="px-0"
             />
             <UBadge

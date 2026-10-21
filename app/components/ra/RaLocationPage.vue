@@ -1,0 +1,370 @@
+<script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+import type { RaAssessmentSummary, RaCallTreeEntry, RaLocationDetail, RaRecoveryTeamMember } from '~/composables/useRa'
+
+const TABS = ['details', 'map', 'contacts', 'occupants', 'team', 'calltree'] as const
+type Tab = (typeof TABS)[number]
+/** The LCP sheets are only in the HO workbook. */
+const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
+
+const ra = useRaModule()
+const route = useRoute()
+const router = useRouter()
+const confirm = useConfirm()
+const toast = useToast()
+
+const id = computed(() => Number(route.params.id))
+const { data: location, status, error, refresh } = useRaLocation(id)
+const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !location.value)
+
+// A branch opened under /ra/locations (or the reverse): show it in its own module.
+watch(() => location.value?.kind, (kind) => {
+  if (kind && kind !== ra.value.kind) {
+    router.replace({ path: `${RA_MODULES[kind].base}/locations/${id.value}`, query: route.query })
+  }
+}, { immediate: true })
+
+const dirty = ref(false)
+const formKey = ref(0)
+provide(raDirtyKey, dirty)
+
+const tabs = computed(() => TABS.filter((value) => ra.value.hasLcp || !LCP_TABS.includes(value)))
+const tab = computed<Tab>(() => {
+  const value = route.query.tab
+  return typeof value === 'string' && tabs.value.includes(value as Tab) ? value as Tab : 'details'
+})
+
+const ALL_TAB_ITEMS = [
+  { label: 'Details', value: 'details', icon: 'i-lucide-building-2', slot: 'details' },
+  { label: 'Map', value: 'map', icon: 'i-lucide-map-pinned', slot: 'map' },
+  { label: 'Emergency contacts', value: 'contacts', icon: 'i-lucide-phone', slot: 'contacts' },
+  { label: 'Occupants', value: 'occupants', icon: 'i-lucide-users', slot: 'occupants' },
+  { label: 'Recovery team', value: 'team', icon: 'i-lucide-life-buoy', slot: 'team' },
+  { label: 'Call tree', value: 'calltree', icon: 'i-lucide-network', slot: 'calltree' },
+] as const
+const tabItems = computed(() => ALL_TAB_ITEMS.filter((item) => tabs.value.includes(item.value)))
+
+async function confirmLeave() {
+  return confirm({
+    title: 'Discard unsaved changes?',
+    description: 'Your unsaved edits on this tab will be lost.',
+    confirmLabel: 'Discard changes',
+    destructive: true,
+  })
+}
+
+async function selectTab(next: string | number) {
+  const value = String(next) as Tab
+  if (value === tab.value) return
+  if (dirty.value && !(await confirmLeave())) return
+  dirty.value = false
+  await router.replace({ query: { ...route.query, tab: value } })
+  formKey.value += 1
+}
+
+onBeforeRouteLeave(async () => {
+  if (!dirty.value) return
+  if (!(await confirmLeave())) return false
+})
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (!dirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+
+function onSaved(saved: RaLocationDetail) {
+  location.value = saved
+  dirty.value = false
+}
+
+const locationStatus = defineStatusScale({
+  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
+  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
+})
+
+const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
+  { accessorKey: 'ref_no', header: 'Ref. no.' },
+  { accessorKey: 'period_year', header: 'Period' },
+  { accessorKey: 'due_date', header: 'Renewal due' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'status', header: 'Status' },
+]
+
+const teamFields = [
+  { key: 'role', label: 'Role', wide: true },
+  { key: 'name', label: 'Name', required: true },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
+]
+const callTreeFields = [
+  { key: 'caller', label: 'Caller' },
+  { key: 'contact_name', label: 'Contact', required: true },
+  { key: 'division', label: 'Division or role', wide: true },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
+]
+const callTreeLevels = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
+
+type RowValues = Record<string, string | number | null>
+const teamRows = computed(() => (location.value?.recovery_team ?? []) as unknown as RowValues[])
+const callTreeRows = computed(() => (location.value?.call_tree ?? []) as unknown as RowValues[])
+
+function saveTeam(rows: RowValues[]) {
+  return raApi.setRecoveryTeam(id.value, rows as unknown as RaRecoveryTeamMember[])
+}
+
+function saveCallTree(rows: RowValues[]) {
+  return raApi.setCallTree(id.value, rows as unknown as RaCallTreeEntry[])
+}
+
+const canDelete = computed(() => Boolean(location.value?.can_delete && !location.value.assessments.length))
+
+async function removeLocation() {
+  if (!location.value) return
+  const ok = await confirm({
+    title: `Delete '${location.value.name}'?`,
+    description: ra.value.hasLcp
+      ? 'This permanently removes the location with its emergency contacts, occupants, recovery team and call tree.'
+      : 'This permanently removes the branch with its emergency contacts.',
+    confirmLabel: `Delete ${ra.value.location.lower}`,
+    destructive: true,
+  })
+  if (!ok) return
+  try {
+    dirty.value = false
+    await raApi.removeLocation(location.value.id)
+    toast.add({ title: `${ra.value.location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
+    await navigateTo(`${ra.value.base}/locations`)
+  } catch (err) {
+    toast.add({ title: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+}
+
+function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
+  navigateTo(`${ra.value.base}/${row.original.id}`)
+}
+</script>
+
+<template>
+  <AppPage
+    :title="location?.name ?? ra.location.single"
+    :crumbs="[
+      { label: ra.title, to: ra.base },
+      { label: ra.location.plural, to: `${ra.base}/locations` },
+      ...(location ? [{ label: location.name }] : []),
+    ]"
+  >
+    <template #actions>
+      <UButton
+        v-if="location?.is_active"
+        :to="`${ra.base}/new?location_id=${location.id}`"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-plus"
+        label="New assessment"
+      />
+      <UButton
+        v-if="canDelete"
+        color="error"
+        variant="soft"
+        icon="i-lucide-trash-2"
+        :label="`Delete ${ra.location.lower}`"
+        @click="removeLocation"
+      />
+    </template>
+
+    <SkeletonGroup
+      v-if="showSkeleton"
+      :label="`Loading ${ra.location.lower}`"
+      class="space-y-6"
+    >
+      <div class="skeleton h-8 w-80" />
+      <SkeletonCard :lines="4" />
+    </SkeletonGroup>
+
+    <UAlert
+      v-else-if="error?.statusCode === 404"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-circle-help"
+      :title="`${ra.location.single} not found`"
+      description="It may have been deleted."
+    />
+
+    <UAlert
+      v-else-if="error"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      :title="`Could not load the ${ra.location.lower}`"
+      :description="apiErrorMessage(error)"
+    >
+      <template #actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Try again"
+          @click="refresh()"
+        />
+      </template>
+    </UAlert>
+
+    <template v-else-if="location && location.kind === ra.kind">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p class="text-2xl font-semibold text-highlighted">
+          {{ location.name }}
+        </p>
+        <StatusBadge
+          :scale="locationStatus"
+          :value="location.is_active ? 'active' : 'inactive'"
+        />
+        <span class="text-sm text-muted">
+          <template v-if="ra.hasLcp">
+            {{ formatNumber(location.occupant_summary.units, 0) }} units ·
+            {{ formatNumber(location.occupant_summary.employees, 0) }} employees ·
+          </template>
+          <template v-else-if="location.region">
+            {{ location.region }} ·
+          </template>
+          {{ formatNumber(location.assessments.length, 0) }} {{ location.assessments.length === 1 ? 'assessment' : 'assessments' }}
+        </span>
+      </div>
+
+      <UTabs
+        :model-value="tab"
+        :items="tabItems"
+        variant="link"
+        :unmount-on-hide="false"
+        class="min-w-0"
+        @update:model-value="selectTab"
+      >
+        <template #details>
+          <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <RaLocationForm
+              :key="`details-${formKey}`"
+              :location="location"
+              @saved="onSaved"
+            />
+            <UCard>
+              <template #header>
+                <h2 class="text-lg font-semibold">
+                  Assessments
+                </h2>
+                <p class="text-sm text-muted">
+                  RA cycles of this {{ ra.location.lower }}, newest first. {{ ra.hasLcp ? 'They all use the profile on the other tabs.' : 'They all use its emergency contacts.' }}
+                </p>
+              </template>
+              <UTable
+                v-if="location.assessments.length"
+                :data="location.assessments"
+                :columns="assessmentColumns"
+                class="cursor-pointer"
+                :on-select="openAssessment"
+              >
+                <template #ref_no-cell="{ row }">
+                  <NuxtLink
+                    :to="`${ra.base}/${row.original.id}`"
+                    class="font-medium whitespace-nowrap text-primary hover:underline"
+                  >
+                    {{ row.original.ref_no || 'Assessment' }}
+                  </NuxtLink>
+                </template>
+                <template #due_date-cell="{ row }">
+                  {{ formatDate(row.original.due_date) || '—' }}
+                </template>
+                <template #highest_residual_level-cell="{ row }">
+                  <StatusBadge
+                    v-if="row.original.highest_residual_level"
+                    :scale="raRiskLevel"
+                    :value="row.original.highest_residual_level"
+                    size="sm"
+                  />
+                  <span
+                    v-else
+                    class="text-muted"
+                  >—</span>
+                </template>
+                <template #status-cell="{ row }">
+                  <StatusBadge
+                    :scale="raStatus"
+                    :value="raStatusKey(row.original)"
+                    size="sm"
+                  />
+                </template>
+              </UTable>
+              <p
+                v-else
+                class="py-6 text-center text-sm text-muted"
+              >
+                No assessments yet.
+              </p>
+            </UCard>
+          </div>
+        </template>
+        <template #map>
+          <RaLocationMapTab
+            :key="`map-${formKey}`"
+            :location="location"
+            @saved="onSaved"
+          />
+        </template>
+        <template #contacts>
+          <RaContactsForm
+            :key="`contacts-${formKey}`"
+            :location="location"
+            @saved="onSaved"
+          />
+        </template>
+        <template
+          v-if="ra.hasLcp"
+          #occupants
+        >
+          <RaOccupantsTab
+            :location="location"
+            @saved="onSaved"
+          />
+        </template>
+        <template
+          v-if="ra.hasLcp"
+          #team
+        >
+          <RaGroupedRowsForm
+            :key="`team-${formKey}`"
+            :groups="RA_RECOVERY_TEAMS"
+            group-key="team"
+            :fields="teamFields"
+            :initial="teamRows"
+            item-label="member"
+            save-label="Save recovery team"
+            saved-message="Recovery team saved"
+            error-title="Couldn't save the recovery team"
+            :save="saveTeam"
+            @saved="onSaved"
+          />
+        </template>
+        <template
+          v-if="ra.hasLcp"
+          #calltree
+        >
+          <RaGroupedRowsForm
+            :key="`calltree-${formKey}`"
+            :groups="callTreeLevels"
+            group-key="level"
+            :fields="callTreeFields"
+            :initial="callTreeRows"
+            item-label="contact"
+            save-label="Save call tree"
+            saved-message="Call tree saved"
+            error-title="Couldn't save the call tree"
+            :save="saveCallTree"
+            @saved="onSaved"
+          />
+        </template>
+      </UTabs>
+    </template>
+  </AppPage>
+</template>
