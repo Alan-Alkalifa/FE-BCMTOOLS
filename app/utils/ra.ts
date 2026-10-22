@@ -465,6 +465,14 @@ export const raRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_90'
   later: { label: 'Not due yet', color: 'neutral', icon: 'i-lucide-calendar-check' },
 })
 
+/** Escalation/wait level for sign-off steps: ok → reminder → escalated. */
+export type RaWaitLevel = 'ok' | 'reminder' | 'escalated'
+export const raWaitLevel = defineStatusScale<RaWaitLevel>({
+  ok: { label: 'On track', color: 'success', icon: 'i-lucide-circle-check' },
+  reminder: { label: 'Reminder due', color: 'warning', icon: 'i-lucide-bell' },
+  escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-siren' },
+})
+
 /** The Locations menu group: one register of buildings and branches, the map, crises. */
 export const LOCATIONS_PATH = '/locations'
 export const LOCATION_MAP_PATH = '/locations/map'

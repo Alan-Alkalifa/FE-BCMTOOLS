@@ -677,6 +677,7 @@ export interface RaMonitorLocation {
   days_left: number | null
   bucket: RaRenewalBucket | null
   lic_name: string | null
+  history: RaAssessmentRef[]
 }
 
 /** An RA in sign-off and whose step it is. */
@@ -689,6 +690,9 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   working_days_in_signoff: number
   submitted_at: string | null
   submitted_by: string | null
+  reminders_sent: number
+  escalated_at: string | null
+  level: 'ok' | 'reminder' | 'escalated'
 }
 
 export interface RaHistoryRow {
@@ -705,6 +709,10 @@ export interface RaMonitoringFilters {
   region?: string
   level?: RaLevel | 'none'
   state?: 'approved' | 'draft' | 'in_signoff' | 'none'
+  // Date range filters (assessment date)
+  from?: string
+  to?: string
+  // department?: string  // RA uses region instead of department
 }
 
 export interface RaOverview {
@@ -717,9 +725,17 @@ export interface RaOverview {
     overdue_renewals: number
     due_in_90_days: number
     high_residual: number
+    stuck_approvals: number
   }
   by_level: { level: RaLevel | 'none', locations: number }[]
   approved_per_month: { month: string, assessments: number }[]
+}
+
+export interface RaStepAverage {
+  step: RaSignoffRole
+  step_title: string
+  approvals: number
+  average_working_days: number | null
 }
 
 type Paged<T> = MaybeRefOrGetter<T & { page: number, per_page: number }>
@@ -746,8 +762,16 @@ export function useRaRegister(query: Paged<RaMonitoringFilters>) {
   return useRaList<RaMonitorLocation>('/api/ra/monitoring/register', query)
 }
 
-export function useRaBottlenecks(query: Paged<{ kind: RaKind, q?: string, step?: string }>) {
+export function useRaBottlenecks(query: Paged<RaMonitoringFilters & { step?: string }>) {
   return useRaList<RaSignoffWaiting>('/api/ra/monitoring/bottlenecks', query)
+}
+
+/** Average working days per sign-off step over approvals in the period. */
+export function useRaBottlenecksStepAverages(filters: MaybeRefOrGetter<RaMonitoringFilters>) {
+  return useFetch<{ items: RaStepAverage[] }>('/api/ra/monitoring/bottlenecks/step-averages', {
+    key: computed(() => `ra-bottlenecks-step-averages-${JSON.stringify(toValue(filters))}`),
+    query: computed(() => toValue(filters)),
+  })
 }
 
 export function useRaRegions(kind: MaybeRefOrGetter<RaKind>) {
@@ -776,4 +800,21 @@ export function useRaBoard(query: Paged<{ kind: RaKind, step?: string }>, enable
     immediate: toValue(enabled),
     watch: [() => toValue(enabled)],
   })
+}
+
+// TODO: Add useRaDepartments when backend supports it
+// export function useRaDepartments() {
+//   return useFetch<{ items: string[] }>('/api/ra/monitoring/departments', { key: 'ra-departments' })
+// }
+
+/** The Excel download of a Monitoring view, with the same filters (all rows). */
+export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
+      query.set(key, String(value))
+    }
+  }
+  const text = query.toString()
+  return `/api/ra/monitoring/${view}.xlsx${text ? `?${text}` : ''}`
 }

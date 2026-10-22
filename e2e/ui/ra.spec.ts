@@ -51,9 +51,33 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page.getByText('Griya CIMB Niaga 2').first()).toBeVisible()
   await expect(page.getByText('Overdue', { exact: true }).first()).toBeVisible()
 
+  await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
+
   await page.getByRole('tab', { name: 'Bottlenecks' }).click()
   await expect(page.getByText('Budi Hartono')).toBeVisible()
   await expect(page.getByText('6 working days').first()).toBeVisible()
+  // Waiting past the reminder threshold, and the average wait of each step.
+  await expect(page.getByText('Reminder due').first()).toBeVisible()
+  await expect(page.getByText(/Slowest step: Acknowledged by, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
+  expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
+})
+
+test('Monitoring filters by the assessment date period', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/monitoring?tab=register')
+  await expect(page.getByText('Graha CIMB Niaga')).toBeVisible({ timeout: 60_000 })
+  const year = new Date().getFullYear()
+  await page.getByLabel('Assessment date', { exact: true }).click()
+  await page.getByRole('option', { name: 'This year' }).click()
+  await expect(page).toHaveURL(new RegExp(`from=${year}-01-01`))
+  await expect.poll(() => log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes(`from=${year}-01-01`))).toBe(true)
+  await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', `/api/ra/monitoring/register.xlsx?kind=head_office&from=${year}-01-01`)
+
+  await page.getByLabel('Assessment date', { exact: true }).click()
+  await page.getByRole('option', { name: 'Custom range' }).click()
+  // A custom range starts as this year so far, with a calendar for each end.
+  await expect(page).toHaveURL(new RegExp(`from=${year}-01-01&to=${year}-`))
+  await expect(page.getByRole('button', { name: `1 Jan ${year}` })).toBeVisible()
 })
 
 test('a monitoring record is read-only and offers Approval to the signer', async ({ page }) => {
@@ -379,6 +403,19 @@ test('the location incident team is required', async ({ page }) => {
   await page.getByRole('button', { name: 'Save assessment' }).click()
   await expect(page.getByText('Enter the LIC mobile number.')).toBeVisible()
   expect(saved).toBe(false)
+})
+
+test('the assessment and renewal dates are picked from a calendar', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1')
+  const date = page.getByRole('button', { name: 'Assessment date' })
+  await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  await date.click()
+  await page.getByRole('gridcell', { name: /17/ }).first().click()
+  await expect(date).toContainText('17 Mar 2025')
+  const request = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1'))
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  expect((await request).postDataJSON()).toMatchObject({ assessment_date: '2025-03-17', due_date: '2026-03-10' })
 })
 
 test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {

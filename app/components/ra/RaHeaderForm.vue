@@ -156,11 +156,9 @@ async function onSubmit() {
               name="assessment_date"
               required
             >
-              <UInputDate
+              <DatePicker
                 v-model="assessmentDate"
                 :disabled="locked"
-                locale="id-ID"
-                class="w-full"
               />
             </UFormField>
             <UFormField
@@ -168,11 +166,10 @@ async function onSubmit() {
               name="due_date"
               help="Defaults to one year after the assessment date."
             >
-              <UInputDate
+              <DatePicker
                 v-model="dueDate"
+                :min="assessmentDate"
                 :disabled="locked"
-                locale="id-ID"
-                class="w-full"
               />
             </UFormField>
           </div>

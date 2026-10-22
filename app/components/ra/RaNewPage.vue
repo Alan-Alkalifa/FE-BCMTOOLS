@@ -213,11 +213,7 @@ async function onSubmit() {
               name="assessment_date"
               required
             >
-              <UInputDate
-                v-model="assessmentDate"
-                locale="id-ID"
-                class="w-full"
-              />
+              <DatePicker v-model="assessmentDate" />
             </UFormField>
           </div>
           <p

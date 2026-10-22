@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
 import type { RaMonitorLocation, RaMonitoringFilters, RaSignoffWaiting } from '~/composables/useRa'
 
 /**
@@ -25,15 +26,18 @@ function text(name: string) {
   return typeof value === 'string' && value ? value : undefined
 }
 
-const LEVEL_FILTERS = [...RA_LEVELS, 'none'] as const
-const STATES = ['approved', 'draft', 'in_signoff', 'none'] as const
+// --- filters, kept in the URL so a filtered view can be shared -------------------------------
+
+type Period = 'all' | 'year' | '12m' | 'custom'
 
 const filters = computed<RaMonitoringFilters>(() => ({
   kind: ra.value.kind,
   q: text('q'),
   region: text('region'),
-  level: LEVEL_FILTERS.includes(text('level') as RaLevel) ? text('level') as RaMonitoringFilters['level'] : undefined,
-  state: STATES.includes(text('state') as (typeof STATES)[number]) ? text('state') as RaMonitoringFilters['state'] : undefined,
+  level: (LEVEL_FILTERS.includes(text('level') as RaLevel) ? text('level') as RaMonitoringFilters['level'] : undefined),
+  state: (STATES.includes(text('state') as (typeof STATES)[number]) ? text('state') as RaMonitoringFilters['state'] : undefined),
+  from: text('from'),
+  to: text('to'),
 }))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 const paged = computed(() => ({ ...filters.value, page: page.value, per_page: PER_PAGE }))
@@ -41,6 +45,43 @@ const paged = computed(() => ({ ...filters.value, page: page.value, per_page: PE
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
 }
+
+// Today in WIB, so "This year" and "Last 12 months" don't shift a day early in the morning.
+const today = todayIn('Asia/Jakarta')
+const yearStart = `${today.year}-01-01`
+const yearAgo = today.subtract({ years: 1 }).toString()
+const period = computed<Period>({
+  get: () => {
+    const { from, to } = filters.value
+    if (!from && !to) return 'all'
+    if (from === yearStart && !to) return 'year'
+    if (from === yearAgo && !to) return '12m'
+    return 'custom'
+  },
+  set: (value) => {
+    if (value === 'all') return setQuery({ from: undefined, to: undefined })
+    if (value === 'year') return setQuery({ from: yearStart, to: undefined })
+    if (value === '12m') return setQuery({ from: yearAgo, to: undefined })
+    setQuery({ from: filters.value.from ?? yearStart, to: filters.value.to ?? today.toString() })
+  },
+})
+const periodItems = [
+  { label: 'All dates', value: 'all' as const },
+  { label: 'This year', value: 'year' as const },
+  { label: 'Last 12 months', value: '12m' as const },
+  { label: 'Custom range', value: 'custom' as const },
+]
+const fromDate = computed<CalendarDate | undefined>({
+  get: () => filters.value.from ? parseDate(filters.value.from) : undefined,
+  set: (value) => setQuery({ from: value?.toString() }),
+})
+const toDate = computed<CalendarDate | undefined>({
+  get: () => filters.value.to ? parseDate(filters.value.to) : undefined,
+  set: (value) => setQuery({ to: value?.toString() }),
+})
+
+const LEVEL_FILTERS = [...RA_LEVELS, 'none'] as const
+const STATES = ['approved', 'draft', 'in_signoff', 'none'] as const
 
 const level = computed<string>({
   get: () => filters.value.level ?? 'any',
@@ -72,6 +113,8 @@ const regionItems = computed(() => [
   ...(regionData.value?.items ?? []).map((name) => ({ label: name, value: name })),
 ])
 
+// RA uses region filter instead of department filter
+
 const search = ref(filters.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(search, (value) => {
@@ -82,10 +125,10 @@ watch(search, (value) => {
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state))
+const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.from || filters.value.to))
 function clearFilters() {
   search.value = ''
-  router.replace({ query: { tab: route.query.tab } })
+  router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined } })
 }
 
 // --- data ------------------------------------------------------------------------------------
@@ -93,7 +136,8 @@ function clearFilters() {
 const overview = useRaOverview(filters)
 const renewals = useRaRenewals(paged)
 const register = useRaRegister(paged)
-const bottlenecks = useRaBottlenecks(computed(() => ({ kind: ra.value.kind, q: filters.value.q, page: page.value, per_page: PER_PAGE })))
+const bottlenecks = useRaBottlenecks(paged)
+const stepAverages = useRaBottlenecksStepAverages(filters)
 
 const places = computed(() => ra.value.location.lowerPlural)
 const cards = computed(() => {
@@ -105,6 +149,7 @@ const cards = computed(() => {
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
     { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA in force past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
+    { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
   ] as const
 })
 
@@ -122,6 +167,11 @@ const monthPoints = computed(() =>
   (overview.data.value?.approved_per_month ?? []).map((row) => ({ month: row.month, value: row.assessments })),
 )
 
+const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((row) => row.approvals > 0 && row.average_working_days !== null))
+const stepBars = computed(() =>
+  stepRows.value.map((row) => ({ label: raSignoffLabel(row.step as RaSignoffRole, ra.value.signoffRoles), value: row.average_working_days ?? 0 })),
+)
+
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
 }
@@ -137,6 +187,11 @@ const monthSummary = computed(() => {
   const total = monthPoints.value.reduce((sum, row) => sum + row.value, 0)
   const top = [...monthPoints.value].sort((a, b) => b.value - a.value)[0]
   return top && total ? `${plural(total, 'RA')} approved in the last 12 months; the most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
+})
+const stepSummary = computed(() => {
+  const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
+  const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
+  return slowest ? `Slowest step: ${raSignoffLabel(slowest.step as RaSignoffRole, ra.value.signoffRoles)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -157,9 +212,10 @@ function stepLabel(role: string) {
 const locationColumn = computed(() => ra.value.location.single)
 const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
-  { id: 'approved', header: 'RA in force' },
+  { id: 'level', header: 'Highest residual' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { accessorKey: 'days_left', header: 'Due' },
+  { id: 'lic', header: 'LIC' },
   { id: 'renewal', header: 'Renewal' },
 ])
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
@@ -169,12 +225,15 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Being worked on' },
   { accessorKey: 'assessment_count', header: 'RAs', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { id: 'lic', header: 'LIC' },
 ])
 const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
   { accessorKey: 'step', header: 'Current step' },
   { id: 'signer', header: 'Signer' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
+  { accessorKey: 'reminders_sent', header: 'Reminders' },
+  { accessorKey: 'escalated_at', header: 'Escalated' },
   { accessorKey: 'working_days_in_signoff', header: 'In sign-off' },
 ])
 
@@ -207,13 +266,30 @@ function record(id: number) {
         role="search"
         aria-label="Monitoring filters"
       >
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Location or address'"
-          :aria-label="`Search ${ra.location.lowerPlural}`"
-          class="w-full sm:w-64"
+        <!-- Period: the assessment date of the RAs counted -->
+        <USelectMenu
+          v-model="period"
+          value-key="value"
+          :items="periodItems"
+          :search-input="false"
+          class="w-40"
+          aria-label="Assessment date"
         />
+        <template v-if="period === 'custom'">
+          <DatePicker
+            v-model="fromDate"
+            class="w-40"
+            placeholder="From"
+            aria-label="From"
+          />
+          <DatePicker
+            v-model="toDate"
+            class="w-40"
+            placeholder="To"
+            aria-label="To"
+          />
+        </template>
+
         <USelectMenu
           v-if="ra.hasRegion"
           v-model="region"
@@ -237,6 +313,23 @@ function record(id: number) {
           :search-input="false"
           class="w-48"
           aria-label="State"
+        />
+        <!-- TODO: Add department filter when backend supports it
+        <USelectMenu
+          v-model="department"
+          value-key="value"
+          :items="departmentItems"
+          class="w-52"
+          aria-label="Department"
+        />
+        -->
+
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Location or address'"
+          :aria-label="`Search ${ra.location.lowerPlural}`"
+          class="w-full sm:w-64"
         />
         <UButton
           v-if="filtered"
@@ -331,14 +424,25 @@ function record(id: number) {
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap gap-2 border-b border-default p-4">
-            <UBadge
-              v-for="bucket in (['overdue', 'due_30', 'due_90'] as const)"
-              :key="bucket"
-              :color="raRenewalBucket[bucket].color"
-              variant="subtle"
-              :icon="raRenewalBucket[bucket].icon"
-              :label="`${raRenewalBucket[bucket].label}: ${renewals.data.value?.counts?.[bucket] ?? 0}`"
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+            <div class="flex flex-wrap gap-2">
+              <UBadge
+                v-for="bucket in (['overdue', 'due_30', 'due_90'] as const)"
+                :key="bucket"
+                :color="raRenewalBucket[bucket].color"
+                variant="subtle"
+                :icon="raRenewalBucket[bucket].icon"
+                :label="`${raRenewalBucket[bucket].label}: ${renewals.data.value?.counts?.[bucket] ?? 0}`"
+              />
+            </div>
+            <UButton
+              :to="raExportUrl('renewals', filters)"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
             />
           </div>
           <UTable
@@ -361,11 +465,17 @@ function record(id: number) {
                 {{ row.original.location.region }}
               </p>
             </template>
-            <template #approved-cell="{ row }">
-              <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
-              <p class="text-xs text-muted">
-                {{ formatDate(row.original.approved?.approved_at) || '—' }}
-              </p>
+            <template #level-cell="{ row }">
+              <StatusBadge
+                v-if="row.original.approved?.highest_residual_level"
+                :scale="raRiskLevel"
+                :value="row.original.approved.highest_residual_level"
+                size="sm"
+              />
+              <span
+                v-else
+                class="text-muted"
+              >Not rated</span>
             </template>
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) }}
@@ -379,6 +489,11 @@ function record(id: number) {
               />
               <p class="mt-1 text-xs text-muted">
                 {{ daysLeft(row.original) }}
+              </p>
+            </template>
+            <template #lic-cell="{ row }">
+              <p class="max-w-56 truncate">
+                {{ row.original.lic_name || '—' }}
               </p>
             </template>
             <template #renewal-cell="{ row }">
@@ -420,9 +535,20 @@ function record(id: number) {
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <p class="border-b border-default p-4 text-sm text-muted">
-            {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}
-          </p>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+            <p class="text-sm text-muted">
+              {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}
+            </p>
+            <UButton
+              :to="raExportUrl('register', filters)"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+            />
+          </div>
           <UTable
             :data="register.data.value?.items ?? []"
             :columns="registerColumns"
@@ -463,6 +589,12 @@ function record(id: number) {
               >
                 {{ refLabel(row.original.approved) }}
               </NuxtLink>
+              <p
+                v-if="row.original.approved"
+                class="text-xs text-muted"
+              >
+                {{ formatDate(row.original.approved.assessment_date) || '—' }}
+              </p>
               <span
                 v-else
                 class="text-muted"
@@ -483,11 +615,57 @@ function record(id: number) {
                   size="sm"
                 />
                 <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
+                <p
+                  v-if="row.original.open.current_signoff_role"
+                  class="mt-1 text-xs text-muted"
+                >
+                  {{ stepLabel(row.original.open.current_signoff_role) }}
+                </p>
               </NuxtLink>
               <span
                 v-else
                 class="text-muted"
               >—</span>
+            </template>
+            <template #assessment_count-cell="{ row }">
+              <UPopover :content="{ align: 'end' }">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  :label="String(row.original.assessment_count)"
+                  :aria-label="`RA history of ${row.original.location.name}`"
+                />
+                <template #content>
+                  <ul class="w-72 divide-y divide-default text-sm">
+                    <li
+                      v-for="item in row.original.history"
+                      :key="item.id"
+                    >
+                      <NuxtLink
+                        :to="record(item.id)"
+                        class="flex items-center justify-between gap-2 px-3 py-2 hover:bg-elevated/50"
+                      >
+                        <span>
+                          <span class="font-mono text-xs">{{ refLabel(item) }}</span>
+                          <span class="block text-xs text-muted">{{ formatDate(item.assessment_date) || '—' }}</span>
+                        </span>
+                        <StatusBadge
+                          :scale="raStatus"
+                          :value="item.status"
+                          size="sm"
+                        />
+                      </NuxtLink>
+                    </li>
+                  </ul>
+                </template>
+              </UPopover>
+            </template>
+            <template #lic-cell="{ row }">
+              <p class="max-w-56 truncate">
+                {{ row.original.lic_name || '—' }}
+              </p>
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
@@ -506,62 +684,99 @@ function record(id: number) {
       </template>
 
       <template #bottlenecks>
-        <UCard
-          class="mt-4"
-          :ui="{ body: 'p-0 sm:p-0' }"
-        >
-          <p class="border-b border-default p-4 text-sm text-muted">
-            RAs in sign-off, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
-          </p>
-          <UTable
-            :data="bottlenecks.data.value?.items ?? []"
-            :columns="bottleneckColumns"
-            :loading="bottlenecks.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
-          >
-            <template #assessment-cell="{ row }">
-              <NuxtLink
-                :to="record(row.original.id)"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ row.original.location.name }}
-              </NuxtLink>
-              <p class="font-mono text-xs text-muted">
-                {{ refLabel(row.original) }}
-              </p>
-            </template>
-            <template #step-cell="{ row }">
-              {{ stepLabel(row.original.step) }}
-            </template>
-            <template #signer-cell="{ row }">
-              {{ row.original.signer?.name ?? '—' }}
-              <p
-                v-if="row.original.signer?.job_title"
-                class="text-xs text-muted"
-              >
-                {{ row.original.signer.job_title }}
-              </p>
-            </template>
-            <template #working_days_waiting-cell="{ row }">
-              <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ raWaiting(row.original.working_days_waiting) }}</span>
-            </template>
-            <template #working_days_in_signoff-cell="{ row }">
-              {{ raWaiting(row.original.working_days_in_signoff) }}
-            </template>
-            <template #empty>
-              <p class="py-6 text-center text-sm text-muted">
-                No RA is in sign-off.
-              </p>
-            </template>
-          </UTable>
-          <TablePagination
-            :page="page"
-            :per-page="PER_PAGE"
-            :total="bottlenecks.data.value?.total ?? 0"
-            :to="pageTo"
-            label="Bottlenecks"
+        <div class="mt-4 space-y-4">
+          <SccaBarChart
+            title="Average working days per sign-off step"
+            measure="Working days"
+            :digits="1"
+            :items="stepBars"
+            :summary="stepSummary"
+            :loading="stepAverages.status.value === 'pending' && !stepAverages.data.value"
+            :empty="stepBars.length ? null : 'No sign-off step was approved in this period, so there are no averages yet. They appear as approvals come in.'"
           />
-        </UCard>
+
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+              <p class="text-sm text-muted">
+                RAs in sign-off, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
+              </p>
+              <UButton
+                :to="raExportUrl('bottlenecks', filters)"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+            </div>
+            <UTable
+              :data="bottlenecks.data.value?.items ?? []"
+              :columns="bottleneckColumns"
+              :loading="bottlenecks.status.value === 'pending'"
+              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            >
+              <template #assessment-cell="{ row }">
+                <NuxtLink
+                  :to="record(row.original.id)"
+                  class="font-medium text-primary hover:underline"
+                >
+                  {{ row.original.location.name }}
+                </NuxtLink>
+                <p class="font-mono text-xs text-muted">
+                  {{ refLabel(row.original) }}
+                </p>
+              </template>
+              <template #step-cell="{ row }">
+                {{ stepLabel(row.original.step) }}
+              </template>
+              <template #signer-cell="{ row }">
+                {{ row.original.signer?.name ?? '—' }}
+                <p
+                  v-if="row.original.signer?.job_title"
+                  class="text-xs text-muted"
+                >
+                  {{ row.original.signer.job_title }}
+                </p>
+              </template>
+              <template #working_days_waiting-cell="{ row }">
+                <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ raWaiting(row.original.working_days_waiting) }}</span>
+              </template>
+              <template #reminders_sent-cell="{ row }">
+                {{ row.original.reminders_sent }}
+                <p
+                  v-if="row.original.escalated_at"
+                  class="text-xs text-error"
+                >
+                  Escalated {{ formatDate(row.original.escalated_at) }}
+                </p>
+              </template>
+              <template #escalated_at-cell="{ row }">
+                <StatusBadge
+                  v-if="row.original.level !== 'ok'"
+                  :scale="raWaitLevel"
+                  :value="row.original.level"
+                  size="sm"
+                />
+              </template>
+              <template #working_days_in_signoff-cell="{ row }">
+                {{ raWaiting(row.original.working_days_in_signoff) }}
+              </template>
+              <template #empty>
+                <p class="py-6 text-center text-sm text-muted">
+                  No RA is in sign-off.
+                </p>
+              </template>
+            </UTable>
+            <TablePagination
+              :page="page"
+              :per-page="PER_PAGE"
+              :total="bottlenecks.data.value?.total ?? 0"
+              :to="pageTo"
+              label="Bottlenecks"
+            />
+          </UCard>
+        </div>
       </template>
     </UTabs>
   </AppPage>

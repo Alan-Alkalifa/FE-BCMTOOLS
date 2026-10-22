@@ -432,6 +432,9 @@ function waitingRow(branch: boolean, step: string, signerId: number, days: numbe
     working_days_in_signoff: days + 2,
     submitted_at: '2026-10-08T03:00:00Z',
     submitted_by: 'Rina Kartika',
+    reminders_sent: 0,
+    escalated_at: null,
+    level: days >= 7 ? 'escalated' : days >= 3 ? 'reminder' : 'ok',
   }
 }
 
@@ -453,7 +456,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     if (name === 'monitoring/overview') {
       await route.fulfill({
         json: {
-          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0 },
+          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0, stuck_approvals: 0 },
           by_level: [{ level: 'Low', locations: 0 }, { level: 'Medium', locations: 1 }, { level: 'High', locations: 0 }, { level: 'none', locations: 1 }],
           approved_per_month: Array.from({ length: 12 }, (_, index) => ({
             month: `${index < 2 ? 2025 : 2026}-${String(((index + 10) % 12) + 1).padStart(2, '0')}`,
@@ -469,6 +472,11 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
       await route.fulfill({ json: paged(rows) })
     } else if (name === 'monitoring/regions') {
       await route.fulfill({ json: { items: branch ? ['Jabodetabek', 'Region Jabar'] : [] } })
+    } else if (name === 'bottlenecks/step-averages') {
+      // Average working days per sign-off step over the approvals in the period.
+      await route.fulfill({
+        json: { items: roles.map((role, index) => ({ step: role, step_title: role, approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
+      })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
     } else if (name === 'approvals/inbox') {
