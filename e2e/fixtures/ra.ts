@@ -109,11 +109,15 @@ export const SUMMARY = {
 
 /** BCM Tools users offered as signers. */
 export const USERS = [
-  { id: 1, display_name: 'Legiran', email: 'legiran@example.com', job_title: 'LIC', department: 'SPAPM' },
-  { id: 2, display_name: 'Rina Kartika', email: 'rina@example.com', job_title: 'Head of Retail Operations', department: 'Retail' },
-  { id: 3, display_name: 'Budi Hartono', email: 'budi@example.com', job_title: 'Alternate LICOM', department: 'GA' },
-  { id: 4, display_name: 'Dewi Lestari', email: 'dewi@example.com', job_title: 'Head of BCM', department: 'BCM' },
+  { id: 1, display_name: 'Legiran', email: 'legiran@example.com', job_title: 'LIC', department: 'SPAPM', mobile_phone: '081312262739' },
+  { id: 2, display_name: 'Rina Kartika', email: 'rina@example.com', job_title: 'Head of Retail Operations', department: 'Retail', mobile_phone: null },
+  { id: 3, display_name: 'Budi Hartono', email: 'budi@example.com', job_title: 'Alternate LICOM', department: 'GA', mobile_phone: '0812-3333-4444' },
+  { id: 4, display_name: 'Dewi Lestari', email: 'dewi@example.com', job_title: 'Head of BCM', department: 'BCM', mobile_phone: '0811-5555-6666' },
 ]
+/** The location incident team of the mocked RAs: Legiran (LIC) and Budi Hartono (LICOM). */
+const LIC_ID = 1
+const LICOM_ID = 3
+const TEAM_ROLES: Record<string, 'lic' | 'licom'> = { prepared_by: 'lic', reviewed_by: 'licom' }
 const HO_ROLES = ['prepared_by', 'acknowledged_by_unit', 'reviewed_by', 'acknowledged_by_bcm']
 const BRANCH_ROLES = ['prepared_by', 'approved_by', 'reviewed_by']
 
@@ -134,6 +138,10 @@ type MockSignoff = {
 }
 type MockAssessment = {
   kind: string
+  lic_user: ReturnType<typeof userRef>
+  lic_name: string | null
+  licom_user: ReturnType<typeof userRef>
+  licom_name: string | null
   status: string
   is_complete: boolean
   current_signoff_role: string | null
@@ -160,13 +168,26 @@ function readyToSubmit(assessment: MockAssessment) {
   assessment.signoffs = roles.map((role, index) => signoffRow(role, index + 1))
 }
 
-function signoffRow(role: string, signerId: number | null, designation?: string | null): MockSignoff {
+/** The team picked on the assessment, and the two signers who follow it (as the backend does). */
+function setTeam(assessment: MockAssessment, member: 'lic' | 'licom', userId: number) {
+  const user = userRef(userId)
+  assessment[`${member}_user`] = user
+  assessment[`${member}_name`] = user?.name ?? null
+  for (const [role, follows] of Object.entries(TEAM_ROLES)) {
+    if (follows !== member) continue
+    const index = assessment.signoffs.findIndex((row) => row.role === role)
+    if (index >= 0) assessment.signoffs[index] = signoffRow(role, userId)
+    else assessment.signoffs.push(signoffRow(role, userId))
+  }
+}
+
+function signoffRow(role: string, signerId: number | null): MockSignoff {
   const signer = userRef(signerId)
   return {
     role,
     signer,
     name: signer?.name ?? null,
-    designation: designation ?? signer?.job_title ?? null,
+    designation: signer?.job_title ?? null,
     signed_on: null,
     approved_at: null,
     approved_by: null,
@@ -194,6 +215,8 @@ export interface RaMockLog {
   deletedLocations: number[]
   /** Paths and queries of GET /api/ra/monitoring/* and /api/ra/approvals/*. */
   workflow: string[]
+  /** Query strings of GET /api/ra/locations (the register and the pickers). */
+  locationQueries: string[]
 }
 
 /**
@@ -204,9 +227,13 @@ export async function mockRa(
   page: Page,
   options: { locationInUse?: boolean, ready?: boolean, status?: 'in_signoff' | 'approved' } = {},
 ) {
-  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [] }
+  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [] }
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
   const branchCurrent = structuredClone(BRANCH_ASSESSMENT) as typeof BRANCH_ASSESSMENT & MockAssessment
+  for (const assessment of [current, branchCurrent]) {
+    setTeam(assessment, 'lic', LIC_ID)
+    setTeam(assessment, 'licom', LICOM_ID)
+  }
   if (options.ready || options.status) readyToSubmit(current)
   if (options.status === 'in_signoff') setStatus(current, 'in_signoff', 'prepared_by')
   if (options.status === 'approved') setStatus(current, 'approved')
@@ -264,8 +291,32 @@ export async function mockRa(
       await route.fulfill({ json: id === 1 || id === BRANCH_ID ? target : added })
       return
     }
-    const branch = url.searchParams.get('kind') === 'branch'
-    await route.fulfill({ json: { items: branch ? [branchLocation, ...PINNED_BRANCHES] : LOCATIONS } })
+    log.locationQueries.push(url.search)
+    const params = url.searchParams
+    const kind = params.get('kind') ?? 'head_office'
+    const branches = [branchLocation, ...PINNED_BRANCHES]
+    const q = (params.get('q') ?? '').toLowerCase()
+    const items = (kind === 'all' ? [...LOCATIONS, ...branches] : kind === 'branch' ? branches : LOCATIONS)
+      .filter((row) => !q || [row.name, row.region, row.address].some((text) => text?.toLowerCase().includes(q)))
+      .filter((row) => !params.get('region') || row.region === params.get('region'))
+      .filter((row) => !params.get('active') || String(row.is_active) === params.get('active'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    if (!params.get('page')) {
+      await route.fulfill({ json: { items } })
+      return
+    }
+    // The register pages on the server, like the API: {items, page, per_page, total, pages}.
+    const page = Number(params.get('page'))
+    const perPage = Number(params.get('per_page') ?? 25)
+    await route.fulfill({
+      json: {
+        items: items.slice((page - 1) * perPage, page * perPage),
+        page,
+        per_page: perPage,
+        total: items.length,
+        pages: Math.max(1, Math.ceil(items.length / perPage)),
+      },
+    })
   })
   await page.route(/\/api\/ra\/assessments/, async (route) => {
     const url = new URL(route.request().url())
@@ -312,11 +363,17 @@ export async function mockRa(
       return
     }
     if (method === 'PUT' && !url.pathname.endsWith('/ratings')) {
-      const body = route.request().postDataJSON() as { signoffs?: { role: string, signer_id: number | null, designation: string | null }[] }
+      const body = route.request().postDataJSON() as {
+        signoffs?: { role: string, signer_id: number | null }[]
+        lic_user_id?: number
+        licom_user_id?: number
+      }
+      if (body.lic_user_id) setTeam(assessment, 'lic', body.lic_user_id)
+      if (body.licom_user_id) setTeam(assessment, 'licom', body.licom_user_id)
       if (body.signoffs) {
         log.signoff.push(['signers', body])
         for (const item of body.signoffs) {
-          const row = signoffRow(item.role, item.signer_id, item.designation)
+          const row = signoffRow(item.role, item.signer_id)
           const index = assessment.signoffs.findIndex((existing) => existing.role === item.role)
           if (index >= 0) assessment.signoffs[index] = row
           else assessment.signoffs.push(row)
@@ -411,7 +468,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
       const rows = state === 'none' ? [locations[1]] : state === 'approved' ? [locations[0]] : state ? [] : locations
       await route.fulfill({ json: paged(rows) })
     } else if (name === 'monitoring/regions') {
-      await route.fulfill({ json: { items: branch ? ['Jabodetabek'] : [] } })
+      await route.fulfill({ json: { items: branch ? ['Jabodetabek', 'Region Jabar'] : [] } })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
     } else if (name === 'approvals/inbox') {

@@ -548,6 +548,7 @@ SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), V
 |---|---|
 | RA | Risk Assessment of a work location (office building) |
 | RA Branch | The same assessment for a branch, from the Cabang workbook: one residual risk per hazard and three sign-offs |
+| Locations | The menu group for the places RA and RA Branch assess: the register of head office buildings and branches, the location map, crises and the crisis guidebook |
 | LRP | Location Risk Profile, the RA scorecard workbook |
 | LIC | Location Incident Coordinator |
 | LICOM | Location Incident Commander |
@@ -571,7 +572,7 @@ RA sign-off statuses use `raStatus`: Draft (`neutral`), Returned (`warning`), In
 
 RA risk levels use `raRiskLevel` in `app/utils/ra.ts`: High (`error`), Medium (`warning`), Low (`info`), Not applicable (`neutral`). Heat-map cells add a light tint of the same semantic colour (`bg-error/10`, `bg-warning/10`, `bg-info/5`), always with the level badge, so the level never depends on colour alone. Workbook content (hazard names, rating guidance, the sign-off statement) stays in Indonesian as data; the interface around it is English.
 
-RA and RA Branch share their screens (`app/components/ra/Ra*Page.vue`, used by thin pages under `pages/ra/` and `pages/ra-branch/`). Anything that differs on screen — titles, "location" or "branch", the LIC/LICOM hints, the sign-off roles, the region field — comes from `RA_MODULES` in `app/utils/ra.ts` through `useRaModule()`; don't branch on the route in a component. Add and view buttons of a list sit in the table card's toolbar, right above the table, not in the page header. Like SCCA, each module has **Monitoring** (read-only), **Manage** (drafts) and **Approval** (inbox, history, BCM board); build links with `raPath()` / `raRecordPath()`, never by hand. On the Hazards tab the user picks a hazard group first (one card per category, with its rated count), then a hazard of that group.
+RA and RA Branch share their screens (`app/components/ra/Ra*Page.vue`, used by thin pages under `pages/ra/` and `pages/ra-branch/`). Anything that differs on screen — titles, "location" or "branch", the LIC/LICOM hints, the sign-off roles, the region field — comes from `RA_MODULES` in `app/utils/ra.ts` through `useRaModule()`; don't branch on the route in a component. The places both assess live in the **Locations** menu group (`/locations`, `/locations/map`, `/crises`, `/crises/guidebook`): one register for buildings and branches with a Type filter, and a location page that provides its own kind (`raKindKey`) so its children still say *building* or *branch*. On Manage, **View locations** and **New assessment** sit in the top bar, as in SCCA; the Locations register keeps **Location map** and **Add location** in its table toolbar. Reports download only once an RA is approved. Like SCCA, each module has **Monitoring** (read-only), **Manage** (drafts) and **Approval** (inbox, history, BCM board); build links with `raPath()` / `raRecordPath()`, never by hand. On the Hazards tab the user picks a hazard group first (one card per category, with its rated count), then a hazard of that group.
 
 ---
 

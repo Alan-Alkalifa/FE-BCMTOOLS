@@ -146,7 +146,7 @@ async function onSubmit() {
     <div class="flex justify-end gap-2">
       <UButton
         v-if="!location"
-        :to="cancelTo ?? `${ra.base}/locations`"
+        :to="cancelTo ?? LOCATIONS_PATH"
         color="neutral"
         variant="outline"
         label="Cancel"

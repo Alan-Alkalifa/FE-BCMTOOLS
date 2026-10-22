@@ -121,11 +121,9 @@ async function download(format: RaReportFormat) {
     downloading.value = null
   }
 }
-/** Both downloads show the saved assessment; the PDF marks one that is not approved yet. */
+/** Reports are for approved RAs only (the API refuses the others with 409). */
+const canDownload = computed(() => assessment.value?.status === 'approved')
 const downloadItems = computed<DropdownMenuItem[][]>(() => [
-  [
-    { type: 'label', label: dirty.value ? 'Save first: downloads show the saved assessment' : 'The saved assessment' },
-  ],
   [
     { label: 'PDF report', description: 'Printable, laid out like the workbook', icon: 'i-lucide-file-text', onSelect: () => download('pdf') },
     { label: 'Excel workbook', description: `The official ${ra.value.kind === 'branch' ? 'Cabang' : 'HO'} RA workbook, filled in`, icon: 'i-lucide-file-spreadsheet', onSelect: () => download('xlsx') },
@@ -179,7 +177,7 @@ async function removeAssessment() {
         label="Open in Approval"
       />
       <UDropdownMenu
-        v-if="assessment"
+        v-if="canDownload"
         :items="downloadItems"
         :content="{ align: 'end' }"
       >

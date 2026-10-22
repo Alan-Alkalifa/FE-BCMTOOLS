@@ -9,8 +9,10 @@ test('the home page links to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'RA Branch' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('main').getByRole('link', { name: 'Branches' }).click()
-  await expect(page).toHaveURL(/\/ra-branch\/locations$/)
+  const main = page.getByRole('main')
+  await expect(main.getByRole('link', { name: 'Branches' })).toHaveCount(0)
+  await main.locator('a[href="/ra-branch/monitoring"]').click()
+  await expect(page).toHaveURL(/\/ra-branch\/monitoring$/)
 })
 
 test('the branch drafts show their region', async ({ page }) => {
@@ -21,7 +23,7 @@ test('the branch drafts show their region', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'RAB-2025-0001' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('Region Jabar')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Branch' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View branches' })).toHaveAttribute('href', '/ra-branch/locations')
+  await expect(page.getByRole('link', { name: 'View branches' })).toHaveAttribute('href', '/locations?type=branch')
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra-branch/manage/new')
 })
 
@@ -73,13 +75,15 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByRole('button', { name: 'Save signers' }).click()
   await expect(page.getByText('Signers saved').first()).toBeVisible()
+  // The BOSM (LIC) prepares and the NRSOH (LICOM) reviews: only the branch manager is sent.
   const roles = (log.signoff[0]![1] as { signoffs: { role: string }[] }).signoffs.map((row) => row.role)
-  expect(roles).toEqual(['prepared_by', 'approved_by', 'reviewed_by'])
+  expect(roles).toEqual(['approved_by'])
+  await expect(page.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
 })
 
 test('a branch has a region, occupants, a recovery team and a call tree', async ({ page }) => {
   await mockRa(page)
-  await page.goto(`/ra-branch/locations/${BRANCH_ID}`)
+  await page.goto(`/locations/${BRANCH_ID}`)
   await expect(page.getByRole('textbox', { name: /Region/ })).toHaveValue('Region Jabar', { timeout: 60_000 })
   for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(page.getByRole('tab', { name })).toBeVisible()
@@ -101,7 +105,10 @@ test('RA Branch has its own Monitoring, Manage and Approval', async ({ page }) =
 
 test('adding a branch needs a region and sends the branch kind', async ({ page }) => {
   const log = await mockRa(page)
+  // The old RA Branch link lands on Add location with the type fixed to branch.
   await page.goto('/ra-branch/locations/new')
+  await expect(page).toHaveURL(/\/locations\/new\?type=branch$/, { timeout: 60_000 })
+  await expect(page.getByRole('radio', { name: /Branch/ })).toHaveCount(0)
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page.getByText('Enter the region.')).toBeVisible()
@@ -109,7 +116,7 @@ test('adding a branch needs a region and sends the branch kind', async ({ page }
   await page.getByRole('textbox', { name: /Region/ }).fill('Region Jabar')
   await expect(page.getByText('Enter the region.')).toHaveCount(0)
   await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page).toHaveURL(/\/ra-branch\/locations\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', region: 'Region Jabar' })
 })
 

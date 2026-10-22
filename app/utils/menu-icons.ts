@@ -37,6 +37,7 @@ export const MENU_ICONS = [
   'i-lucide-bell',
   'i-lucide-flag',
   'i-lucide-map',
+  'i-lucide-map-pinned',
   'i-lucide-link',
   'i-lucide-settings',
   'i-lucide-users',

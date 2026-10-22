@@ -23,7 +23,6 @@ const snapshot = ref('')
 interface SignerState {
   signer_id: number | null
   signer: RaUserRef | null
-  designation: string
 }
 
 function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
@@ -32,7 +31,6 @@ function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
     return [value, {
       signer_id: saved?.signer?.id ?? null,
       signer: saved?.signer ?? null,
-      designation: saved?.designation ?? '',
     }]
   }))
 }
@@ -40,7 +38,7 @@ function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
 const state = reactive<Record<string, SignerState>>(fromAssessment(props.assessment))
 
 function key(values: Record<string, SignerState>) {
-  return JSON.stringify(Object.fromEntries(Object.entries(values).map(([role, item]) => [role, [item.signer_id, item.designation]])))
+  return JSON.stringify(Object.fromEntries(Object.entries(values).map(([role, item]) => [role, item.signer_id])))
 }
 
 function reset(assessment: RaAssessment) {
@@ -60,12 +58,9 @@ const editing = computed(() => props.assessment.can_edit)
 const missingSigners = computed(() => roles.value.filter(({ value }) => !state[value]?.signer_id))
 const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && !missingSigners.value.length)
 
-/** Picking a signer fills the designation with their job title, unless one was typed. */
+/** The designation is the picked signer's job title in the user directory. */
 function onPicked(role: string, picked: RaUserRef | null) {
-  const item = state[role]!
-  const previousTitle = item.signer?.job_title ?? ''
-  item.signer = picked
-  if (!item.designation || item.designation === previousTitle) item.designation = picked?.job_title ?? ''
+  state[role]!.signer = picked
   fieldErrors.value = Object.fromEntries(
     Object.entries(fieldErrors.value).filter(([field]) => !field.startsWith(`signoffs.${role}`)),
   )
@@ -73,17 +68,20 @@ function onPicked(role: string, picked: RaUserRef | null) {
 
 function clearSigner(role: string) {
   const item = state[role]!
-  if (item.designation === (item.signer?.job_title ?? '')) item.designation = ''
   item.signer_id = null
   item.signer = null
 }
 
+/** Prepared by is the LIC and Reviewed by the LICOM, both picked on the Details tab. */
+function teamMember(role: string) {
+  const member = RA_TEAM_SIGNOFF_ROLES[role]
+  return member ? member.toUpperCase() : null
+}
+
 function payload(): RaSignoffInput[] {
-  return roles.value.map(({ value }) => ({
-    role: value,
-    signer_id: state[value]!.signer_id,
-    designation: state[value]!.designation.trim() || null,
-  }))
+  return roles.value
+    .filter(({ value }) => !teamMember(value))
+    .map(({ value }) => ({ role: value, signer_id: state[value]!.signer_id }))
 }
 
 function fail(error: unknown, fallback: string) {
@@ -345,6 +343,25 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
               class="space-y-4"
             >
               <UFormField
+                v-if="teamMember(role.value)"
+                label="Signer"
+                :name="`signoffs.${role.value}`"
+                :help="`The ${teamMember(role.value)}: change them on the Details tab.`"
+                :error="fieldErrors[`signoffs.${role.value}`]"
+                required
+              >
+                <UInput
+                  :model-value="state[role.value]!.signer?.name ?? ''"
+                  :placeholder="`Pick the ${teamMember(role.value)} on the Details tab`"
+                  :aria-label="`Signer: ${role.label}`"
+                  icon="i-lucide-lock"
+                  readonly
+                  disabled
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                v-else
                 label="Signer"
                 :name="`signoffs.${role.value}`"
                 :error="fieldErrors[`signoffs.${role.value}`] ?? fieldErrors[`signoffs.${role.value}.signer_id`]"
@@ -374,10 +391,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
               </UFormField>
               <UFormField
                 label="Designation"
-                help="Their job title, unless you change it."
+                help="The signer's job title in the user directory."
               >
                 <UInput
-                  v-model="state[role.value]!.designation"
+                  :model-value="state[role.value]!.signer?.job_title ?? ''"
+                  :placeholder="state[role.value]!.signer ? 'No job title in their profile' : 'Pick a signer first'"
+                  :aria-label="`Designation: ${role.label}`"
+                  readonly
+                  disabled
                   class="w-full"
                 />
               </UFormField>

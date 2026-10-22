@@ -85,6 +85,12 @@ export const RA_SIGNOFF_ROLES = [
   { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
 ] as const
 
+/**
+ * Sign-off roles signed by the location incident team picked on the assessment (the backend's
+ * TEAM_SIGNOFF_ROLES): the LIC prepares, the LICOM reviews. The Sign-off tab shows them, read-only.
+ */
+export const RA_TEAM_SIGNOFF_ROLES: Partial<Record<string, 'lic' | 'licom'>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'BOSM' },
@@ -134,8 +140,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: false,
     hasLcp: true,
     hasRegion: false,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'Name and mobile number.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Name and mobile number.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'Signs as Prepared by.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Signs as Reviewed by.' },
     signoffRoles: RA_SIGNOFF_ROLES,
   },
   branch: {
@@ -148,8 +154,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: true,
     hasLcp: true,
     hasRegion: true,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number. Signs as Prepared by.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number. Signs as Reviewed by.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
   },
 }
@@ -457,4 +463,25 @@ export const raRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_90'
   due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
   due_90: { label: 'Due in 31–90 days', color: 'info', icon: 'i-lucide-calendar' },
   later: { label: 'Not due yet', color: 'neutral', icon: 'i-lucide-calendar-check' },
+})
+
+/** The Locations menu group: one register of buildings and branches, the map, crises. */
+export const LOCATIONS_PATH = '/locations'
+export const LOCATION_MAP_PATH = '/locations/map'
+export const CRISES_PATH = '/crises'
+export const GUIDEBOOK_PATH = '/crises/guidebook'
+
+/** A location's profile, on a tab (`map`, `contacts`, ...) when given. */
+export function locationPath(id: number, tab?: string) {
+  return `${LOCATIONS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
+}
+
+export function crisisPath(id: number) {
+  return `${CRISES_PATH}/${id}`
+}
+
+/** The register's type badge: head office building or branch. */
+export const raLocationKind = defineStatusScale<RaKind>({
+  head_office: { label: 'Head office', color: 'neutral', icon: 'i-lucide-building-2' },
+  branch: { label: 'Branch', color: 'neutral', icon: 'i-lucide-landmark' },
 })

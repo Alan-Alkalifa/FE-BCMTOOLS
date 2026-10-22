@@ -8,7 +8,7 @@ test('the home page links to the RA module', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'RA', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'Location map' })).toHaveAttribute('href', '/ra/map')
+  await expect(main.getByRole('link', { name: 'Location map' })).toHaveAttribute('href', '/locations/map')
   await expect(main.locator('a[href="/ra/manage"]')).toHaveText('Manage')
   await expect(main.locator('a[href="/ra/approval"]')).toHaveText('Approval')
   await main.locator('a[href="/ra/monitoring"]').click()
@@ -113,11 +113,12 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await page.getByRole('button', { name: /^Location\*?$/ }).click()
   await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
   await expect(page.getByText('Start from RA-2025-0001 (2025)')).toBeVisible()
-  // The location incident team of the previous cycle fills the empty team fields.
-  await expect(page.getByRole('textbox', { name: 'Name' }).first()).toHaveValue('Legiran')
+  // The location incident team of the previous cycle fills the team: users from the directory.
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
+  await expect(page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')).toContainText('Budi Hartono')
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, copy_from_id: 1, lic_name: 'Legiran', licom_name: 'Crispina Arumardi' })
+  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -205,7 +206,7 @@ test('the heat maps place hazards and open them', async ({ page }) => {
 
 test('a location with assessments cannot be deleted', async ({ page }) => {
   await mockRa(page, { locationInUse: true })
-  await page.goto('/ra/locations')
+  await page.goto('/locations')
   await expect(page.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Delete Griya CIMB Niaga 2' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete location' }).click()
@@ -223,7 +224,7 @@ test('deleting an assessment returns to the list', async ({ page }) => {
 
 test('the occupants tab shows the workbook totals and both views', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/locations/1?tab=occupants')
+  await page.goto('/locations/1?tab=occupants')
   await expect(page.getByRole('heading', { name: 'Units in this building' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('1.725', { exact: true })).toBeVisible()
   await expect(page.getByText('Showing 39 of 39 units')).toBeVisible()
@@ -240,7 +241,7 @@ test('the occupants tab shows the workbook totals and both views', async ({ page
 
 test('adding a unit validates counts and saves the whole list', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/locations/1?tab=occupants')
+  await page.goto('/locations/1?tab=occupants')
   await expect(page.getByRole('heading', { name: 'Units in this building' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Add unit' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add unit' })
@@ -260,7 +261,7 @@ test('adding a unit validates counts and saves the whole list', async ({ page })
 
 test('the recovery team needs a name on every filled row', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/locations/1?tab=team')
+  await page.goto('/locations/1?tab=team')
   await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Add member to Core Support Team' }).click()
   await page.getByRole('textbox', { name: 'Role, Core Support Team row 8' }).fill('Legal')
@@ -277,7 +278,7 @@ test('the recovery team needs a name on every filled row', async ({ page }) => {
 
 test('the call tree saves each contact with its level', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/locations/1?tab=calltree')
+  await page.goto('/locations/1?tab=calltree')
   await expect(page.getByRole('heading', { name: 'Level 3 call tree' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Remove Level 1 call tree row 1', exact: true }).click()
   await page.getByRole('button', { name: 'Save call tree' }).click()
@@ -290,16 +291,16 @@ test('the call tree saves each contact with its level', async ({ page }) => {
 
 test('adding a location opens its profile, starting with the emergency contacts', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/locations')
+  await page.goto('/locations')
   await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible({ timeout: 60_000 })
   await page.getByRole('link', { name: 'Add location' }).click()
-  await expect(page).toHaveURL(/\/ra\/locations\/new$/)
+  await expect(page).toHaveURL(/\/locations\/new$/)
   await page.getByRole('button', { name: 'Add location' }).click()
   await expect(page.getByText('Enter the building name.')).toBeVisible()
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
   await page.getByRole('button', { name: 'Add location' }).click()
-  await expect(page).toHaveURL(/\/ra\/locations\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
   await page.getByRole('button', { name: 'Add police station' }).click()
   await page.getByPlaceholder('Name').last().fill('Polsek Setiabudi')
@@ -310,7 +311,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
 
 test('the location page lists its assessments and edits its details', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/locations/1')
+  await page.goto('/locations/1')
   await expect(page.getByText('39 units · 1.725 employees · 1 assessment')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new?location_id=1')
@@ -323,24 +324,22 @@ test('the location page lists its assessments and edits its details', async ({ p
 test('the assessment links to the location profile', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByRole('link', { name: 'Open location profile' })).toHaveAttribute('href', '/ra/locations/1', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Open location profile' })).toHaveAttribute('href', '/locations/1', { timeout: 60_000 })
   await expect(page.getByRole('tab', { name: 'Occupants' })).toHaveCount(0)
 })
 
-test('Manage puts View locations and New assessment right above the table', async ({ page }) => {
+test('Manage has View locations and New assessment in the top bar', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage')
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
-  const card = page.locator('main').filter({ has: page.getByRole('table') })
-  const view = card.getByRole('link', { name: 'View locations' })
-  const create = card.getByRole('link', { name: 'New assessment' })
-  await expect(view).toHaveAttribute('href', '/ra/locations')
-  await expect(create).toHaveAttribute('href', '/ra/manage/new')
-  await expect(page.getByRole('banner').getByRole('link', { name: 'New assessment' })).toHaveCount(0)
-  const table = await page.getByRole('table').boundingBox()
-  const button = await create.boundingBox()
-  expect(button!.y + button!.height).toBeLessThanOrEqual(table!.y)
-  expect(table!.y - (button!.y + button!.height)).toBeLessThan(40)
+  await expect(page.getByRole('link', { name: 'View locations' })).toHaveAttribute('href', '/locations?type=head_office')
+  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new')
+  // In the top bar next to the bell, not in the table's toolbar.
+  const main = page.getByRole('main')
+  await expect(main.getByRole('link', { name: 'View locations' })).toHaveCount(0)
+  await expect(main.getByRole('link', { name: 'New assessment' })).toHaveCount(0)
+  const button = await page.getByRole('link', { name: 'New assessment' }).boundingBox()
+  expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
 })
 
 test('hazards are picked by group, then by hazard', async ({ page }) => {
@@ -369,16 +368,39 @@ test('hazards are picked by group, then by hazard', async ({ page }) => {
 test('the location incident team is required', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  const lic = page.getByRole('textbox', { name: /Location incident coordinator/ })
-  await expect(lic).toHaveValue('Legiran', { timeout: 60_000 })
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran', { timeout: 60_000 })
+  const phone = page.getByRole('textbox', { name: 'LIC mobile number' })
+  await expect(phone).toHaveValue('081312262739')
   let saved = false
   page.on('request', (r) => {
     if (r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1')) saved = true
   })
-  await lic.fill('')
+  await phone.fill('')
   await page.getByRole('button', { name: 'Save assessment' }).click()
-  await expect(page.getByText('Enter the LIC name.')).toBeVisible()
+  await expect(page.getByText('Enter the LIC mobile number.')).toBeVisible()
   expect(saved).toBe(false)
+})
+
+test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/manage/1')
+  const licom = page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')
+  await expect(licom).toContainText('Budi Hartono', { timeout: 60_000 })
+  await licom.click()
+  await page.getByRole('option', { name: /Dewi Lestari/ }).click()
+  // Picking someone else puts in their mobile number from the directory.
+  await expect(page.getByRole('textbox', { name: 'LICOM mobile number' })).toHaveValue('0811-5555-6666')
+  const request = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1'))
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  expect((await request).postDataJSON()).toMatchObject({ licom_user_id: 4, licom_phone: '0811-5555-6666' })
+  expect(log.signoff).toEqual([])
+
+  await page.getByRole('tab', { name: 'Sign-off' }).click()
+  const reviewed = page.getByRole('listitem').filter({ hasText: 'Step 3 of 4' })
+  await expect(reviewed.getByRole('textbox', { name: 'Signer: Reviewed by' })).toHaveValue('Dewi Lestari')
+  await expect(reviewed.getByRole('textbox', { name: 'Signer: Reviewed by' })).not.toBeEditable()
+  await expect(reviewed.getByText('The LICOM: change them on the Details tab.')).toBeVisible()
+  await expect(reviewed.getByRole('textbox', { name: 'Designation' })).toHaveValue('Head of BCM')
 })
 
 test('a new assessment without an earlier cycle asks for the team', async ({ page }) => {
@@ -386,7 +408,7 @@ test('a new assessment without an earlier cycle asks for the team', async ({ pag
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  await expect(page.getByText('Enter the LIC name.')).toBeVisible()
+  await expect(page.getByText('Choose the LIC.')).toBeVisible()
   await expect(page.getByText('Enter the LICOM mobile number.')).toBeVisible()
   expect(log.created).toHaveLength(0)
 })
@@ -396,18 +418,29 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
   await page.goto('/ra/manage/1?tab=signoff')
   await expect(page.getByText('Complete the hazards before submitting')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Submit for sign-off' })).toBeDisabled()
-  await expect(page.getByText('4 roles still need a signer.')).toBeVisible()
+  // Prepared by and Reviewed by are the LIC and LICOM picked on the Details tab.
+  await expect(page.getByText('2 roles still need a signer.')).toBeVisible()
+  const prepared = page.getByRole('listitem').filter({ hasText: 'Step 1 of 4' })
+  await expect(prepared.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
+  await expect(prepared.getByRole('textbox', { name: 'Signer: Prepared by' })).not.toBeEditable()
 
-  const step = page.getByRole('listitem').filter({ hasText: 'Step 1 of 4' })
+  const step = page.getByRole('listitem').filter({ hasText: 'Step 2 of 4' })
   await step.getByRole('combobox').or(step.getByRole('button').first()).first().click()
   await page.getByRole('option', { name: /Rina Kartika/ }).click()
-  await expect(step.getByRole('textbox', { name: 'Designation' })).toHaveValue('Head of Retail Operations')
+  // The designation is the signer's job title from the user directory; it can't be typed.
+  const designation = step.getByRole('textbox', { name: 'Designation' })
+  await expect(designation).toHaveValue('Head of Retail Operations')
+  await expect(designation).not.toBeEditable()
   await page.getByRole('button', { name: 'Save signers' }).click()
   await expect(page.getByText('Signers saved').first()).toBeVisible()
-  expect(log.signoff[0]?.[1]).toMatchObject({
-    signoffs: expect.arrayContaining([{ role: 'prepared_by', signer_id: 2, designation: 'Head of Retail Operations' }]),
+  // Only the roles picked here are sent; the team's roles follow the Details tab.
+  expect(log.signoff[0]?.[1]).toEqual({
+    signoffs: [
+      { role: 'acknowledged_by_unit', signer_id: 2 },
+      { role: 'acknowledged_by_bcm', signer_id: null },
+    ],
   })
-  await expect(page.getByText('3 roles still need a signer.')).toBeVisible()
+  await expect(page.getByText('1 role still needs a signer.')).toBeVisible()
 })
 
 test('submitting, approving and returning an assessment', async ({ page }) => {
@@ -440,7 +473,8 @@ test('an assessment in sign-off is locked', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
   await page.goto('/ra/manage/1')
   await expect(page.getByText(/In sign-off: waiting for Legiran/)).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('textbox', { name: /Location incident coordinator/ })).toBeDisabled()
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toBeDisabled()
+  await expect(page.getByRole('textbox', { name: 'LIC mobile number' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Save assessment' })).toHaveCount(0)
   await page.getByRole('tab', { name: 'Hazards' }).click()
   await expect(page.getByRole('button', { name: 'Save ratings' })).toHaveCount(0)
@@ -450,7 +484,7 @@ test('an assessment in sign-off is locked', async ({ page }) => {
 
 test('a location gets its map pin on the Map tab', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/ra/locations/1?tab=map')
+  await page.goto('/locations/1?tab=map')
   const map = page.getByRole('region', { name: /Map of Griya CIMB Niaga 2/ })
   await expect(map).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('No pin yet.')).toBeVisible()
@@ -487,18 +521,25 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
 test('an assessment shows its location pin, or where to add one', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByRole('link', { name: 'Add it on the location\'s Map tab' })).toHaveAttribute('href', '/ra/locations/1?tab=map', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Add it on the location\'s Map tab' })).toHaveAttribute('href', '/locations/1?tab=map', { timeout: 60_000 })
 })
 
 test('the location register links to the location map instead of its own map', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/ra/locations')
-  await expect(page.getByRole('link', { name: 'Location map' }).last()).toHaveAttribute('href', '/ra/map', { timeout: 60_000 })
+  await page.goto('/locations')
+  await expect(page.getByRole('link', { name: 'Location map' }).last()).toHaveAttribute('href', '/locations/map', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 
-test('the assessment downloads as PDF or as the filled workbook', async ({ page }) => {
-  await mockRa(page)
+test('downloads are offered only once the RA is approved', async ({ page }) => {
+  await mockRa(page, { status: 'in_signoff' })
+  await page.goto('/ra/monitoring/1')
+  await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
+})
+
+test('an approved assessment downloads as PDF or as the filled workbook', async ({ page }) => {
+  await mockRa(page, { status: 'approved' })
   const requested: string[] = []
   await page.route(/\/api\/ra\/assessments\/1\/report\.(pdf|xlsx)$/, (route) => {
     const format = route.request().url().endsWith('.pdf') ? 'pdf' : 'xlsx'
@@ -511,7 +552,6 @@ test('the assessment downloads as PDF or as the filled workbook', async ({ page 
   })
   await page.goto('/ra/monitoring/1')
   await page.getByRole('button', { name: 'Download' }).click({ timeout: 60_000 })
-  await expect(page.getByText('The saved assessment')).toBeVisible()
   const pdf = page.waitForEvent('download')
   await page.getByRole('menuitem', { name: /PDF report/ }).click()
   expect((await pdf).suggestedFilename()).toBe('RA_RA-2025-0001_Griya-CIMB-Niaga-2.pdf')

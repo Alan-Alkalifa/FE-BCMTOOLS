@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.access' })
+/** Location profiles moved to /locations/{id}. */
+definePageMeta({
+  permission: 'ra.access',
+  redirect: (to) => ({ path: `/locations/${String(to.params.id)}`, query: to.query }),
+})
 </script>
 
 <template>
-  <RaLocationPage />
+  <div />
 </template>

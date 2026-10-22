@@ -431,7 +431,7 @@ function record(id: number) {
           >
             <template #location-cell="{ row }">
               <NuxtLink
-                :to="`${ra.base}/locations/${row.original.location.id}`"
+                :to="locationPath(row.original.location.id)"
                 class="font-medium text-primary hover:underline"
               >
                 {{ row.original.location.name }}

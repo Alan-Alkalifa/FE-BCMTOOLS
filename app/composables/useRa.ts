@@ -87,13 +87,14 @@ export interface RaUserRef {
   name: string | null
   email: string | null
   job_title: string | null
+  /** From the user directory search only. */
+  mobile_phone?: string | null
 }
 
 /** Assigning a signer (draft only). Approvals go through raApi.approve. */
 export interface RaSignoffInput {
   role: RaSignoffRole
   signer_id?: number | null
-  designation?: string | null
 }
 
 export interface RaSignoff {
@@ -348,10 +349,14 @@ export interface RaAssessmentFields {
   period_year: number
   assessment_date: string
   due_date: string | null
-  lic_name: string | null
   lic_phone: string | null
-  licom_name: string | null
   licom_phone: string | null
+}
+
+/** The location incident team as sent: a user from the directory each (names come from it). */
+export interface RaTeamInput {
+  lic_user_id?: number
+  licom_user_id?: number
 }
 
 export interface RaAssessmentSummary {
@@ -379,6 +384,11 @@ export interface RaAssessment extends RaAssessmentFields, RaWorkflow {
   kind: RaKind
   formula_version: string
   can_delete: boolean
+  /** The LIC and LICOM: picked users (null on assessments from before), names as stored. */
+  lic_user: RaUserRef | null
+  lic_name: string | null
+  licom_user: RaUserRef | null
+  licom_name: string | null
   location: RaLocationRef & {
     address: string | null
     latitude: number | null
@@ -419,8 +429,8 @@ export interface RaPage<T> {
 }
 
 export type RaRatingUpdate = { code: string } & Partial<RaRatingInputs & RaRatingTexts>
-export type RaAssessmentUpdate = Partial<RaAssessmentFields> & { signoffs?: RaSignoffInput[] }
-export type RaAssessmentCreate = Partial<RaAssessmentFields> & {
+export type RaAssessmentUpdate = Partial<RaAssessmentFields> & RaTeamInput & { signoffs?: RaSignoffInput[] }
+export type RaAssessmentCreate = Partial<RaAssessmentFields> & RaTeamInput & {
   location_id: number
   period_year: number
   assessment_date: string
@@ -446,12 +456,22 @@ export function useRaDirty() {
   return inject(raDirtyKey, undefined)
 }
 
-/** RA or RA Branch, from the route (`/ra/…` or `/ra-branch/…`). */
+/** The kind a page works on when the route doesn't say it: a location's own kind on its
+ *  profile (/locations/12), or the type chosen when adding a location. */
+export const raKindKey: InjectionKey<Ref<RaKind | null>> = Symbol('ra-kind')
+
+/** RA or RA Branch: the kind provided by an enclosing page (`raKindKey`), otherwise the route
+ *  (`/ra/…` or `/ra-branch/…`). */
 export function useRaModule() {
   const route = useRoute()
-  return computed(() => (route.path === '/ra-branch' || route.path.startsWith('/ra-branch/')
-    ? RA_MODULES.branch
-    : RA_MODULES.head_office))
+  const provided = inject(raKindKey, null)
+  return computed(() => {
+    const kind = provided?.value
+    if (kind) return RA_MODULES[kind]
+    return route.path === '/ra-branch' || route.path.startsWith('/ra-branch/')
+      ? RA_MODULES.branch
+      : RA_MODULES.head_office
+  })
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -491,6 +511,23 @@ export function useRaFormulaIndex(formula: MaybeRefOrGetter<RaFormula | null | u
     return map
   })
   return { hazards, matrix }
+}
+
+export interface RaLocationRegisterQuery {
+  kind: RaKind | 'all'
+  q?: string
+  region?: string
+  active?: boolean
+  page: number
+  per_page: number
+}
+
+/** The Locations register: buildings and branches together (or one kind), one page at a time. */
+export function useRaLocationRegister(query: MaybeRefOrGetter<RaLocationRegisterQuery>) {
+  return useFetch<RaPage<RaLocation>>('/api/ra/locations', {
+    key: computed(() => `ra-location-register-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query)),
+  })
 }
 
 export function useRaLocations(query: MaybeRefOrGetter<{ kind: RaKind, q?: string, active?: boolean }>) {

@@ -1,59 +1,128 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import type { LocationQueryRaw } from 'vue-router'
 import type { RaLocation } from '~/composables/useRa'
 
-const ra = useRaModule()
+/**
+ * The Locations register: head office buildings and branches in one table, filtered by type,
+ * region and status (all in the URL), one page at a time. A row opens the location's profile.
+ */
 const { can } = useAuth()
 const canEdit = computed(() => can('ra.edit'))
 const canDelete = computed(() => can('ra.edit', 'ra.manage'))
 const confirm = useConfirm()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
-const search = ref('')
-const term = ref('')
+const PER_PAGE = 25
+type TypeFilter = RaKind | 'all'
+type StatusFilter = 'all' | 'active' | 'inactive'
+
+function text(name: string) {
+  const value = route.query[name]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+const type = computed<TypeFilter>(() => {
+  const value = text('type')
+  return value === 'head_office' || value === 'branch' ? value : 'all'
+})
+const statusFilter = computed<StatusFilter>(() => {
+  const value = text('status')
+  return value === 'active' || value === 'inactive' ? value : 'all'
+})
+const region = computed(() => (type.value === 'head_office' ? undefined : text('region')))
+const page = computed(() => Math.max(1, Number(route.query.page) || 1))
+
+function setQuery(name: string, value: string | undefined) {
+  const next = value === undefined || value === 'all' || value === '' ? undefined : value
+  if (next === (route.query[name] ?? undefined)) return
+  const query: LocationQueryRaw = { ...route.query, [name]: next, page: undefined }
+  if (name === 'type' && next === 'head_office') query.region = undefined
+  router.replace({ query })
+}
+
+const search = ref(text('q') ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(search, (value) => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => (term.value = value), 300)
+  searchTimer = setTimeout(() => setQuery('q', value.trim() || undefined), 300)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
-const { data, status, error, refresh } = useRaLocations(() => ({ kind: ra.value.kind, q: term.value.trim() || undefined }))
+
+const typeModel = computed<TypeFilter>({ get: () => type.value, set: (value) => setQuery('type', value) })
+const regionModel = computed<string>({ get: () => region.value ?? 'all', set: (value) => setQuery('region', value) })
+const statusModel = computed<StatusFilter>({ get: () => statusFilter.value, set: (value) => setQuery('status', value) })
+
+const { data, status, error, refresh } = useRaLocationRegister(() => ({
+  kind: type.value,
+  q: text('q'),
+  region: region.value,
+  active: statusFilter.value === 'all' ? undefined : statusFilter.value === 'active',
+  page: page.value,
+  per_page: PER_PAGE,
+}))
+const { data: regionData } = useRaRegions('branch')
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const actionError = ref<string | null>(null)
+const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || region.value || statusFilter.value !== 'all'))
 
-const columns = computed<TableColumn<RaLocation>[]>(() => [
-  { accessorKey: 'name', header: ra.value.location.single },
-  ...(ra.value.hasRegion ? [{ accessorKey: 'region', header: 'Region' }] : []),
+const typeItems = [
+  { label: 'All types', value: 'all' as const },
+  { label: 'Head office buildings', value: 'head_office' as const },
+  { label: 'Branches', value: 'branch' as const },
+]
+const regionItems = computed(() => [
+  { label: 'All regions', value: 'all' },
+  ...(regionData.value?.items ?? []).map((name) => ({ label: name, value: name })),
+])
+const statusItems = [
+  { label: 'Active and inactive', value: 'all' as const },
+  { label: 'Active', value: 'active' as const },
+  { label: 'Inactive', value: 'inactive' as const },
+]
+
+const columns: TableColumn<RaLocation>[] = [
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'kind', header: 'Type' },
+  { accessorKey: 'region', header: 'Region' },
   { accessorKey: 'address', header: 'Address' },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { id: 'latest', header: 'Latest residual' },
   { accessorKey: 'is_active', header: 'Status' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
-])
+]
 
 const locationStatus = defineStatusScale({
   active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
   inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
 })
 
-function openRow(_event: Event, row: { original: RaLocation }) {
-  navigateTo(`${ra.value.base}/locations/${row.original.id}`)
+function noun(location: RaLocation) {
+  return RA_MODULES[location.kind].location.lower
 }
 
-const searchLabel = computed(() => ra.value.hasRegion ? 'Search by name, region or address' : 'Search by name or address')
+function openRow(_event: Event, row: { original: RaLocation }) {
+  navigateTo(locationPath(row.original.id))
+}
+
+const addTo = computed(() => ({
+  path: `${LOCATIONS_PATH}/new`,
+  query: type.value === 'all' ? {} : { type: type.value },
+}))
 
 async function remove(location: RaLocation) {
   actionError.value = null
   const ok = await confirm({
     title: `Delete '${location.name}'?`,
-    description: `This permanently removes the ${ra.value.location.lower}. ${ra.value.location.plural} with assessments can only be deactivated.`,
-    confirmLabel: `Delete ${ra.value.location.lower}`,
+    description: `This permanently removes the ${noun(location)}. Locations with assessments can only be deactivated.`,
+    confirmLabel: `Delete ${noun(location)}`,
     destructive: true,
   })
   if (!ok) return
   try {
     await raApi.removeLocation(location.id)
-    toast.add({ title: `${ra.value.location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
+    toast.add({ title: `${RA_MODULES[location.kind].location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
     await refresh()
   } catch (err) {
     actionError.value = raIsConflict(err)
@@ -65,15 +134,17 @@ async function remove(location: RaLocation) {
 
 <template>
   <AppPage
-    :title="`${ra.title} ${ra.location.lowerPlural}`"
-    :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: ra.location.plural }]"
+    title="Locations"
+    icon="i-lucide-building"
+    description="Head office buildings and branches: each one's profile, map pin and RAs."
+    :crumbs="[{ label: 'Locations' }, { label: 'Locations' }]"
   >
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="6"
+      :columns="8"
       :rows="5"
-      :label="`Loading ${ra.location.lowerPlural}`"
+      label="Loading locations"
     />
 
     <UAlert
@@ -81,7 +152,7 @@ async function remove(location: RaLocation) {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      :title="`Could not load ${ra.location.lowerPlural}`"
+      title="Could not load the locations"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -94,27 +165,54 @@ async function remove(location: RaLocation) {
       </template>
     </UAlert>
 
-    <UCard v-else>
+    <UCard
+      v-else
+      :ui="{ body: 'p-0 sm:p-0' }"
+    >
       <UAlert
         v-if="actionError"
-        class="mb-4"
+        class="m-4 mb-0"
         color="error"
         variant="subtle"
         icon="i-lucide-circle-alert"
-        :title="`Couldn't delete the ${ra.location.lower}`"
+        title="Couldn't delete the location"
         :description="actionError"
       />
-      <div class="mb-4 flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2 p-4">
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          :placeholder="searchLabel"
-          class="w-full sm:w-72"
-          :aria-label="searchLabel"
+          placeholder="Search by name, region or address"
+          class="w-full sm:w-60"
+          aria-label="Search by name, region or address"
         />
-        <div class="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
+        <USelectMenu
+          v-model="typeModel"
+          value-key="value"
+          :items="typeItems"
+          :search-input="false"
+          class="w-40"
+          aria-label="Type"
+        />
+        <USelectMenu
+          v-if="type !== 'head_office'"
+          v-model="regionModel"
+          value-key="value"
+          :items="regionItems"
+          class="w-40"
+          aria-label="Region"
+        />
+        <USelectMenu
+          v-model="statusModel"
+          value-key="value"
+          :items="statusItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Status"
+        />
+        <div class="flex w-full flex-wrap gap-2 lg:ml-auto lg:w-auto">
           <UButton
-            to="/ra/map"
+            :to="LOCATION_MAP_PATH"
             color="neutral"
             variant="outline"
             icon="i-lucide-map"
@@ -122,9 +220,9 @@ async function remove(location: RaLocation) {
           />
           <UButton
             v-if="canEdit"
-            :to="`${ra.base}/locations/new`"
+            :to="addTo"
             icon="i-lucide-plus"
-            :label="`Add ${ra.location.lower}`"
+            label="Add location"
           />
         </div>
       </div>
@@ -135,21 +233,36 @@ async function remove(location: RaLocation) {
         :loading="status === 'pending'"
         class="cursor-pointer"
         :on-select="openRow"
+        :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
       >
         <template #name-cell="{ row }">
           <NuxtLink
-            :to="`${ra.base}/locations/${row.original.id}`"
+            :to="locationPath(row.original.id)"
             class="font-medium text-primary hover:underline"
           >
             {{ row.original.name }}
           </NuxtLink>
+        </template>
+        <template #kind-cell="{ row }">
+          <StatusBadge
+            :scale="raLocationKind"
+            :value="row.original.kind"
+            size="sm"
+          />
+        </template>
+        <template #region-cell="{ row }">
+          <span v-if="row.original.region">{{ row.original.region }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
         </template>
         <template #address-cell="{ row }">
           <UTooltip
             v-if="row.original.address"
             :text="row.original.address"
           >
-            <span class="block max-w-xs truncate">{{ row.original.address }}</span>
+            <span class="block max-w-48 truncate">{{ row.original.address }}</span>
           </UTooltip>
           <span
             v-else
@@ -165,8 +278,9 @@ async function remove(location: RaLocation) {
             class="flex items-center gap-2"
           >
             <NuxtLink
-              :to="raRecordPath(ra.kind, row.original.latest_assessment)"
+              :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
               class="whitespace-nowrap text-primary hover:underline"
+              @click.stop
             >
               {{ row.original.latest_assessment.ref_no }}
             </NuxtLink>
@@ -191,9 +305,9 @@ async function remove(location: RaLocation) {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-1">
-            <UTooltip :text="canEdit ? `Edit ${ra.location.lower}` : `Open ${ra.location.lower}`">
+            <UTooltip :text="canEdit ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
-                :to="`${ra.base}/locations/${row.original.id}`"
+                :to="locationPath(row.original.id)"
                 color="neutral"
                 variant="ghost"
                 size="sm"
@@ -204,7 +318,7 @@ async function remove(location: RaLocation) {
             </UTooltip>
             <UTooltip
               v-if="canDelete"
-              :text="`Delete ${ra.location.lower}`"
+              :text="`Delete ${noun(row.original)}`"
             >
               <UButton
                 color="error"
@@ -217,18 +331,21 @@ async function remove(location: RaLocation) {
             </UTooltip>
           </div>
         </template>
+        <template #empty>
+          <p class="py-10 text-center text-sm text-muted">
+            {{ hasFilters ? 'No locations match these filters.' : 'No locations yet. Add the first building or branch to assess.' }}
+          </p>
+        </template>
       </UTable>
 
-      <div
-        v-if="data && !data.items.length"
-        class="py-10 text-center"
-      >
-        <p class="text-sm text-muted">
-          {{ term
-            ? `No ${ra.location.lowerPlural} match this search.`
-            : ra.kind === 'branch' ? 'No branches yet. Add the first branch to assess.' : 'No locations yet. Add the first building to assess.' }}
-        </p>
-      </div>
+      <TablePagination
+        v-if="data"
+        :page="data.page"
+        :per-page="PER_PAGE"
+        :total="data.total"
+        :to="(next) => ({ query: { ...route.query, page: next > 1 ? next : undefined } })"
+        label="Locations"
+      />
     </UCard>
   </AppPage>
 </template>
