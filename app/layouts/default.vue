@@ -10,18 +10,29 @@ watch(() => user.value?.id, (id) => {
   if (id && !menu.value) void fetchMenu()
 }, { immediate: true })
 
+function routes(nodes: MenuNode[]): string[] {
+  return nodes.flatMap((node) => [...(node.route ? [node.route] : []), ...routes(node.children)])
+}
+
+/** The menu route the current page belongs to: the longest one it starts with, so a record
+ *  page (/scca/manage/12, /ra/locations/3) keeps its own section active and /ra stays off on
+ *  /ra/locations. */
+const activeRoute = computed(() => {
+  const path = route.path
+  if (path === '/') return '/'
+  return routes(menu.value ?? [])
+    .filter((item) => item !== '/' && (path === item || path.startsWith(`${item}/`)))
+    .sort((a, b) => b.length - a.length)[0]
+})
+
 function toItem(node: MenuNode): NavigationMenuItem {
   const children = node.children.map(toItem)
-  const active = node.route === '/'
-    ? route.path === '/'
-    : !!node.route && (route.path === node.route || route.path.startsWith(`${node.route}/`))
   return {
     label: node.label,
     icon: node.icon ?? undefined,
     to: node.route ?? undefined,
     exact: node.route === '/',
-    // Each SCCA section stays active on its own record pages (/scca/manage/12, ...).
-    active: node.route?.startsWith('/scca/') ? active : undefined,
+    active: node.route ? node.route === activeRoute.value : undefined,
     defaultOpen: children.length > 0,
     children: children.length ? children : undefined,
   }

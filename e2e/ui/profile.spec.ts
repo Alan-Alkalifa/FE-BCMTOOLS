@@ -42,9 +42,9 @@ test('home greets the user with job title, department, roles and modules', async
   await expect(page.getByRole('heading', { name: 'Modules' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'SCCA', exact: true })).toBeVisible()
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'Monitoring' })).toHaveAttribute('href', '/scca/monitoring')
-  await expect(main.getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/scca/manage')
-  await expect(main.getByRole('link', { name: 'Approval' })).toHaveAttribute('href', '/scca/approval')
+  await expect(main.getByRole('link', { name: 'Monitoring' }).first()).toHaveAttribute('href', '/scca/monitoring')
+  await expect(main.getByRole('link', { name: 'Manage' }).first()).toHaveAttribute('href', '/scca/manage')
+  await expect(main.getByRole('link', { name: 'Approval' }).first()).toHaveAttribute('href', '/scca/approval')
   await expect(main.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/admin/users')
 })
 

@@ -10,16 +10,21 @@ const ROLES = [
   { id: 4, code: 'viewer', name: 'Viewer', description: 'Opens the SCCAs they sign off.', is_system: false, permissions: ['scca.access'], user_count: 0 },
 ]
 
+// In the backend's order (by module code): admin, ra, scca.
 const PERMISSIONS = [
-  { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
-  { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
-  { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
-  { code: 'scca.report.download', module: 'scca', description: 'Download the PDF and Excel of final SCCAs' },
   { code: 'admin.users.manage', module: 'admin', description: 'Create, edit, deactivate and unlock users' },
   { code: 'admin.roles.manage', module: 'admin', description: 'Create roles and grant permissions' },
   { code: 'admin.menus.manage', module: 'admin', description: 'Edit, reorder and hide menu items' },
   { code: 'admin.settings.mail', module: 'admin', description: 'Edit the SMTP settings and send a test email' },
   { code: 'admin.audit.view', module: 'admin', description: 'Read the sign-in, admin and email logs' },
+  { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
+  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close crisis events on the location map' },
+  { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
+  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the crisis guidebook' },
+  { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
+  { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
+  { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
+  { code: 'scca.report.download', module: 'scca', description: 'Download the PDF and Excel of final SCCAs' },
 ]
 
 function adminUser(id: number, name: string, extra: Record<string, unknown> = {}) {
@@ -239,6 +244,18 @@ test('a role is given more permissions', async ({ page }) => {
   await expect(page.getByText('Role saved', { exact: true })).toBeVisible()
   const save = calls.find((call) => call.method === 'PUT' && call.url === '/api/admin/roles/4')!
   expect(save.body).toMatchObject({ name: 'Viewer', permissions: ['scca.access', 'scca.create'] })
+})
+
+test('RA permissions are their own group, between SCCA and Administration', async ({ page }) => {
+  const { calls } = await mockAdmin(page)
+  await page.goto('/admin/roles')
+  await page.getByRole('button', { name: /^Viewer/ }).click({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 3 })).toHaveText(['SCCA', 'RA and RA Branch', 'Administration'])
+  await page.getByRole('checkbox', { name: 'Create and edit RA locations and assessments; delete what you created' }).click()
+  await page.getByRole('button', { name: 'Save role' }).click()
+  await expect(page.getByText('Role saved', { exact: true })).toBeVisible()
+  const save = calls.find((call) => call.method === 'PUT' && call.url === '/api/admin/roles/4')!
+  expect(save.body).toMatchObject({ permissions: ['scca.access', 'ra.edit'] })
 })
 
 test('the Administrator role cannot lose permissions', async ({ page }) => {

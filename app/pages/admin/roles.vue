@@ -24,7 +24,9 @@ const modules = computed(() => {
   for (const perm of permissions.value?.items ?? []) {
     groups.set(perm.module, [...(groups.get(perm.module) ?? []), perm])
   }
-  return [...groups.entries()].map(([module, items]) => ({ module, label: moduleLabel(module), items }))
+  return [...groups.entries()]
+    .sort(([a], [b]) => moduleOrder(a) - moduleOrder(b))
+    .map(([module, items]) => ({ module, label: moduleLabel(module), items }))
 })
 
 function load(role: AdminRole | null) {

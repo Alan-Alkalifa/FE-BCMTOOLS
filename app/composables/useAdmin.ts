@@ -282,10 +282,17 @@ export const emailStatus = defineStatusScale<OutboxEmail['status']>({
   failed: { label: 'Failed', color: 'error', icon: 'i-lucide-circle-alert' },
 })
 
-const MODULE_LABELS: Record<string, string> = { scca: 'SCCA', admin: 'Administration' }
+const MODULE_LABELS: Record<string, string> = { scca: 'SCCA', ra: 'RA and RA Branch', admin: 'Administration' }
+/** Permission groups in the order of the sidebar; unknown modules go last. */
+const MODULE_ORDER = ['scca', 'ra', 'admin']
 
 export function moduleLabel(module: string) {
-  return MODULE_LABELS[module] ?? module
+  return MODULE_LABELS[module] ?? module.toUpperCase()
+}
+
+export function moduleOrder(module: string) {
+  const index = MODULE_ORDER.indexOf(module)
+  return index === -1 ? MODULE_ORDER.length : index
 }
 
 const EVENT_LABELS: Record<string, string> = {

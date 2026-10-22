@@ -1,0 +1,832 @@
+{
+  "approved_at": null,
+  "assessment_date": "2025-04-02",
+  "awaiting_signer": null,
+  "calculated_at": null,
+  "can_approve": false,
+  "can_delete": true,
+  "can_edit": true,
+  "can_return": false,
+  "can_submit": true,
+  "created_at": "2026-10-20T05:08:07Z",
+  "created_by": "Test User",
+  "current_signoff_role": null,
+  "due_date": "2026-04-02",
+  "formula_version": "branch-2025-r4",
+  "id": 2,
+  "is_complete": false,
+  "kind": "branch",
+  "lic_name": "Budi Santoso",
+  "lic_phone": "0812 1111 2222",
+  "licom_name": "Sari Dewi",
+  "licom_phone": "0813 3333 4444",
+  "location": {
+    "address": "Jl. Raya Pajajaran No. 12, Bogor",
+    "id": 3,
+    "is_active": true,
+    "kind": "branch",
+    "name": "KCP Bogor Pajajaran",
+    "region": "Region Jabar"
+  },
+  "period_year": 2025,
+  "ratings": [
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H01",
+      "historical": 1,
+      "issues": [],
+      "mitigation": "- Penggunaan ruang kerja alternatif atau kemampuan unit kerja melakukan perbaikan di lokasi kerja utama dengan cepat. (mengacu pada MTD)\n- Emergency Exit tersedia (Akses pintu belakang & tangga darurat untuk evakuasi)\n- Ketinggian bangunan dari jalan raya cukup tinggi sekitar 2,5 meter untuk memitigasi curah hujan yang tinggi\n- Letak ruang panel berada di Basement namun Genset di GF, namun terdapat mesin Pompa Buang (8 sampit), Pompa Transfer (untuk mitigasi banjir di basement) dan maintenance\n- Penempatan Server & Khazanah aman dari banjir\n- Ketersediaan ER Plan & BC Plan\n- Emergency Contact List\n- Pengoperasian Genset saat Banjir untuk aktivasi Pompa buang\n- Asuransi",
+      "probability": 1,
+      "residual_human": 2,
+      "residual_infrastructure": 2,
+      "residual_monetary": 2,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Low",
+        "residual_probability": 1
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H02",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H03",
+      "historical": 3,
+      "issues": [],
+      "mitigation": "- Penggunaan ruang kerja alternatif atau kemampuan unit kerja melakukan perbaikan di lokasi kerja utama dengan cepat. (mengacu pada MTD)\n- Emergency Exit tersedia (Akses pintu belakang & tangga darurat untuk evakuasi), 2 tangga darurat di setiap gedung (terbuka lantai paling bawah dan rooftop dari dalam keluar)\n- Detektor gempa pada semua Lift (terbuka di level terdekat)\n- PIC untuk floor warden (& WAG)\n- Pelatihan dengan tim DAMKAR & tenant gedung (Nov 2025)\n- Alarm yang terkoneksi ke detektor gempa\n- Emergency Contact List\n- Ketersediaan ER Plan & BC Plan\n- Asuransi\n- Pengecekan dari tim DAMKAR untuk perlengkapan antisiapasi risiko kebakaran.\nNote:\nWhen : Gempa Lebak Banten Jan 2018, dan 2019; 9 Oktober 2022 (5.5 magnitudo); 28 November 2022 (2.3 magnitudo); 07 Februari 2023 (5.2 magnitudo); 10 Mei 2023 (5.4 magnitudo);\nGempa Tuban 14 April 2023 (6.6 magnitudo) ; 22 Maret 2024 (6.5 magnitudo)\nGempa Kab Bandung Jabar 18 November 2023 (5.4 magnitudo)\nGempa Kab Garut Jabar 27 April 2024 (6.5 magnitudo)\nGempa Southeast Bekasi 20 Aug 2025 (4.9 magnitudo)\n\nDuration of Disruption :\nVictim :\nForewarning :\nEnvironment Risk Factor :",
+      "probability": 2,
+      "residual_human": 3,
+      "residual_infrastructure": 3,
+      "residual_monetary": 3,
+      "residual_reputation": 3,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 3,
+        "residual_level": "Medium",
+        "residual_probability": 3
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H04",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H05",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang, terkait potensi angin badai dimasukkan ke poin 6 dibawah",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H06",
+      "historical": 2,
+      "issues": [],
+      "mitigation": "- Seluruh perangkat infrastruktur Data center berada didalam ruangan gedung yang tertutup untuk memitigasi angin kencang\n- Sudah ada sistem pendingin gedung untuk memitigasi cuaca panas extreme\n\nNote: panas kemarau yang terjadi mulai di bulan Agustus 2023",
+      "probability": 3,
+      "residual_human": 1,
+      "residual_infrastructure": 1,
+      "residual_monetary": 1,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 1,
+        "residual_level": "Medium",
+        "residual_probability": 3
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H07",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang, namun terdapat mitigasi sbb:\n- Terdapat penangkal petir pada gedung\n- Maintenance grounding system secara berkala (1 tahun sekali)",
+      "probability": 2,
+      "residual_human": 1,
+      "residual_infrastructure": 1,
+      "residual_monetary": 1,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 1,
+        "residual_level": "Low",
+        "residual_probability": 2
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H08",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H09",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H10",
+      "historical": 2,
+      "issues": [],
+      "mitigation": "- Rekomendasi untuk Management dapat memutuskan WFH sementara\n- Anjuran untuk pemakaian masker, serta penyediaan masker sesuai kebutuhan oleh Build Mgt\n- Terdapat tabung oksigen sekitar 20 unit di basement\n\nNote: Kualitas udara buruk untuk daerah Tangerang Selatan dan Jakarta sejak 2023, untuk tahun 2025 relatif aman",
+      "probability": 2,
+      "residual_human": 2,
+      "residual_infrastructure": 1,
+      "residual_monetary": 1,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Low",
+        "residual_probability": 2
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H11",
+      "historical": 1,
+      "issues": [],
+      "mitigation": "- Ketentuan HR untuk bisa bekerja dari rumah, split operations, dan penerapan normal baru/ protokol kesehatan dengan pembatasan fisik yang diterapkan di seluruh gedung kantor.\n- Unit Health & Safety melakukan program sosialisasi termasuk Health Talks (sesuai kebutuhan)\n- Mendistribusikan masker, hand sanitiser, dll (sesuai kebutuhan)\n- SPAPM telah melakukan pengadaan laptop untuk WFH, hand sanitizer, wastafel portable, chemical, desinfektan, kantor back up, dan lainnya.\n- Panduan HR: Tata cara penanganan karyawan pandemic\n- Emergency Response Plan (ER Plan) & Business Continuity Plan (BC Plan)\n- Emergency Contact List\n- Penyediaan Antiseptic di lantai\n- Disinfectan dilaksanakan saat diperlukan (adanya suspect)\n\nNote: Sesuai informasi dari pemerintah bahwa pada Juli 2023 anjuran tidak wajib memakai masker",
+      "probability": 1,
+      "residual_human": 2,
+      "residual_infrastructure": 1,
+      "residual_monetary": 2,
+      "residual_reputation": 2,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Low",
+        "residual_probability": 1
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H12",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi selama 10 tahun kebelakang dan sudah terdapat sistem pengolahan air bersih",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H13",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi selama 10 tahun kebelakang dan sudah terdapat Auto Shut Valve dan periodical maintainance",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H14",
+      "historical": 1,
+      "issues": [],
+      "mitigation": "- Sistem Pemadam Kebakaran & Ketersediaan Peralatan Kebakaran pada setiap lantai dan perlengkapan Damkar di Lobby GN1\n- Penggunaan ruang kerja alternatif atau kemampuan unit kerja melakukan perbaikan di lokasi kerja utama dengan cepat. (mengacu pada MTD)\n- Emergency Exit tersedia (Akses pintu belakang & tangga darurat untuk evakuasi), dan dilakukan FireDrill setiap tahun sekali\n- Fire safety regulations\n- Fire Alarm control, memakai perangkat MCFA (Main Control Fire Alarm) dicheck rutin setiap hari\n- Fire Phone disetiap lift (terbuka saat emergency)\n- Air Fresh Preasure Fan (setiap tangga darurat), dan dilakukan test berkala per tiga bulan oleh Building Mgt untuk memastikan berfungsi baik\n- kondisi pencahayaan di tangga darurat\n- Regularly electrical building maintenance,\n- Penyediaan & Maintenance fire extinguisher devices: Hydran (2 atau 3 per lantai), APAR, Sprinkler, Smoke detector,\n- APAR diperiksa bersama dengan SPAPM dan tim Building (termasuk untuk Hyspace)\n- Surat Kelayakan dan pengecekan setiap 1 tahun sekali oleh DINAS Pemadam Kebakaran (Damkar Tangerang Selatan)\n- Emergency Contact List\n- Ketersediaan ER Plan & BC Plan\n- Asuransi\n- Kekuatan pintu besi menggunakan model Exit Out dan Panic Bar dan menurut informasi Building Mgt pintu tahan api dan rambatan panas",
+      "probability": 1,
+      "residual_human": 2,
+      "residual_infrastructure": 3,
+      "residual_monetary": 2,
+      "residual_reputation": 2,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 3,
+        "residual_level": "Low",
+        "residual_probability": 1
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H15",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi dalam 10 tahun kebelakang, namun sudah memiliki mitigasi berikut:\nSistem pengamanan berlapis - Implementasi dari Permit To Work(PTW), Visitor registration, Card access system & CCTV monitoring",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H16",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi dalam 10 tahun kebelakang, namun sudah memiliki mitigasi berikut:\nPengecekan keamanan - Implementasi dari PTW, Visitor registration, Card access system & CCTV monitoring",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H17",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H18",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi selama 10 tahun kebelakang baik dari karyawan maupun dari pihak gedung",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H19",
+      "historical": 1,
+      "issues": [],
+      "mitigation": "- Emergency Exit tersedia (Akses pintu belakang & tangga darurat untuk evakuasi)\n- Petugas satpam telah mendapat pelatihan\n- Penyediaan security terpadu dengan CCTV (Perlantai, basement, koridor luar gedung)\n- Koordinasi dengan Polsek Pondok Aren\n- Security 24 jam ( security vendor & building Mgt)\n- Penebalan pengamanan di titik tertentu sesuai kondisi dari tim Building Mgt & SPAPM\n- CCTV outdoor untuk capture nomor polisi\n- Emergency Contact List\n- Ketersediaan BC Plan\n- Asuransi\n\nNote: potensi nasabah kredit macet (insiden bisa ditangani) dan tidak sampai mengarah kepada kerusuhan/ huru-hara",
+      "probability": 1,
+      "residual_human": 2,
+      "residual_infrastructure": 2,
+      "residual_monetary": 2,
+      "residual_reputation": 2,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Low",
+        "residual_probability": 1
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H20",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H21",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H22",
+      "historical": 4,
+      "issues": [],
+      "mitigation": "- 24 hours Back up supply by genset. Ketersediaan dua gardu induk untuk supply listrik ke gedung.\n- Penyediaan UPS untuk membackup Unit PC kritikal yaitu Server-server kritikal DC\n- Emergency Contact List\n- Penambahan Genset Data Center (Power House) --> sudah running 2014\n- GenSet maintenance regularly.sesuai SOP\n- Pemanasan setiap 1 minggu sekali\n- Kapasitas Genset Cummins 906KvA untuk cover GN1, dan terdapat 2 Genset Perkin @ 1500KVA untuk cover seluruh tenant gedung di GN2 dengan metode sikgkronisasi (penyesuaian beban)\n- Kontrak maintenance dengan vendor PT ALTRAK (GN1) dan  PT. TRAKTOR Nusantara (GN2)  (monthly, 6 bulan, 1 thn service besar)\n- Ketersediaan BC Plan\n- Pemeliharaan trafo PLN setahun sekali\n- Ketersediaan solar panel sebagai backup listrik GN1  & GN2\n\nAntisipasi ketersediaan solar:\n- Untuk GN1 Storage Tank max capacity 10.000 liter terisi 8.394 liter.\n- Untuk GN2 Storage Tank max capacity 25.000 liter terisi 9.524 liter.\n- Untuk GN1 Daily Storage max capacity 3000 liter terisi 3000 liter\n- Untuk GN2 Daily Storage max capacity 10.000 liter terisi 10.000 liter\n- Kapasitas Solar baik untuk GN1 dan GN2 cukup untuk cover 32jam (cat. capacity max genset 75%)\n- Adanya kontrak dengan vendor untuk ketersediaan solar (proses 1x24jam).\"\n\nUPS\n- Vendor untuk  Maintenance UPS\n- UPS mengcover critical server di Bisnis Unit\n- Emergency Contact List\n- Asuransi",
+      "probability": 3,
+      "residual_human": 1,
+      "residual_infrastructure": 2,
+      "residual_monetary": 1,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Medium",
+        "residual_probability": 4
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H23",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi selama 10 tahun kebelakang, namun terdapat mitigasi sbb:\nMenginformasikan Building Mgt untuk memantau ketersediaan air saat terjadi kekurangan air.",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": null,
+      "cim_ref_no": null,
+      "code": "H24",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "tidak pernah terjadi selama 10 tahun kebelakang",
+      "probability": "N/A",
+      "residual_human": "N/A",
+      "residual_infrastructure": "N/A",
+      "residual_monetary": "N/A",
+      "residual_reputation": "N/A",
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 0,
+        "residual_level": null,
+        "residual_probability": 0
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H25",
+      "historical": 2,
+      "issues": [],
+      "mitigation": "- Penyediaan Backup Jaringan Komunikasi Data (dual provider)\n- Tech Refresh untuk Hyspace dan network (2026) serta penambahan bandwidth\n- Backup rutin, melakukan proses Workaround dan memiliki Infrastruktur cadangan di DC.\n- Escalation Contact List\n- Ketersediaan BC Plan\n- Uji coba dan pelatihan secara berkala\n- Kesiapan Vendor Aplikasi\n- Kesiapan Team IT Network untuk troubleshoot\n- Terdapat jaringan backup selain Wifi yakni Kingslanding, LAN dan Wifi pribadi\n\nNote: terjadi gangguan di sisi VPN di GN1 / GN2, Gangguan LAN network di Loan Ops di 2025",
+      "probability": 3,
+      "residual_human": 1,
+      "residual_infrastructure": 2,
+      "residual_monetary": 1,
+      "residual_reputation": 2,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Medium",
+        "residual_probability": 3
+      },
+      "warnings": []
+    },
+    {
+      "action_plan": "N/A",
+      "cim_ref_no": null,
+      "code": "H26",
+      "historical": "N/A",
+      "issues": [],
+      "mitigation": "Tidak pernah terjadi selama 10 tahun kebelakang, namun terdapat mitigasi sbb:\n\n- Inspeksi Rutin dilakukan oleh vendor jika terjadi gempa yang cukup besar\n- Terdapat berita acara/ dokumen pendukung seperti kelayakan gedung",
+      "probability": 1,
+      "residual_human": 2,
+      "residual_infrastructure": 2,
+      "residual_monetary": 2,
+      "residual_reputation": 1,
+      "result": {
+        "gross_impact": null,
+        "gross_level": null,
+        "gross_probability": null,
+        "is_rated": true,
+        "residual_impact": 2,
+        "residual_level": "Low",
+        "residual_probability": 1
+      },
+      "warnings": []
+    }
+  ],
+  "ref_no": "RAB-2025-0001",
+  "returned_at": null,
+  "returned_by": null,
+  "returned_comment": null,
+  "signoff_history": [],
+  "signoffs": [],
+  "status": "draft",
+  "submitted_at": null,
+  "submitted_by": null,
+  "summary": {
+    "complete": false,
+    "counts": {
+      "residual": {
+        "High": 0,
+        "Low": 7,
+        "Medium": 4,
+        "not_applicable": 15,
+        "unrated": 7
+      }
+    },
+    "heat_maps": {
+      "residual": [
+        {
+          "hazards": [],
+          "impact": 1,
+          "level": "Medium",
+          "probability": 5
+        },
+        {
+          "hazards": [],
+          "impact": 2,
+          "level": "High",
+          "probability": 5
+        },
+        {
+          "hazards": [],
+          "impact": 3,
+          "level": "High",
+          "probability": 5
+        },
+        {
+          "hazards": [],
+          "impact": 4,
+          "level": "High",
+          "probability": 5
+        },
+        {
+          "hazards": [],
+          "impact": 5,
+          "level": "High",
+          "probability": 5
+        },
+        {
+          "hazards": [],
+          "impact": 1,
+          "level": "Medium",
+          "probability": 4
+        },
+        {
+          "hazards": [
+            "H22"
+          ],
+          "impact": 2,
+          "level": "Medium",
+          "probability": 4
+        },
+        {
+          "hazards": [],
+          "impact": 3,
+          "level": "High",
+          "probability": 4
+        },
+        {
+          "hazards": [],
+          "impact": 4,
+          "level": "High",
+          "probability": 4
+        },
+        {
+          "hazards": [],
+          "impact": 5,
+          "level": "High",
+          "probability": 4
+        },
+        {
+          "hazards": [
+            "H06"
+          ],
+          "impact": 1,
+          "level": "Medium",
+          "probability": 3
+        },
+        {
+          "hazards": [
+            "H25"
+          ],
+          "impact": 2,
+          "level": "Medium",
+          "probability": 3
+        },
+        {
+          "hazards": [
+            "H03"
+          ],
+          "impact": 3,
+          "level": "Medium",
+          "probability": 3
+        },
+        {
+          "hazards": [],
+          "impact": 4,
+          "level": "Medium",
+          "probability": 3
+        },
+        {
+          "hazards": [],
+          "impact": 5,
+          "level": "High",
+          "probability": 3
+        },
+        {
+          "hazards": [
+            "H07"
+          ],
+          "impact": 1,
+          "level": "Low",
+          "probability": 2
+        },
+        {
+          "hazards": [
+            "H10"
+          ],
+          "impact": 2,
+          "level": "Low",
+          "probability": 2
+        },
+        {
+          "hazards": [],
+          "impact": 3,
+          "level": "Medium",
+          "probability": 2
+        },
+        {
+          "hazards": [],
+          "impact": 4,
+          "level": "Medium",
+          "probability": 2
+        },
+        {
+          "hazards": [],
+          "impact": 5,
+          "level": "Medium",
+          "probability": 2
+        },
+        {
+          "hazards": [],
+          "impact": 1,
+          "level": "Low",
+          "probability": 1
+        },
+        {
+          "hazards": [
+            "H01",
+            "H11",
+            "H19",
+            "H26"
+          ],
+          "impact": 2,
+          "level": "Low",
+          "probability": 1
+        },
+        {
+          "hazards": [
+            "H14"
+          ],
+          "impact": 3,
+          "level": "Low",
+          "probability": 1
+        },
+        {
+          "hazards": [],
+          "impact": 4,
+          "level": "Medium",
+          "probability": 1
+        },
+        {
+          "hazards": [],
+          "impact": 5,
+          "level": "Medium",
+          "probability": 1
+        }
+      ]
+    },
+    "highest_gross_level": null,
+    "highest_residual_level": "Medium",
+    "rated": 26,
+    "total": 33
+  },
+  "updated_at": "2026-10-20T05:08:07Z",
+  "updated_by": "Test User"
+}
