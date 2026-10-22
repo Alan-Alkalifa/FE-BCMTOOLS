@@ -111,7 +111,7 @@ test('a submitted SCCA opened in Manage moves to Monitoring, read-only for its a
   await expect(page.getByLabel('Comment on Result and sign-off')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Save result' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Recall/ })).toHaveCount(0)
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Monitoring' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('region', { name: 'SCCA' }).getByRole('link', { name: 'Monitoring' })).toHaveAttribute('aria-current', 'page')
 })
 
 test('the approver opens an SCCA in Approval: read-only tabs, the decision on top', async ({ page }) => {
