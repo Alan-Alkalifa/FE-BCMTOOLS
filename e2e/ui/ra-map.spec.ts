@@ -244,6 +244,6 @@ test('who declared an incident is told someone else approves it', async ({ page 
   await mockRaMap(page, { pending: true, own: true })
   await page.goto('/crises/7')
   const banner = page.getByTestId('approval-banner')
-  await expect(banner).toContainText('You asked for this, so someone else with the approve permission', { timeout: 30_000 })
+  await expect(banner).toContainText('This request requires approval by another user with approval rights (BCM Admin or BCM Management).', { timeout: 30_000 })
   await expect(banner.getByRole('button', { name: 'Approve' })).toHaveCount(0)
 })

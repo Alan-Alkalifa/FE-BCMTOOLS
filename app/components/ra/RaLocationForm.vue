@@ -5,7 +5,7 @@ import type { RaLocationDetail } from '~/composables/useRa'
 /**
  * Building Data Entry: a head office building or a branch. The type is picked in the form
  * (`v-model:kind`, fixed when the link gives it, read-only once saved), with the description
- * RA configuration gives each type; a branch also needs its region.
+ * RA configuration gives each type. Every field is required.
  */
 const props = withDefaults(defineProps<{
   location?: RaLocationDetail
@@ -46,13 +46,11 @@ const typeModel = computed<RaKind>({
 
 const schema = computed(() => z.object({
   name: z.string().trim().min(1, ra.value.kind === 'branch' ? 'Enter the branch name.' : 'Enter the building name.'),
-  address: z.string().optional(),
-  province: z.string().optional(),
-  city: z.string().optional(),
-  district: z.string().optional(),
-  zip_code: z.string().trim().max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.').optional(),
-  // Section A of the branch workbook: Nama Region Cabang.
-  region: ra.value.hasRegion ? z.string().trim().min(1, 'Enter the region.') : z.string().optional(),
+  address: z.string().trim().min(1, 'Enter the address.'),
+  province: z.string().trim().min(1, 'Enter the province.'),
+  city: z.string().trim().min(1, 'Enter the city.'),
+  district: z.string().trim().min(1, 'Enter the district.'),
+  zip_code: z.string().trim().min(1, 'Enter the zip code.').max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.'),
   is_active: z.boolean(),
 }))
 type State = z.infer<typeof schema.value>
@@ -65,7 +63,6 @@ function fromLocation(location?: RaLocationDetail): State {
     city: location?.city ?? '',
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
-    region: location?.region ?? '',
     // Cleared while its deactivation waits for approval; ticking it again withdraws that.
     is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
   }
@@ -87,8 +84,7 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, ...rest } = blankToNull({ ...state, name: state.name.trim() })
-    const body = ra.value.hasRegion ? { ...rest, region } : rest
+    const body = blankToNull({ ...state, name: state.name.trim() })
     const saved = props.location
       ? await raApi.updateLocation(props.location.id, body)
       : await raApi.createLocation({ ...body, kind: ra.value.kind })
@@ -164,21 +160,10 @@ async function onSubmit() {
           />
         </UFormField>
         <UFormField
-          v-if="ra.hasRegion"
-          label="Region"
-          name="region"
-          required
-          eager-validation
-        >
-          <UInput
-            v-model="state.region"
-            placeholder="e.g. Region Jabar"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
           label="Address"
           name="address"
+          required
+          eager-validation
         >
           <UTextarea
             v-model="state.address"
@@ -191,6 +176,8 @@ async function onSubmit() {
           <UFormField
             label="Province"
             name="province"
+            required
+            eager-validation
           >
             <UInput
               v-model="state.province"
@@ -201,6 +188,8 @@ async function onSubmit() {
           <UFormField
             label="City"
             name="city"
+            required
+            eager-validation
           >
             <UInput
               v-model="state.city"
@@ -211,6 +200,8 @@ async function onSubmit() {
           <UFormField
             label="District"
             name="district"
+            required
+            eager-validation
           >
             <UInput
               v-model="state.district"
@@ -221,6 +212,8 @@ async function onSubmit() {
           <UFormField
             label="Zip code"
             name="zip_code"
+            required
+            eager-validation
           >
             <UInput
               v-model="state.zip_code"

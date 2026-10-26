@@ -39,11 +39,13 @@ const asked = computed(() => {
   return `${props.requestedBy ?? 'Someone'} added this ${props.noun}${when}.`
 })
 const waiting = computed(() => {
-  if (props.can?.own) return `You asked for this, so someone else with the approve permission (BCM admin or BCM management) approves or rejects it. ${props.noun === 'incident' ? 'Until then it can\'t be updated or closed.' : props.action === 'deactivate' ? `The ${props.noun} stays active until then.` : 'Its RAs can be drafted, but not submitted for sign-off until then.'}`
-  if (props.can?.approve) return 'Check it, then approve it or reject it with a reason. You approve because someone else asked.'
-  if (props.noun === 'incident') return 'Someone else with the approve permission confirms it. Until then it is on the map as pending and can\'t be updated or closed.'
-  if (props.action === 'deactivate') return `Someone else with the approve permission approves it; the ${props.noun} stays active until then.`
-  return `Someone else with the approve permission approves it. Its RAs can be drafted, but not submitted for sign-off until then.`
+  if (props.can?.approve) return 'Please review the details, then approve or reject this request. A reason is required for a rejection.'
+  const until = props.noun === 'incident'
+    ? 'Until then, the incident is shown on the map as pending and cannot be updated or closed.'
+    : props.action === 'deactivate'
+      ? `The ${props.noun} remains active until the request is approved.`
+      : 'Risk assessments may be drafted in the meantime, but cannot be submitted for sign-off until it is approved.'
+  return `This request requires approval by another user with approval rights (BCM Admin or BCM Management). ${until}`
 })
 
 async function run(name: string, work: () => Promise<unknown>, done: string) {

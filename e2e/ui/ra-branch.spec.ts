@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { BRANCH_ASSESSMENT_ID, BRANCH_ID, mockRa } from '../fixtures/ra'
+import { BRANCH_ASSESSMENT_ID, BRANCH_ID, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -86,10 +86,11 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   await expect(page.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
 })
 
-test('a branch has a region, occupants, a recovery team and a call tree', async ({ page }) => {
+test('a branch has occupants, a recovery team and a call tree, and no Region field', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/locations/${BRANCH_ID}`)
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveValue('Region Jabar', { timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KCP Bogor Pajajaran', { timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
   for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(page.getByRole('tab', { name })).toBeVisible()
   }
@@ -108,7 +109,7 @@ test('RA Branch has its own Monitoring, Manage and Approval', async ({ page }) =
   await expect(page.getByRole('link', { name: 'KCP Bogor Pajajaran' }).first()).toHaveAttribute('href', `/ra-branch/approval/${BRANCH_ASSESSMENT_ID}`, { timeout: 60_000 })
 })
 
-test('adding a branch needs a region and sends the branch kind', async ({ page }) => {
+test('adding a branch needs every field and sends the branch kind', async ({ page }) => {
   const log = await mockRa(page)
   // The old RA Branch link lands on Building Data Entry with the type fixed to branch.
   await page.goto('/ra-branch/locations/new')
@@ -117,13 +118,15 @@ test('adding a branch needs a region and sends the branch kind', async ({ page }
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page.getByText('Enter the region.')).toBeVisible()
+  for (const message of ['Enter the address.', 'Enter the province.', 'Enter the city.', 'Enter the district.', 'Enter the zip code.']) {
+    await expect(page.getByText(message)).toBeVisible()
+  }
   expect(log.created).toHaveLength(0)
-  await page.getByRole('textbox', { name: /Region/ }).fill('Region Jabar')
-  await expect(page.getByText('Enter the region.')).toHaveCount(0)
+  await fillAddress(page)
+  await expect(page.getByText('Enter the address.')).toHaveCount(0)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', region: 'Region Jabar' })
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta' })
 })
 
 test('a branch assessment opened under RA moves to RA Branch', async ({ page }) => {

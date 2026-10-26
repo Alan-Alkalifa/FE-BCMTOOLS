@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mockRa } from '../fixtures/ra'
+import { fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -416,10 +416,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await expect(page.getByText('Enter the building name.')).toBeVisible()
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
-  await page.getByRole('textbox', { name: 'Province' }).fill('DKI Jakarta')
-  await page.getByRole('textbox', { name: 'City' }).fill('Jakarta Selatan')
-  await page.getByRole('textbox', { name: 'District' }).fill('Setiabudi')
-  await page.getByRole('textbox', { name: 'Zip code' }).fill('12920')
+  await fillAddress(page)
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
@@ -449,7 +446,7 @@ test('the location page lists its assessments and edits its details', async ({ p
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new?location_id=1')
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
-  await page.getByRole('textbox', { name: 'Address' }).fill('Jl. Wahid Hasyim, Bintaro')
+  await page.getByRole('textbox', { name: /^Address/ }).fill('Jl. Wahid Hasyim, Bintaro')
   await expect(page.getByRole('combobox', { name: 'Type of building' })).toBeDisabled()
   await page.getByRole('button', { name: 'Save building' }).click()
   expect((await request).postDataJSON()).toMatchObject({ address: 'Jl. Wahid Hasyim, Bintaro', is_active: true })

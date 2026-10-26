@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import { signIn } from './scca'
 // Recorded from the backend with the Griya CIMB Niaga 2 sample of the 2025 workbook, edited so that
 // one hazard (H28) has a high residual risk without an action plan and one (H09) is still incomplete.
@@ -262,6 +262,20 @@ export interface RaMockLog {
   approvals: [string, unknown][]
 }
 
+/** The address fields Building Data Entry requires. */
+export const ADDRESS = { address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920' }
+
+/** Fills in the address of Building Data Entry. */
+export async function fillAddress(page: Page) {
+  await page.getByRole('textbox', { name: /^Address/ }).fill(ADDRESS.address)
+  await page.getByRole('textbox', { name: /^Province/ }).fill(ADDRESS.province)
+  await page.getByRole('textbox', { name: /^City/ }).fill(ADDRESS.city)
+  await page.getByRole('textbox', { name: /^District/ }).fill(ADDRESS.district)
+  await page.getByRole('textbox', { name: /^Zip code/ }).fill(ADDRESS.zip_code)
+  // The messages clear as the fields are filled in (before the submit button moves up).
+  await expect(page.getByText(/^Enter the (address|province|city|district|zip code)\.$/)).toHaveCount(0)
+}
+
 /** A building added by Rina that waits for approval; the signed-in user may approve it. */
 export const PENDING_APPROVAL = {
   status: 'pending', action: 'register', requested_by: 'Rina', requested_at: '2026-10-26T02:00:00Z',
@@ -320,6 +334,8 @@ export async function mockRa(
   const branchLocation = structuredClone(BRANCH_LOCATION) as typeof BRANCH_LOCATION & Record<string, unknown>
   for (const row of [location, branchLocation]) {
     Object.assign(row, { approval: { ...APPROVED }, approval_can: { ...NO_APPROVAL_ACTIONS } })
+    // Building Data Entry requires the full address.
+    Object.assign(row, { ...ADDRESS, ...Object.fromEntries(Object.entries(ADDRESS).map(([key, value]) => [key, (row as Record<string, unknown>)[key] || value])) })
     // The workbook leaves some of these blank; the app requires all but the home phone.
     for (const member of (row.recovery_team ?? []) as Record<string, unknown>[]) {
       for (const field of ['role', 'name', 'mobile']) member[field] ||= '-'

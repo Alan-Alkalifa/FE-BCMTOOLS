@@ -4,7 +4,7 @@ import type { RaLocationDetail } from '~/composables/useRa'
 /**
  * Building Data Entry: add a head office building or a branch. The type comes from the link
  * (`?type=branch`, e.g. from RA Branch > New assessment), otherwise the user picks it in the
- * form; every field follows it (a branch needs a region).
+ * form; every field follows it.
  */
 const route = useRoute()
 

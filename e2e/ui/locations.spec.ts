@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { BRANCH_ID, mockRa } from '../fixtures/ra'
+import { BRANCH_ID, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -66,17 +66,20 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   // What was typed is kept when the type changes.
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
-  await page.getByRole('textbox', { name: /Region/ }).fill('Region Jabar')
+  // A branch has no Region field any more.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', region: 'Region Jabar' })
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920' })
+  expect(log.created[0]).not.toHaveProperty('region')
 })
 
 test('adding a building from New assessment returns to the new assessment', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/new?type=branch&then=assessment')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
-  await page.getByRole('textbox', { name: /Region/ }).fill('Region Jabar')
+  await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/ra-branch\/manage\/new\?location_id=3$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch' })
