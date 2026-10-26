@@ -4,8 +4,8 @@ import type { LocationQueryRaw } from 'vue-router'
 import type { RaLocation } from '~/composables/useRa'
 
 /**
- * The Locations register: head office buildings and branches in one table, filtered by type,
- * region and status (all in the URL), one page at a time. A row opens the location's profile.
+ * The Buildings register: head office buildings and branches in one table, filtered by type,
+ * region and status (all in the URL), one page at a time. A row opens the building's profile.
  */
 const { can } = useAuth()
 const canEdit = computed(() => can('ra.edit'))
@@ -115,7 +115,7 @@ async function remove(location: RaLocation) {
   actionError.value = null
   const ok = await confirm({
     title: `Delete '${location.name}'?`,
-    description: `This permanently removes the ${noun(location)}. Locations with assessments can only be deactivated.`,
+    description: `This permanently removes the ${noun(location)}. Buildings with assessments can only be deactivated.`,
     confirmLabel: `Delete ${noun(location)}`,
     destructive: true,
   })
@@ -134,17 +134,17 @@ async function remove(location: RaLocation) {
 
 <template>
   <AppPage
-    title="Locations"
+    title="Buildings"
     icon="i-lucide-building"
     description="Head office buildings and branches: each one's profile, map pin and RAs."
-    :crumbs="[{ label: 'Locations' }, { label: 'Locations' }]"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]"
   >
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
       :columns="8"
       :rows="5"
-      label="Loading locations"
+      label="Loading buildings"
     />
 
     <UAlert
@@ -152,7 +152,7 @@ async function remove(location: RaLocation) {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Could not load the locations"
+      title="Could not load the buildings"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -175,7 +175,7 @@ async function remove(location: RaLocation) {
         color="error"
         variant="subtle"
         icon="i-lucide-circle-alert"
-        title="Couldn't delete the location"
+        title="Couldn't delete the building"
         :description="actionError"
       />
       <div class="flex flex-wrap items-center gap-2 p-4">
@@ -216,13 +216,13 @@ async function remove(location: RaLocation) {
             color="neutral"
             variant="outline"
             icon="i-lucide-map"
-            label="Location map"
+            label="Building map"
           />
           <UButton
             v-if="canEdit"
             :to="addTo"
             icon="i-lucide-plus"
-            label="Add location"
+            label="Input Data Building"
           />
         </div>
       </div>
@@ -333,7 +333,7 @@ async function remove(location: RaLocation) {
         </template>
         <template #empty>
           <p class="py-10 text-center text-sm text-muted">
-            {{ hasFilters ? 'No locations match these filters.' : 'No locations yet. Add the first building or branch to assess.' }}
+            {{ hasFilters ? 'No buildings match these filters.' : 'No buildings yet. Add the first head office building or branch to assess.' }}
           </p>
         </template>
       </UTable>
@@ -344,7 +344,7 @@ async function remove(location: RaLocation) {
         :per-page="PER_PAGE"
         :total="data.total"
         :to="(next) => ({ query: { ...route.query, page: next > 1 ? next : undefined } })"
-        label="Locations"
+        label="Buildings"
       />
     </UCard>
   </AppPage>

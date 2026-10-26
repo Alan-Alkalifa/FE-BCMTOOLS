@@ -11,7 +11,8 @@ const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 
 const ra = useRaModule()
-const roles = computed(() => ra.value.signoffRoles)
+/** The roles with the labels and titles of the assessment's configuration version. */
+const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
 const toast = useToast()
 const dirty = useRaDirty()
 const { user } = useAuth()
@@ -174,7 +175,7 @@ function stepKey(role: string) {
 }
 
 const ACTIONS: Record<RaSignoffEvent['action'], { label: string, icon: string, class: string }> = {
-  submitted: { label: 'Submitted for sign-off', icon: 'i-lucide-send', class: 'text-info' },
+  submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', class: 'text-info' },
   approved: { label: 'Approved', icon: 'i-lucide-badge-check', class: 'text-success' },
   returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', class: 'text-warning' },
 }
@@ -264,7 +265,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           />
           <UButton
             icon="i-lucide-badge-check"
-            :label="onBehalf ? 'Approve on their behalf' : 'Approve'"
+            :label="onBehalf ? `Approve on behalf of ${currentRole.hint}` : 'Approve'"
             loading-auto
             @click="approve"
           />
@@ -281,12 +282,72 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           The statement each signer agrees to, from the LRP scorecard.
         </p>
       </template>
-      <blockquote
-        lang="id"
-        class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
-      >
-        {{ formula.signoff_statement }}
-      </blockquote>
+      <div class="grid gap-6 lg:grid-cols-2">
+        <figure class="space-y-2">
+          <figcaption class="text-xs font-medium text-muted uppercase">
+            Bahasa Indonesia
+          </figcaption>
+          <blockquote
+            lang="id"
+            class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
+          >
+            {{ formula.signoff_statement }}
+          </blockquote>
+        </figure>
+        <figure
+          v-if="formula.signoff_statement_en"
+          class="space-y-2"
+        >
+          <figcaption class="text-xs font-medium text-muted uppercase">
+            English
+          </figcaption>
+          <blockquote
+            lang="en"
+            class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
+            data-testid="signoff-statement-en"
+          >
+            {{ formula.signoff_statement_en }}
+          </blockquote>
+        </figure>
+      </div>
+    </UCard>
+
+    <UCard v-if="history.length">
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Sign-off history
+        </h2>
+      </template>
+      <ol class="space-y-4">
+        <li
+          v-for="(event, index) in history"
+          :key="index"
+          class="flex gap-3"
+        >
+          <UIcon
+            :name="ACTIONS[event.action].icon"
+            class="mt-0.5 size-4 shrink-0"
+            :class="ACTIONS[event.action].class"
+          />
+          <div class="min-w-0 text-sm">
+            <p class="text-highlighted">
+              <span class="font-medium">{{ ACTIONS[event.action].label }}</span>
+              <template v-if="event.role">
+                · {{ roleLabel(event.role) }}
+              </template>
+            </p>
+            <p class="text-muted">
+              {{ event.user ?? 'Someone' }} · {{ formatDateTime(event.at) }}
+            </p>
+            <p
+              v-if="event.comment"
+              class="mt-1 whitespace-pre-line"
+            >
+              {{ event.comment }}
+            </p>
+          </div>
+        </li>
+      </ol>
     </UCard>
 
     <section
@@ -474,7 +535,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       />
       <UButton
         icon="i-lucide-send"
-        label="Submit for sign-off"
+        label="Submit for approval"
         :disabled="!canSubmit"
         loading-auto
         @click="submit"
@@ -492,43 +553,5 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
         @click="sendBack"
       />
     </div>
-
-    <UCard v-if="history.length">
-      <template #header>
-        <h2 class="text-lg font-semibold">
-          Sign-off history
-        </h2>
-      </template>
-      <ol class="space-y-4">
-        <li
-          v-for="(event, index) in history"
-          :key="index"
-          class="flex gap-3"
-        >
-          <UIcon
-            :name="ACTIONS[event.action].icon"
-            class="mt-0.5 size-4 shrink-0"
-            :class="ACTIONS[event.action].class"
-          />
-          <div class="min-w-0 text-sm">
-            <p class="text-highlighted">
-              <span class="font-medium">{{ ACTIONS[event.action].label }}</span>
-              <template v-if="event.role">
-                · {{ roleLabel(event.role) }}
-              </template>
-            </p>
-            <p class="text-muted">
-              {{ event.user ?? 'Someone' }} · {{ formatDateTime(event.at) }}
-            </p>
-            <p
-              v-if="event.comment"
-              class="mt-1 whitespace-pre-line"
-            >
-              {{ event.comment }}
-            </p>
-          </div>
-        </li>
-      </ol>
-    </UCard>
   </div>
 </template>

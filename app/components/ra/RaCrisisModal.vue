@@ -161,7 +161,7 @@ async function onSubmit() {
     :title="editing ? `Update ${crisis!.ref_no}` : 'Declare a crisis'"
     :description="editing
       ? 'What changes is added to the crisis history.'
-      : 'Everyone sees it on the location map until it is closed. Each affected place gets its instructions.'"
+      : 'Everyone sees it on the building map until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >
@@ -347,7 +347,7 @@ async function onSubmit() {
           form="ra-crisis-form"
           :color="editing ? 'primary' : 'error'"
           :icon="editing ? undefined : 'i-lucide-siren'"
-          :label="editing ? 'Save changes' : 'Declare crisis'"
+          :label="editing ? 'Save changes' : 'Submit disaster/incident'"
           :loading="saving"
         />
       </div>

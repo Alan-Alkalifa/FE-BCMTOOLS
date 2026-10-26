@@ -175,7 +175,7 @@ async function onSubmit() {
             required
             :help="ra.kind === 'branch'
               ? 'The branch to assess. One assessment per branch per period.'
-              : 'The building or work location to assess. One assessment per location per period.'"
+              : 'The building or work location to assess. One assessment per building per period.'"
           >
             <div class="flex gap-2">
               <USelectMenu
@@ -230,7 +230,7 @@ async function onSubmit() {
               v-model="state.copy"
               :label="`Start from ${previous.ref_no} (${previous.period_year})`"
               :description="ra.hasLcp
-                ? 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts, occupants, the recovery team and the call tree come from the location.'
+                ? 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts, divisions, the recovery team and the call tree come from the building.'
                 : 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts come from the branch.'"
             />
           </UFormField>

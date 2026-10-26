@@ -20,17 +20,31 @@ export interface RaGuide {
   guidance: string
 }
 
+/** A sign-off role as RA configuration names it: "Prepared by" signed by the "Location
+ *  Incident Coordinator (LIC)". */
+export interface RaRoleLabel {
+  role: RaSignoffRole
+  label: string
+  title: string
+}
+
 export interface RaFormula {
   code: string
   kind: RaKind
   name: string
+  status?: 'draft' | 'active' | 'retired'
   /** The rating inputs of this kind, in questionnaire order. */
   inputs: RaRatingField[]
   signoff_roles: RaSignoffRole[]
+  signoff_role_labels?: RaRoleLabel[]
   levels: RaLevel[]
   instructions: string[]
   signoff_statement: string | null
+  signoff_statement_en?: string | null
   risk_summary_note: string | null
+  risk_summary_note_en?: string | null
+  hazard_intro?: string | null
+  type_description?: string | null
   categories: RaCategory[]
   guides: Record<RaGuideScale, RaGuide[]>
   matrix: { probability: number, impact: number, level: RaLevel }[]
@@ -136,6 +150,10 @@ export interface RaWorkflow {
 
 export interface RaOccupant {
   seq?: number
+  /** Picked from the division list: the name and MTD follow the division. */
+  division_id?: number | null
+  /** The division's critical rating (read only). */
+  critical_rating?: string | null
   floor: string | null
   directorate: string | null
   unit_name: string
@@ -324,6 +342,10 @@ export interface RaMapSettings {
 
 export interface RaLocation extends RaLocationRef {
   address: string | null
+  province?: string | null
+  city?: string | null
+  district?: string | null
+  zip_code?: string | null
   latitude: number | null
   longitude: number | null
   is_active: boolean
@@ -441,6 +463,10 @@ export interface RaLocationInput {
   kind?: RaKind
   name?: string
   address?: string | null
+  province?: string | null
+  city?: string | null
+  district?: string | null
+  zip_code?: string | null
   region?: string | null
   latitude?: number | null
   longitude?: number | null
@@ -488,12 +514,41 @@ export function raPin(location: { latitude?: number | null, longitude?: number |
   return { lat: Number(location.latitude), lng: Number(location.longitude) }
 }
 
-export function useRaFormula(kind: MaybeRefOrGetter<RaKind>) {
+/** The active configuration of a kind or, with `version`, the version an assessment was
+ *  created on (assessments keep their version). */
+export function useRaFormula(kind: MaybeRefOrGetter<RaKind>, version?: MaybeRefOrGetter<string | null | undefined>) {
   return useFetch<RaFormula>('/api/ra/formula', {
-    key: computed(() => `ra-formula-${toValue(kind)}`),
-    query: computed(() => ({ kind: toValue(kind) })),
+    key: computed(() => `ra-formula-${toValue(kind)}-${toValue(version) ?? 'active'}`),
+    query: computed(() => (toValue(version) ? { version: toValue(version) } : { kind: toValue(kind) })),
     getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
   })
+}
+
+/** Head office building and branch, with the description RA configuration gives each. */
+export interface RaBuildingType {
+  kind: RaKind
+  label: string
+  description: string | null
+}
+
+export function useRaBuildingTypes() {
+  return useFetch<{ items: RaBuildingType[] }>('/api/ra/building-types', { key: 'ra-building-types' })
+}
+
+/** A division (unit) working in buildings, with its MTD band and critical rating. */
+export interface RaDivision {
+  id: number
+  name: string
+  mtd: string
+  critical_rating: string
+  is_active: boolean
+  used_by?: number
+}
+
+export type RaDivisionInput = Pick<RaDivision, 'name' | 'mtd' | 'critical_rating'>
+
+export function useRaDivisions() {
+  return useFetch<{ items: RaDivision[] }>('/api/ra/divisions', { key: 'ra-divisions', default: () => ({ items: [] }) })
 }
 
 /** Lookups derived from the formula: hazards by code, the risk matrix, guides per scale. */
@@ -616,6 +671,7 @@ export const raApi = {
   updateLocation: (id: number, body: RaLocationInput) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`, { method: 'PUT', body }),
   getLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`),
+  createDivision: (body: RaDivisionInput) => $fetch<RaDivision>('/api/ra/divisions', { method: 'POST', body }),
   removeLocation: (id: number) => $fetch(`${LOCATIONS}/${id}`, { method: 'DELETE' }),
   setContacts: (id: number, contacts: RaContact[]) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/contacts`, { method: 'PUT', body: { contacts } }),
@@ -660,6 +716,8 @@ export interface RaAssessmentRef {
   assessment_date: string | null
   status: RaStatus
   current_signoff_role: string | null
+  /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
+  current_step_title?: string | null
   highest_residual_level: RaLevel | null
   approved_at: string | null
   is_returned: boolean
@@ -684,6 +742,8 @@ export interface RaMonitorLocation {
 export interface RaSignoffWaiting extends RaAssessmentRef {
   location: RaLocationRef
   step: string
+  /** Who signs the step, e.g. "Location Incident Coordinator (LIC)" (like SCCA). */
+  step_title?: string
   signer: RaUserRef | null
   waiting_since: string | null
   working_days_waiting: number
@@ -698,6 +758,8 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
 export interface RaHistoryRow {
   action: 'approved' | 'returned' | 'submitted'
   role: string | null
+  /** Who signs the role, e.g. "Location Incident Coordinator (LIC)". */
+  role_title?: string | null
   comment: string | null
   at: string
   assessment: RaAssessmentRef & { location: RaLocationRef }

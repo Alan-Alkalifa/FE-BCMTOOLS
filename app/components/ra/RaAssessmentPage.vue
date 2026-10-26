@@ -20,7 +20,11 @@ const toast = useToast()
 
 const id = computed(() => Number(route.params.id))
 const { data: assessment, status, error, refresh } = useRaAssessment(id)
-const { data: formula, status: formulaStatus, error: formulaError, refresh: refreshFormula } = useRaFormula(() => ra.value.kind)
+// The configuration version the assessment was created on: assessments keep their version.
+const { data: formula, status: formulaStatus, error: formulaError, refresh: refreshFormula } = useRaFormula(
+  () => ra.value.kind,
+  () => assessment.value?.formula_version,
+)
 
 // A branch assessment opened under /ra (or the reverse): show it in its own module.
 watch(() => assessment.value?.kind, (kind) => {
@@ -61,7 +65,7 @@ const title = computed(() =>
 const tabItems = [
   { label: 'Details', value: 'details', icon: 'i-lucide-file-text', slot: 'details' },
   { label: 'Hazards', value: 'hazards', icon: 'i-lucide-list-checks', slot: 'hazards' },
-  { label: 'Heat map and summary', value: 'summary', icon: 'i-lucide-grid-3x3', slot: 'summary' },
+  { label: 'Risk Summary', value: 'summary', icon: 'i-lucide-grid-3x3', slot: 'summary' },
   { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' },
 ]
 
@@ -306,15 +310,6 @@ async function removeAssessment() {
         :ui="{ description: 'whitespace-pre-line' }"
       />
 
-      <UAlert
-        v-if="assessment.formula_version !== formula.code"
-        color="info"
-        variant="subtle"
-        icon="i-lucide-info"
-        title="Older formula version"
-        :description="`This assessment uses ${assessment.formula_version}; the guides shown are from ${formula.code}.`"
-      />
-
       <UTabs
         :model-value="tab"
         :items="tabItems"
@@ -340,30 +335,11 @@ async function removeAssessment() {
           />
         </template>
         <template #summary>
-          <div class="space-y-6">
-            <RaRiskSummary
-              :assessment="assessment"
-              :formula="formula"
-              @select="openHazard"
-            />
-            <RaHeatMap
-              v-if="assessment.summary.heat_maps.gross"
-              title="Gross risk heat map"
-              description="Before the existing mitigation measures."
-              :cells="assessment.summary.heat_maps.gross"
-              :formula="formula"
-              @select="openHazard"
-            />
-            <RaHeatMap
-              title="Residual risk heat map"
-              :description="ra.singleRisk
-                ? 'Probability against the impact after the existing mitigation measures.'
-                : 'After the existing mitigation measures.'"
-              :cells="assessment.summary.heat_maps.residual"
-              :formula="formula"
-              @select="openHazard"
-            />
-          </div>
+          <RaRiskSummary
+            :assessment="assessment"
+            :formula="formula"
+            @select="openHazard"
+          />
         </template>
         <template #signoff>
           <RaSignoffForm

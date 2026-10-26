@@ -32,18 +32,18 @@ const rows = computed<Row[]>(() => {
 
 const summary = computed(() => props.location.occupant_summary)
 const tiles = computed(() => [
-  { label: 'Units', value: summary.value.units, icon: 'i-lucide-building-2' },
+  { label: 'Divisions', value: summary.value.units, icon: 'i-lucide-building-2' },
   { label: 'Employees', value: summary.value.employees, icon: 'i-lucide-users' },
-  { label: 'Units with a BCP', value: summary.value.with_bcp, icon: 'i-lucide-file-check' },
-  { label: 'Units with an alternate site', value: summary.value.with_alternate_site, icon: 'i-lucide-map-pin' },
+  { label: 'Divisions with a BCP', value: summary.value.with_bcp, icon: 'i-lucide-file-check' },
+  { label: 'Divisions with an alternate site', value: summary.value.with_alternate_site, icon: 'i-lucide-map-pin' },
 ])
 
 const right = { class: { th: 'text-right', td: 'text-right' } }
-// Unit names can be long lists ("A | B | C"), so they wrap instead of widening the table.
+// Division names can be long lists ("A | B | C"), so they wrap instead of widening the table.
 const wrap = { class: { td: 'whitespace-normal min-w-56' } }
 const profileColumns: TableColumn<Row>[] = [
   { accessorKey: 'floor', header: 'Floor' },
-  { accessorKey: 'unit_name', header: 'Unit', meta: wrap },
+  { accessorKey: 'unit_name', header: 'Division', meta: wrap },
   { accessorKey: 'directorate', header: 'Directorate', meta: wrap },
   { accessorKey: 'employee_count', header: 'Employees', meta: right },
   { accessorKey: 'disabled_count', header: 'Disability', meta: right },
@@ -53,9 +53,10 @@ const profileColumns: TableColumn<Row>[] = [
 ]
 const strategyColumns: TableColumn<Row>[] = [
   { accessorKey: 'floor', header: 'Floor' },
-  { accessorKey: 'unit_name', header: 'Unit', meta: wrap },
+  { accessorKey: 'unit_name', header: 'Division', meta: wrap },
   { accessorKey: 'employee_count', header: 'Employees', meta: right },
   { accessorKey: 'mtd', header: 'MTD' },
+  { accessorKey: 'critical_rating', header: 'Critical rating' },
   { accessorKey: 'has_bcp', header: 'BCP' },
   { accessorKey: 'alternate_site', header: 'Alternate site' },
   { accessorKey: 'remarks', header: 'Remarks' },
@@ -68,7 +69,7 @@ async function save(occupants: RaOccupant[], message: string) {
   try {
     const saved = await raApi.setOccupants(
       props.location.id,
-      occupants.map(({ seq: _seq, ...occupant }) => occupant),
+      occupants.map(({ seq: _seq, critical_rating: _rating, ...occupant }) => occupant),
     )
     toast.add({ title: message, color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)
@@ -89,18 +90,18 @@ async function edit(row?: Row) {
   const next = [...props.location.occupants]
   if (row) next[row.index] = occupant
   else next.push(occupant)
-  await save(next, row ? 'Unit saved' : 'Unit added')
+  await save(next, row ? 'Division saved' : 'Division added')
 }
 
 async function remove(row: Row) {
   const ok = await confirm({
     title: `Remove '${row.unit_name}'?`,
-    description: 'The unit and its continuity strategy are removed from this location.',
-    confirmLabel: 'Remove unit',
+    description: 'The division and its continuity strategy are removed from this building.',
+    confirmLabel: 'Remove division',
     destructive: true,
   })
   if (!ok) return
-  await save(props.location.occupants.filter((_, index) => index !== row.index), 'Unit removed')
+  await save(props.location.occupants.filter((_, index) => index !== row.index), 'Division removed')
 }
 </script>
 
@@ -129,7 +130,7 @@ async function remove(row: Row) {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Couldn't save the units"
+      title="Couldn't save the divisions"
       :description="saveError"
     />
 
@@ -138,15 +139,15 @@ async function remove(row: Row) {
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="text-lg font-semibold">
-              Units in this {{ ra.location.lower === 'branch' ? 'branch' : 'building' }}
+              Divisions in this {{ ra.location.lower === 'branch' ? 'branch' : 'building' }}
             </h2>
             <p class="text-sm text-muted">
-              LCP Section C (occupants) and Section F (business continuity strategy).
+              Occupants and Business Continuity strategy.
             </p>
           </div>
           <UButton
             icon="i-lucide-plus"
-            label="Add unit"
+            label="Add division"
             @click="edit()"
           />
         </div>
@@ -156,9 +157,9 @@ async function remove(row: Row) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          placeholder="Search by unit, directorate or floor"
+          placeholder="Search by division, directorate or floor"
           class="w-full sm:w-80"
-          aria-label="Search by unit, directorate or floor"
+          aria-label="Search by division, directorate or floor"
         />
         <UTabs
           v-model="view"
@@ -203,6 +204,9 @@ async function remove(row: Row) {
         <template #mtd-cell="{ row }">
           {{ row.original.mtd || '—' }}
         </template>
+        <template #critical_rating-cell="{ row }">
+          {{ row.original.critical_rating || '—' }}
+        </template>
         <template #has_bcp-cell="{ row }">
           <StatusBadge
             v-if="raYesNoKey(row.original.has_bcp)"
@@ -241,7 +245,7 @@ async function remove(row: Row) {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-1">
-            <UTooltip text="Edit unit">
+            <UTooltip text="Edit division">
               <UButton
                 color="neutral"
                 variant="ghost"
@@ -251,7 +255,7 @@ async function remove(row: Row) {
                 @click="edit(row.original)"
               />
             </UTooltip>
-            <UTooltip text="Remove unit">
+            <UTooltip text="Remove division">
               <UButton
                 color="error"
                 variant="ghost"
@@ -265,7 +269,7 @@ async function remove(row: Row) {
         </template>
         <template #empty>
           <p class="py-6 text-center text-sm text-muted">
-            {{ search ? 'No units match this search.' : `No units yet. Add the units that work in this ${ra.location.lower === 'branch' ? 'branch' : 'building'}.` }}
+            {{ search ? 'No divisions match this search.' : `No divisions yet. Add the divisions that work in this ${ra.location.lower === 'branch' ? 'branch' : 'building'}.` }}
           </p>
         </template>
       </UTable>
@@ -274,7 +278,7 @@ async function remove(row: Row) {
         v-if="rows.length"
         class="mt-4 text-sm text-muted"
       >
-        Showing {{ formatNumber(rows.length, 0) }} of {{ formatNumber(location.occupants.length, 0) }} units
+        Showing {{ formatNumber(rows.length, 0) }} of {{ formatNumber(location.occupants.length, 0) }} divisions
       </p>
     </UCard>
   </div>

@@ -72,7 +72,7 @@ async function declare() {
 <template>
   <AppPage
     title="Crises"
-    :crumbs="[{ label: 'Locations' }, { label: 'Crises' }]"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Crises' }]"
   >
     <template #actions>
       <UButton
@@ -80,13 +80,13 @@ async function declare() {
         color="neutral"
         variant="outline"
         icon="i-lucide-map"
-        label="Location map"
+        label="Building map"
       />
       <UButton
         v-if="map?.can_declare"
         color="error"
         icon="i-lucide-siren"
-        label="Declare crisis"
+        label="Declare Incident/Disaster"
         @click="declare"
       />
     </template>

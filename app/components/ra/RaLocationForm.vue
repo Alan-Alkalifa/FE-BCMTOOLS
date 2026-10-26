@@ -2,11 +2,23 @@
 import { z } from 'zod'
 import type { RaLocationDetail } from '~/composables/useRa'
 
-const props = withDefaults(defineProps<{ location?: RaLocationDetail, cancelTo?: string }>(), {
+/**
+ * Building Data Entry: a head office building or a branch. The type is picked in the form
+ * (`v-model:kind`, fixed when the link gives it, read-only once saved), with the description
+ * RA configuration gives each type; a branch also needs its region.
+ */
+const props = withDefaults(defineProps<{
+  location?: RaLocationDetail
+  cancelTo?: string
+  /** The type can't be changed (given by the link, or a saved building). */
+  kindLocked?: boolean
+}>(), {
   location: undefined,
   cancelTo: undefined,
+  kindLocked: false,
 })
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
+const kind = defineModel<RaKind | undefined>('kind')
 
 const ra = useRaModule()
 const toast = useToast()
@@ -15,9 +27,30 @@ const dirty = useRaDirty()
 const formError = ref<string | null>(null)
 const snapshot = ref('')
 
+const { data: buildingTypes } = useRaBuildingTypes()
+const typeItems = computed(() => (buildingTypes.value?.items ?? [
+  { kind: 'head_office' as const, label: 'Head office building', description: null },
+  { kind: 'branch' as const, label: 'Branch', description: null },
+]).map((item) => ({ label: item.label, value: item.kind })))
+const typeHint = computed(() =>
+  buildingTypes.value?.items.find((item) => item.kind === ra.value.kind)?.description
+  ?? (ra.value.kind === 'branch'
+    ? 'The branch that is assessed each RA cycle.'
+    : 'The building or work location that is assessed each RA cycle.'))
+const typeModel = computed<RaKind>({
+  get: () => kind.value ?? ra.value.kind,
+  set: (value) => {
+    kind.value = value
+  },
+})
+
 const schema = computed(() => z.object({
   name: z.string().trim().min(1, ra.value.kind === 'branch' ? 'Enter the branch name.' : 'Enter the building name.'),
   address: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  district: z.string().optional(),
+  zip_code: z.string().trim().max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.').optional(),
   // Section A of the branch workbook: Nama Region Cabang.
   region: ra.value.hasRegion ? z.string().trim().min(1, 'Enter the region.') : z.string().optional(),
   is_active: z.boolean(),
@@ -28,6 +61,10 @@ function fromLocation(location?: RaLocationDetail): State {
   return {
     name: location?.name ?? '',
     address: location?.address ?? '',
+    province: location?.province ?? '',
+    city: location?.city ?? '',
+    district: location?.district ?? '',
+    zip_code: location?.zip_code ?? '',
     region: location?.region ?? '',
     is_active: location?.is_active ?? true,
   }
@@ -87,13 +124,29 @@ async function onSubmit() {
         <h2 class="text-lg font-semibold">
           {{ ra.location.single }}
         </h2>
-        <p class="text-sm text-muted">
-          {{ ra.kind === 'branch'
-            ? 'Section A of the LRP scorecard: the branch that is assessed each RA cycle.'
-            : 'Section A of the LRP scorecard: the building or work location that is assessed each RA cycle.' }}
-        </p>
       </template>
       <div class="space-y-4">
+        <UFormField
+          label="Type of building"
+          required
+        >
+          <USelect
+            v-model="typeModel"
+            :items="typeItems"
+            :disabled="kindLocked || Boolean(location)"
+            aria-label="Type of building"
+            class="w-full sm:w-72"
+          />
+        </UFormField>
+        <UAlert
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-info"
+          :title="typeItems.find((item) => item.value === ra.kind)?.label"
+          :description="typeHint ?? undefined"
+          :ui="{ description: 'whitespace-pre-line' }"
+          data-testid="building-type-hint"
+        />
         <UFormField
           :label="ra.kind === 'branch' ? 'Branch name' : 'Building name'"
           name="name"
@@ -130,6 +183,49 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField
+            label="Province"
+            name="province"
+          >
+            <UInput
+              v-model="state.province"
+              placeholder="e.g. DKI Jakarta"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="City"
+            name="city"
+          >
+            <UInput
+              v-model="state.city"
+              placeholder="e.g. Jakarta Selatan"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="District"
+            name="district"
+          >
+            <UInput
+              v-model="state.district"
+              placeholder="e.g. Setiabudi"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="Zip code"
+            name="zip_code"
+          >
+            <UInput
+              v-model="state.zip_code"
+              inputmode="numeric"
+              placeholder="e.g. 12920"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
         <UFormField
           v-if="location"
           name="is_active"

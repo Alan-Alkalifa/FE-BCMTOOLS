@@ -278,7 +278,7 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
   const order = calls.find((call) => call.url === '/api/admin/menus/order')!.body as { items: { id: number }[] }
-  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12])
+  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26])
   await expect(page.getByRole('button', { name: 'Home is built in' })).toBeDisabled()
 })
 

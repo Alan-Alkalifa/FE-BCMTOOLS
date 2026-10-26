@@ -143,13 +143,13 @@ const places = computed(() => ra.value.location.lowerPlural)
 const cards = computed(() => {
   const value = overview.data.value?.cards
   return [
+    { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
+    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA in force past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
+    { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
     { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With an approved RA in force', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
     { key: 'not_assessed', label: 'Never approved', hint: `Active ${places.value} without an approved RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
     { key: 'in_signoff', label: 'In sign-off', hint: 'RAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
-    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA in force past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
-    { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
-    { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
   ] as const
 })
 
@@ -169,7 +169,7 @@ const monthPoints = computed(() =>
 
 const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((row) => row.approvals > 0 && row.average_working_days !== null))
 const stepBars = computed(() =>
-  stepRows.value.map((row) => ({ label: raSignoffLabel(row.step as RaSignoffRole, ra.value.signoffRoles), value: row.average_working_days ?? 0 })),
+  stepRows.value.map((row) => ({ label: row.step_title || stepLabel(row.step), value: row.average_working_days ?? 0 })),
 )
 
 function plural(count: number, one: string, many = `${one}s`) {
@@ -191,7 +191,7 @@ const monthSummary = computed(() => {
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
   const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
-  return slowest ? `Slowest step: ${raSignoffLabel(slowest.step as RaSignoffRole, ra.value.signoffRoles)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
+  return slowest ? `Slowest step: ${slowest.step_title || stepLabel(slowest.step)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -205,8 +205,10 @@ function daysLeft(row: RaMonitorLocation) {
   return `${row.days_left} days left`
 }
 
-function stepLabel(role: string) {
-  return raSignoffLabel(role as RaSignoffRole, ra.value.signoffRoles)
+/** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it; the rows
+ *  carry the title from their own configuration version. */
+function stepLabel(role: string, title?: string | null) {
+  return title || raStepTitle(role, ra.value.signoffRoles)
 }
 
 const locationColumn = computed(() => ra.value.location.single)
@@ -327,7 +329,7 @@ function record(id: number) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Location or address'"
+          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Building or address'"
           :aria-label="`Search ${ra.location.lowerPlural}`"
           class="w-full sm:w-64"
         />
@@ -619,7 +621,7 @@ function record(id: number) {
                   v-if="row.original.open.current_signoff_role"
                   class="mt-1 text-xs text-muted"
                 >
-                  {{ stepLabel(row.original.open.current_signoff_role) }}
+                  {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
                 </p>
               </NuxtLink>
               <span
@@ -728,7 +730,7 @@ function record(id: number) {
                 </p>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step) }}
+                {{ stepLabel(row.original.step, row.original.step_title) }}
               </template>
               <template #signer-cell="{ row }">
                 {{ row.original.signer?.name ?? '—' }}

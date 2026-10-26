@@ -14,6 +14,8 @@ test('one register lists head office buildings and branches', async ({ page }) =
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/locations/${BRANCH_ID}`)
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('kind')).toBe('all')
   await expect(page.getByText('Showing 1–6 of 6')).toBeVisible()
+  // Home › Location › Buildings
+  await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Location\s*Buildings/)
 })
 
 test('the register filters by type, region, status and search, in the URL', async ({ page }) => {
@@ -39,7 +41,7 @@ test('the register filters by type, region, status and search, in the URL', asyn
   await page.getByLabel('Status', { exact: true }).click()
   await page.getByRole('option', { name: 'Inactive', exact: true }).click()
   await expect(page).toHaveURL(/status=inactive/)
-  await expect(page.getByText('No locations match these filters.')).toBeVisible()
+  await expect(page.getByText('No buildings match these filters.')).toBeVisible()
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('active')).toBe('false')
 
   // Head office buildings have no region, so the region filter goes away with it.
@@ -50,20 +52,27 @@ test('the register filters by type, region, status and search, in the URL', asyn
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('region')).toBeNull()
 })
 
-test('adding a location asks for its type first', async ({ page }) => {
+test('Building Data Entry picks the type from a dropdown, with its description', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/new')
-  await expect(page.getByRole('radio', { name: /Head office building/ })).toBeChecked({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Building Data Entry' })).toBeVisible({ timeout: 60_000 })
+  const type = page.getByRole('combobox', { name: 'Type of building' })
+  await expect(type).toContainText('Head office building')
+  await expect(page.getByTestId('building-type-hint')).toContainText('The building or work location that is assessed each RA cycle.')
   await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
-  await page.getByRole('radio', { name: /Branch/ }).check()
-  await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika')
+  await page.getByRole('textbox', { name: /Building name/ }).fill('KC Bandung Asia Afrika')
+  await type.click()
+  await page.getByRole('option', { name: 'Branch' }).click()
+  await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
+  // What was typed is kept when the type changes.
+  await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
   await page.getByRole('textbox', { name: /Region/ }).fill('Region Jabar')
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', region: 'Region Jabar' })
 })
 
-test('Add location from New assessment returns to the new assessment', async ({ page }) => {
+test('adding a building from New assessment returns to the new assessment', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/new?type=branch&then=assessment')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })

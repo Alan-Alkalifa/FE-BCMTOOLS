@@ -15,6 +15,9 @@ export const ALL_PERMISSIONS = [
   'ra.edit',
   'ra.manage',
   'ra.crisis.declare',
+  'ra.config.view',
+  'ra.config.manage',
+  'ra.config.publish',
   'admin.users.manage',
   'admin.roles.manage',
   'admin.menus.manage',
@@ -60,11 +63,13 @@ const MENUS = [
   { code: 'ra_branch.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra-branch/monitoring', parent: 'ra_branch', permission: 'ra.access' },
   { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra.access' },
   { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra.access' },
-  { code: 'locations', label: 'Locations', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
-  { code: 'locations.register', label: 'Locations', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.map', label: 'Location map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
+  { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
   { code: 'locations.crises', label: 'Crises', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'ra.access' },
   { code: 'locations.guidebook', label: 'Crisis guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
+  // Added last so the other menus keep their ids (the menu admin tests use them).
+  { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */

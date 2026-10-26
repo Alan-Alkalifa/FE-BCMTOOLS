@@ -78,9 +78,11 @@ export const RA_KIND_INPUTS: Record<RaKind, RaRatingField[]> = {
   branch: [...RA_BRANCH_PROBABILITY_FIELDS, ...RA_BRANCH_IMPACT_FIELDS].map((field) => field.key),
 }
 
+/** The default sign-off roles; RA configuration can rename them per version
+ *  (`formula.signoff_role_labels`, see raRoleOptions). The hint is who signs: the role title. */
 export const RA_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'Location Incident Coordinator (LIC)' },
-  { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit critical business function' },
+  { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit Critical Business Function' },
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'Alternate Location Incident Commander' },
   { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
 ] as const
@@ -94,7 +96,7 @@ export const RA_TEAM_SIGNOFF_ROLES: Partial<Record<string, 'lic' | 'licom'>> = {
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'BOSM' },
-  { value: 'approved_by', label: 'Approved by', hint: 'Branch manager (BM)' },
+  { value: 'approved_by', label: 'Approved by', hint: 'Branch Manager (BM)' },
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'NRSOH' },
 ] as const
 
@@ -116,7 +118,7 @@ export interface RaModule {
   /** Crumb and page title. */
   title: string
   description: string
-  /** The location register: "Location" / "Branch". */
+  /** The building register: "Building" / "Branch". */
   location: { single: string, plural: string, lower: string, lowerPlural: string }
   refPrefix: string
   /** Gross and residual risk (HO), or one residual risk (branch). */
@@ -135,7 +137,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     base: '/ra',
     title: 'RA',
     description: 'Location risk assessment for an office building.',
-    location: { single: 'Location', plural: 'Locations', lower: 'location', lowerPlural: 'locations' },
+    location: { single: 'Building', plural: 'Buildings', lower: 'building', lowerPlural: 'buildings' },
     refPrefix: 'RA',
     singleRisk: false,
     hasLcp: true,
@@ -300,6 +302,36 @@ export function raSignoffRoleName(role: RaSignoffRole | null | undefined, roles:
 
 export function raSignoffLabel(role: RaSignoffRole, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
   return roles.find((item) => item.value === role)?.label ?? role
+}
+
+/** Who signs a role, its title ("Location Incident Coordinator (LIC)"), as Monitoring and
+ *  Approval show the step (like SCCA). */
+export function raStepTitle(role: string | null | undefined, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
+  if (!role) return ''
+  return roles.find((item) => item.value === role)?.hint ?? role
+}
+
+/** The sign-off roles of a configuration version (their labels and titles as RA configuration
+ *  sets them), or the module's defaults. */
+export function raRoleOptions(
+  formula: { signoff_role_labels?: { role: RaSignoffRole, label: string, title: string }[] } | null | undefined,
+  fallback: readonly RaSignoffRoleOption[],
+): RaSignoffRoleOption[] {
+  const rows = formula?.signoff_role_labels
+  if (!rows?.length) return [...fallback]
+  return rows.map((row) => ({ value: row.role, label: row.label, hint: row.title }))
+}
+
+/** A division's maximum tolerable downtime band and its critical rating (the SCCA categories). */
+export const RA_MTD_BANDS = ['0-4 hours', '4-12 hours', '12-24 hours', '24-48 hours', '> 48 hours'] as const
+export const RA_CRITICAL_RATINGS = ['Critical', 'Very Important', 'Important', 'Necessary', 'Other'] as const
+/** The MTD band that goes with each critical rating, suggested when a division is added. */
+export const RA_RATING_MTD: Record<string, string> = {
+  'Critical': '0-4 hours',
+  'Very Important': '4-12 hours',
+  'Important': '12-24 hours',
+  'Necessary': '24-48 hours',
+  'Other': '> 48 hours',
 }
 
 /** LCP-Recovery Team Structure. The Location Recovery Team is level 1, the other teams level 2. */
@@ -473,7 +505,10 @@ export const raWaitLevel = defineStatusScale<RaWaitLevel>({
   escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-siren' },
 })
 
-/** The Locations menu group: one register of buildings and branches, the map, crises. */
+/** The first crumb of the pages in the Location menu group (the register of head office
+ *  buildings and branches, the building map, crises and the guidebook): Home › Location ›
+ *  Buildings. The routes keep their /locations names. */
+export const BUILDINGS_GROUP = 'Location'
 export const LOCATIONS_PATH = '/locations'
 export const LOCATION_MAP_PATH = '/locations/map'
 export const CRISES_PATH = '/crises'

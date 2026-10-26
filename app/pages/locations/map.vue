@@ -180,8 +180,8 @@ function assessmentUrl(place: RaMapPlace) {
 
 <template>
   <AppPage
-    title="Location map"
-    :crumbs="[{ label: 'Locations' }, { label: 'Location map' }]"
+    title="Building map"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Building map' }]"
   >
     <template #actions>
       <UButton
@@ -202,7 +202,7 @@ function assessmentUrl(place: RaMapPlace) {
 
     <SkeletonGroup
       v-if="showSkeleton"
-      label="Loading the location map"
+      label="Loading the building map"
       class="space-y-6"
     >
       <div class="skeleton h-[32rem] w-full" />
@@ -213,7 +213,7 @@ function assessmentUrl(place: RaMapPlace) {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Could not load the location map"
+      title="Could not load the building map"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -508,7 +508,7 @@ function assessmentUrl(place: RaMapPlace) {
                 :to="locationUrl(selected)"
                 variant="link"
                 trailing-icon="i-lucide-arrow-right"
-                :label="`Open the ${selected.kind === 'branch' ? 'branch' : 'location'}`"
+                :label="`Open the ${selected.kind === 'branch' ? 'branch' : 'building'}`"
                 class="px-0"
               />
             </template>

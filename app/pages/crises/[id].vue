@@ -110,7 +110,7 @@ async function close() {
   if (!crisis.value) return
   const note = await noteModal.open({
     title: `Close ${crisis.value.ref_no}?`,
-    description: 'It leaves the location map. The crisis and its history stay in Crises.',
+    description: 'It leaves the building map. The crisis and its history stay in Crises.',
     confirmLabel: 'Close crisis',
     noteLabel: 'How it ended',
   }).result
@@ -122,7 +122,7 @@ async function reopen() {
   if (!crisis.value) return
   const note = await noteModal.open({
     title: `Reopen ${crisis.value.ref_no}?`,
-    description: 'It shows on the location map again until it is closed.',
+    description: 'It shows on the building map again until it is closed.',
     confirmLabel: 'Reopen crisis',
     noteLabel: 'Why it is reopened',
   }).result
@@ -188,7 +188,7 @@ const historyIcon: Record<string, string> = {
   <AppPage
     :title="crisis?.ref_no ?? 'Crisis'"
     :crumbs="[
-      { label: 'Locations' },
+      { label: BUILDINGS_GROUP },
       { label: 'Crises', to: CRISES_PATH },
       ...(crisis ? [{ label: crisis.ref_no }] : []),
     ]"

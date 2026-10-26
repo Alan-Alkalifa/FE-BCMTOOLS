@@ -77,7 +77,7 @@ async function save() {
 <template>
   <AppPage
     title="Crisis guidebook"
-    :crumbs="[{ label: 'Locations' }, { label: 'Crisis guidebook' }]"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Crisis guidebook' }]"
   >
     <SkeletonGroup
       v-if="showSkeleton"

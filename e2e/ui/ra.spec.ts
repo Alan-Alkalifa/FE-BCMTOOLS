@@ -8,7 +8,7 @@ test('the home page links to the RA module', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'RA', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'Location map' })).toHaveAttribute('href', '/locations/map')
+  await expect(main.getByRole('link', { name: 'Building map' })).toHaveAttribute('href', '/locations/map')
   await expect(main.locator('a[href="/ra/manage"]')).toHaveText('Manage')
   await expect(main.locator('a[href="/ra/approval"]')).toHaveText('Approval')
   await main.locator('a[href="/ra/monitoring"]').click()
@@ -58,7 +58,9 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
-  await expect(page.getByText(/Slowest step: Acknowledged by, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
+  await expect(page.getByText(/Slowest step: Unit Critical Business Function, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
+  // The step is named by who signs it, like SCCA: the role title, not "Reviewed by".
+  await expect(page.getByRole('table').getByText('Alternate Location Incident Commander')).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
 })
 
@@ -91,7 +93,7 @@ test('a monitoring record is read-only and offers Approval to the signer', async
 })
 
 test('Approval shows my inbox, what is coming, my history and the BCM board', async ({ page }) => {
-  await mockRa(page)
+  const log = await mockRa(page)
   await page.goto('/ra/approval')
   await expect(page.getByRole('heading', { name: 'Waiting for my sign-off' })).toBeVisible({ timeout: 60_000 })
   const inbox = page.getByRole('table').first()
@@ -107,9 +109,18 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('Checked with the floor wardens.')).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'BCM board' }).click()
-  await expect(page.getByRole('link', { name: 'Open sign-off' })).toHaveAttribute('href', '/ra/approval/1')
+  const board = page.getByRole('table').filter({ visible: true })
+  await expect(board.getByText('Alternate Location Incident Commander')).toBeVisible()
+  await expect(board.getByText('Reminder due')).toBeVisible()
+  // Like SCCA's board: send the signer a reminder now.
+  await page.getByRole('button', { name: /^Act on/ }).click()
+  await expect(page.getByRole('menuitem', { name: 'Open sign-off' })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Send a reminder now' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Send reminder' }).click()
+  await expect(page.getByText('Reminder sent').first()).toBeVisible()
+  expect(log.signoff.at(-1)).toEqual(['nudge', null])
   await page.getByLabel('Step').click()
-  await page.getByRole('option', { name: /Prepared by/ }).click()
+  await page.getByRole('option', { name: 'Location Incident Coordinator (LIC)' }).click()
   await expect(page.getByText('No RA is in sign-off at this step.')).toBeVisible()
 })
 
@@ -134,7 +145,7 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await mockRa(page)
   await page.goto('/ra/manage/new')
   await expect(page.getByRole('heading', { name: 'Assessment', exact: true })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: /^Location\*?$/ }).click()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
   await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
   await expect(page.getByText('Start from RA-2025-0001 (2025)')).toBeVisible()
   // The location incident team of the previous cycle fills the team: users from the directory.
@@ -146,18 +157,44 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
-test('rating a hazard updates its level and saves only that hazard', async ({ page }) => {
+test('the hazards tab is a table; its pencil opens the hazard to rate', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards')
+  await expect(page.getByTestId('hazard-intro')).toContainText('Identify all threats relevant to the location.', { timeout: 60_000 })
+  const table = page.getByRole('table')
+  for (const header of ['No', 'Hazard group', 'Type of Hazard', 'Historical of occurrence', 'Probability of occurrence', 'Probability rating', 'Monetary impact', 'Impact rating', 'Existing mitigation measures']) {
+    await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
+  // Gempa Bumi: historical 3, probability 2 → probability rating 3; impact rating 4.
+  const row = table.getByRole('row', { name: /Gempa Bumi/ })
+  await expect(row.getByRole('cell').nth(5)).toHaveText('3')
+  await expect(row.getByRole('cell').nth(10)).toHaveText('4')
+  await page.getByLabel('Hazard group').click()
+  await page.getByRole('option', { name: 'Security threats' }).click()
+  await expect(table.getByRole('row', { name: /Gempa Bumi/ })).toHaveCount(0)
+  await expect(table.getByRole('row', { name: /Terorisme/ })).toBeVisible()
+  await table.getByRole('button', { name: 'Rate Terorisme' }).click()
+  await expect(page).toHaveURL(/tab=hazards&hazard=H21/)
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('21. Terorisme')
+  await page.getByRole('button', { name: 'Back to the hazards' }).click()
+  await expect(page).not.toHaveURL(/hazard=/)
+  await expect(page.getByRole('table')).toBeVisible()
+})
+
+test('rating a hazard fills in its ratings and saves only that hazard', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
-  await expect(page.getByRole('heading', { name: '3. Gempa Bumi' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('3 × 4', { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('3. Gempa Bumi', { timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: 'Probability rating' })).toHaveValue('3')
+  await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('4')
+  await expect(page.getByText('3 × 4', { exact: true })).toHaveCount(0)
 
-  await page.getByRole('combobox', { name: 'Monetary impact' }).first().click()
+  await page.getByRole('combobox', { name: /Monetary impact/ }).first().click()
   await page.getByRole('option', { name: '5 · Critical' }).click()
-  await expect(page.getByText('3 × 5', { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('5')
   await expect(page.getByText('1 hazard has unsaved changes')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Save ratings' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('1 hazard saved').first()).toBeVisible()
   expect(log.ratings).toHaveLength(1)
   expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H03', monetary: 5, historical: 3 })])
@@ -166,7 +203,7 @@ test('rating a hazard updates its level and saves only that hazard', async ({ pa
 test('the action plan is optional, also for a high residual risk', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H28')
-  await expect(page.getByRole('heading', { name: '28. Peretasan Sistem Komputer' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28. Peretasan Sistem Komputer', { timeout: 60_000 })
   await expect(page.getByText('High', { exact: true }).filter({ visible: true }).first()).toBeVisible()
   await expect(page.getByText('Optional. A high residual risk is followed up through CIM.')).toBeVisible()
   await expect(page.getByText(/needs an action plan/)).toHaveCount(0)
@@ -193,39 +230,57 @@ test('the questionnaire guide opens the Lampiran tables', async ({ page }) => {
   await expect(dialog).toHaveCount(0)
 })
 
-test('marking a hazard not applicable clears it from the heat map', async ({ page }) => {
+test('marking a hazard not applicable rates it N/A', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
-  await expect(page.getByRole('heading', { name: '6. Cuaca Ekstream' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('6. Cuaca Ekstream', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
   await expect(page.getByText('N/A · Not applicable').first()).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Probability rating' })).toHaveValue('N/A')
   await expect(page.getByText('Not applicable', { exact: true }).first()).toBeVisible()
 })
 
 test('leaving a tab with unsaved ratings asks first', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
-  await expect(page.getByRole('heading', { name: '1. Banjir/ Banjir Bandang' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('1. Banjir/ Banjir Bandang', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
+  // Back on the table the edit is kept, marked as unsaved.
+  await page.getByRole('button', { name: 'Back to the hazards' }).click()
+  await expect(page.getByText('1 hazard has unsaved changes')).toBeVisible()
   await page.getByRole('tab', { name: 'Sign-off' }).click()
   await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page).toHaveURL(/tab=hazards/)
 })
 
-test('the heat maps place hazards and open them', async ({ page }) => {
+test('the Risk Summary counts hazards by level and shows gross and residual as tables', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=summary')
-  await expect(page.getByRole('heading', { name: 'Gross risk heat map' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('Follow up high residual risks through CIM')).toBeVisible()
-  const gross = page.getByRole('table', { name: /Gross risk heat map/ })
-  // Probability 3 (third row), impact 4 (fifth column incl. the row header).
-  const cell = gross.locator('tbody tr').nth(2).locator('td').nth(3)
-  await expect(cell.getByRole('button', { name: 'Gempa Bumi' })).toBeVisible()
-  await expect(cell.getByText('High')).toBeVisible()
-  await cell.getByRole('button', { name: 'Gempa Bumi' }).click()
-  await expect(page).toHaveURL(/tab=hazards&hazard=H03/)
-  await expect(page.getByRole('heading', { name: '3. Gempa Bumi' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Risk Summary' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Risk Summary' })).toBeVisible()
+  const note = page.getByTestId('cim-note')
+  await expect(note).toContainText('Risk Summary : Semua Ancaman')
+  await expect(note).toContainText('Risk Summary: All threats with a Residual Risk above "Medium"')
+  await expect(page.getByText('Follow up high residual risks through CIM')).toHaveCount(0)
+  await expect(page.getByText(/\d × \d/)).toHaveCount(0)
+
+  // High is open: its hazard opens on the Hazards tab.
+  await expect(page.getByRole('button', { name: 'High: 1 hazard' })).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('button', { name: 'Peretasan Sistem Komputer' }).click()
+  await expect(page).toHaveURL(/tab=hazards&hazard=H28/)
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28. Peretasan Sistem Komputer')
+
+  await page.getByRole('tab', { name: 'Risk Summary' }).click()
+  // The Heat Map Matrix: gross and residual side by side, as tables.
+  await expect(page.getByRole('heading', { name: 'Heat Map Matrix' })).toBeVisible()
+  await page.getByRole('button', { name: 'Show the gross risk table' }).click()
+  const gross = page.getByRole('table', { name: 'Gross risk' })
+  const quake = gross.getByRole('row', { name: /Gempa Bumi/ })
+  await expect(quake.getByRole('cell').nth(2)).toHaveText('3')
+  await expect(quake.getByRole('cell').nth(3)).toHaveText('4')
+  await expect(quake.getByText('High')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Show the residual risk table' })).toBeVisible()
 })
 
 test('a location with assessments cannot be deleted', async ({ page }) => {
@@ -233,7 +288,7 @@ test('a location with assessments cannot be deleted', async ({ page }) => {
   await page.goto('/locations')
   await expect(page.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Delete Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete location' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete building' }).click()
   await expect(page.getByText(/has assessments, so it can't be deleted/)).toBeVisible()
 })
 
@@ -246,41 +301,74 @@ test('deleting an assessment returns to the list', async ({ page }) => {
   await expect(page).toHaveURL(/\/ra\/manage$/)
 })
 
-test('the occupants tab shows the workbook totals and both views', async ({ page }) => {
+test('the occupants tab lists the divisions with their totals and both views', async ({ page }) => {
   await mockRa(page)
   await page.goto('/locations/1?tab=occupants')
-  await expect(page.getByRole('heading', { name: 'Units in this building' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Divisions in this building' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('1.725', { exact: true })).toBeVisible()
-  await expect(page.getByText('Showing 39 of 39 units')).toBeVisible()
+  await expect(page.getByText('Showing 39 of 39 divisions')).toBeVisible()
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByRole('columnheader', { name: 'Directorate' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Division' })).toBeVisible()
 
   await page.getByRole('tab', { name: 'Continuity strategy' }).click()
   await expect(table.getByRole('columnheader', { name: 'MTD' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Critical rating' })).toBeVisible()
   await expect(table.getByRole('row', { name: /Application Access Management/ }).getByText('4 hours')).toBeVisible()
 
-  await page.getByLabel('Search by unit, directorate or floor').fill('credit documentation')
-  await expect(page.getByText('Showing 1 of 39 units')).toBeVisible()
+  await page.getByLabel('Search by division, directorate or floor').fill('credit documentation')
+  await expect(page.getByText('Showing 1 of 39 divisions')).toBeVisible()
 })
 
-test('adding a unit validates counts and saves the whole list', async ({ page }) => {
+test('adding a division takes its MTD and critical rating from the division list', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/1?tab=occupants')
-  await expect(page.getByRole('heading', { name: 'Units in this building' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Add unit' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Add unit' })
-  await dialog.getByRole('textbox', { name: /Unit name/ }).fill('Treasury Operations')
+  await expect(page.getByRole('heading', { name: 'Divisions in this building' })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: 'Add division' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add division' })
+  await dialog.getByRole('button', { name: 'Division name' }).click()
+  await page.getByRole('option', { name: 'Human Resources' }).click()
+  // Read-only, from the division: set in RA configuration.
+  await expect(dialog.getByRole('textbox', { name: 'MTD' })).toHaveValue('24-48 hours')
+  await expect(dialog.getByRole('textbox', { name: 'MTD' })).toBeDisabled()
+  await expect(dialog.getByRole('textbox', { name: 'Critical rating' })).toHaveValue('Necessary')
+  // Radio buttons became dropdowns.
+  await expect(dialog.getByRole('radio')).toHaveCount(0)
+  await dialog.getByRole('combobox', { name: 'Has a BCP' }).click()
+  await page.getByRole('option', { name: 'Yes' }).click()
   await dialog.getByRole('spinbutton', { name: 'Employees', exact: true }).fill('12')
   await dialog.getByRole('spinbutton', { name: 'Pregnant employees' }).fill('20')
-  await dialog.getByRole('button', { name: 'Add unit' }).click()
+  await dialog.getByRole('button', { name: 'Add division' }).click()
   await expect(dialog.getByText('Cannot be more than the number of employees.')).toBeVisible()
 
   await dialog.getByRole('spinbutton', { name: 'Pregnant employees' }).fill('1')
-  await dialog.getByRole('button', { name: 'Add unit' }).click()
-  await expect(page.getByText('Unit added').first()).toBeVisible()
-  const sent = log.lists.occupants?.[0]?.occupants as { unit_name: string, employee_count: number }[]
+  await dialog.getByRole('button', { name: 'Add division' }).click()
+  await expect(page.getByText('Division added').first()).toBeVisible()
+  const sent = log.lists.occupants?.[0]?.occupants as Record<string, unknown>[]
   expect(sent).toHaveLength(40)
-  expect(sent.at(-1)).toMatchObject({ unit_name: 'Treasury Operations', employee_count: 12 })
+  expect(sent.at(-1)).toMatchObject({ division_id: 102, unit_name: 'Human Resources', mtd: '24-48 hours', employee_count: 12, has_bcp: true })
+  expect(Object.keys(sent[0]!)).not.toContain('critical_rating')
+})
+
+test('a division that is not listed yet is added with its MTD and rating', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/locations/1?tab=occupants')
+  await page.getByRole('button', { name: 'Add division' }).click({ timeout: 60_000 })
+  const dialog = page.getByRole('dialog', { name: 'Add division' })
+  await dialog.getByRole('button', { name: 'Division name' }).click()
+  await page.keyboard.type('Treasury Operations')
+  await page.getByRole('option', { name: /Treasury Operations/ }).click()
+  await dialog.getByRole('button', { name: 'Add division' }).click()
+  await expect(dialog.getByText('Choose its critical rating.')).toBeVisible()
+  await dialog.getByRole('combobox', { name: 'Critical rating' }).click()
+  await page.getByRole('option', { name: 'Important', exact: true }).click()
+  // The MTD band of the rating is suggested.
+  await expect(dialog.getByRole('combobox', { name: 'MTD' })).toContainText('12-24 hours')
+  await dialog.getByRole('button', { name: 'Add division' }).click()
+  await expect(page.getByText('Division added').first()).toBeVisible()
+  expect(log.created.at(-1)).toEqual({ division: { name: 'Treasury Operations', mtd: '12-24 hours', critical_rating: 'Important' } })
+  const sent = log.lists.occupants?.[0]?.occupants as Record<string, unknown>[]
+  expect(sent.at(-1)).toMatchObject({ division_id: 202, unit_name: 'Treasury Operations', mtd: '12-24 hours' })
 })
 
 test('the recovery team needs a name on every filled row', async ({ page }) => {
@@ -317,13 +405,18 @@ test('adding a location opens its profile, starting with the emergency contacts'
   const log = await mockRa(page)
   await page.goto('/locations')
   await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('link', { name: 'Add location' }).click()
+  await page.getByRole('link', { name: 'Input Data Building' }).click()
   await expect(page).toHaveURL(/\/locations\/new$/)
-  await page.getByRole('button', { name: 'Add location' }).click()
+  await expect(page.getByRole('heading', { name: 'Building Data Entry' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page.getByText('Enter the building name.')).toBeVisible()
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Add location' }).click()
+  await page.getByRole('textbox', { name: 'Province' }).fill('DKI Jakarta')
+  await page.getByRole('textbox', { name: 'City' }).fill('Jakarta Selatan')
+  await page.getByRole('textbox', { name: 'District' }).fill('Setiabudi')
+  await page.getByRole('textbox', { name: 'Zip code' }).fill('12920')
+  await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
   await page.getByRole('button', { name: 'Add police station' }).click()
@@ -331,62 +424,61 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Save contacts' }).click()
   await expect(page.getByText('Contacts saved').first()).toBeVisible()
   expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi' })] })
+  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920' })
 })
 
 test('the location page lists its assessments and edits its details', async ({ page }) => {
   await mockRa(page)
   await page.goto('/locations/1')
-  await expect(page.getByText('39 units · 1.725 employees · 1 assessment')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('39 divisions · 1.725 employees · 1 assessment')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new?location_id=1')
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
   await page.getByRole('textbox', { name: 'Address' }).fill('Jl. Wahid Hasyim, Bintaro')
-  await page.getByRole('button', { name: 'Save location' }).click()
+  await expect(page.getByRole('combobox', { name: 'Type of building' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Save building' }).click()
   expect((await request).postDataJSON()).toMatchObject({ address: 'Jl. Wahid Hasyim, Bintaro', is_active: true })
 })
 
 test('the assessment links to the location profile', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByRole('link', { name: 'Open location profile' })).toHaveAttribute('href', '/locations/1', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Open building profile' })).toHaveAttribute('href', '/locations/1', { timeout: 60_000 })
   await expect(page.getByRole('tab', { name: 'Occupants' })).toHaveCount(0)
 })
 
-test('Manage has View locations and New assessment in the top bar', async ({ page }) => {
+test('Manage has View buildings and New assessment in the top bar', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage')
   await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('link', { name: 'View locations' })).toHaveAttribute('href', '/locations?type=head_office')
+  await expect(page.getByRole('link', { name: 'View buildings' })).toHaveAttribute('href', '/locations?type=head_office')
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new')
   // In the top bar next to the bell, not in the table's toolbar.
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'View locations' })).toHaveCount(0)
+  await expect(main.getByRole('link', { name: 'View buildings' })).toHaveCount(0)
   await expect(main.getByRole('link', { name: 'New assessment' })).toHaveCount(0)
   const button = await page.getByRole('link', { name: 'New assessment' }).boundingBox()
   expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
 })
 
-test('hazards are picked by group, then by hazard', async ({ page }) => {
+test('on the hazard page, the group and type of hazard are picked from dropdowns', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
-  await expect(page.getByRole('heading', { name: '3. Gempa Bumi' })).toBeVisible({ timeout: 60_000 })
-  const groups = page.getByRole('group', { name: 'Hazard groups' })
-  await expect(groups.getByRole('button')).toHaveCount(6)
-  await expect(groups.getByRole('button', { name: /Natural disasters/ })).toHaveAttribute('aria-pressed', 'true')
-  const list = page.getByRole('navigation', { name: 'Hazards: Natural disasters' })
-  await expect(list.getByRole('button')).toHaveCount(9)
-  await expect(list.getByRole('button', { name: /Kebakaran/ })).toHaveCount(1) // only "Kebakaran dalam skala besar"
+  const type = page.getByRole('button', { name: 'Type of Hazard' })
+  await expect(type).toContainText('3. Gempa Bumi', { timeout: 60_000 })
+  const group = page.getByRole('combobox', { name: 'Hazard group name' })
+  await expect(group).toContainText('Natural disasters')
 
-  await groups.getByRole('button', { name: /Security threats/ }).click()
-  const security = page.getByRole('navigation', { name: 'Hazards: Security threats' })
-  await expect(security.getByRole('button')).toHaveCount(8)
-  await expect(page.getByRole('heading', { name: '14. Kebakaran' })).toBeVisible()
-  await security.getByRole('button', { name: /Terorisme/ }).click()
-  await expect(page.getByRole('heading', { name: '21. Terorisme' })).toBeVisible()
+  await group.click()
+  await page.getByRole('option', { name: 'Security threats' }).click()
+  await expect(type).toContainText('14. Kebakaran')
+  await type.click()
+  await page.getByRole('option', { name: '21. Terorisme' }).click()
+  await expect(page).toHaveURL(/hazard=H21/)
   // Next hazard crosses into the next group.
   await page.getByRole('button', { name: 'Next hazard' }).click()
-  await expect(page.getByRole('heading', { name: '22. Gangguan pasokan listrik' })).toBeVisible()
-  await expect(groups.getByRole('button', { name: /Infrastructure/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(type).toContainText('22. Gangguan pasokan listrik')
+  await expect(group).toContainText('Infrastructure')
 })
 
 test('the location incident team is required', async ({ page }) => {
@@ -454,7 +546,7 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
   const log = await mockRa(page)
   await page.goto('/ra/manage/1?tab=signoff')
   await expect(page.getByText('Complete the hazards before submitting')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('button', { name: 'Submit for sign-off' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
   // Prepared by and Reviewed by are the LIC and LICOM picked on the Details tab.
   await expect(page.getByText('2 roles still need a signer.')).toBeVisible()
   const prepared = page.getByRole('listitem').filter({ hasText: 'Step 1 of 4' })
@@ -483,7 +575,9 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
 test('submitting, approving and returning an assessment', async ({ page }) => {
   const log = await mockRa(page, { ready: true })
   await page.goto('/ra/manage/1?tab=signoff')
-  await page.getByRole('button', { name: 'Submit for sign-off' }).click({ timeout: 60_000 })
+  // The statement in Indonesian and English, and the history right under it.
+  await expect(page.getByTestId('signoff-statement-en')).toContainText('I declare that the Risk Assessment', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Submit for approval' }).click()
   await expect(page.getByText('Waiting for Prepared by (Location Incident Coordinator (LIC))')).toBeVisible()
   await expect(page.getByText('In sign-off', { exact: true }).first()).toBeVisible()
 
@@ -491,7 +585,9 @@ test('submitting, approving and returning an assessment', async ({ page }) => {
   await page.getByRole('button', { name: /^Approve/ }).click()
   await expect(page.getByText('Approval recorded').first()).toBeVisible()
   expect(log.signoff.at(-1)).toEqual(['approve', { comment: 'Checked with the floor wardens.' }])
-  await expect(page.getByText('Waiting for Acknowledged by (Unit critical business function)')).toBeVisible()
+  await expect(page.getByText('Waiting for Acknowledged by (Unit Critical Business Function)')).toBeVisible()
+  const headings = (await page.getByRole('heading', { level: 2 }).allTextContents()).map((text) => text.trim())
+  expect(headings.indexOf('Sign-off history')).toBe(headings.indexOf('Risk assessment sign-off') + 1)
   await expect(page.getByText('Checked with the floor wardens.').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Return for changes' }).click()
@@ -503,7 +599,7 @@ test('submitting, approving and returning an assessment', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Return to draft' }).click()
   await expect(page.getByText(/Returned for changes by Test User/)).toBeVisible()
   expect(log.signoff.at(-1)).toEqual(['return', { comment: 'Floor wardens are out of date.' }])
-  await expect(page.getByRole('button', { name: 'Submit for sign-off' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeEnabled()
 })
 
 test('an assessment in sign-off is locked', async ({ page }) => {
@@ -514,7 +610,8 @@ test('an assessment in sign-off is locked', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'LIC mobile number' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Save assessment' })).toHaveCount(0)
   await page.getByRole('tab', { name: 'Hazards' }).click()
-  await expect(page.getByRole('button', { name: 'Save ratings' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'View Banjir/ Banjir Bandang' }).click()
   await expect(page.getByRole('button', { name: 'Mark as not applicable' })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: /Existing mitigation measures/ })).toBeDisabled()
 })
@@ -558,13 +655,13 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
 test('an assessment shows its location pin, or where to add one', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByRole('link', { name: 'Add it on the location\'s Map tab' })).toHaveAttribute('href', '/locations/1?tab=map', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Add it on the building\'s Map tab' })).toHaveAttribute('href', '/locations/1?tab=map', { timeout: 60_000 })
 })
 
 test('the location register links to the location map instead of its own map', async ({ page }) => {
   await mockRa(page)
   await page.goto('/locations')
-  await expect(page.getByRole('link', { name: 'Location map' }).last()).toHaveAttribute('href', '/locations/map', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Building map' }).last()).toHaveAttribute('href', '/locations/map', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 

@@ -181,7 +181,7 @@ async function onSubmit() {
               Location incident team
             </h2>
             <p class="text-sm text-muted">
-              Section A of the LRP scorecard. Both are required.
+              Both are required.
             </p>
           </template>
           <div class="space-y-4">
@@ -263,7 +263,7 @@ async function onSubmit() {
         </dl>
         <p class="mt-4 text-sm text-muted">
           {{ ra.hasLcp
-            ? 'Emergency contacts, occupants, the recovery team and the call tree are kept on the location and shared by every RA cycle.'
+            ? 'Emergency contacts, divisions, the recovery team and the call tree are kept on the building and shared by every RA cycle.'
             : 'Emergency contacts are kept on the branch and shared by every RA cycle.' }}
         </p>
         <template #footer>

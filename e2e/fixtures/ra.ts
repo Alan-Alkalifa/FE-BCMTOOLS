@@ -44,6 +44,46 @@ export const PINNED_BRANCHES = [
 
 export { ASSESSMENT, BRANCH_ASSESSMENT, BRANCH_FORMULA, BRANCH_LOCATION, FORMULA, LOCATION }
 
+/** The texts RA configuration adds to a version (the backend's defaults). */
+export const HAZARD_INTRO = 'Identify all threats relevant to the location. Threats that are not relevant to the workplace do not need to be filled in and may be marked as Not Applicable (NA). Threats classified as "Historical of Occurrence" must be assessed.'
+export const STATEMENT_EN = 'I declare that the Risk Assessment carried out on the business functions is ACCURATE and CORRECT.'
+export const CIM_NOTE_EN = 'Risk Summary: All threats with a Residual Risk above "Medium" must be followed up through Control Issue Management (CIM) by the unit concerned.'
+const ROLE_LABELS = {
+  head_office: [
+    { role: 'prepared_by', label: 'Prepared by', title: 'Location Incident Coordinator (LIC)' },
+    { role: 'acknowledged_by_unit', label: 'Acknowledged by', title: 'Unit Critical Business Function' },
+    { role: 'reviewed_by', label: 'Reviewed by', title: 'Alternate Location Incident Commander' },
+    { role: 'acknowledged_by_bcm', label: 'Acknowledged by', title: 'Business Continuity Management Head' },
+  ],
+  branch: [
+    { role: 'prepared_by', label: 'Prepared by', title: 'BOSM' },
+    { role: 'approved_by', label: 'Approved by', title: 'Branch Manager (BM)' },
+    { role: 'reviewed_by', label: 'Reviewed by', title: 'NRSOH' },
+  ],
+}
+
+export function withTexts<T extends { kind: string }>(formula: T) {
+  return {
+    ...formula,
+    status: 'active',
+    hazard_intro: HAZARD_INTRO,
+    signoff_statement_en: STATEMENT_EN,
+    risk_summary_note_en: CIM_NOTE_EN,
+    type_description: formula.kind === 'branch' ? 'The branch that is assessed each RA cycle.' : 'The building or work location that is assessed each RA cycle.',
+    signoff_role_labels: ROLE_LABELS[formula.kind as keyof typeof ROLE_LABELS],
+  }
+}
+
+export const BUILDING_TYPES = [
+  { kind: 'head_office', label: 'Head office building', description: 'The building or work location that is assessed each RA cycle.' },
+  { kind: 'branch', label: 'Branch', description: 'The branch that is assessed each RA cycle.' },
+]
+
+export const DIVISIONS = [
+  { id: 101, name: 'Cash & Payment Operations', mtd: '0-4 hours', critical_rating: 'Critical', is_active: true },
+  { id: 102, name: 'Human Resources', mtd: '24-48 hours', critical_rating: 'Necessary', is_active: true },
+]
+
 export const LOCATIONS = [
   {
     id: 1,
@@ -248,8 +288,22 @@ export async function mockRa(
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => {
-    const branch = new URL(route.request().url()).searchParams.get('kind') === 'branch'
-    return route.fulfill({ json: branch ? BRANCH_FORMULA : FORMULA })
+    const params = new URL(route.request().url()).searchParams
+    const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
+    return route.fulfill({ json: withTexts(branch ? BRANCH_FORMULA : FORMULA) })
+  })
+  await page.route('**/api/ra/building-types', (route) => route.fulfill({ json: { items: BUILDING_TYPES } }))
+  const divisions = structuredClone(DIVISIONS)
+  await page.route(/\/api\/ra\/divisions/, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, string>
+      log.created.push({ division: body })
+      const division = { id: 200 + divisions.length, is_active: true, ...body }
+      divisions.push(division)
+      await route.fulfill({ status: 201, json: division })
+      return
+    }
+    await route.fulfill({ json: { items: divisions } })
   })
   const location = structuredClone(LOCATION)
   const branchLocation = structuredClone(BRANCH_LOCATION)
@@ -337,6 +391,11 @@ export async function mockRa(
     }
     const assessment: MockAssessment = url.pathname.includes(`/assessments/${BRANCH_ASSESSMENT_ID}`) ? branchCurrent : current
     const roles = assessment.kind === 'branch' ? BRANCH_ROLES : HO_ROLES
+    if (method === 'POST' && url.pathname.endsWith('/nudge')) {
+      log.signoff.push(['nudge', null])
+      await route.fulfill({ json: { sent: true, assessment } })
+      return
+    }
     const action = url.pathname.match(/\/(submit|approve|return)$/)?.[1]
     if (method === 'POST' && action) {
       const body = route.request().postDataJSON() as { comment?: string } | null
@@ -421,11 +480,16 @@ function workflowLocations(branch: boolean) {
   ]
 }
 
+function stepTitle(branch: boolean, role: string) {
+  return ROLE_LABELS[branch ? 'branch' : 'head_office'].find((row) => row.role === role)?.title ?? role
+}
+
 function waitingRow(branch: boolean, step: string, signerId: number, days: number) {
   return {
     ...workflowRef(branch, 'in_signoff', step),
     location: workflowLocations(branch)[0]!.location,
     step,
+    step_title: stepTitle(branch, step),
     signer: userRef(signerId),
     waiting_since: '2026-10-12T03:00:00Z',
     working_days_waiting: days,
@@ -475,7 +539,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     } else if (name === 'bottlenecks/step-averages') {
       // Average working days per sign-off step over the approvals in the period.
       await route.fulfill({
-        json: { items: roles.map((role, index) => ({ step: role, step_title: role, approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
+        json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
@@ -613,7 +677,7 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
-  await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: FORMULA }))
+  await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: withTexts(FORMULA) }))
   const crisis = structuredClone({ ...CRISIS, can_manage: canDeclare, can_delete: canDeclare })
   const open = () => (options.crisis === false || crisis.status !== 'open' ? [] : [crisis])
   await page.route('**/api/ra/map', (route) => route.fulfill({

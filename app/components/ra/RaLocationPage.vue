@@ -128,7 +128,7 @@ async function removeLocation() {
   const ok = await confirm({
     title: `Delete '${location.value.name}'?`,
     description: ra.value.hasLcp
-      ? 'This permanently removes the location with its emergency contacts, occupants, recovery team and call tree.'
+      ? `This permanently removes the ${ra.value.location.lower} with its emergency contacts, divisions, recovery team and call tree.`
       : 'This permanently removes the branch with its emergency contacts.',
     confirmLabel: `Delete ${ra.value.location.lower}`,
     destructive: true,
@@ -153,8 +153,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   <AppPage
     :title="location?.name ?? ra.location.single"
     :crumbs="[
-      { label: 'Locations' },
-      { label: 'Locations', to: LOCATIONS_PATH },
+      { label: BUILDINGS_GROUP },
+      { label: 'Buildings', to: LOCATIONS_PATH },
       ...(location ? [{ label: location.name }] : []),
     ]"
   >
@@ -231,7 +231,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
             {{ location.region }} ·
           </template>
           <template v-if="ra.hasLcp">
-            {{ formatNumber(location.occupant_summary.units, 0) }} units ·
+            {{ formatNumber(location.occupant_summary.units, 0) }} {{ location.occupant_summary.units === 1 ? 'division' : 'divisions' }} ·
             {{ formatNumber(location.occupant_summary.employees, 0) }} employees ·
           </template>
           {{ formatNumber(location.assessments.length, 0) }} {{ location.assessments.length === 1 ? 'assessment' : 'assessments' }}
