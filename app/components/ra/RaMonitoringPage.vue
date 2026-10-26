@@ -228,7 +228,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open RA' },
   { id: 'lic', header: 'LIC' },
-  { accessorKey: 'assessment_count', header: 'RAs' },
+  { accessorKey: 'assessment_count', header: 'RA(s)' },
 ])
 
 /** The building's name opens its last final RA, else the open one, else the newest (as SCCA). */

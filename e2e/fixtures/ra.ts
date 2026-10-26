@@ -397,6 +397,8 @@ export async function mockRa(
       .filter((row) => !params.get('region') || row.region === params.get('region'))
       .filter((row) => !params.get('active') || String(row.is_active) === params.get('active'))
       .sort((a, b) => a.name.localeCompare(b.name))
+      // Building 1 carries its approval (pending with `pendingLocation`).
+      .map((row) => (row.id === 1 ? { ...row, approval: location.approval, approval_can: location.approval_can } : row))
     if (!params.get('page')) {
       await route.fulfill({ json: { items } })
       return
@@ -713,10 +715,10 @@ export interface RaMapLog {
 }
 
 /**
- * Mocks the location map, crises and the playbook. `crisis: false` starts with no open crisis;
+ * Mocks the location map, incidents and the playbook. `crisis: false` starts with no open incident;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean } = {}) {
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean } = {}) {
   const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
@@ -736,7 +738,9 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
   })
   if (options.pending) {
     // Declared by Rina; the signed-in user approves it.
-    Object.assign(crisis, { status: 'pending', declared_by: 'Rina', approval_can: { approve: true, reject: true } })
+    Object.assign(crisis, options.own
+      ? { status: 'pending', declared_by: 'Test User', approval_can: { approve: false, reject: false, own: true } }
+      : { status: 'pending', declared_by: 'Rina', approval_can: { approve: true, reject: true } })
   }
   const open = () => (options.crisis === false || !['open', 'pending'].includes(crisis.status) ? [] : [crisis])
   await page.route('**/api/ra/map', (route) => route.fulfill({

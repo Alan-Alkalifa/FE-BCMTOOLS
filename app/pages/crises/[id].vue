@@ -4,7 +4,7 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
 
 /**
- * One crisis: where and what, the affected area on the map, and for every affected building or
+ * One incident: where and what, the affected area on the map, and for every affected building or
  * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
  */
@@ -23,20 +23,20 @@ const actionError = ref<string | null>(null)
 
 const place = computed(() => crisis.value?.location?.name
   ?? (crisis.value ? raFormatCoordinates({ lat: crisis.value.latitude, lng: crisis.value.longitude }) : ''))
-const title = computed(() => (crisis.value ? `${crisis.value.hazard.short_name} at ${place.value}` : 'Crisis'))
+const title = computed(() => (crisis.value ? `${crisis.value.hazard.short_name} at ${place.value}` : 'Incident'))
 
 const markers = computed<RaMapMarker[]>(() => {
   if (!crisis.value) return []
   const atPin = crisis.value.affected.some((row) => row.distance_m === 0)
   return [
-    // A crisis at a building's pin is shown by its ring; the pin stays visible.
+    // An incident at a building's pin is shown by its ring; the pin stays visible.
     ...(atPin
       ? []
       : [{
           id: crisis.value.id,
           lat: crisis.value.latitude,
           lng: crisis.value.longitude,
-          label: `Crisis point: ${place.value}`,
+          label: `Incident point: ${place.value}`,
           variant: 'crisis' as const,
         }]),
     ...crisis.value.affected.map((row) => ({
@@ -102,7 +102,7 @@ async function edit() {
   const saved = await crisisModal.open({ places: map.value?.places ?? [], crisis: crisis.value }).result
   if (saved) {
     set(saved)
-    toast.add({ title: 'Crisis updated', color: 'success', icon: 'i-lucide-circle-check' })
+    toast.add({ title: 'Incident updated', color: 'success', icon: 'i-lucide-circle-check' })
   }
 }
 
@@ -110,12 +110,12 @@ async function close() {
   if (!crisis.value) return
   const note = await noteModal.open({
     title: `Close ${crisis.value.ref_no}?`,
-    description: 'It leaves the building map. The crisis and its history stay in Crises.',
-    confirmLabel: 'Close crisis',
+    description: 'It leaves the building map. The incident and its history stay in Incidents.',
+    confirmLabel: 'Close incident',
     noteLabel: 'How it ended',
   }).result
   if (note === false) return
-  await act(() => raCrisisApi.close(crisis.value!.id, note || null), 'Crisis closed')
+  await act(() => raCrisisApi.close(crisis.value!.id, note || null), 'Incident closed')
 }
 
 async function reopen() {
@@ -123,25 +123,25 @@ async function reopen() {
   const note = await noteModal.open({
     title: `Reopen ${crisis.value.ref_no}?`,
     description: 'It shows on the building map again until it is closed.',
-    confirmLabel: 'Reopen crisis',
+    confirmLabel: 'Reopen incident',
     noteLabel: 'Why it is reopened',
   }).result
   if (note === false) return
-  await act(() => raCrisisApi.reopen(crisis.value!.id, note || null), 'Crisis reopened')
+  await act(() => raCrisisApi.reopen(crisis.value!.id, note || null), 'Incident reopened')
 }
 
 async function remove() {
   if (!crisis.value) return
   const ok = await confirm({
     title: `Delete ${crisis.value.ref_no}?`,
-    description: 'Only for a crisis declared by mistake: it and its history are removed for good. Close a real crisis instead.',
-    confirmLabel: 'Delete crisis',
+    description: 'Only for an incident declared by mistake: it and its history are removed for good. Close a real incident instead.',
+    confirmLabel: 'Delete incident',
     destructive: true,
   })
   if (!ok) return
   try {
     await raCrisisApi.remove(crisis.value.id)
-    toast.add({ title: 'Crisis deleted', color: 'success', icon: 'i-lucide-circle-check' })
+    toast.add({ title: 'Incident deleted', color: 'success', icon: 'i-lucide-circle-check' })
     await navigateTo(CRISES_PATH)
   } catch (err) {
     actionError.value = apiErrorMessage(err)
@@ -188,10 +188,10 @@ const historyIcon: Record<string, string> = {
 
 <template>
   <AppPage
-    :title="crisis?.ref_no ?? 'Crisis'"
+    :title="crisis?.ref_no ?? 'Incident'"
     :crumbs="[
       { label: BUILDINGS_GROUP },
-      { label: 'Crises', to: CRISES_PATH },
+      { label: 'Incidents', to: CRISES_PATH },
       ...(crisis ? [{ label: crisis.ref_no }] : []),
     ]"
   >
@@ -202,12 +202,12 @@ const historyIcon: Record<string, string> = {
             color="neutral"
             variant="outline"
             icon="i-lucide-pencil"
-            label="Update crisis"
+            label="Update incident"
             @click="edit"
           />
           <UButton
             icon="i-lucide-circle-check"
-            label="Close crisis"
+            label="Close incident"
             @click="close"
           />
         </template>
@@ -216,7 +216,7 @@ const historyIcon: Record<string, string> = {
           color="neutral"
           variant="outline"
           icon="i-lucide-rotate-ccw"
-          label="Reopen crisis"
+          label="Reopen incident"
           @click="reopen"
         />
       </template>
@@ -225,14 +225,14 @@ const historyIcon: Record<string, string> = {
         color="error"
         variant="soft"
         icon="i-lucide-trash-2"
-        label="Delete crisis"
+        label="Delete incident"
         @click="remove"
       />
     </template>
 
     <SkeletonGroup
       v-if="showSkeleton"
-      label="Loading the crisis"
+      label="Loading the incident"
       class="space-y-6"
     >
       <div class="skeleton h-8 w-96" />
@@ -244,7 +244,7 @@ const historyIcon: Record<string, string> = {
       color="warning"
       variant="subtle"
       icon="i-lucide-circle-help"
-      title="Crisis not found"
+      title="Incident not found"
       description="It may have been deleted."
     />
 
@@ -253,7 +253,7 @@ const historyIcon: Record<string, string> = {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Could not load the crisis"
+      title="Could not load the incident"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -333,7 +333,7 @@ const historyIcon: Record<string, string> = {
             <RaMap
               :markers="markers"
               :circles="circles"
-              :label="`Map of the crisis at ${place} and the ${crisis.affected.length} affected places.`"
+              :label="`Map of the incident at ${place} and the ${crisis.affected.length} affected places.`"
               height-class="h-80"
               @select="onMarker"
             />
@@ -398,7 +398,7 @@ const historyIcon: Record<string, string> = {
                 :to="GUIDEBOOK_PATH"
                 variant="link"
                 trailing-icon="i-lucide-arrow-right"
-                label="Crisis guidebook"
+                label="Incident guidebook"
                 class="px-0"
               />
             </template>
@@ -429,7 +429,7 @@ const historyIcon: Record<string, string> = {
                   <span class="font-medium text-highlighted">{{ item.row.location.name }}</span>
                   <span class="text-sm text-muted">
                     {{ RA_PLACE_KIND_LABEL[item.row.location.kind] }} ·
-                    {{ item.row.distance_m ? `${raFormatDistance(item.row.distance_m)} from the crisis point` : 'at the crisis point' }}
+                    {{ item.row.distance_m ? `${raFormatDistance(item.row.distance_m)} from the incident point` : 'at the incident point' }}
                   </span>
                   <StatusBadge
                     v-if="item.row.assessment?.rating?.residual_level"
@@ -709,7 +709,7 @@ const historyIcon: Record<string, string> = {
           <template #footer>
             <UFormField
               label="Add an update"
-              help="Seen by everyone following this crisis."
+              help="Seen by everyone following this incident."
               :error="noteError ?? undefined"
             >
               <UTextarea

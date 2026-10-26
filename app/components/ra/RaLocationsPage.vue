@@ -112,6 +112,23 @@ const addTo = computed(() => ({
   query: type.value === 'all' ? {} : { type: type.value },
 }))
 
+/** Approve or reject (with a reason) a building waiting for someone else's approval. */
+const dialogs = useRaApprovalDialogs()
+async function decide(location: RaLocation, decision: 'approve' | 'reject') {
+  actionError.value = null
+  const action = location.approval?.action
+  const note = decision === 'approve' ? await dialogs.approve(noun(location), action) : await dialogs.reject(noun(location), action)
+  if (note === false) return
+  try {
+    if (decision === 'approve') await raApi.approveLocation(location.id, note || null)
+    else await raApi.rejectLocation(location.id, note)
+    toast.add({ title: `${location.name} ${decision === 'approve' ? 'approved' : 'rejected'}`, color: 'success', icon: 'i-lucide-circle-check' })
+    await refresh()
+  } catch (err) {
+    actionError.value = apiErrorMessage(err)
+  }
+}
+
 async function remove(location: RaLocation) {
   actionError.value = null
   const ok = await confirm({
@@ -192,7 +209,7 @@ async function remove(location: RaLocation) {
         color="error"
         variant="subtle"
         icon="i-lucide-circle-alert"
-        title="Couldn't delete the building"
+        title="That didn't work"
         :description="actionError"
       />
       <div class="flex flex-wrap items-center gap-2 p-4">
@@ -318,7 +335,27 @@ async function remove(location: RaLocation) {
           >No RA yet</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-1">
+          <div class="flex items-center justify-end gap-1">
+            <template v-if="row.original.approval_can?.approve">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-badge-check"
+                label="Approve"
+                :aria-label="`Approve ${row.original.name}`"
+                @click.stop="decide(row.original, 'approve')"
+              />
+              <UButton
+                color="error"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-circle-x"
+                label="Reject"
+                :aria-label="`Reject ${row.original.name}`"
+                @click.stop="decide(row.original, 'reject')"
+              />
+            </template>
             <UTooltip :text="canEdit ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
                 :to="locationPath(row.original.id)"

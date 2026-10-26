@@ -215,7 +215,7 @@ export interface RaMapMarker extends RaPin {
   label: string
   /** Pin colour: the latest highest residual level, "na", or "none" without an assessment. */
   level?: RaLevel | 'na' | 'none' | null
-  /** A head office building (pin), a branch (square), or a crisis point (siren). */
+  /** A head office building (pin), a branch (square), or an incident point (siren). */
   variant?: 'location' | 'branch' | 'crisis'
 }
 
@@ -223,7 +223,7 @@ export interface RaMapCircle extends RaPin {
   id: number
   radiusM: number
   active?: boolean
-  /** A crisis's affected area (error colour) rather than a distance ring. */
+  /** An incident's affected area (error colour) rather than a distance ring. */
   crisis?: boolean
 }
 
@@ -259,6 +259,8 @@ export interface RaApprovalCan {
   reject: boolean
   withdraw?: boolean
   resubmit?: boolean
+  /** The current user asked for it, so someone else decides. */
+  own?: boolean
 }
 export type RaPlaybookPhase = 'immediate' | 'stabilise' | 'recover'
 
@@ -286,6 +288,7 @@ export interface RaCrisisSummary {
   closed_at: string | null
   affected_count: number
   declared_by: string | null
+  approval_can?: RaApprovalCan
   decided_by?: string | null
   decided_at?: string | null
   decision_note?: string | null
@@ -322,7 +325,6 @@ export interface RaCrisis extends RaCrisisSummary {
   updated_at: string
   can_manage: boolean
   can_delete: boolean
-  approval_can?: RaApprovalCan
   playbook: RaPlaybookSteps
   affected: RaCrisisPlace[]
   history: { action: 'declared' | 'approved' | 'rejected' | 'updated' | 'note' | 'closed' | 'reopened', note: string | null, user: string | null, at: string }[]
@@ -363,6 +365,7 @@ export interface RaLocation extends RaLocationRef {
   is_active: boolean
   /** Four-eyes approval: a new building and its deactivation wait for someone else. */
   approval?: RaLocationApproval
+  approval_can?: RaApprovalCan
   assessment_count: number
   latest_assessment: RaAssessmentSummary | null
   updated_at: string
@@ -384,7 +387,6 @@ export interface RaLocationApproval {
 /** A location with its building profile, shared by all of its RA cycles. */
 export interface RaLocationDetail extends RaLocation {
   can_delete: boolean
-  approval_can?: RaApprovalCan
   assessments: RaAssessmentSummary[]
   contacts: RaContact[]
   occupants: RaOccupant[]

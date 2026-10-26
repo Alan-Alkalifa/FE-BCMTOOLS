@@ -718,7 +718,7 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(table.getByRole('columnheader', { name: 'Last final RA' })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('columnheader', { name: 'Open RA' })).toBeVisible()
   const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim())
-  expect(headers.at(-1)).toBe('RAs')
+  expect(headers.at(-1)).toBe('RA(s)')
   // The name opens the last final RA; its code is text, not a link.
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
   await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()

@@ -3,7 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { RaCrisisStatus, RaCrisisSummary } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
-/** Every crisis declared on the location map, open and closed, newest first. */
+/** Every incident declared on the location map, open and closed, newest first. */
 definePageMeta({ permission: 'ra.access' })
 
 const route = useRoute()
@@ -44,7 +44,7 @@ const statusFilter = computed({
   }),
 })
 const statusItems = [
-  { label: 'All crises', value: 'all' },
+  { label: 'All incidents', value: 'all' },
   { label: 'Pending approval', value: 'pending' },
   { label: 'Open', value: 'open' },
   { label: 'Closed', value: 'closed' },
@@ -59,7 +59,26 @@ const columns: TableColumn<RaCrisisSummary>[] = [
   { accessorKey: 'radius_m', header: 'Radius', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'affected_count', header: 'Affected', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'status', header: 'Status' },
+  { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
+
+/** Approve or reject (with a reason) an incident someone else declared. */
+const toast = useToast()
+const dialogs = useRaApprovalDialogs()
+const actionError = ref<string | null>(null)
+async function decide(crisis: RaCrisisSummary, decision: 'approve' | 'reject') {
+  actionError.value = null
+  const note = decision === 'approve' ? await dialogs.approve('incident') : await dialogs.reject('incident')
+  if (note === false) return
+  try {
+    if (decision === 'approve') await raCrisisApi.approve(crisis.id, note || null)
+    else await raCrisisApi.reject(crisis.id, note)
+    toast.add({ title: `${crisis.ref_no} ${decision === 'approve' ? 'approved' : 'rejected'}`, color: 'success', icon: 'i-lucide-circle-check' })
+    await refresh()
+  } catch (err) {
+    actionError.value = apiErrorMessage(err)
+  }
+}
 
 function openRow(_event: Event, row: { original: RaCrisisSummary }) {
   navigateTo(crisisPath(row.original.id))
@@ -73,8 +92,8 @@ async function declare() {
 
 <template>
   <AppPage
-    title="Crises"
-    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Crises' }]"
+    title="Incidents"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Incidents' }]"
   >
     <template #actions>
       <UButton
@@ -97,7 +116,7 @@ async function declare() {
       toolbar
       :columns="7"
       :rows="5"
-      label="Loading crises"
+      label="Loading incidents"
     />
 
     <UAlert
@@ -105,7 +124,7 @@ async function declare() {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Could not load the crises"
+      title="Could not load the incidents"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -138,6 +157,15 @@ async function declare() {
         />
       </div>
 
+      <UAlert
+        v-if="actionError"
+        class="m-4 mb-0"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="That didn't work"
+        :description="actionError"
+      />
       <UTable
         :data="data?.items ?? []"
         :columns="columns"
@@ -184,9 +212,34 @@ async function declare() {
             {{ formatDateTime(row.original.closed_at) }}
           </p>
         </template>
+        <template #actions-cell="{ row }">
+          <div
+            v-if="row.original.approval_can?.approve"
+            class="flex justify-end gap-1"
+          >
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-badge-check"
+              label="Approve"
+              :aria-label="`Approve ${row.original.ref_no}`"
+              @click.stop="decide(row.original, 'approve')"
+            />
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-circle-x"
+              label="Reject"
+              :aria-label="`Reject ${row.original.ref_no}`"
+              @click.stop="decide(row.original, 'reject')"
+            />
+          </div>
+        </template>
         <template #empty>
           <p class="py-10 text-center text-sm text-muted">
-            {{ query.q || query.status ? 'No crises match these filters.' : 'No crisis has been declared yet.' }}
+            {{ query.q || query.status ? 'No incidents match these filters.' : 'No incident has been declared yet.' }}
           </p>
         </template>
       </UTable>
@@ -195,7 +248,7 @@ async function declare() {
         v-if="data"
         :total="data.total"
         :per-page="PER_PAGE"
-        label="Crises"
+        label="Incidents"
         :to="(page) => ({ query: { ...route.query, page } })"
         :page="query.page"
       />

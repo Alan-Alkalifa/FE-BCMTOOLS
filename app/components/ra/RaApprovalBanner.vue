@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { RaApprovalCan } from '~/composables/useRa'
-import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
 
 /**
  * Four-eyes approval of a building (a new one, or making it inactive) or of a declared
@@ -28,7 +27,7 @@ const props = defineProps<{
 }>()
 
 const toast = useToast()
-const noteModal = useOverlay().create(RaCrisisNoteModal)
+const dialogs = useRaApprovalDialogs()
 const busy = ref<string | null>(null)
 const failure = ref<string | null>(null)
 
@@ -40,6 +39,7 @@ const asked = computed(() => {
   return `${props.requestedBy ?? 'Someone'} added this ${props.noun}${when}.`
 })
 const waiting = computed(() => {
+  if (props.can?.own) return `You asked for this, so someone else with the approve permission (BCM admin or BCM management) approves or rejects it. ${props.noun === 'incident' ? 'Until then it can\'t be updated or closed.' : props.action === 'deactivate' ? `The ${props.noun} stays active until then.` : 'Its RAs can be drafted, but not submitted for sign-off until then.'}`
   if (props.can?.approve) return 'Check it, then approve it or reject it with a reason. You approve because someone else asked.'
   if (props.noun === 'incident') return 'Someone else with the approve permission confirms it. Until then it is on the map as pending and can\'t be updated or closed.'
   if (props.action === 'deactivate') return `Someone else with the approve permission approves it; the ${props.noun} stays active until then.`
@@ -60,34 +60,13 @@ async function run(name: string, work: () => Promise<unknown>, done: string) {
 }
 
 async function onApprove() {
-  const note = await noteModal.open({
-    title: props.action === 'deactivate' ? `Make this ${props.noun} inactive?` : `Approve this ${props.noun}?`,
-    description: props.action === 'deactivate'
-      ? `It leaves the ${props.noun} lists, the map and New assessment. Its RAs are kept.`
-      : props.noun === 'incident'
-        ? 'It opens: everyone affected sees it on the building map with their instructions.'
-        : `Its RAs can then be submitted for sign-off.`,
-    confirmLabel: 'Approve',
-    noteLabel: 'Comment',
-    help: 'Optional. Kept with the approval.',
-  }).result
+  const note = await dialogs.approve(props.noun, props.action)
   if (note === false) return
   await run('approve', () => props.approve(note || null), `${what.value} is approved`)
 }
 
 async function onReject() {
-  const note = await noteModal.open({
-    title: `Reject ${props.action === 'deactivate' ? 'the deactivation' : `this ${props.noun}`}?`,
-    description: props.action === 'deactivate'
-      ? `The ${props.noun} stays active. The reason is shown to who asked.`
-      : props.noun === 'incident'
-        ? 'It leaves the map and stays in the list as rejected, with the reason.'
-        : `Who added it sees the reason, fixes the ${props.noun} and submits it again.`,
-    confirmLabel: 'Reject',
-    noteLabel: 'Reason',
-    required: true,
-    destructive: true,
-  }).result
+  const note = await dialogs.reject(props.noun, props.action)
   if (note === false) return
   await run('reject', () => props.reject(note), 'Rejected')
 }

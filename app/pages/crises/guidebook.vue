@@ -2,7 +2,7 @@
 import type { RaPlaybookEntry, RaPlaybookPhase } from '~/composables/useRa'
 
 /**
- * BCM's standard crisis steps for each of the 33 hazards. Every crisis shows the steps of its
+ * BCM's standard incident steps for each of the 33 hazards. Every incident shows the steps of its
  * hazard. The module ships starter steps; BCM (ra.manage) reviews and replaces them.
  */
 definePageMeta({ permission: 'ra.access' })
@@ -76,12 +76,12 @@ async function save() {
 
 <template>
   <AppPage
-    title="Crisis guidebook"
-    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Crisis guidebook' }]"
+    title="Incident guidebook"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Incident guidebook' }]"
   >
     <SkeletonGroup
       v-if="showSkeleton"
-      label="Loading the crisis guidebook"
+      label="Loading the incident guidebook"
       class="space-y-6"
     >
       <SkeletonCard :lines="8" />
@@ -92,7 +92,7 @@ async function save() {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Could not load the crisis guidebook"
+      title="Could not load the incident guidebook"
       :description="apiErrorMessage(error)"
     >
       <template #actions>
@@ -107,7 +107,7 @@ async function save() {
 
     <template v-else-if="data">
       <p class="text-sm text-muted">
-        BCM's standard steps for each hazard, shown with every crisis of that hazard next to the
+        BCM's standard steps for each hazard, shown with every incident of that hazard next to the
         affected place's own RA, contacts and call tree.
       </p>
 

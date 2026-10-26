@@ -505,7 +505,7 @@ export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
   return `${RA_MODULES[kind].base}/${section}${id === undefined ? '' : `/${id}`}`
 }
 
-/** Where an assessment opens from elsewhere (a location, the map, a crisis): a draft in Manage
+/** Where an assessment opens from elsewhere (a location, the map, an incident): a draft in Manage
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
   return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
@@ -533,7 +533,7 @@ export const raWaitLevel = defineStatusScale<RaWaitLevel>({
 })
 
 /** The first crumb of the pages in the Location menu group (the register of head office
- *  buildings and branches, the building map, crises and the guidebook): Home › Location ›
+ *  buildings and branches, the building map, incidents and the guidebook): Home › Location ›
  *  Buildings. The routes keep their /locations names. */
 export const BUILDINGS_GROUP = 'Location'
 export const LOCATIONS_PATH = '/locations'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A note for the history: closing or reopening a crisis, approving or rejecting a building or
+ * A note for the history: closing or reopening an incident, approving or rejecting a building or
  * an incident. Closes with the note ('' without one), or false. `required` (rejecting) needs a
  * note; `destructive` makes the confirm button the destructive one.
  */
@@ -36,7 +36,7 @@ function confirm() {
       <UFormField
         :label="props.noteLabel"
         :required="props.required"
-        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the crisis history.')"
+        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the incident history.')"
         :error="missing && !note.trim() ? 'Enter the reason.' : undefined"
       >
         <UTextarea

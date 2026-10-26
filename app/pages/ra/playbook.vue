@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** The crisis playbook is now the crisis guidebook, in the Locations menu: old links keep working. */
+/** The incident playbook is now the incident guidebook, in the Locations menu: old links keep working. */
 definePageMeta({
   permission: 'ra.access',
   redirect: (to) => ({ path: '/crises/guidebook', query: to.query }),

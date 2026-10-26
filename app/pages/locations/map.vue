@@ -5,7 +5,7 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
  * Every head office building and branch with a map pin, on one map: measure the distance
- * between any two, see what is near a place, and declare a crisis. Open crises show for
+ * between any two, see what is near a place, and declare an incident. Open incidents show for
  * everyone until they are closed.
  */
 definePageMeta({ permission: 'ra.access' })
@@ -111,7 +111,7 @@ const markers = computed<RaMapMarker[]>(() => [
     id: crisis.id,
     lat: crisis.latitude,
     lng: crisis.longitude,
-    label: `${crisis.status === 'pending' ? 'Pending approval: crisis' : 'Crisis'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
+    label: `${crisis.status === 'pending' ? 'Pending approval: incident' : 'Incident'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
   })),
 ])
@@ -189,12 +189,12 @@ function assessmentUrl(place: RaMapPlace) {
         color="neutral"
         variant="outline"
         icon="i-lucide-history"
-        label="Crisis history"
+        label="Incident history"
       />
       <UButton
         v-if="data?.can_declare"
         icon="i-lucide-siren"
-        label="Declare crisis"
+        label="Declare incident"
         @click="declare(selected?.id)"
       />
     </template>
@@ -228,7 +228,7 @@ function assessmentUrl(place: RaMapPlace) {
     <template v-else-if="data">
       <section
         v-if="data.crises.length"
-        aria-label="Open and pending crises"
+        aria-label="Open and pending incidents"
         class="space-y-2"
       >
         <UAlert
@@ -298,7 +298,7 @@ function assessmentUrl(place: RaMapPlace) {
             <span class="flex items-center gap-1"><UIcon
               name="i-lucide-siren"
               class="size-4 text-error"
-            /> Crisis and its affected area</span>
+            /> Incident and its affected area</span>
             <span>Colour: latest residual risk</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>
@@ -457,7 +457,7 @@ function assessmentUrl(place: RaMapPlace) {
                   variant="outline"
                   size="sm"
                   icon="i-lucide-siren"
-                  label="Declare crisis here"
+                  label="Declare incident here"
                   @click="declare(selected.id)"
                 />
               </div>

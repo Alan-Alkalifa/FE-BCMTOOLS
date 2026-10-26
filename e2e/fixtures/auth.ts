@@ -67,8 +67,8 @@ const MENUS = [
   { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
   { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
   { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.crises', label: 'Crises', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.guidebook', label: 'Crisis guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.crises', label: 'Incidents', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
 ] as const
