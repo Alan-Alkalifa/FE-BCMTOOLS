@@ -22,6 +22,7 @@ const RULES: Partial<Record<SccaListName, Rule[]>> = {
   assessment_reason: [
     { key: 'renewal', label: 'Renewal reason', kind: 'bool', help: 'Start renewal uses it. Exactly one.' },
     { key: 'custom_due_date', label: 'Custom due date', kind: 'bool', help: 'The assessor picks a sooner renewal date.' },
+    { key: 'lookup', label: 'Looks up an existing application', kind: 'bool', help: 'Off: the assessor types a new application code.' },
   ],
   category: [
     { key: 'rank', label: 'Rank', kind: 'int', help: '5 is the most critical.' },
@@ -33,7 +34,7 @@ const RULES: Partial<Record<SccaListName, Rule[]>> = {
   ha: [{ key: 'counts_as_ha', label: 'Counts as HA', kind: 'bool' }],
   dr_capacity: [{ key: 'percent', label: 'Percent', kind: 'number' }],
   dependency: [
-    { key: 'counts_for_a3', label: 'Counts for A3', kind: 'bool', help: 'The A3 note uses these systems.' },
+    { key: 'counts_for_a3', label: 'Counts for A3', kind: 'bool', help: 'The A3 note uses these applications.' },
     { key: 'needs_workaround', label: 'Needs a workaround', kind: 'bool' },
   ],
 }

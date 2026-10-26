@@ -90,12 +90,18 @@ async function add() {
       >
         <UTextarea
           v-model="body"
+          :maxlength="TEXT_LIMITS.long"
           class="w-full"
           :rows="2"
           :aria-label="`Comment on ${tabLabel}`"
           placeholder="Write a review comment"
         />
-        <div class="flex justify-end">
+        <div class="flex items-center justify-end gap-3">
+          <FieldCount
+            class="text-xs"
+            :value="body"
+            :max="TEXT_LIMITS.long"
+          />
           <UButton
             icon="i-lucide-send"
             label="Add comment"

@@ -180,7 +180,7 @@ async function onSubmit() {
             Recovery
           </h2>
           <p class="mt-1 text-sm text-muted">
-            IT committed values are checked against the business requirements, regulatory requirements, and the CIMBN recovery architecture standard for this system's category. Other is not part of the rigid check.
+            IT committed values are checked against the business requirements, regulatory requirements, and the CIMBN recovery architecture standard for this application's category. Other is not part of the rigid check. Every field is required except Regulatory requirements.
           </p>
         </div>
 
@@ -210,7 +210,7 @@ async function onSubmit() {
               <tbody class="divide-y divide-default">
                 <tr>
                   <th class="px-3 py-2 text-left font-medium">
-                    Maximum tolerable downtime (MTD)
+                    Maximum tolerable downtime (MTD, hours)
                   </th>
                   <td
                     v-for="row in visibleStandards"
@@ -223,7 +223,7 @@ async function onSubmit() {
                 </tr>
                 <tr>
                   <th class="px-3 py-2 text-left font-medium">
-                    Recovery time objective (RTO)
+                    Recovery time objective (RTO, hours)
                   </th>
                   <td
                     v-for="row in visibleStandards"
@@ -236,7 +236,7 @@ async function onSubmit() {
                 </tr>
                 <tr>
                   <th class="px-3 py-2 text-left font-medium">
-                    Uptime ratio (per year)
+                    Availability/SLA (per year)
                   </th>
                   <td
                     v-for="row in visibleStandards"
@@ -284,6 +284,7 @@ async function onSubmit() {
               v-for="field in SCCA_RECOVERY_SECTIONS[kind]"
               :key="field.key"
               :label="field.label"
+              :required="kind !== 'regulatory'"
             >
               <SccaRecoveryField
                 v-model="state[kind][field.key]"
@@ -294,6 +295,7 @@ async function onSubmit() {
             <UFormField
               v-if="kind === 'business'"
               label="Customer facing (Yes / No)"
+              required
             >
               <USelect
                 v-model="state.customer_facing"
@@ -323,6 +325,7 @@ async function onSubmit() {
               v-for="field in SCCA_RECOVERY_SECTIONS.final"
               :key="field.key"
               :label="field.label"
+              required
             >
               <SccaRecoveryField
                 v-model="state.final[field.key]"

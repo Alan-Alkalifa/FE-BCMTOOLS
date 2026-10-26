@@ -21,6 +21,7 @@ function asCategory(value: unknown): SccaCategory | undefined {
 const query = computed<SccaListQuery>(() => ({
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
   category: asCategory(route.query.category),
+  reason: typeof route.query.reason === 'string' && route.query.reason ? route.query.reason : undefined,
   status: 'draft',
   mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
@@ -54,6 +55,19 @@ watch(categoryFilter, (value) => {
   if (next === query.value.category) return
   router.replace({ query: { ...route.query, category: next, page: undefined } })
 })
+
+const { data: config } = useSccaConfig()
+const reasonFilter = computed<string>({
+  get: () => query.value.reason ?? 'all',
+  set: (value) => router.replace({ query: { ...route.query, reason: value === 'all' ? undefined : value, page: undefined } }),
+})
+const reasonItems = computed(() => [{ label: 'All reasons', value: 'all' }, ...sccaListOptions(config.value, 'assessment_reason')])
+const filtered = computed(() => !!(query.value.q || query.value.category || query.value.reason))
+function clearFilters() {
+  search.value = ''
+  categoryFilter.value = 'all'
+  router.replace({ query: {} })
+}
 
 const { data, status, error, refresh } = useSccaAssessments(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
@@ -130,22 +144,36 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <div class="flex flex-wrap items-center gap-2 border-b border-default p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Search by name, code, or ref. no."
-          class="w-full sm:w-72"
-          aria-label="Search by name, code, or ref. no."
-        />
+      <ListFilterBar
+        :filtered="filtered"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Application, code or ref. no."
+            class="w-full"
+            aria-label="Search by name, code, or ref. no."
+          />
+        </template>
         <USelectMenu
           v-model="categoryFilter"
           value-key="value"
           :items="categoryItems"
-          class="w-48"
+          :search-input="false"
+          class="w-44"
           aria-label="Filter by category"
         />
-      </div>
+        <USelectMenu
+          v-model="reasonFilter"
+          value-key="value"
+          :items="reasonItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Filter by reason"
+        />
+      </ListFilterBar>
 
       <UTable
         :data="data?.items ?? []"

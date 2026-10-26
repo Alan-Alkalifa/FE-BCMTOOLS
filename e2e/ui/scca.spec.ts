@@ -1,17 +1,31 @@
 import { expect, test, type Page } from '@playwright/test'
 import { EDITOR, FORMULA, LIST, SAMPLE_RATINGS, assessment, draft, mockScca, signIn } from '../fixtures/scca'
+import { sccaConfig } from '../fixtures/scca-config'
 
 test.setTimeout(90_000)
 
-/** Pick the given day of the month the calendar opens on. Day buttons are named like "Kamis, 15 Oktober 2026". */
+/** Pick the given day of the month the calendar opens on. Day buttons are named like "Thursday 15 October 2026". */
 async function pickDate(page: Page, field: string, day: number) {
   // Under load the first click can land before the picker is ready: click until it opens.
   await expect(async () => {
     if (!(await page.getByRole('dialog').isVisible())) await page.getByRole('button', { name: field }).click()
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByRole('dialog').getByRole('button', { name: new RegExp(`, ${day} `) }).first().click()
+  await page.getByRole('dialog').getByRole('button', { name: new RegExp(`\\b${day} [A-Z][a-z]+ \\d{4}$`) }).first().click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+}
+
+async function selectReason(page: Page, reason: string) {
+  await page.getByLabel('Reason for assessment').click()
+  await page.getByRole('option', { name: reason }).click()
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+}
+
+async function pickApplication(page: Page, field: string, search: string, option: RegExp) {
+  await page.getByRole('button', { name: field, exact: true }).click()
+  await page.getByPlaceholder('Application code or name').fill(search)
+  await page.getByRole('option', { name: option }).click()
+  await expect(page.getByRole('listbox')).toHaveCount(0)
 }
 
 async function selectUser(page: Page, field: string, name: string) {
@@ -46,10 +60,12 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
   await mockScca(page, created)
   await page.goto('/scca/new')
   await expect(page.getByRole('heading', { name: 'New assessment' })).toBeVisible({ timeout: 60_000 })
-  await page.getByLabel('Application code').fill('NEWAPP')
-  await page.getByRole('button', { name: 'Application name' }).click()
-  await page.getByPlaceholder('Application name or code').fill('New app')
-  await page.getByRole('option', { name: 'Create "New app"' }).click()
+  // Nothing can be filled in before the reason.
+  await expect(page.getByLabel('Application code')).toBeDisabled()
+  await selectReason(page, 'New application')
+  await page.getByLabel('Application code').fill('newapp')
+  await expect(page.getByText('6/32')).toBeVisible()
+  await page.getByLabel('Application name').fill('New app')
   await pickDate(page, 'Assessment date', 1)
   await expect(page.getByText('Enter the assessment date.')).toHaveCount(0)
   await selectUser(page, 'Application owner', 'Cards Owner')
@@ -63,25 +79,35 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
   await page.getByRole('option', { name: 'Mon–Fri' }).click()
   await page.getByLabel('Business hours').click()
   await page.getByRole('option', { name: /08\.00–18\.00/ }).click()
+  const request = page.waitForRequest((req) => req.method() === 'POST' && req.url().endsWith('/api/scca/assessments'))
   await page.getByRole('button', { name: 'Create assessment' }).click()
+  expect((await request).postDataJSON()).toMatchObject({
+    application_id: null,
+    application_code: 'NEWAPP',
+    application_name: 'New app',
+    assessment_reason: 'new_application',
+  })
   await expect(page).toHaveURL(/\/scca\/manage\/1\?tab=rating/)
 })
 
-test('a new assessment can start from an application assessed before', async ({ page }) => {
+test('an annual review picks its application from the application list', async ({ page }) => {
   await mockScca(page, draft())
   await page.goto('/scca/new')
   await expect(page.getByRole('heading', { name: 'New assessment' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Application name' }).click()
-  await page.getByPlaceholder('Application name or code').fill('omni')
+  await selectReason(page, 'Annual review')
+  await page.getByRole('button', { name: 'Application', exact: true }).click()
+  await page.getByPlaceholder('Application code or name').fill('omni')
   await expect(page.getByRole('option', { name: /HR Portal/ })).toHaveCount(0)
-  await page.getByRole('option', { name: /^CC Omni Channel/ }).click()
+  await page.getByRole('option', { name: /^CCOMNI/ }).click()
   await expect(page.getByRole('listbox')).toHaveCount(0)
 
   await expect(page.getByText('Existing application')).toBeVisible()
   await expect(page.getByText('Copied the application details from its last SCCA (SCCA-2024-0007, 16 Sep 2024).')).toBeVisible()
   await expect(page.getByLabel('Application code')).toHaveValue('CCOMNI')
+  await expect(page.getByLabel('Application name')).toHaveValue('CC Omni Channel')
+  await expect(page.getByText('Previous final characteristics')).toBeVisible()
+  await expect(page.getByText('From SCCA-2024-0007, final 20 Sep 2024.')).toBeVisible()
   await expect(page.getByLabel('Vendor')).toHaveValue('KPSG')
-  await expect(page.getByLabel('Reason for assessment')).toContainText('Annual review')
   await expect(page.getByLabel('Deployment model')).toContainText('SaaS')
 
   await pickDate(page, 'Assessment date', 1)
@@ -89,6 +115,7 @@ test('a new assessment can start from an application assessed before', async ({ 
   await page.getByRole('button', { name: 'Create assessment' }).click()
   const body = (await request).postDataJSON()
   expect(body).toMatchObject({
+    application_id: 1,
     application_code: 'CCOMNI',
     application_name: 'CC Omni Channel',
     assessment_reason: 'annual_review',
@@ -105,6 +132,7 @@ test('the assessment date is picked from a calendar and shown with the month nam
   await mockScca(page, draft())
   await page.goto('/scca/new')
   await expect(page.getByRole('heading', { name: 'New assessment' })).toBeVisible({ timeout: 60_000 })
+  await selectReason(page, 'New application')
   const field = page.getByRole('button', { name: 'Assessment date' })
   await expect(field).toHaveText('Pick a date')
   await field.click()
@@ -112,8 +140,9 @@ test('the assessment date is picked from a calendar and shown with the month nam
   const fieldBox = (await field.boundingBox())!
   const calendarBox = (await calendar.boundingBox())!
   expect(Math.abs(calendarBox.x - fieldBox.x)).toBeLessThan(2)
-  expect(calendarBox.y).toBeGreaterThan(fieldBox.y + fieldBox.height)
-  await calendar.getByRole('button', { name: /, 15 / }).first().click()
+  // Under the field, or above it when there is no room below; never over it.
+  expect(calendarBox.y >= fieldBox.y + fieldBox.height || calendarBox.y + calendarBox.height <= fieldBox.y).toBe(true)
+  await calendar.getByRole('button', { name: /\b15 [A-Z][a-z]+ \d{4}$/ }).first().click()
   await expect(calendar).toHaveCount(0)
   await expect(field).toHaveText(/^15 \w{3} \d{4}$/)
   await expect(page.getByText(/Renewal due 15 \w+ \d{4}, 2 years after this assessment/)).toBeVisible()
@@ -124,10 +153,15 @@ test('picking an application with an open SCCA warns the assessor', async ({ pag
   await mockScca(page, draft())
   await page.goto('/scca/new')
   await expect(page.getByRole('heading', { name: 'New assessment' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Application name' }).click()
-  await page.getByPlaceholder('Application name or code').fill('hr')
-  await page.getByRole('option', { name: /^HR Portal/ }).click()
+  await selectReason(page, 'System change')
+  await pickApplication(page, 'Application', 'hr', /^HR/)
   await expect(page.getByText('This application already has an SCCA in approval')).toBeVisible()
+
+  // Switching to a new application asks first, then clears the application.
+  await selectReason(page, 'New application')
+  await page.getByRole('button', { name: 'Change reason' }).click()
+  await expect(page.getByLabel('Application code')).toHaveValue('')
+  await expect(page.getByLabel('Application code')).toBeEnabled()
 })
 
 test('C1 only offers the ratings allowed by the formula', async ({ page }) => {
@@ -161,6 +195,7 @@ test('a 422 from the server appears under the field', async ({ page }) => {
   await signIn(page)
   await page.route('**/api/scca/formula**', (route) => route.fulfill({ json: FORMULA }))
   await page.route('**/api/scca/recovery-standards**', (route) => route.fulfill({ json: { items: [] } }))
+  await page.route('**/api/scca/config**', (route) => route.fulfill({ json: sccaConfig() }))
   await page.route('**/api/scca/calculate**', (route) =>
     route.fulfill({ json: { result: null, missing: Object.keys(SAMPLE_RATINGS) } }),
   )
@@ -209,17 +244,20 @@ test('the result tab shows earlier gaps, sign-off and blocks submit until ready'
     }],
   }))
   await page.goto('/scca/1?tab=result')
-  await expect(page.getByText('Gaps from earlier tabs')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/Gap check: \d+ gaps?/)).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('listitem').filter({
     hasText: 'IT committed RTO is outside the CIMBN standard for Critical ((0 - 2 jam)).',
   })).toBeVisible()
   await expect(page.getByRole('listitem').filter({ hasText: 'Core Banking (upstream):' })).toBeVisible()
+  // What is still missing, by tab, before Submit.
+  await expect(page.getByText(/things? to fill in before you submit/)).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: /^Business requirements: / })).toBeVisible()
   await expect(page.getByLabel('Justification / Process Workaround / Remarks')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Sign-off' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
 })
 
-test('interdependency rows can be added, removed and saved', async ({ page }) => {
+test('interdependency rows are picked from the application list and filled from its final SCCA', async ({ page }) => {
   const current = assessment({
     interdependencies: [],
     recovery_values: [{
@@ -237,23 +275,33 @@ test('interdependency rows can be added, removed and saved', async ({ page }) =>
   await mockScca(page, current)
   await page.goto('/scca/1?tab=interdependencies')
   await expect(page.getByRole('heading', { name: 'A3 Interdependency' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('Full: no workaround when the other system is down.')).toBeVisible()
-  await page.getByRole('button', { name: 'Add system' }).first().click()
-  await page.getByLabel('System name 1').fill('Core Banking')
-  await expect(page.getByLabel('Gaps 1')).toHaveText('Category, RTO, RPO or DR capacity is missing.')
-  await page.getByLabel('RTO 1').click()
-  await page.getByRole('option', { name: '12 Hours', exact: true }).click()
-  await page.getByLabel('DR capacity 1').fill('150')
-  await expect(page.getByLabel('DR capacity 1')).toHaveValue('100')
-  await expect(page.getByLabel('Gaps 1')).toContainText('RTO 12 h is longer than the committed RTO of 6 h.')
+  await expect(page.getByRole('heading', { name: 'Upstream applications' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add application' }).first().click()
+  await pickApplication(page, 'Application name 1', 'core', /^CBS/)
+  await expect(page.getByText('Filled from final SCCA SCCA-2025-0009 (2 Nov 2025).')).toBeVisible()
+  await expect(page.getByLabel('RTO (hours) 1')).toContainText('12')
+  await expect(page.getByLabel('Automatic gaps 1')).toContainText('RTO 12 h is longer than the committed RTO of 6 h.')
+
+  // Every field but workaround and gaps is required.
+  await page.getByRole('button', { name: 'Save interdependencies' }).click()
+  await expect(page.getByText('Upstream 1 (Core Banking): processing mode, dependency')).toBeVisible()
+  await page.getByLabel('Processing mode 1').click()
+  await page.getByRole('option', { name: 'Online' }).click()
+  await page.getByLabel('Dependency 1').click()
+  await page.getByRole('option', { name: 'No', exact: true }).click()
+  await page.getByLabel('Gap notes 1').fill('Batch window overlaps.')
+  await page.getByLabel('DR capacity (%) 1').fill('150')
+  await expect(page.getByLabel('DR capacity (%) 1')).toHaveValue('100')
   await page.getByRole('button', { name: 'Save interdependencies' }).click()
   await expect(page.getByText('Interdependencies saved', { exact: true })).toBeVisible()
   await expect(current.interdependencies).toEqual([
     expect.objectContaining({
       direction: 'upstream',
+      application_id: 3,
       system_name: 'Core Banking',
+      criticality_category: 'Critical',
       rto: '12',
-      gaps: expect.stringContaining('RTO 12 h is longer than the committed RTO of 6 h.'),
+      gaps_note: 'Batch window overlaps.',
     }),
   ])
   await page.getByRole('button', { name: 'Remove Core Banking' }).click()
@@ -269,18 +317,18 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Recovery architecture standard (CIMB Niaga)' })).toBeVisible({ timeout: 90_000 })
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
   await expect(page.getByText('Not applicable')).toHaveCount(0)
-  const committedRto = page.getByRole('combobox', { name: 'Current IT committed values RTO (hrs)' })
+  const committedRto = page.getByRole('combobox', { name: 'Current IT committed values RTO (hours)' })
   await expect(committedRto).toBeVisible()
   await committedRto.click()
   await page.getByRole('option', { name: '6 Hours', exact: true }).click()
   await expect(page.getByText('IT committed RTO is outside the CIMBN standard for Critical ((0 - 2 jam)).')).toBeVisible()
   await committedRto.click()
   await page.getByRole('option', { name: '2 Hours', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Business requirements RTO (hrs)' }).click()
+  await page.getByRole('combobox', { name: 'Business requirements RTO (hours)' }).click()
   await page.getByRole('option', { name: '2 Hours', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Business requirements MTD' }).click()
+  await page.getByRole('combobox', { name: 'Business requirements MTD (hours)' }).click()
   await page.getByRole('option', { name: '4 Hours', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Regulatory requirements RTO' }).click()
+  await page.getByRole('combobox', { name: 'Regulatory requirements RTO (hours)' }).click()
   await page.getByRole('option', { name: 'NA', exact: true }).click()
   await page.getByRole('combobox', { name: 'Current IT committed values RPO' }).click()
   await page.getByRole('option', { name: 'LST', exact: true }).click()
@@ -294,9 +342,9 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await page.getByRole('option', { name: 'Active - Active', exact: true }).click()
   await page.getByRole('combobox', { name: 'Final system characteristics DR capacity (%)' }).click()
   await page.getByRole('option', { name: '50% - 50%', exact: true }).click()
-  await page.getByLabel('Current IT committed values Availability / SLA (%)').fill('150')
-  await expect(page.getByLabel('Current IT committed values Availability / SLA (%)')).toHaveValue('100')
-  await page.getByRole('combobox', { name: 'Business requirements RTO (hrs)' }).click()
+  await page.getByLabel('Current IT committed values Availability/SLA (%)').fill('150')
+  await expect(page.getByLabel('Current IT committed values Availability/SLA (%)')).toHaveValue('100')
+  await page.getByRole('combobox', { name: 'Business requirements RTO (hours)' }).click()
   await page.getByRole('option', { name: '1 Hour', exact: true }).click()
   await expect(page.getByText('IT committed RTO is longer than the business RTO.')).toBeVisible()
   await page.getByRole('button', { name: 'Save recovery' }).click()
@@ -441,7 +489,7 @@ test('a save error lists every field the server rejected, also from other tabs',
   await page.goto('/scca/1?tab=recovery')
   await expect(page.getByRole('button', { name: 'Save recovery' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Save recovery' }).click()
-  await expect(page.getByText('Business requirements · RTO: Must be NA, 1 to 24, 36, 48 or 72 hours.')).toBeVisible()
+  await expect(page.getByText('Business requirements · RTO (hours): Must be NA, 1 to 24, 36, 48 or 72 hours.')).toBeVisible()
   await expect(page.getByText('IT support: Required.')).toBeVisible()
 })
 

@@ -102,7 +102,7 @@ frontend/
 │   │   ├── admin/                 # users, roles, menus, settings/email, scca-config, ra-config, audit (settings/scca opens its Reminders tab)
 │   │   └── scca/                  # {monitoring,manage,approval}/index.vue, …/[id]/index.vue + report.vue, manage/new.vue; [id] resolvers
 │   ├── types/page-meta.d.ts       # Adds `public` and `permission` to definePageMeta
-│   └── utils/                     # Auto-imported: format.ts (id-ID dates/numbers/Rp, WIB), chart.ts, status.ts,
+│   └── utils/                     # Auto-imported: format.ts (English dates, id-ID numbers/Rp, WIB), limits.ts, chart.ts, status.ts,
 │                                  # scca.ts (SCCA constants, gap checks, workbook notes), scca-config.ts
 │                                  # (a version's lists, steps, notes; label registry), menu-icons.ts
 ├── docs/design-system.md          # Design system spec: tokens, components, accessibility, writing style
@@ -118,7 +118,8 @@ frontend/
 ├── nuxt.config.ts
 ├── playwright.config.ts
 ├── .editorconfig, .nvmrc          # Editor settings; Node version used by CI
-├── .env.example                   # Dev-only environment variables
+├── .env.example.dev               # Local development variables (copy to .env)
+├── .env.example.production        # Deployed nginx image variables
 └── package.json
 ```
 
@@ -161,9 +162,9 @@ Pages use `layouts/default.vue` and wrap their content in `<AppPage title="...">
 
 3. Open <http://localhost:3000>. You'll be redirected to the login page. Sign in with the first Administrator: the backend log prints its temporary password the first time it starts (`BOOTSTRAP_ADMIN_EMAIL`); you set your own password right after.
 
-Source is bind-mounted, so edits hot-reload. File watching uses polling (`CHOKIDAR_USEPOLLING=true`) because Docker Desktop on Windows doesn't forward file-change events from the host.
+Source is bind-mounted, so edits hot-reload. The container runs `npm install` each time it starts, so after a pull or a new package `docker compose up` is enough; no rebuild is needed. File watching uses polling (`CHOKIDAR_USEPOLLING=true`) because Docker Desktop on Windows doesn't forward file-change events from the host.
 
-The container reaches the backend at `http://host.docker.internal:8000`, so the backend can run in Docker or directly on your machine.
+The container reaches the backend at `http://host.docker.internal:8000`, so the backend can run in Docker or directly on your machine. If the backend is published on another host port (`BACKEND_HOST_PORT` in the backend's `.env`), add the same `BACKEND_HOST_PORT=8001` line to this repo's `.env` and run `docker compose up -d` again.
 
 ### Option B: Node on your machine
 
@@ -208,7 +209,7 @@ Only port 3000 needs to be reachable: the dev server forwards `/api` to the back
 
 ## Configuration
 
-The built app has no environment-specific settings: the same image runs in every environment because all API calls are relative (`/api/...`). Environment differences live in nginx and the backend.
+The built app has no environment-specific settings: the same image runs in every environment because all API calls are relative (`/api/...`). Environment differences live in nginx and the backend. Templates: `.env.example.dev` (local development, copy to `.env`) and `.env.example.production` (the deployed nginx image).
 
 | Variable | Where | Default | Purpose |
 |---|---|---|---|
@@ -217,6 +218,8 @@ The built app has no environment-specific settings: the same image runs in every
 | `NUXT_DEV_BACKEND_URL` | Dev server | `http://localhost:8000` | Backend for the dev proxy. |
 | `CHOKIDAR_USEPOLLING` | Dev server | unset | `true` to poll for file changes (needed for Docker on Windows). |
 | `E2E_BASE_URL` | Playwright | `http://localhost:3000` | Site under test. |
+| `BACKEND_HOST_PORT` | `compose.yaml` | `8000` | The backend's host port; the dev container proxies to `http://host.docker.internal:<port>`. Same value as in the backend's `.env`. |
+| `WEBSITES_PORT` | App Service | — | `8080`, the port nginx listens on. |
 
 ## Authentication in the frontend
 
@@ -282,10 +285,11 @@ System Criticality Categorisation Assessment, matching the workbook *SCCA Tools 
 
 | Page | Permission | What it does |
 |---|---|---|
-| `/scca/monitoring` | `scca.access` | Every SCCA with `scca.monitor` (BCM, management); otherwise the SCCAs you assess, contribute to or sign. Filter bar kept in the URL (period, category, application state, department, search). Tabs: **Overview** (KPI cards that open the view they count, applications by final category, SCCAs finalised per month: `SccaBarChart.vue`, `SccaLineChart.vue` in `AppChart` cards, each with a summary sentence and *View as table*), **Renewals** (overdue, due in 30 and 90 days, and whether a renewal is started), **Register** (one row per application with its SCCA history), **Bottlenecks** (steps waiting longest, average working days per step). Each tab has **Export to Excel** (`/api/scca/monitoring/<view>.xlsx` with the same filters) |
+| `/scca/monitoring` | `scca.access` | Every SCCA with `scca.monitor` (BCM, management); otherwise the SCCAs you assess, contribute to or sign. Filter bar kept in the URL (period, category, application state, department, search). Tabs: **Overview** (KPI cards (`KpiCard.vue`) that open the view they count, applications by final category, SCCAs finalised per month: `SccaBarChart.vue`, `SccaLineChart.vue` in `AppChart` cards, each with a summary sentence and *View as table*), **Renewals** (three KPI cards: overdue, due in 30 days, due in 31–90 days; a card filters the list to its bucket, `?bucket=`; and whether a renewal is started), **Register** (one row per application with its SCCA history), **Bottlenecks** (steps waiting longest, average working days per step, counted to the second on weekdays). Each tab has **Export to Excel** (`/api/scca/monitoring/<view>.xlsx` with the same filters) |
 | `/scca/manage` | `scca.access` | **Drafts only** that I assess or contribute to (`mine=1&status=draft`, rejected ones included): my role, category so far, next step. **New assessment** (`/scca/manage/new`, `scca.create`) |
-| `/scca/approval` | `scca.access` | **My inbox** (steps waiting for me, working days waiting, reminders, escalation; *Coming up*: SCCAs that will reach me), **My history** (my decisions and approvals made on my behalf), **BCM board** (`scca.approval.manage`: every pending step; *Act*: send a reminder now, reassign the step (`SccaReassignDialog.vue`), approve on behalf with a reason and evidence (`SccaOnBehalfDialog.vue`); not on SCCAs you assess or contribute to) |
-| `/scca/manage/{id}` | editor of a draft | The editable SCCA. **Save** for the open tab is in the top bar next to View report ("Save application", "Save ratings", …), with an *Unsaved changes* badge; it submits that tab's form by id (`<button form="scca-form-<tab>">`, spinner via `sccaSavingKey`). **Submit for approval** is on Result and sign-off. New assessment keeps *Create assessment* under its form |
+| `/admin/applications` | `scca.application.view` (edit: `scca.application.manage`) | The application master: search, status and category filters; add, edit, deactivate, delete what nothing refers to (`ApplicationForm.vue`, `composables/useApplications.ts`) |
+| `/scca/approval` | `scca.access` | **My inbox** (steps waiting for me, working days waiting, reminders, escalation; *Coming up*, always shown: SCCAs that will reach me), **My history** (my decisions and approvals made on my behalf; search, decision, step, category, reason, dates), **BCM board** (`scca.approval.manage`: every pending step; search, step, waiting time, category, reason, approver; *Act*: send a reminder now, reassign the step (`SccaReassignDialog.vue`), approve on behalf with a reason and evidence (`SccaOnBehalfDialog.vue`); not on SCCAs you assess or contribute to) |
+| `/scca/manage/{id}` | editor of a draft | The editable SCCA. **Save** for the open tab is in the top bar next to View report ("Save application", "Save ratings", …), with an *Unsaved changes* badge; it submits that tab's form by id (`<button form="scca-form-<tab>">`, spinner via `sccaSavingKey`). **Submit for approval** is on Result and sign-off, under the missing-fields list and the gap check (`SccaGapSummary.vue`, `utils/scca-checks.ts`; the same gap check shows in Approval and Monitoring); each tab shows how many mandatory fields it still misses. The Application tab starts with the reason: Annual review and System change pick the application from the application master (`SccaApplicationSearch.vue`), New application types a new code. Upstream and downstream applications are picked the same way and filled from their latest final SCCA. New assessment has *Create assessment* in the top bar, like Save on a saved SCCA |
 | `/scca/approval/{id}` | can act on it | In approval: read-only tabs, the decision panel (**Approve / Reject**) above them, review comments on each tab |
 | `/scca/monitoring/{id}` | can view it | Read-only, with **Start renewal** on a final SCCA (the new draft opens in Manage). Comments are shown, never written. An approver viewing it here gets **Open in Approval** |
 | `/scca/{id}` and `/scca/{id}/report` | | Resolvers (`SccaResolve.vue`) for emails, the audit log and old links: they open the reader's section. `/scca` → Manage, `/scca?view=waiting` → the Approval inbox, `/scca/new` → `/scca/manage/new` |

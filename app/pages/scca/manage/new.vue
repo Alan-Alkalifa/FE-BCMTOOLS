@@ -3,6 +3,10 @@ definePageMeta({ permission: 'scca.create' })
 
 useHead({ title: 'New assessment · BCM Tools' })
 
+// Create assessment sits in the top bar and submits the form by id, as Save does on a saved SCCA.
+const saving = ref(false)
+provide(sccaSavingKey, saving)
+
 function onSaved(assessment: SccaAssessment) {
   return navigateTo({ path: sccaPath('manage', assessment.id), query: { tab: 'rating' } })
 }
@@ -18,6 +22,15 @@ function onSaved(assessment: SccaAssessment) {
       { label: 'New assessment' },
     ]"
   >
+    <template #actions>
+      <UButton
+        type="submit"
+        form="scca-form-details"
+        icon="i-lucide-file-plus"
+        label="Create assessment"
+        :loading="saving"
+      />
+    </template>
     <SccaDetailsForm @saved="onSaved" />
   </AppPage>
 </template>

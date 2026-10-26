@@ -64,8 +64,8 @@ export const SCCA_OVERRIDE_TYPES = ['upgrade', 'downgrade'] as const
 export type SccaOverrideType = (typeof SCCA_OVERRIDE_TYPES)[number]
 
 export const SCCA_DIRECTIONS = [
-  { value: 'upstream', label: 'Upstream systems', description: 'Systems that send data to this application.' },
-  { value: 'downstream', label: 'Downstream systems', description: 'Systems that receive data from this application.' },
+  { value: 'upstream', label: 'Upstream applications', description: 'Applications that send data to this application.' },
+  { value: 'downstream', label: 'Downstream applications', description: 'Applications that receive data from this application.' },
 ] as const
 export type SccaDirection = (typeof SCCA_DIRECTIONS)[number]['value']
 
@@ -82,13 +82,14 @@ export const SCCA_RECOVERY_KINDS = [
 ] as const
 export type SccaRecoveryKind = (typeof SCCA_RECOVERY_KINDS)[number]['value']
 
+// The same labels and units on every tab, table and export: RTO (hours), RPO, DR capacity (%).
 export const SCCA_RECOVERY_FIELDS = [
-  { key: 'availability_sla', label: 'Availability / SLA' },
-  { key: 'mtd', label: 'MTD' },
-  { key: 'rto', label: 'RTO' },
+  { key: 'availability_sla', label: 'Availability/SLA (%)' },
+  { key: 'mtd', label: 'MTD (hours)' },
+  { key: 'rto', label: 'RTO (hours)' },
   { key: 'rpo', label: 'RPO' },
   { key: 'ha', label: 'HA (Prod / DR)' },
-  { key: 'dr_capacity', label: 'DR capacity' },
+  { key: 'dr_capacity', label: 'DR capacity (%)' },
   { key: 'instance_type', label: 'Instance (Shared / Different)' },
   { key: 'dr_type', label: 'DR type' },
 ] as const
@@ -104,37 +105,37 @@ export interface SccaRecoverySectionField {
 
 export const SCCA_RECOVERY_SECTIONS: Record<SccaRecoveryKind, SccaRecoverySectionField[]> = {
   current_it: [
-    { key: 'availability_sla', label: 'Availability / SLA (%)', control: 'percent' },
-    { key: 'rto', label: 'RTO (hrs)', control: 'hours' },
+    { key: 'availability_sla', label: 'Availability/SLA (%)', control: 'percent' },
+    { key: 'rto', label: 'RTO (hours)', control: 'hours' },
     { key: 'rpo', label: 'RPO', control: 'rpo' },
     { key: 'ha', label: 'HA (Prod / DR)', control: 'ha' },
     { key: 'dr_capacity', label: 'DR capacity (%)', control: 'percent' },
     { key: 'instance_type', label: 'Instance (Shared / Different)', control: 'instance' },
   ],
   business: [
-    { key: 'availability_sla', label: 'Availability / SLA (%)', control: 'percent' },
-    { key: 'mtd', label: 'MTD', control: 'hours' },
-    { key: 'rto', label: 'RTO (hrs)', control: 'hours' },
+    { key: 'availability_sla', label: 'Availability/SLA (%)', control: 'percent' },
+    { key: 'mtd', label: 'MTD (hours)', control: 'hours' },
+    { key: 'rto', label: 'RTO (hours)', control: 'hours' },
     { key: 'rpo', label: 'RPO', control: 'rpo' },
     { key: 'dr_capacity', label: 'DR capacity (%)', control: 'percent' },
   ],
   regulatory: [
-    { key: 'mtd', label: 'MTD', control: 'hours' },
-    { key: 'rto', label: 'RTO', control: 'hours' },
+    { key: 'mtd', label: 'MTD (hours)', control: 'hours' },
+    { key: 'rto', label: 'RTO (hours)', control: 'hours' },
     { key: 'rpo', label: 'RPO', control: 'rpo' },
   ],
   cimbn_standard: [
-    { key: 'availability_sla', label: 'Availability / SLA (%)', control: 'percent' },
-    { key: 'rto', label: 'RTO', control: 'hours' },
+    { key: 'availability_sla', label: 'Availability/SLA (%)', control: 'percent' },
+    { key: 'rto', label: 'RTO (hours)', control: 'hours' },
     { key: 'rpo', label: 'RPO', control: 'rpo' },
     { key: 'ha', label: 'HA (Prod / DR)', control: 'ha' },
     { key: 'dr_capacity', label: 'DR capacity (%)', control: 'percent' },
     { key: 'dr_type', label: 'DR type', control: 'drType' },
   ],
   final: [
-    { key: 'availability_sla', label: 'Availability / SLA (%)', control: 'percent' },
-    { key: 'mtd', label: 'MTD', control: 'hours' },
-    { key: 'rto', label: 'RTO', control: 'hours' },
+    { key: 'availability_sla', label: 'Availability/SLA (%)', control: 'percent' },
+    { key: 'mtd', label: 'MTD (hours)', control: 'hours' },
+    { key: 'rto', label: 'RTO (hours)', control: 'hours' },
     { key: 'rpo', label: 'RPO', control: 'rpo' },
     { key: 'ha', label: 'HA (Prod / DR)', control: 'ha' },
     { key: 'dr_capacity', label: 'DR capacity (%)', control: 'drCapacity' },
@@ -447,7 +448,7 @@ const CATEGORY_RATING: Record<SccaCategory, number> = {
   'Other': 1,
 }
 
-/** I4: the number of interfaces (systems on the A3 tab) gives the rating. `from` holds the
+/** I4: the number of interfaces (applications on the A3 tab) gives the rating. `from` holds the
  * counts where ratings 2, 3, 4 and 5 start (V4.2: 10, 20, 30, 40). */
 export function interfaceRating(count: number, from: number[] = [10, 20, 30, 40]) {
   let rating = 1
@@ -457,7 +458,7 @@ export function interfaceRating(count: number, from: number[] = [10, 20, 30, 40]
   return rating
 }
 
-/** A3: the highest category among systems with a dependency that counts (V4.2: Full); 1 when
+/** A3: the highest category among applications with a dependency that counts (V4.2: Full); 1 when
  * there are none. A configuration gives each category its `a3_rating`. */
 export function interdependencyRating(
   rows: Array<{ dependency?: string | null, criticality_category?: string | null }>,
@@ -484,7 +485,7 @@ const RATING_WORDS: Record<number, string> = { 5: 'Critical', 4: 'High', 3: 'Med
 /**
  * The notes printed on SCC_Rating, as warnings. They don't block saving, as in the workbook:
  * - C1 Critical means C5 and P4 are Critical too.
- * - A3 is the highest category of the systems with a Full dependency on the A3 tab.
+ * - A3 is the highest category of the applications with a Full dependency on the A3 tab.
  * - I4 follows the number of interfaces on the A3 tab.
  */
 export function ratingNoteWarnings(
@@ -511,7 +512,7 @@ export function ratingNoteWarnings(
     } else if (note.kind === 'a3' && rows.length) {
       const a3 = interdependencyRating(rows, config)
       if (ratings[question] != null && ratings[question] !== a3) {
-        warnings.push({ code: question, message: `The A3 tab suggests ${a3}: the highest category among systems with a ${counted} dependency.` })
+        warnings.push({ code: question, message: `The A3 tab suggests ${a3}: the highest category among applications with a ${counted} dependency.` })
       }
     } else if (note.kind === 'i4' && rows.length) {
       const i4 = interfaceRating(rows.length, note.params.from)

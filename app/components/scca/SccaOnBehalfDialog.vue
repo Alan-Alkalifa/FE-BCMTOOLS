@@ -82,8 +82,15 @@ async function save() {
           required
           :error="errors.reason"
         >
+          <template #hint>
+            <FieldCount
+              :value="reason"
+              :max="TEXT_LIMITS.long"
+            />
+          </template>
           <UTextarea
             v-model="reason"
+            :maxlength="TEXT_LIMITS.long"
             :rows="3"
             class="w-full"
             placeholder="e.g. Approved by email on 12 Oct 2026, attached."

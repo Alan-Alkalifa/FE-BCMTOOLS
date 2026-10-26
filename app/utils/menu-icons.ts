@@ -23,6 +23,7 @@ export const MENU_ICONS = [
   'i-lucide-siren',
   'i-lucide-life-buoy',
   'i-lucide-server',
+  'i-lucide-app-window',
   'i-lucide-database',
   'i-lucide-network',
   'i-lucide-building-2',
