@@ -26,10 +26,7 @@ export interface RaConfigVersionMeta {
 export type RaConfigTextField
   = | 'type_description'
     | 'hazard_intro'
-    | 'instructions'
-    | 'signoff_statement'
     | 'signoff_statement_en'
-    | 'risk_summary_note'
     | 'risk_summary_note_en'
 
 export interface RaConfigVersion extends Omit<RaFormula, 'status'>, RaConfigVersionMeta {

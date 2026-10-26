@@ -74,7 +74,7 @@ test('declaring a crisis at a building sends the hazard, place, radius and WIB t
 test('the crisis point is a pin dropped on the map or put on a place', async ({ page }) => {
   const log = await mockRaMap(page, { crisis: false })
   await page.goto('/locations/map')
-  await page.getByRole('button', { name: 'Declare crisis' }).click({ timeout: 30_000 })
+  await page.getByRole('button', { name: 'Declare crisis', exact: true }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare a crisis' })
   await dialog.getByText('Choose one of the 33 RA hazards').click()
   await page.getByRole('option', { name: /Banjir/ }).first().click()
@@ -126,7 +126,7 @@ test('a crisis gives each affected place its instructions and keeps a history', 
   await dialog.getByLabel('How it ended').fill('Water receded.')
   await dialog.getByRole('button', { name: 'Close crisis' }).click()
   await expect(page.getByText('Closed', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Reopen' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reopen crisis' })).toBeVisible()
   expect(log.closed).toEqual([{ note: 'Water receded.' }])
 })
 
@@ -205,4 +205,24 @@ test('the sidebar marks only the section of the page as current', async ({ page 
   await expect(page).toHaveURL(/\/locations\/map$/)
   await expect(map).toHaveAttribute('aria-current', 'page')
   await expect(register).not.toHaveAttribute('aria-current', 'page')
+})
+
+test('a declared incident waits for someone else\'s approval', async ({ page }) => {
+  const log = await mockRaMap(page, { pending: true })
+  await page.goto('/crises/7')
+  const banner = page.getByTestId('approval-banner')
+  await expect(banner).toContainText('Waiting for approval. Rina declared this incident', { timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'Close crisis' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update crisis' })).toHaveCount(0)
+  await banner.getByRole('button', { name: 'Approve' }).click()
+  await page.getByRole('dialog', { name: 'Approve this incident?' }).getByRole('button', { name: 'Approve' }).click()
+  await expect(page.getByText('This incident is approved').first()).toBeVisible()
+  expect(log.decisions).toEqual([['approve', { note: null }]])
+  await expect(page.getByRole('button', { name: 'Close crisis' })).toBeVisible()
+})
+
+test('the map flags an incident waiting for approval', async ({ page }) => {
+  await mockRaMap(page, { pending: true })
+  await page.goto('/locations/map')
+  await expect(page.getByText(/^Pending approval: Banjir/)).toBeVisible({ timeout: 30_000 })
 })

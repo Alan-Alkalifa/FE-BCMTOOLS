@@ -64,27 +64,37 @@ function remove(row: Row) {
   rows.value = rows.value.filter((item) => item.key !== row.key)
 }
 
-/** Rows with nothing filled in are dropped; a row with details but no name needs one. */
+/** The fields a contact needs: all of them (the API checks the same). */
+function needed(kind: RaContactKind): (keyof Row)[] {
+  return kind === 'floor_warden' ? ['name', 'phone', 'group_name', 'floor'] : ['name', 'phone', 'address']
+}
+
+/** Rows with nothing filled in are dropped; a row with anything in it needs every field. */
 function validate() {
   const errors: Record<string, string> = {}
   for (const row of rows.value) {
-    const { key, kind: _kind, name, ...rest } = row
-    if (!name.trim() && Object.values(rest).some((value) => value.trim())) {
-      errors[`${key}`] = 'Enter a name, or remove this row.'
+    const fields = needed(row.kind)
+    if (!fields.some((field) => String(row[field]).trim())) continue
+    for (const field of fields) {
+      if (!String(row[field]).trim()) errors[`${row.key}.${field}`] = 'Required.'
     }
   }
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
 }
 
+function filled(row: Row) {
+  return needed(row.kind).some((field) => String(row[field]).trim())
+}
+
 async function save() {
   formError.value = null
   if (!validate()) {
-    formError.value = 'Some contacts need a name. Check the messages below.'
+    formError.value = 'Every contact needs all of its details. Fill in the fields marked below, or remove the row.'
     return
   }
   const contacts = rows.value
-    .filter((row) => row.name.trim())
+    .filter(filled)
     .map(({ key: _key, ...row }) => blankToNull(row) as RaContact)
   try {
     const saved = await raApi.setContacts(props.location.id, contacts)
@@ -145,7 +155,8 @@ async function save() {
         >
           <UFormField
             :label="`${group.single} ${index + 1}`"
-            :error="fieldErrors[row.key]"
+            required
+            :error="fieldErrors[`${row.key}.name`]"
           >
             <UInput
               v-model="row.name"
@@ -153,7 +164,11 @@ async function save() {
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Phone">
+          <UFormField
+            label="Phone"
+            required
+            :error="fieldErrors[`${row.key}.phone`]"
+          >
             <UInput
               v-model="row.phone"
               type="tel"
@@ -172,13 +187,21 @@ async function save() {
             </UTooltip>
           </div>
           <template v-if="group.value === 'floor_warden'">
-            <UFormField label="Group">
+            <UFormField
+              label="Group"
+              required
+              :error="fieldErrors[`${row.key}.group_name`]"
+            >
               <UInput
                 v-model="row.group_name"
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Floor">
+            <UFormField
+              label="Floor"
+              required
+              :error="fieldErrors[`${row.key}.floor`]"
+            >
               <UInput
                 v-model="row.floor"
                 class="w-full"
@@ -188,6 +211,8 @@ async function save() {
           <UFormField
             v-else
             label="Address"
+            required
+            :error="fieldErrors[`${row.key}.address`]"
             class="sm:col-span-2"
           >
             <UInput

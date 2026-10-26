@@ -11,7 +11,7 @@ const router = useRouter()
 const PER_PAGE = 25
 
 function asStatus(value: unknown): RaCrisisStatus | undefined {
-  return value === 'open' || value === 'closed' ? value : undefined
+  return value === 'pending' || value === 'open' || value === 'closed' || value === 'rejected' ? value : undefined
 }
 
 const query = computed(() => ({
@@ -45,8 +45,10 @@ const statusFilter = computed({
 })
 const statusItems = [
   { label: 'All crises', value: 'all' },
+  { label: 'Pending approval', value: 'pending' },
   { label: 'Open', value: 'open' },
   { label: 'Closed', value: 'closed' },
+  { label: 'Rejected', value: 'rejected' },
 ]
 
 const columns: TableColumn<RaCrisisSummary>[] = [
@@ -84,9 +86,8 @@ async function declare() {
       />
       <UButton
         v-if="map?.can_declare"
-        color="error"
         icon="i-lucide-siren"
-        label="Declare Incident/Disaster"
+        label="Declare incident/disaster"
         @click="declare"
       />
     </template>

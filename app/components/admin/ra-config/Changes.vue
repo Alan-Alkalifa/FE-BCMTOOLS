@@ -22,11 +22,8 @@ const sections = computed(() => {
 const ITEMS: Record<string, string> = {
   type_description: 'Building type description',
   hazard_intro: 'Hazards introduction',
-  instructions: 'Instructions',
-  signoff_statement: 'Sign-off statement (Indonesian)',
-  signoff_statement_en: 'Sign-off statement (English)',
-  risk_summary_note: 'CIM note (Indonesian)',
-  risk_summary_note_en: 'CIM note (English)',
+  signoff_statement_en: 'Sign-off statement',
+  risk_summary_note_en: 'Risk Summary note',
 }
 
 function item(change: RaConfigChange) {

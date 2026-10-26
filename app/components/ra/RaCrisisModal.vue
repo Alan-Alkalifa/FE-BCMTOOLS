@@ -161,7 +161,7 @@ async function onSubmit() {
     :title="editing ? `Update ${crisis!.ref_no}` : 'Declare a crisis'"
     :description="editing
       ? 'What changes is added to the crisis history.'
-      : 'Everyone sees it on the building map until it is closed. Each affected place gets its instructions.'"
+      : 'It shows on the building map as pending until someone else with the approve permission confirms it; then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >
@@ -345,7 +345,6 @@ async function onSubmit() {
         <UButton
           type="submit"
           form="ra-crisis-form"
-          :color="editing ? 'primary' : 'error'"
           :icon="editing ? undefined : 'i-lucide-siren'"
           :label="editing ? 'Save changes' : 'Submit disaster/incident'"
           :loading="saving"

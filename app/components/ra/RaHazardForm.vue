@@ -309,7 +309,7 @@ async function save() {
         <UButton
           v-if="!locked"
           icon="i-lucide-save"
-          label="Save"
+          label="Save ratings"
           :disabled="!changedCodes.length"
           loading-auto
           @click="save"

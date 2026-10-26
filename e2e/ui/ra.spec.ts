@@ -53,7 +53,7 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
 
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
 
-  await page.getByRole('tab', { name: 'Bottlenecks' }).click()
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   await expect(page.getByText('Budi Hartono')).toBeVisible()
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
@@ -194,7 +194,7 @@ test('rating a hazard fills in its ratings and saves only that hazard', async ({
   await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('5')
   await expect(page.getByText('1 hazard has unsaved changes')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save ratings', exact: true }).click()
   await expect(page.getByText('1 hazard saved').first()).toBeVisible()
   expect(log.ratings).toHaveLength(1)
   expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H03', monetary: 5, historical: 3 })])
@@ -260,8 +260,11 @@ test('the Risk Summary counts hazards by level and shows gross and residual as t
   await expect(page.getByRole('tab', { name: 'Risk Summary' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Risk Summary' })).toBeVisible()
   const note = page.getByTestId('cim-note')
-  await expect(note).toContainText('Risk Summary : Semua Ancaman')
-  await expect(note).toContainText('Risk Summary: All threats with a Residual Risk above "Medium"')
+  // English only, titled Risk Summary (no colon).
+  await expect(note).toContainText('Risk Summary')
+  await expect(note).toContainText('All threats with a Residual Risk above "Medium"')
+  await expect(note).not.toContainText('Semua Ancaman')
+  await expect(note).not.toContainText('Risk Summary:')
   await expect(page.getByText('Follow up high residual risks through CIM')).toHaveCount(0)
   await expect(page.getByText(/\d × \d/)).toHaveCount(0)
 
@@ -272,8 +275,8 @@ test('the Risk Summary counts hazards by level and shows gross and residual as t
   await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28. Peretasan Sistem Komputer')
 
   await page.getByRole('tab', { name: 'Risk Summary' }).click()
-  // The Heat Map Matrix: gross and residual side by side, as tables.
-  await expect(page.getByRole('heading', { name: 'Heat Map Matrix' })).toBeVisible()
+  // The Risk Matrix: gross and residual side by side, as tables.
+  await expect(page.getByRole('heading', { name: 'Risk Matrix' })).toBeVisible()
   await page.getByRole('button', { name: 'Show the gross risk table' }).click()
   const gross = page.getByRole('table', { name: 'Gross risk' })
   const quake = gross.getByRole('row', { name: /Gempa Bumi/ })
@@ -371,21 +374,22 @@ test('a division that is not listed yet is added with its MTD and rating', async
   expect(sent.at(-1)).toMatchObject({ division_id: 202, unit_name: 'Treasury Operations', mtd: '12-24 hours' })
 })
 
-test('the recovery team needs a name on every filled row', async ({ page }) => {
+test('the recovery team needs every field but the home phone on a filled row', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/1?tab=team')
   await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Add member to Core Support Team' }).click()
   await page.getByRole('textbox', { name: 'Role, Core Support Team row 8' }).fill('Legal')
   await page.getByRole('button', { name: 'Save recovery team' }).click()
-  await expect(page.getByText('Enter the name, or remove this row.')).toBeVisible()
+  await expect(page.getByText('Enter the name and mobile, or remove this row.')).toBeVisible()
 
   await page.getByRole('textbox', { name: 'Name, Core Support Team row 8' }).fill('Dewi')
+  await page.getByRole('textbox', { name: 'Mobile, Core Support Team row 8' }).fill('0812 3456 7890')
   await page.getByRole('button', { name: 'Save recovery team' }).click()
   await expect(page.getByText('Recovery team saved').first()).toBeVisible()
   const members = log.lists['recovery-team']?.[0]?.members as { team: string, name: string }[]
   expect(members).toHaveLength(26)
-  expect(members.at(-1)).toMatchObject({ team: 'core_support_team', role: 'Legal', name: 'Dewi' })
+  expect(members.at(-1)).toMatchObject({ team: 'core_support_team', role: 'Legal', name: 'Dewi', mobile: '0812 3456 7890', home_phone: null })
 })
 
 test('the call tree saves each contact with its level', async ({ page }) => {
@@ -405,7 +409,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
   const log = await mockRa(page)
   await page.goto('/locations')
   await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('link', { name: 'Input Data Building' }).click()
+  await page.getByRole('link', { name: 'Input building data' }).click()
   await expect(page).toHaveURL(/\/locations\/new$/)
   await expect(page.getByRole('heading', { name: 'Building Data Entry' })).toBeVisible()
   await page.getByRole('button', { name: 'Add building' }).click()
@@ -419,11 +423,22 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
+  // A new building waits for approval.
+  await expect(page.getByTestId('approval-banner')).toContainText('Waiting for approval. Test User added this building')
+  await expect(page.getByText('Waiting for approval', { exact: true }).first()).toBeVisible()
+
+  // Every contact field is required.
   await page.getByRole('button', { name: 'Add police station' }).click()
   await page.getByPlaceholder('Name').last().fill('Polsek Setiabudi')
   await page.getByRole('button', { name: 'Save contacts' }).click()
+  await expect(page.getByText('Every contact needs all of its details.')).toBeVisible()
+  await expect(page.getByText('Required.')).toHaveCount(2)
+  expect(log.lists.contacts).toBeUndefined()
+  await page.getByRole('textbox', { name: 'Phone' }).last().fill('(021) 520 0110')
+  await page.getByRole('textbox', { name: 'Address' }).last().fill('Jl. Setiabudi Raya')
+  await page.getByRole('button', { name: 'Save contacts' }).click()
   await expect(page.getByText('Contacts saved').first()).toBeVisible()
-  expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi' })] })
+  expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi', phone: '(021) 520 0110', address: 'Jl. Setiabudi Raya' })] })
   expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920' })
 })
 
@@ -575,7 +590,7 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
 test('submitting, approving and returning an assessment', async ({ page }) => {
   const log = await mockRa(page, { ready: true })
   await page.goto('/ra/manage/1?tab=signoff')
-  // The statement in Indonesian and English, and the history right under it.
+  // The statement (English only), and the history right under it.
   await expect(page.getByTestId('signoff-statement-en')).toContainText('I declare that the Risk Assessment', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Submit for approval' }).click()
   await expect(page.getByText('Waiting for Prepared by (Location Incident Coordinator (LIC))')).toBeVisible()
@@ -610,7 +625,7 @@ test('an assessment in sign-off is locked', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'LIC mobile number' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Save assessment' })).toHaveCount(0)
   await page.getByRole('tab', { name: 'Hazards' }).click()
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save ratings', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'View Banjir/ Banjir Bandang' }).click()
   await expect(page.getByRole('button', { name: 'Mark as not applicable' })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: /Existing mitigation measures/ })).toBeDisabled()

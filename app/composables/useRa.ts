@@ -38,10 +38,7 @@ export interface RaFormula {
   signoff_roles: RaSignoffRole[]
   signoff_role_labels?: RaRoleLabel[]
   levels: RaLevel[]
-  instructions: string[]
-  signoff_statement: string | null
   signoff_statement_en?: string | null
-  risk_summary_note: string | null
   risk_summary_note_en?: string | null
   hazard_intro?: string | null
   type_description?: string | null
@@ -137,6 +134,8 @@ export interface RaWorkflow {
   awaiting_signer: RaUserRef | null
   can_edit: boolean
   can_submit: boolean
+  /** False while the building waits for approval (or was rejected): it can't be submitted. */
+  location_approved?: boolean
   can_approve: boolean
   can_return: boolean
   submitted_at: string | null
@@ -251,7 +250,16 @@ export interface RaHazardRef {
   category: { code: string, label: string } | null
 }
 
-export type RaCrisisStatus = 'open' | 'closed'
+/** pending: declared, waiting for someone else's approval; rejected: not confirmed. */
+export type RaCrisisStatus = 'pending' | 'open' | 'closed' | 'rejected'
+
+/** What the current user can do with a pending approval (building or incident). */
+export interface RaApprovalCan {
+  approve: boolean
+  reject: boolean
+  withdraw?: boolean
+  resubmit?: boolean
+}
 export type RaPlaybookPhase = 'immediate' | 'stabilise' | 'recover'
 
 export interface RaPlaybookSteps {
@@ -278,6 +286,9 @@ export interface RaCrisisSummary {
   closed_at: string | null
   affected_count: number
   declared_by: string | null
+  decided_by?: string | null
+  decided_at?: string | null
+  decision_note?: string | null
 }
 
 export interface RaCrisisPlace {
@@ -311,9 +322,10 @@ export interface RaCrisis extends RaCrisisSummary {
   updated_at: string
   can_manage: boolean
   can_delete: boolean
+  approval_can?: RaApprovalCan
   playbook: RaPlaybookSteps
   affected: RaCrisisPlace[]
-  history: { action: 'declared' | 'updated' | 'note' | 'closed' | 'reopened', note: string | null, user: string | null, at: string }[]
+  history: { action: 'declared' | 'approved' | 'rejected' | 'updated' | 'note' | 'closed' | 'reopened', note: string | null, user: string | null, at: string }[]
 }
 
 export interface RaMapData {
@@ -349,14 +361,30 @@ export interface RaLocation extends RaLocationRef {
   latitude: number | null
   longitude: number | null
   is_active: boolean
+  /** Four-eyes approval: a new building and its deactivation wait for someone else. */
+  approval?: RaLocationApproval
   assessment_count: number
   latest_assessment: RaAssessmentSummary | null
   updated_at: string
 }
 
+export type RaLocationApprovalStatus = 'pending' | 'approved' | 'rejected'
+
+export interface RaLocationApproval {
+  status: RaLocationApprovalStatus
+  /** What waits: a new building (register) or making it inactive (deactivate). */
+  action: 'register' | 'deactivate' | null
+  requested_by: string | null
+  requested_at: string | null
+  decided_by: string | null
+  decided_at: string | null
+  note: string | null
+}
+
 /** A location with its building profile, shared by all of its RA cycles. */
 export interface RaLocationDetail extends RaLocation {
   can_delete: boolean
+  approval_can?: RaApprovalCan
   assessments: RaAssessmentSummary[]
   contacts: RaContact[]
   occupants: RaOccupant[]
@@ -573,6 +601,7 @@ export interface RaLocationRegisterQuery {
   q?: string
   region?: string
   active?: boolean
+  approval?: RaLocationApprovalStatus
   page: number
   per_page: number
 }
@@ -662,6 +691,8 @@ export const raCrisisApi = {
   close: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/close`, { method: 'POST', body: { note } }),
   reopen: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/reopen`, { method: 'POST', body: { note } }),
   remove: (id: number) => $fetch(`${CRISES}/${id}`, { method: 'DELETE' }),
+  approve: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/approve`, { method: 'POST', body: { note } }),
+  reject: (id: number, note: string) => $fetch<RaCrisis>(`${CRISES}/${id}/reject`, { method: 'POST', body: { note } }),
   savePlaybook: (code: string, steps: { phase: RaPlaybookPhase, text: string }[]) =>
     $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
@@ -673,6 +704,12 @@ export const raApi = {
   getLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`),
   createDivision: (body: RaDivisionInput) => $fetch<RaDivision>('/api/ra/divisions', { method: 'POST', body }),
   removeLocation: (id: number) => $fetch(`${LOCATIONS}/${id}`, { method: 'DELETE' }),
+  approveLocation: (id: number, note: string | null) =>
+    $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/approve`, { method: 'POST', body: { note } }),
+  rejectLocation: (id: number, note: string) =>
+    $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/reject`, { method: 'POST', body: { note } }),
+  withdrawLocationRequest: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/withdraw`, { method: 'POST' }),
+  resubmitLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/resubmit`, { method: 'POST' }),
   setContacts: (id: number, contacts: RaContact[]) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/contacts`, { method: 'PUT', body: { contacts } }),
   setOccupants: (id: number, occupants: RaOccupant[]) =>

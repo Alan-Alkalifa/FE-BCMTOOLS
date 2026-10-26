@@ -177,6 +177,8 @@ async function addNote() {
 
 const historyIcon: Record<string, string> = {
   declared: 'i-lucide-siren',
+  approved: 'i-lucide-badge-check',
+  rejected: 'i-lucide-circle-x',
   updated: 'i-lucide-pencil',
   note: 'i-lucide-message-square',
   closed: 'i-lucide-circle-check',
@@ -200,7 +202,7 @@ const historyIcon: Record<string, string> = {
             color="neutral"
             variant="outline"
             icon="i-lucide-pencil"
-            label="Update"
+            label="Update crisis"
             @click="edit"
           />
           <UButton
@@ -210,11 +212,11 @@ const historyIcon: Record<string, string> = {
           />
         </template>
         <UButton
-          v-else
+          v-else-if="crisis.status === 'closed'"
           color="neutral"
           variant="outline"
           icon="i-lucide-rotate-ccw"
-          label="Reopen"
+          label="Reopen crisis"
           @click="reopen"
         />
       </template>
@@ -223,7 +225,7 @@ const historyIcon: Record<string, string> = {
         color="error"
         variant="soft"
         icon="i-lucide-trash-2"
-        label="Delete"
+        label="Delete crisis"
         @click="remove"
       />
     </template>
@@ -272,6 +274,19 @@ const historyIcon: Record<string, string> = {
         icon="i-lucide-circle-alert"
         title="That didn't work"
         :description="actionError"
+      />
+
+      <RaApprovalBanner
+        noun="incident"
+        :status="crisis.status === 'pending' || crisis.status === 'rejected' ? crisis.status : 'approved'"
+        :requested-by="crisis.declared_by"
+        :requested-at="crisis.history[0]?.at ?? null"
+        :decided-by="crisis.decided_by"
+        :decided-at="crisis.decided_at"
+        :note="crisis.decision_note"
+        :can="crisis.approval_can"
+        :approve="async (note) => set(await raCrisisApi.approve(crisis!.id, note))"
+        :reject="async (note) => set(await raCrisisApi.reject(crisis!.id, note))"
       />
 
       <div class="space-y-2">
@@ -530,16 +545,18 @@ const historyIcon: Record<string, string> = {
                           {{ alternate.location.name }}
                         </NuxtLink>
                         <span class="text-muted tabular-nums">{{ raFormatDistance(alternate.distance_m) }}</span>
-                        <UButton
-                          :to="raDirectionsUrl({ lat: item.row.location.latitude, lng: item.row.location.longitude }, { lat: alternate.location.latitude, lng: alternate.location.longitude })"
-                          target="_blank"
-                          rel="noopener"
-                          color="neutral"
-                          variant="ghost"
-                          size="xs"
-                          icon="i-lucide-route"
-                          :aria-label="`Route to ${alternate.location.name} in Google Maps`"
-                        />
+                        <UTooltip text="Road route in Google Maps">
+                          <UButton
+                            :to="raDirectionsUrl({ lat: item.row.location.latitude, lng: item.row.location.longitude }, { lat: alternate.location.latitude, lng: alternate.location.longitude })"
+                            target="_blank"
+                            rel="noopener"
+                            color="neutral"
+                            variant="ghost"
+                            size="sm"
+                            icon="i-lucide-route"
+                            :aria-label="`Route to ${alternate.location.name} in Google Maps`"
+                          />
+                        </UTooltip>
                       </li>
                     </ul>
                     <p

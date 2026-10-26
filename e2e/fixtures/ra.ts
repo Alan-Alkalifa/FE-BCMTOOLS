@@ -47,7 +47,7 @@ export { ASSESSMENT, BRANCH_ASSESSMENT, BRANCH_FORMULA, BRANCH_LOCATION, FORMULA
 /** The texts RA configuration adds to a version (the backend's defaults). */
 export const HAZARD_INTRO = 'Identify all threats relevant to the location. Threats that are not relevant to the workplace do not need to be filled in and may be marked as Not Applicable (NA). Threats classified as "Historical of Occurrence" must be assessed.'
 export const STATEMENT_EN = 'I declare that the Risk Assessment carried out on the business functions is ACCURATE and CORRECT.'
-export const CIM_NOTE_EN = 'Risk Summary: All threats with a Residual Risk above "Medium" must be followed up through Control Issue Management (CIM) by the unit concerned.'
+export const CIM_NOTE_EN = 'All threats with a Residual Risk above "Medium" must be followed up through Control Issue Management (CIM) by the unit concerned.'
 const ROLE_LABELS = {
   head_office: [
     { role: 'prepared_by', label: 'Prepared by', title: 'Location Incident Coordinator (LIC)' },
@@ -195,6 +195,7 @@ type MockAssessment = {
   returned_by: string | null
   returned_at: string | null
   approved_at: string | null
+  location_approved?: boolean
   signoff_history: { action: string, role: string | null, user: string | null, comment: string | null, at: string }[]
 }
 
@@ -257,7 +258,17 @@ export interface RaMockLog {
   workflow: string[]
   /** Query strings of GET /api/ra/locations (the register and the pickers). */
   locationQueries: string[]
+  /** Approval calls on a building: [action, body]; approve, reject, withdraw or resubmit. */
+  approvals: [string, unknown][]
 }
+
+/** A building added by Rina that waits for approval; the signed-in user may approve it. */
+export const PENDING_APPROVAL = {
+  status: 'pending', action: 'register', requested_by: 'Rina', requested_at: '2026-10-26T02:00:00Z',
+  decided_by: null, decided_at: null, note: null,
+}
+const APPROVED = { status: 'approved', action: null, requested_by: null, requested_at: null, decided_by: null, decided_at: null, note: null }
+const NO_APPROVAL_ACTIONS = { approve: false, reject: false, withdraw: false, resubmit: false }
 
 /**
  * Mocks /api/ra/* for RA and RA Branch (`?kind=branch`, branch 11, assessment 12). Saving ratings
@@ -265,9 +276,9 @@ export interface RaMockLog {
  */
 export async function mockRa(
   page: Page,
-  options: { locationInUse?: boolean, ready?: boolean, status?: 'in_signoff' | 'approved' } = {},
+  options: { locationInUse?: boolean, ready?: boolean, status?: 'in_signoff' | 'approved', pendingLocation?: boolean } = {},
 ) {
-  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [] }
+  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
   const branchCurrent = structuredClone(BRANCH_ASSESSMENT) as typeof BRANCH_ASSESSMENT & MockAssessment
   for (const assessment of [current, branchCurrent]) {
@@ -305,8 +316,23 @@ export async function mockRa(
     }
     await route.fulfill({ json: { items: divisions } })
   })
-  const location = structuredClone(LOCATION)
-  const branchLocation = structuredClone(BRANCH_LOCATION)
+  const location = structuredClone(LOCATION) as typeof LOCATION & Record<string, unknown>
+  const branchLocation = structuredClone(BRANCH_LOCATION) as typeof BRANCH_LOCATION & Record<string, unknown>
+  for (const row of [location, branchLocation]) {
+    Object.assign(row, { approval: { ...APPROVED }, approval_can: { ...NO_APPROVAL_ACTIONS } })
+    // The workbook leaves some of these blank; the app requires all but the home phone.
+    for (const member of (row.recovery_team ?? []) as Record<string, unknown>[]) {
+      for (const field of ['role', 'name', 'mobile']) member[field] ||= '-'
+    }
+    for (const entry of (row.call_tree ?? []) as Record<string, unknown>[]) {
+      for (const field of ['caller', 'contact_name', 'division', 'mobile']) entry[field] ||= '-'
+    }
+  }
+  if (options.pendingLocation) {
+    location.approval = { ...PENDING_APPROVAL }
+    location.approval_can = { ...NO_APPROVAL_ACTIONS, approve: true, reject: true }
+    current.location_approved = false
+  }
   /** Any other id: the location added last (EMPTY_LOCATION until one is added). */
   let added: Record<string, unknown> = EMPTY_LOCATION
   await page.route(/\/api\/ra\/locations/, async (route) => {
@@ -316,6 +342,22 @@ export async function mockRa(
     if (list) {
       log.lists[list] = [...(log.lists[list] ?? []), route.request().postDataJSON()]
       await route.fulfill({ json: url.pathname.includes(`/${BRANCH_ID}/`) ? branchLocation : location })
+      return
+    }
+    const decision = url.pathname.match(/\/(\d+)\/(approve|reject|withdraw|resubmit)$/)
+    if (decision) {
+      const body = route.request().postDataJSON?.() ?? null
+      log.approvals.push([decision[2]!, body])
+      const target = Number(decision[1]) === BRANCH_ID ? branchLocation : location
+      const note = (body as { note?: string | null } | null)?.note ?? null
+      target.approval = decision[2] === 'reject'
+        ? { ...PENDING_APPROVAL, status: 'rejected', decided_by: 'Test User', decided_at: '2026-10-26T03:00:00Z', note }
+        : decision[2] === 'resubmit'
+          ? { ...PENDING_APPROVAL, requested_by: 'Test User' }
+          : { ...APPROVED, decided_by: 'Test User', decided_at: '2026-10-26T03:00:00Z', note }
+      target.approval_can = { ...NO_APPROVAL_ACTIONS }
+      current.location_approved = decision[2] === 'approve'
+      await route.fulfill({ json: target })
       return
     }
     const id = Number(url.pathname.split('/').pop())
@@ -332,7 +374,7 @@ export async function mockRa(
     if (method === 'POST') {
       const body = route.request().postDataJSON() as Record<string, unknown>
       log.created.push(body)
-      added = { ...EMPTY_LOCATION, ...body }
+      added = { ...EMPTY_LOCATION, ...body, approval: { ...PENDING_APPROVAL, requested_by: 'Test User' }, approval_can: { ...NO_APPROVAL_ACTIONS } }
       await route.fulfill({ status: 201, json: added })
       return
     }
@@ -663,14 +705,16 @@ export interface RaMapLog {
   closed: unknown[]
   notes: unknown[]
   playbook: [string, unknown][]
+  /** Approve / reject calls on the incident: [action, body]. */
+  decisions: [string, unknown][]
 }
 
 /**
  * Mocks the location map, crises and the playbook. `crisis: false` starts with no open crisis;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean } = {}) {
-  const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [] }
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean } = {}) {
+  const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
   await page.route('**/api/ra/map-settings', (route) =>
@@ -678,8 +722,20 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: withTexts(FORMULA) }))
-  const crisis = structuredClone({ ...CRISIS, can_manage: canDeclare, can_delete: canDeclare })
-  const open = () => (options.crisis === false || crisis.status !== 'open' ? [] : [crisis])
+  const crisis = structuredClone({
+    ...CRISIS,
+    can_manage: canDeclare,
+    can_delete: canDeclare,
+    approval_can: { approve: false, reject: false },
+    decided_by: null as string | null,
+    decided_at: null as string | null,
+    decision_note: null as string | null,
+  })
+  if (options.pending) {
+    // Declared by Rina; the signed-in user approves it.
+    Object.assign(crisis, { status: 'pending', declared_by: 'Rina', approval_can: { approve: true, reject: true } })
+  }
+  const open = () => (options.crisis === false || !['open', 'pending'].includes(crisis.status) ? [] : [crisis])
   await page.route('**/api/ra/map', (route) => route.fulfill({
     json: { places: MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
   }))
@@ -695,6 +751,19 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     if (/\/crises\/?$/.test(url.pathname)) {
       await route.fulfill({ json: { items: [crisis], page: 1, per_page: 25, total: 1, pages: 1 } })
       return
+    }
+    const decision = url.pathname.match(/\/(approve|reject)$/)?.[1]
+    if (decision) {
+      log.decisions.push([decision, body])
+      const note = (body as { note?: string | null } | null)?.note ?? null
+      Object.assign(crisis, {
+        status: decision === 'approve' ? 'open' : 'rejected',
+        decided_by: 'Test User',
+        decided_at: '2026-10-21T05:30:00Z',
+        decision_note: note,
+        approval_can: { approve: false, reject: false },
+      })
+      crisis.history.push({ action: decision === 'approve' ? 'approved' : 'rejected', note, user: 'Test User', at: '2026-10-21T05:30:00Z' })
     }
     if (url.pathname.endsWith('/close')) {
       log.closed.push(body)

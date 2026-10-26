@@ -45,7 +45,7 @@ test('a branch hazard is one risk on the branch matrix', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('5')
   await expect(risk.getByText('Medium')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save ratings', exact: true }).click()
   await expect(page.getByText('1 hazard saved').first()).toBeVisible()
   const sent = log.ratings[0]![0] as Record<string, unknown>
   expect(sent).toMatchObject({ code: 'H14', residual_infrastructure: 5, historical: 1, probability: 1 })
@@ -56,7 +56,7 @@ test('a branch hazard is one risk on the branch matrix', async ({ page }) => {
 test('the branch Risk Summary has only the residual table', async ({ page }) => {
   await mockRa(page)
   await page.goto(`${ASSESSMENT}?tab=summary`)
-  await expect(page.getByRole('heading', { name: 'Heat Map Matrix' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Risk Matrix' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Show the gross risk table' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: 'Gross risk' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Show the residual risk table' }).click()

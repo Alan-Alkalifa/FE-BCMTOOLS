@@ -188,7 +188,7 @@ async function discard() {
             color="error"
             variant="soft"
             icon="i-lucide-trash-2"
-            label="Discard"
+            label="Discard draft"
             :loading="busy === 'discard'"
             @click="discard"
           />

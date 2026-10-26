@@ -15,6 +15,7 @@ export const ALL_PERMISSIONS = [
   'ra.edit',
   'ra.manage',
   'ra.crisis.declare',
+  'ra.location.approve',
   'ra.config.view',
   'ra.config.manage',
   'ra.config.publish',

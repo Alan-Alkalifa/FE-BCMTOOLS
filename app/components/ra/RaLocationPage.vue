@@ -78,10 +78,12 @@ function onSaved(saved: RaLocationDetail) {
   dirty.value = false
 }
 
-const locationStatus = defineStatusScale({
-  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
-  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
-})
+/** Four-eyes approval of a new building or its deactivation (RaApprovalBanner). */
+async function decide(work: Promise<RaLocationDetail>) {
+  location.value = await work
+  dirty.value = false
+  formKey.value += 1
+}
 
 const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
@@ -91,17 +93,18 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'status', header: 'Status' },
 ]
 
+// Every field is required except the home phone (the API checks the same).
 const teamFields = [
-  { key: 'role', label: 'Role', wide: true },
+  { key: 'role', label: 'Role', wide: true, required: true },
   { key: 'name', label: 'Name', required: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
   { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
 ]
 const callTreeFields = [
-  { key: 'caller', label: 'Caller' },
+  { key: 'caller', label: 'Caller', required: true },
   { key: 'contact_name', label: 'Contact', required: true },
-  { key: 'division', label: 'Division or role', wide: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'division', label: 'Division or role', wide: true, required: true },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
   { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
 ]
 const callTreeLevels = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
@@ -223,8 +226,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           :value="location.kind"
         />
         <StatusBadge
-          :scale="locationStatus"
-          :value="location.is_active ? 'active' : 'inactive'"
+          :scale="raBuildingStatus"
+          :value="raBuildingState(location)"
         />
         <span class="text-sm text-muted">
           <template v-if="ra.hasRegion && location.region">
@@ -237,6 +240,23 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           {{ formatNumber(location.assessments.length, 0) }} {{ location.assessments.length === 1 ? 'assessment' : 'assessments' }}
         </span>
       </div>
+
+      <RaApprovalBanner
+        v-if="location.approval"
+        :noun="ra.location.lower"
+        :status="location.approval.status"
+        :action="location.approval.action"
+        :requested-by="location.approval.requested_by"
+        :requested-at="location.approval.requested_at"
+        :decided-by="location.approval.decided_by"
+        :decided-at="location.approval.decided_at"
+        :note="location.approval.note"
+        :can="location.approval_can"
+        :approve="(note) => decide(raApi.approveLocation(location!.id, note))"
+        :reject="(note) => decide(raApi.rejectLocation(location!.id, note))"
+        :withdraw="() => decide(raApi.withdrawLocationRequest(location!.id))"
+        :resubmit="() => decide(raApi.resubmitLocation(location!.id))"
+      />
 
       <UAlert
         v-if="!canEdit"

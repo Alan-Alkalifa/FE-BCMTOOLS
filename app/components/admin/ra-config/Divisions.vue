@@ -120,6 +120,8 @@ async function remove(row: RaDivision) {
           </div>
           <UButton
             v-if="editable"
+            color="neutral"
+            variant="outline"
             icon="i-lucide-plus"
             label="Add division"
             @click="openForm()"

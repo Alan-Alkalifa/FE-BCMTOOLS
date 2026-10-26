@@ -2,9 +2,9 @@
 import type { RaAssessment, RaFormula, RaRating } from '~/composables/useRa'
 
 /**
- * The Risk Summary tab: the CIM note (Indonesian and English), the Type of Hazard counted by
+ * The Risk Summary tab: the Risk Summary note (the CIM follow-up), the Type of Hazard counted by
  * residual risk (High, Medium, Low, NA), each level opening to its hazards with the action
- * plan, and the Heat Map Matrix as two tables, gross and residual side by side (RA Branch
+ * plan, and the Risk Matrix as two tables, gross and residual side by side (RA Branch
  * rates one residual risk, so it has only that one). Text is left-aligned, numbers right.
  */
 const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
@@ -47,7 +47,7 @@ function rating(value: number | null) {
   return value === null ? '—' : value === 0 ? 'N/A' : String(value)
 }
 
-/** The Heat Map Matrix as tables: every rated hazard with its probability, impact and level. */
+/** The Risk Matrix as tables: every rated hazard with its probability, impact and level. */
 const matrices = computed(() => [
   ...(singleRisk.value
     ? []
@@ -82,23 +82,15 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
 <template>
   <div class="space-y-6">
     <UAlert
+      v-if="formula.risk_summary_note_en"
       color="info"
       variant="subtle"
       icon="i-lucide-info"
+      title="Risk Summary"
+      :description="formula.risk_summary_note_en"
+      :ui="{ description: 'whitespace-pre-line' }"
       data-testid="cim-note"
-    >
-      <template #description>
-        <div>
-          <p
-            v-if="formula.risk_summary_note_en"
-            lang="en"
-            class="whitespace-pre-line"
-          >
-            {{ formula.risk_summary_note_en }}
-          </p>
-        </div>
-      </template>
-    </UAlert>
+    />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>

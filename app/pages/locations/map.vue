@@ -111,7 +111,7 @@ const markers = computed<RaMapMarker[]>(() => [
     id: crisis.id,
     lat: crisis.latitude,
     lng: crisis.longitude,
-    label: `Crisis ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
+    label: `${crisis.status === 'pending' ? 'Pending approval: crisis' : 'Crisis'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
   })),
 ])
@@ -193,7 +193,6 @@ function assessmentUrl(place: RaMapPlace) {
       />
       <UButton
         v-if="data?.can_declare"
-        color="error"
         icon="i-lucide-siren"
         label="Declare crisis"
         @click="declare(selected?.id)"
@@ -229,22 +228,22 @@ function assessmentUrl(place: RaMapPlace) {
     <template v-else-if="data">
       <section
         v-if="data.crises.length"
-        aria-label="Open crises"
+        aria-label="Open and pending crises"
         class="space-y-2"
       >
         <UAlert
           v-for="crisis in data.crises"
           :key="crisis.id"
-          color="error"
+          :color="crisis.status === 'pending' ? 'warning' : 'error'"
           variant="subtle"
-          icon="i-lucide-siren"
-          :title="`${crisis.hazard.short_name} at ${crisis.location?.name ?? raFormatCoordinates({ lat: crisis.latitude, lng: crisis.longitude })}`"
-          :description="`${crisis.ref_no} · since ${formatDateTime(crisis.started_at)} · ${raFormatDistance(crisis.radius_m)} radius · ${crisis.affected_count} ${crisis.affected_count === 1 ? 'place' : 'places'} affected`"
+          :icon="crisis.status === 'pending' ? 'i-lucide-hourglass' : 'i-lucide-siren'"
+          :title="`${crisis.status === 'pending' ? 'Pending approval: ' : ''}${crisis.hazard.short_name} at ${crisis.location?.name ?? raFormatCoordinates({ lat: crisis.latitude, lng: crisis.longitude })}`"
+          :description="`${crisis.ref_no} · since ${formatDateTime(crisis.started_at)} · ${raFormatDistance(crisis.radius_m)} radius · ${crisis.affected_count} ${crisis.affected_count === 1 ? 'place' : 'places'} affected${crisis.status === 'pending' ? ' · waiting for someone else to confirm it' : ''}`"
         >
           <template #actions>
             <UButton
               :to="crisisPath(crisis.id)"
-              color="error"
+              color="neutral"
               variant="outline"
               trailing-icon="i-lucide-arrow-right"
               label="View instructions"
@@ -400,14 +399,16 @@ function assessmentUrl(place: RaMapPlace) {
                     {{ [RA_PLACE_KIND_LABEL[selected.kind], selected.region].filter(Boolean).join(' · ') }}
                   </p>
                 </div>
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-x"
-                  aria-label="Clear the selection"
-                  @click="selectedId = null"
-                />
+                <UTooltip text="Clear the selection">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-x"
+                    aria-label="Clear the selection"
+                    @click="selectedId = null"
+                  />
+                </UTooltip>
               </div>
             </template>
             <div class="space-y-4 text-sm">
@@ -452,8 +453,8 @@ function assessmentUrl(place: RaMapPlace) {
                 />
                 <UButton
                   v-if="data.can_declare"
-                  color="error"
-                  variant="soft"
+                  color="neutral"
+                  variant="outline"
                   size="sm"
                   icon="i-lucide-siren"
                   label="Declare crisis here"

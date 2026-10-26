@@ -680,7 +680,7 @@ function record(id: number) {
             :per-page="PER_PAGE"
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
-            label="Register"
+            label="List"
           />
         </UCard>
       </template>
@@ -775,7 +775,7 @@ function record(id: number) {
               :per-page="PER_PAGE"
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"
-              label="Bottlenecks"
+              label="Approval"
             />
           </UCard>
         </div>

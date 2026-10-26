@@ -415,10 +415,35 @@ export function raDirectionsUrl(from: { lat: number, lng: number }, to: { lat: n
   return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`
 }
 
-export const raCrisisStatus = defineStatusScale<'open' | 'closed'>({
+export const raCrisisStatus = defineStatusScale<'pending' | 'open' | 'closed' | 'rejected'>({
+  pending: { label: 'Pending approval', color: 'warning', icon: 'i-lucide-hourglass' },
   open: { label: 'Open', color: 'error', icon: 'i-lucide-siren' },
   closed: { label: 'Closed', color: 'neutral', icon: 'i-lucide-circle-check' },
+  rejected: { label: 'Rejected', color: 'neutral', icon: 'i-lucide-circle-x' },
 })
+
+/**
+ * A building's status with its four-eyes approval: a new building waits for approval
+ * (pending), may be rejected, and making it inactive waits too (deactivating).
+ */
+export type RaBuildingState = 'pending' | 'rejected' | 'deactivating' | 'active' | 'inactive'
+export const raBuildingStatus = defineStatusScale<RaBuildingState>({
+  pending: { label: 'Waiting for approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  rejected: { label: 'Rejected', color: 'error', icon: 'i-lucide-circle-x' },
+  deactivating: { label: 'Deactivation requested', color: 'warning', icon: 'i-lucide-circle-pause' },
+  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
+  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
+})
+
+export function raBuildingState(location: {
+  is_active: boolean
+  approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
+}): RaBuildingState {
+  const approval = location.approval
+  if (approval?.status === 'rejected') return 'rejected'
+  if (approval?.status === 'pending') return approval.action === 'deactivate' ? 'deactivating' : 'pending'
+  return location.is_active ? 'active' : 'inactive'
+}
 
 export const raPlaybookReview = defineStatusScale<'reviewed' | 'starter'>({
   reviewed: { label: 'Reviewed by BCM', color: 'success', icon: 'i-lucide-badge-check' },
@@ -438,6 +463,8 @@ export const RA_PLACE_KIND_LABEL: Record<RaKind, string> = {
 
 export const RA_CRISIS_ACTION_LABEL: Record<string, string> = {
   declared: 'Declared',
+  approved: 'Approved',
+  rejected: 'Rejected',
   updated: 'Updated',
   note: 'Update',
   closed: 'Closed',

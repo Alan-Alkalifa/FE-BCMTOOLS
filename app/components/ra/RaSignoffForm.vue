@@ -57,7 +57,9 @@ watch(changed, (value) => {
 
 const editing = computed(() => props.assessment.can_edit)
 const missingSigners = computed(() => roles.value.filter(({ value }) => !state[value]?.signer_id))
-const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && !missingSigners.value.length)
+/** A building waiting for approval (or rejected) can't have its RA submitted yet. */
+const locationApproved = computed(() => props.assessment.location_approved !== false)
+const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && locationApproved.value && !missingSigners.value.length)
 
 /** The designation is the picked signer's job title in the user directory. */
 function onPicked(role: string, picked: RaUserRef | null) {
@@ -208,6 +210,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       :ui="{ description: 'whitespace-pre-line' }"
     />
     <UAlert
+      v-if="assessment.status === 'draft' && !locationApproved"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-hourglass"
+      :title="`The ${ra.location.lower} isn't approved yet`"
+      :description="`Someone else approves a new ${ra.location.lower} first. You can rate the hazards and choose the signers now, and submit once it is approved.`"
+    />
+    <UAlert
       v-if="assessment.status === 'draft' && !assessment.is_complete"
       color="info"
       variant="subtle"
@@ -282,20 +292,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           The statement each signer agrees to, from the LRP scorecard.
         </p>
       </template>
-      <div class="">
-        <figure
-          v-if="formula.signoff_statement_en"
-          class="space-y-2"
-        >
-          <blockquote
-            lang="en"
-            class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
-            data-testid="signoff-statement-en"
-          >
-            {{ formula.signoff_statement_en }}
-          </blockquote>
-        </figure>
-      </div>
+      <blockquote
+        v-if="formula.signoff_statement_en"
+        lang="en"
+        class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
+        data-testid="signoff-statement-en"
+      >
+        {{ formula.signoff_statement_en }}
+      </blockquote>
     </UCard>
 
     <UCard v-if="history.length">

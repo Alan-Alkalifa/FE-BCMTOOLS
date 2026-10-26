@@ -25,7 +25,7 @@ function version(formula: { kind: string, code: string, name: string }, code: st
     published_by: null,
     published_at: null,
     used_by: status === 'active' ? 3 : 0,
-    stored_texts: { type_description: null, hazard_intro: null, instructions: null, signoff_statement: texts.signoff_statement, signoff_statement_en: null, risk_summary_note: texts.risk_summary_note, risk_summary_note_en: null },
+    stored_texts: { type_description: null, hazard_intro: null, signoff_statement_en: null, risk_summary_note_en: null },
     default_texts: { hazard_intro: texts.hazard_intro, signoff_statement_en: texts.signoff_statement_en },
     default_roles: texts.signoff_role_labels,
     problems: [],
@@ -139,7 +139,7 @@ test('the sign-off role titles and the statements are edited per version', async
   expect((calls.find((call) => call.path.endsWith('/roles'))!.body as { roles: { title: string }[] }).roles[0]!.title).toBe('Building Incident Coordinator (LIC)')
 
   await page.getByRole('tab', { name: 'Statements and notes' }).click()
-  const statement = page.getByRole('textbox', { name: 'Sign-off statement (English)' })
+  const statement = page.getByRole('textbox', { name: 'Sign-off statement' })
   await expect(statement).toHaveAttribute('placeholder', /Default: I declare/)
   await statement.fill('I confirm this risk assessment is accurate.')
   await page.getByRole('button', { name: 'Save texts' }).click()

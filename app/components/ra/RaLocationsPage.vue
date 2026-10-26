@@ -6,6 +6,8 @@ import type { RaLocation } from '~/composables/useRa'
 /**
  * The Buildings register: head office buildings and branches in one table, filtered by type,
  * region and status (all in the URL), one page at a time. A row opens the building's profile.
+ * A new building, and making one inactive, waits for someone else's approval: the Status
+ * Building column shows it, and the status filter lists the ones waiting.
  */
 const { can } = useAuth()
 const canEdit = computed(() => can('ra.edit'))
@@ -17,7 +19,7 @@ const router = useRouter()
 
 const PER_PAGE = 25
 type TypeFilter = RaKind | 'all'
-type StatusFilter = 'all' | 'active' | 'inactive'
+type StatusFilter = 'all' | 'active' | 'inactive' | 'pending' | 'rejected'
 
 function text(name: string) {
   const value = route.query[name]
@@ -29,7 +31,7 @@ const type = computed<TypeFilter>(() => {
 })
 const statusFilter = computed<StatusFilter>(() => {
   const value = text('status')
-  return value === 'active' || value === 'inactive' ? value : 'all'
+  return value === 'active' || value === 'inactive' || value === 'pending' || value === 'rejected' ? value : 'all'
 })
 const region = computed(() => (type.value === 'head_office' ? undefined : text('region')))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
@@ -58,7 +60,8 @@ const { data, status, error, refresh } = useRaLocationRegister(() => ({
   kind: type.value,
   q: text('q'),
   region: region.value,
-  active: statusFilter.value === 'all' ? undefined : statusFilter.value === 'active',
+  active: statusFilter.value === 'active' || statusFilter.value === 'inactive' ? statusFilter.value === 'active' : undefined,
+  approval: statusFilter.value === 'pending' || statusFilter.value === 'rejected' ? statusFilter.value : undefined,
   page: page.value,
   per_page: PER_PAGE,
 }))
@@ -80,6 +83,8 @@ const statusItems = [
   { label: 'Active and inactive', value: 'all' as const },
   { label: 'Active', value: 'active' as const },
   { label: 'Inactive', value: 'inactive' as const },
+  { label: 'Waiting for approval', value: 'pending' as const },
+  { label: 'Rejected', value: 'rejected' as const },
 ]
 
 const columns: TableColumn<RaLocation>[] = [
@@ -89,15 +94,10 @@ const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'address', header: 'Address' },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { id: 'latest', header: 'Latest residual' },
-  { accessorKey: 'is_active', header: 'Status Building' },
-  { accessorKey: 'is_active', header: 'Status Assessment' },
+  { id: 'building_status', header: 'Status Building' },
+  { id: 'assessment_status', header: 'Status Assessment' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
-
-const locationStatus = defineStatusScale({
-  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
-  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
-})
 
 function noun(location: RaLocation) {
   return RA_MODULES[location.kind].location.lower
@@ -143,7 +143,7 @@ async function remove(location: RaLocation) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="8"
+      :columns="9"
       :rows="5"
       label="Loading buildings"
     />
@@ -223,7 +223,7 @@ async function remove(location: RaLocation) {
             v-if="canEdit"
             :to="addTo"
             icon="i-lucide-plus"
-            label="Input Data Building"
+            label="Input building data"
           />
         </div>
       </div>
@@ -297,12 +297,24 @@ async function remove(location: RaLocation) {
             class="text-muted"
           >—</span>
         </template>
-        <template #is_active-cell="{ row }">
+        <template #building_status-cell="{ row }">
           <StatusBadge
-            :scale="locationStatus"
-            :value="row.original.is_active ? 'active' : 'inactive'"
+            :scale="raBuildingStatus"
+            :value="raBuildingState(row.original)"
             size="sm"
           />
+        </template>
+        <template #assessment_status-cell="{ row }">
+          <StatusBadge
+            v-if="row.original.latest_assessment"
+            :scale="raStatus"
+            :value="raStatusKey(row.original.latest_assessment)"
+            size="sm"
+          />
+          <span
+            v-else
+            class="text-muted"
+          >No RA yet</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-1">

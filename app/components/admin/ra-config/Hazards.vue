@@ -134,14 +134,18 @@ function removeGroup(groupIndex: number) {
             />
           </UFormField>
           <div class="flex items-end">
-            <UButton
+            <UTooltip
               v-if="editable"
-              color="error"
-              variant="ghost"
-              icon="i-lucide-trash-2"
-              :aria-label="`Remove the group ${category.label || category.name || groupIndex + 1}`"
-              @click="removeGroup(groupIndex)"
-            />
+              text="Remove group"
+            >
+              <UButton
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash-2"
+                :aria-label="`Remove the group ${category.label || category.name || groupIndex + 1}`"
+                @click="removeGroup(groupIndex)"
+              />
+            </UTooltip>
           </div>
         </div>
         <ol class="space-y-2">

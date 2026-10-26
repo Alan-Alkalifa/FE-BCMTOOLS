@@ -66,7 +66,8 @@ function fromLocation(location?: RaLocationDetail): State {
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
     region: location?.region ?? '',
-    is_active: location?.is_active ?? true,
+    // Cleared while its deactivation waits for approval; ticking it again withdraws that.
+    is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
   }
 }
 
@@ -93,7 +94,13 @@ async function onSubmit() {
       : await raApi.createLocation({ ...body, kind: ra.value.kind })
     reset(saved)
     const noun = ra.value.location.single
-    toast.add({ title: props.location ? `${noun} saved` : `${noun} added`, color: 'success', icon: 'i-lucide-circle-check' })
+    // A new building, and making one inactive, wait for someone else's approval.
+    const asked = saved.approval?.status === 'pending' && saved.approval.action === 'deactivate' && props.location?.approval?.action !== 'deactivate'
+    toast.add({
+      title: props.location ? (asked ? `${noun} saved; making it inactive waits for approval` : `${noun} saved`) : `${noun} added; it waits for approval`,
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    })
     emit('saved', saved)
   } catch (error) {
     form.value?.setErrors(apiFieldErrors(error))
@@ -137,6 +144,12 @@ async function onSubmit() {
             aria-label="Type of building"
             class="w-full sm:w-72"
           />
+          <template #help>
+            <span
+              class="whitespace-pre-line"
+              data-testid="building-type-hint"
+            >{{ typeHint }}</span>
+          </template>
         </UFormField>
         <UFormField
           :label="ra.kind === 'branch' ? 'Branch name' : 'Building name'"
@@ -220,7 +233,7 @@ async function onSubmit() {
         <UFormField
           v-if="location"
           name="is_active"
-          :help="`Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history.`"
+          :help="`Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history. Making it inactive waits for someone else's approval.`"
         >
           <UCheckbox
             v-model="state.is_active"

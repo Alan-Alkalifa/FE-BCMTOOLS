@@ -1,14 +1,29 @@
 <script setup lang="ts">
-/** Closing or reopening a crisis, with an optional note for the history. Closes with the note
- *  ('' without one), or false. */
+/**
+ * A note for the history: closing or reopening a crisis, approving or rejecting a building or
+ * an incident. Closes with the note ('' without one), or false. `required` (rejecting) needs a
+ * note; `destructive` makes the confirm button the destructive one.
+ */
 const props = defineProps<{
   title: string
   description: string
   confirmLabel: string
   noteLabel: string
+  help?: string
+  required?: boolean
+  destructive?: boolean
 }>()
 const emit = defineEmits<{ close: [note: string | false] }>()
 const note = ref('')
+const missing = ref(false)
+
+function confirm() {
+  if (props.required && !note.value.trim()) {
+    missing.value = true
+    return
+  }
+  emit('close', note.value.trim())
+}
 </script>
 
 <template>
@@ -20,7 +35,9 @@ const note = ref('')
     <template #body>
       <UFormField
         :label="props.noteLabel"
-        help="Optional. Kept in the crisis history."
+        :required="props.required"
+        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the crisis history.')"
+        :error="missing && !note.trim() ? 'Enter the reason.' : undefined"
       >
         <UTextarea
           v-model="note"
@@ -40,8 +57,9 @@ const note = ref('')
           @click="emit('close', false)"
         />
         <UButton
+          :color="props.destructive ? 'error' : 'primary'"
           :label="props.confirmLabel"
-          @click="emit('close', note.trim())"
+          @click="confirm"
         />
       </div>
     </template>

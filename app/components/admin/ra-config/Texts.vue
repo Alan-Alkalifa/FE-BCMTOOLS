@@ -2,21 +2,18 @@
 import type { RaConfigTextField, RaConfigVersion } from '~/composables/useRaConfigAdmin'
 
 /**
- * The texts of this version: the building type description on Building Data Entry, the
- * introduction above the hazards, the instructions, the sign-off statement and the CIM note
- * of the Risk Summary, each in Indonesian and English. An empty text uses the default.
+ * The texts of this version, all in English: the building type description on Building Data
+ * Entry, the introduction above the hazards, the sign-off statement and the Risk Summary note
+ * (the CIM follow-up). An empty text uses the default.
  */
 const props = defineProps<{ version: RaConfigVersion }>()
 const emit = defineEmits<{ saved: [version: RaConfigVersion] }>()
 
-const FIELDS: { key: RaConfigTextField, label: string, help: string, lang: 'id' | 'en', rows: number }[] = [
-  { key: 'type_description', label: 'Building type description', help: 'The hint under the type on Building Data Entry.', lang: 'en', rows: 2 },
-  { key: 'hazard_intro', label: 'Hazards introduction', help: 'Shown at the top of the Hazards tab.', lang: 'en', rows: 3 },
-  { key: 'instructions', label: 'Instructions', help: 'The workbook\'s numbered instructions, one per line, in the rating guide.', lang: 'id', rows: 6 },
-  { key: 'signoff_statement', label: 'Sign-off statement (Indonesian)', help: 'What every signer agrees to.', lang: 'id', rows: 5 },
-  { key: 'signoff_statement_en', label: 'Sign-off statement (English)', help: 'Shown next to the Indonesian statement.', lang: 'en', rows: 5 },
-  { key: 'risk_summary_note', label: 'CIM note (Indonesian)', help: 'At the top of the Risk Summary.', lang: 'id', rows: 5 },
-  { key: 'risk_summary_note_en', label: 'CIM note (English)', help: 'Shown next to the Indonesian note.', lang: 'en', rows: 5 },
+const FIELDS: { key: RaConfigTextField, label: string, help: string, rows: number }[] = [
+  { key: 'type_description', label: 'Building type description', help: 'The hint under the type on Building Data Entry.', rows: 2 },
+  { key: 'hazard_intro', label: 'Hazards introduction', help: 'Shown at the top of the Hazards tab.', rows: 3 },
+  { key: 'signoff_statement_en', label: 'Sign-off statement', help: 'What every signer agrees to, on the Sign-off tab and the report.', rows: 6 },
+  { key: 'risk_summary_note_en', label: 'Risk Summary note', help: 'The CIM follow-up at the top of the Risk Summary tab and in the report.', rows: 6 },
 ]
 
 const part = useRaConfigPart(
@@ -88,11 +85,11 @@ function placeholder(key: RaConfigTextField) {
           :label="field.label"
           :name="field.key"
           :help="field.help"
-          :class="{ 'lg:col-span-2': ['type_description', 'hazard_intro', 'instructions'].includes(field.key) }"
+          :class="{ 'lg:col-span-2': ['type_description', 'hazard_intro'].includes(field.key) }"
         >
           <UTextarea
             v-model="draft[field.key]"
-            :lang="field.lang"
+            lang="en"
             :rows="field.rows"
             :placeholder="placeholder(field.key)"
             autoresize
