@@ -223,7 +223,7 @@ const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
   { id: 'level', header: 'Highest residual' },
-  { id: 'approved', header: 'RA in force' },
+  { id: 'approved', header: 'Approved' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Being worked on' },
   { accessorKey: 'assessment_count', header: 'RAs', meta: { class: { th: 'text-right', td: 'text-right' } } },
@@ -242,8 +242,8 @@ const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
 const tabs = [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard', slot: 'overview' as const },
   { label: 'Renewals', value: 'renewals', icon: 'i-lucide-calendar-clock', slot: 'renewals' as const },
-  { label: 'Register', value: 'register', icon: 'i-lucide-list', slot: 'register' as const },
-  { label: 'Bottlenecks', value: 'bottlenecks', icon: 'i-lucide-hourglass', slot: 'bottlenecks' as const },
+  { label: 'List', value: 'register', icon: 'i-lucide-list', slot: 'register' as const },
+  { label: 'Approval', value: 'bottlenecks', icon: 'i-lucide-hourglass', slot: 'bottlenecks' as const },
 ]
 
 function pageTo(next: number) {

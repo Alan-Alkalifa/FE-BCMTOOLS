@@ -282,25 +282,11 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           The statement each signer agrees to, from the LRP scorecard.
         </p>
       </template>
-      <div class="grid gap-6 lg:grid-cols-2">
-        <figure class="space-y-2">
-          <figcaption class="text-xs font-medium text-muted uppercase">
-            Bahasa Indonesia
-          </figcaption>
-          <blockquote
-            lang="id"
-            class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
-          >
-            {{ formula.signoff_statement }}
-          </blockquote>
-        </figure>
+      <div class="">
         <figure
           v-if="formula.signoff_statement_en"
           class="space-y-2"
         >
-          <figcaption class="text-xs font-medium text-muted uppercase">
-            English
-          </figcaption>
           <blockquote
             lang="en"
             class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"

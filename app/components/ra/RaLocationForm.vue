@@ -138,15 +138,6 @@ async function onSubmit() {
             class="w-full sm:w-72"
           />
         </UFormField>
-        <UAlert
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-info"
-          :title="typeItems.find((item) => item.value === ra.kind)?.label"
-          :description="typeHint ?? undefined"
-          :ui="{ description: 'whitespace-pre-line' }"
-          data-testid="building-type-hint"
-        />
         <UFormField
           :label="ra.kind === 'branch' ? 'Branch name' : 'Building name'"
           name="name"

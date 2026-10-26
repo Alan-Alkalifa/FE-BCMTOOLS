@@ -88,13 +88,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
       data-testid="cim-note"
     >
       <template #description>
-        <div class="grid gap-4 lg:grid-cols-2">
-          <p
-            lang="id"
-            class="whitespace-pre-line"
-          >
-            {{ formula.risk_summary_note }}
-          </p>
+        <div>
           <p
             v-if="formula.risk_summary_note_en"
             lang="en"
@@ -259,7 +253,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
         id="ra-heat-map-matrix"
         class="text-lg font-semibold"
       >
-        Heat Map Matrix
+        Risk Matrix
       </h2>
       <div
         class="grid items-start gap-6"

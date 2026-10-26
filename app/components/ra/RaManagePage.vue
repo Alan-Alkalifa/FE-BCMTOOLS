@@ -67,7 +67,7 @@ const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { id: 'location', header: ra.value.location.single },
   { accessorKey: 'period_year', header: 'Period' },
   { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual so far' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'created_by', header: 'Created by' },
   { accessorKey: 'updated_at', header: 'Last saved' },

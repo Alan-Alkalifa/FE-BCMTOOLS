@@ -89,7 +89,8 @@ const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'address', header: 'Address' },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { id: 'latest', header: 'Latest residual' },
-  { accessorKey: 'is_active', header: 'Status' },
+  { accessorKey: 'is_active', header: 'Status Building' },
+  { accessorKey: 'is_active', header: 'Status Assessment' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
 
