@@ -5,8 +5,8 @@ import type { RaConfigChange, RaConfigVersion } from '~/composables/useRaConfigA
 const props = defineProps<{ version: RaConfigVersion }>()
 
 const { data, status, error, refresh } = useAsyncData(
-  () => `ra-config-diff-${props.version.code}`,
-  () => raConfigApi.diff(props.version.code),
+  () => `ra-config-diff-${props.version.kind}-${props.version.code}`,
+  () => raConfigApi.diff(props.version),
   { watch: [() => props.version] },
 )
 

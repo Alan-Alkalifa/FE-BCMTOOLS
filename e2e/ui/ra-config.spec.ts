@@ -82,7 +82,10 @@ async function mockRaConfig(page: Page) {
       draft = { ...draft, requested_by: 'Test User', requested_by_id: USER.id, requested_at: '2026-10-26T03:00:00Z', can: { ...draft.can, request_publish: false, withdraw_request: true } }
       return route.fulfill({ json: draft })
     }
-    if (path.endsWith('/versions/2025-r5')) return route.fulfill({ json: draft })
+    if (path.endsWith(`/versions/${draft.code}`)) {
+      if (request.method() === 'PATCH') draft = { ...draft, ...(body as object) }
+      return route.fulfill({ json: draft })
+    }
     if (path.endsWith('/divisions') && request.method() === 'POST') {
       const row = { id: 300, is_active: true, used_by: 0, ...(body as object) } as typeof divisions[number]
       divisions.push(row)
@@ -182,4 +185,18 @@ test('the reminder rules are like SCCA\'s', async ({ page }) => {
   await page.getByRole('button', { name: 'Save reminder rules' }).click()
   await expect(page.getByText('Reminder rules saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/settings'))!.body).toMatchObject({ renewal_notice_days: [60, 14], window_start_hour: 8 })
+})
+
+test('the draft\'s code is changed on the Versions tab', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  await page.goto('/admin/ra-config?tab=versions')
+  const code = page.getByRole('textbox', { name: 'Version code' })
+  await expect(code).toHaveValue('2025-r5', { timeout: 60_000 })
+  await code.fill('V.05')
+  await page.getByRole('button', { name: 'Save version' }).click()
+  await expect(page.getByText('Version saved').first()).toBeVisible()
+  const patch = calls.find((call) => call.method === 'PATCH')!
+  expect(patch.path).toMatch(/\/versions\/2025-r5$/)
+  expect(patch.body).toMatchObject({ code: 'V.05' })
+  await expect(page).toHaveURL(/version=V\.05/)
 })

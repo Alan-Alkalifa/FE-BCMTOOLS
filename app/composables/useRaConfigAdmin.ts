@@ -71,27 +71,37 @@ export interface RaSettings {
 const BASE = '/api/admin/ra-config'
 const VERSIONS = `${BASE}/versions`
 
+/** A version is named by its code within its kind: RA and RA Branch can both have V.04. */
+export interface RaVersionRef {
+  code: string
+  kind: RaKind
+}
+
+function at(version: RaVersionRef, path = '') {
+  return `${VERSIONS}/${encodeURIComponent(version.code)}${path}?kind=${version.kind}`
+}
+
 export const raConfigApi = {
   versions: () => $fetch<{ items: RaConfigVersionMeta[], can_start_draft: Record<RaKind, boolean> }>(VERSIONS),
-  get: (code: string) => $fetch<RaConfigVersion>(`${VERSIONS}/${code}`),
+  get: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version)),
   startDraft: (kind: RaKind) => $fetch<RaConfigVersion>(VERSIONS, { method: 'POST', body: { kind } }),
-  update: (code: string, body: { name: string, notes: string | null }) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}`, { method: 'PATCH', body }),
-  discard: (code: string) => $fetch(`${VERSIONS}/${code}`, { method: 'DELETE' }),
-  setHazards: (code: string, body: RaHazardsInput) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}/hazards`, { method: 'PUT', body }),
-  setGuides: (code: string, guides: RaFormula['guides']) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}/guides`, { method: 'PUT', body: { guides } }),
-  setMitigationExamples: (code: string, examples: { area: string, example: string }[]) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}/mitigation-examples`, { method: 'PUT', body: { examples } }),
-  setRoles: (code: string, roles: RaRoleLabel[]) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}/roles`, { method: 'PUT', body: { roles } }),
-  setTexts: (code: string, texts: Partial<Record<RaConfigTextField, string | null>>) =>
-    $fetch<RaConfigVersion>(`${VERSIONS}/${code}/texts`, { method: 'PUT', body: texts }),
-  diff: (code: string) => $fetch<{ against: string | null, changes: RaConfigChange[] }>(`${VERSIONS}/${code}/diff`),
-  requestPublish: (code: string) => $fetch<RaConfigVersion>(`${VERSIONS}/${code}/request-publish`, { method: 'POST' }),
-  withdrawRequest: (code: string) => $fetch<RaConfigVersion>(`${VERSIONS}/${code}/withdraw-request`, { method: 'POST' }),
-  publish: (code: string) => $fetch<RaConfigVersion>(`${VERSIONS}/${code}/publish`, { method: 'POST' }),
+  update: (version: RaVersionRef, body: { code?: string, name: string, notes: string | null }) =>
+    $fetch<RaConfigVersion>(at(version), { method: 'PATCH', body }),
+  discard: (version: RaVersionRef) => $fetch(at(version), { method: 'DELETE' }),
+  setHazards: (version: RaVersionRef, body: RaHazardsInput) =>
+    $fetch<RaConfigVersion>(at(version, '/hazards'), { method: 'PUT', body }),
+  setGuides: (version: RaVersionRef, guides: RaFormula['guides']) =>
+    $fetch<RaConfigVersion>(at(version, '/guides'), { method: 'PUT', body: { guides } }),
+  setMitigationExamples: (version: RaVersionRef, examples: { area: string, example: string }[]) =>
+    $fetch<RaConfigVersion>(at(version, '/mitigation-examples'), { method: 'PUT', body: { examples } }),
+  setRoles: (version: RaVersionRef, roles: RaRoleLabel[]) =>
+    $fetch<RaConfigVersion>(at(version, '/roles'), { method: 'PUT', body: { roles } }),
+  setTexts: (version: RaVersionRef, texts: Partial<Record<RaConfigTextField, string | null>>) =>
+    $fetch<RaConfigVersion>(at(version, '/texts'), { method: 'PUT', body: texts }),
+  diff: (version: RaVersionRef) => $fetch<{ against: string | null, changes: RaConfigChange[] }>(at(version, '/diff')),
+  requestPublish: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version, '/request-publish'), { method: 'POST' }),
+  withdrawRequest: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version, '/withdraw-request'), { method: 'POST' }),
+  publish: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version, '/publish'), { method: 'POST' }),
   divisions: () => $fetch<{ items: RaDivision[] }>(`${BASE}/divisions`),
   createDivision: (body: RaDivisionInput) => $fetch<RaDivision>(`${BASE}/divisions`, { method: 'POST', body }),
   updateDivision: (id: number, body: Partial<RaDivisionInput> & { is_active?: boolean }) =>
@@ -109,7 +119,7 @@ function copy<T>(value: T): T {
 export function useRaConfigPart<T>(
   version: Ref<RaConfigVersion>,
   pick: (version: RaConfigVersion) => T,
-  save: (code: string, value: T) => Promise<RaConfigVersion>,
+  save: (version: RaVersionRef, value: T) => Promise<RaConfigVersion>,
   onSaved: (version: RaConfigVersion) => void,
   message: string,
 ) {
@@ -125,7 +135,7 @@ export function useRaConfigPart<T>(
     error.value = null
     busy.value = true
     try {
-      const saved = await save(version.value.code, draft.value)
+      const saved = await save(version.value, draft.value)
       onSaved(saved)
       toast.add({ title: message, color: 'success', icon: 'i-lucide-circle-check' })
     } catch (failure) {

@@ -547,7 +547,8 @@ export function raPin(location: { latitude?: number | null, longitude?: number |
 export function useRaFormula(kind: MaybeRefOrGetter<RaKind>, version?: MaybeRefOrGetter<string | null | undefined>) {
   return useFetch<RaFormula>('/api/ra/formula', {
     key: computed(() => `ra-formula-${toValue(kind)}-${toValue(version) ?? 'active'}`),
-    query: computed(() => (toValue(version) ? { version: toValue(version) } : { kind: toValue(kind) })),
+    // Version codes are numbered per kind (RA and RA Branch can both have V.04).
+    query: computed(() => (toValue(version) ? { version: toValue(version), kind: toValue(kind) } : { kind: toValue(kind) })),
     getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
   })
 }

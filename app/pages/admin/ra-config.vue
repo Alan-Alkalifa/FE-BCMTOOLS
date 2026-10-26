@@ -62,9 +62,9 @@ const versionItems = computed(() => ofKind.value.map((row) => ({
 const canStartDraft = computed(() => versions.data.value?.can_start_draft?.[kind.value] ?? false)
 
 const current = useAsyncData(
-  () => `ra-config-version-${code.value ?? 'none'}`,
-  () => (code.value ? raConfigApi.get(code.value) : Promise.resolve(null)),
-  { watch: [code] },
+  () => `ra-config-version-${kind.value}-${code.value ?? 'none'}`,
+  () => (code.value ? raConfigApi.get({ code: code.value, kind: kind.value }) : Promise.resolve(null)),
+  { watch: [code, kind] },
 )
 const version = computed(() => current.data.value ?? null)
 const showSkeleton = useDelayedLoading(() =>
@@ -75,6 +75,8 @@ const showSkeleton = useDelayedLoading(() =>
 function onSaved(saved: RaConfigVersion) {
   current.data.value = saved
   void versions.refresh()
+  // The draft's code was changed (e.g. to V.05): follow it.
+  if (saved.code !== code.value) code.value = saved.code
   // The assessment pages read the configuration: drop their cached copy.
   clearNuxtData((key) => key.startsWith('ra-formula-') || key === 'ra-building-types')
 }
@@ -118,11 +120,11 @@ async function requestPublish() {
     description: 'Someone else with the publish permission then approves it. Any edit before that withdraws the request.',
     confirmLabel: 'Request publish',
   })
-  if (ok) await run('request', () => raConfigApi.requestPublish(version.value!.code), 'Publish requested')
+  if (ok) await run('request', () => raConfigApi.requestPublish(version.value!), 'Publish requested')
 }
 
 async function withdraw() {
-  if (version.value) await run('withdraw', () => raConfigApi.withdrawRequest(version.value!.code), 'Request withdrawn')
+  if (version.value) await run('withdraw', () => raConfigApi.withdrawRequest(version.value!), 'Request withdrawn')
 }
 
 async function publish() {
@@ -132,7 +134,7 @@ async function publish() {
     description: `New ${kindTitle.value} assessments then use ${version.value.code} and ${activeCode.value} retires. Existing assessments keep their version. Check the Changes tab first.`,
     confirmLabel: `Publish ${version.value.code}`,
   })
-  if (ok) await run('publish', () => raConfigApi.publish(version.value!.code), `${version.value.code} is now active`)
+  if (ok) await run('publish', () => raConfigApi.publish(version.value!), `${version.value.code} is now active`)
 }
 
 async function discard() {
@@ -145,7 +147,7 @@ async function discard() {
   })
   if (!ok) return
   await run('discard', async () => {
-    await raConfigApi.discard(version.value!.code)
+    await raConfigApi.discard(version.value!)
     await versions.refresh()
     code.value = activeCode.value
     return null
