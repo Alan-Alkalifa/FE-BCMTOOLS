@@ -5,7 +5,7 @@ import type { SccaConfigVersion } from '~/composables/useSccaConfigAdmin'
  * The workbook's notes under the questions, shown to the assessor as warnings (they never
  * block a save):
  * - follows: when a question has a rating, other questions should have it too;
- * - a3: the question follows the highest category of the systems on the Interdependencies tab
+ * - a3: the question follows the highest category of the applications on the Interdependencies tab
  *   with a dependency that counts for A3 (Lists > Dependency);
  * - i4: the question follows the number of interfaces (from counts for ratings 2–5).
  */
@@ -46,7 +46,7 @@ function describe(note: SccaRatingNote) {
   if (note.kind === 'follows') {
     return `When ${note.params.question} is rated ${note.params.rating}, ${note.params.then.join(', ') || '…'} should be ${note.params.rating} too.`
   }
-  if (note.kind === 'a3') return `${note.params.question} should be the highest category rating among the systems whose dependency counts for A3.`
+  if (note.kind === 'a3') return `${note.params.question} should be the highest category rating among the applications whose dependency counts for A3.`
   const [a, b, c, d] = note.params.from
   return `${note.params.question} should be 2 from ${a} interfaces, 3 from ${b}, 4 from ${c} and 5 from ${d}; 1 below.`
 }

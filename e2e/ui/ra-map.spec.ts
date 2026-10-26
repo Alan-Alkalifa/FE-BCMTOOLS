@@ -8,7 +8,7 @@ test('the location map shows every place, the open crisis, and measures a distan
   await page.goto('/ra/map')
   await expect(page.getByRole('heading', { name: 'Location map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Banjir/ Banjir Bandang at Griya CIMB Niaga 2')).toBeVisible()
-  await expect(page.getByText('CR-2026-0001 · since 21 Okt 2026, 11.52 WIB · 5 km radius · 2 places affected')).toBeVisible()
+  await expect(page.getByText('CR-2026-0001 · since 21 Oct 2026, 11:52 WIB · 5 km radius · 2 places affected')).toBeVisible()
   await expect(page.getByLabel('Head office buildings (2)')).toBeChecked()
   await expect(page.getByLabel('Branches (3)')).toBeChecked()
   await expect(page.getByText('Not on the map yet (no pin): 1 building. Set the pin on their Map tab.')).toBeVisible()

@@ -4,7 +4,7 @@ import AdminMenuForm from '~/components/admin/AdminMenuForm.vue'
 
 definePageMeta({ permission: 'admin.menus.manage' })
 
-const BUILT_IN = new Set(['home', 'scca', 'scca.monitoring', 'scca.manage', 'scca.approval', 'admin', 'admin.users', 'admin.roles', 'admin.menus', 'admin.mail', 'admin.scca_config', 'admin.audit'])
+const BUILT_IN = new Set(['home', 'scca', 'scca.monitoring', 'scca.manage', 'scca.approval', 'admin', 'admin.users', 'admin.roles', 'admin.menus', 'admin.mail', 'admin.scca_config', 'admin.applications', 'admin.audit'])
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -13,12 +13,35 @@ const { fetchMenu } = useAuth()
 const { data, status, error, refresh } = useFetch<{ items: AdminMenu[] }>('/api/admin/menus', { key: 'admin-menus' })
 const { data: permissions } = useAdminPermissions()
 
-const tree = computed(() => {
-  const rows = data.value?.items ?? []
-  return rows
-    .filter((m) => m.parent_id === null)
-    .map((m) => ({ menu: m, children: rows.filter((child) => child.parent_id === m.id) }))
+/** The tree as rows in display order: groups can hold pages and other groups (three deep). */
+interface TreeRow {
+  menu: AdminMenu
+  depth: number
+  siblings: AdminMenu[]
+  index: number
+  children: number
+}
+const collapsed = ref(new Set<number>())
+const rows = computed<TreeRow[]>(() => {
+  const all = data.value?.items ?? []
+  const out: TreeRow[] = []
+  const walk = (parent: number | null, depth: number) => {
+    const siblings = all.filter((m) => m.parent_id === parent)
+    siblings.forEach((menu, index) => {
+      const children = all.filter((child) => child.parent_id === menu.id).length
+      out.push({ menu, depth, siblings, index, children })
+      if (!collapsed.value.has(menu.id)) walk(menu.id, depth + 1)
+    })
+  }
+  walk(null, 0)
+  return out
 })
+function toggle(id: number) {
+  const next = new Set(collapsed.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  collapsed.value = next
+}
 
 const permissionText = (code: string | null) =>
   code ? permissions.value?.items.find((perm) => perm.code === code)?.description ?? code : 'Everyone signed in'
@@ -93,86 +116,65 @@ async function remove(menu: AdminMenu) {
     >
       <ol class="divide-y divide-default">
         <li
-          v-for="(group, groupIndex) in tree"
-          :key="group.menu.id"
+          v-for="row in rows"
+          :key="row.menu.id"
+          class="flex items-center gap-3 py-2.5 pe-4"
+          :class="row.menu.is_active ? '' : 'opacity-60'"
+          :style="{ paddingInlineStart: `${1 + row.depth * 2}rem` }"
         >
-          <div
-            class="flex items-center gap-3 px-4 py-3"
-            :class="group.menu.is_active ? '' : 'opacity-60'"
-          >
-            <UIcon
-              :name="group.menu.icon ?? 'i-lucide-circle'"
-              class="size-5 shrink-0 text-muted"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="font-medium text-highlighted">
-                {{ group.menu.label }}
-                <span
-                  v-if="!group.menu.is_active"
-                  class="ms-1 text-xs font-normal text-muted"
-                >(hidden)</span>
-              </p>
-              <p class="truncate text-xs text-muted">
-                <code v-if="group.menu.route">{{ group.menu.route }}</code>
-                <span v-else>Group</span>
-                · {{ permissionText(group.menu.permission) }}
-              </p>
-            </div>
-            <AdminMenuRowActions
-              :menu="group.menu"
-              :first="groupIndex === 0"
-              :last="groupIndex === tree.length - 1"
-              :built-in="BUILT_IN.has(group.menu.code)"
-              @up="move(tree.map((g) => g.menu), groupIndex, -1)"
-              @down="move(tree.map((g) => g.menu), groupIndex, 1)"
-              @edit="edit(group.menu)"
-              @toggle="setActive(group.menu, $event)"
-              @remove="remove(group.menu)"
-            />
-          </div>
-          <ol
-            v-if="group.children.length"
-            class="ms-12 border-s border-default"
-          >
-            <li
-              v-for="(child, childIndex) in group.children"
-              :key="child.id"
-              class="flex items-center gap-3 border-t border-default py-2.5 pe-4 ps-4"
-              :class="child.is_active ? '' : 'opacity-60'"
+          <UButton
+            v-if="row.children"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            :icon="collapsed.has(row.menu.id) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'"
+            :aria-label="`${collapsed.has(row.menu.id) ? 'Expand' : 'Collapse'} ${row.menu.label}`"
+            :aria-expanded="!collapsed.has(row.menu.id)"
+            class="-ms-2"
+            @click="toggle(row.menu.id)"
+          />
+          <span
+            v-else
+            class="w-4"
+          />
+          <UIcon
+            :name="row.menu.icon ?? 'i-lucide-circle'"
+            class="shrink-0 text-muted"
+            :class="row.depth ? 'size-4' : 'size-5'"
+          />
+          <div class="min-w-0 flex-1">
+            <p
+              class="text-highlighted"
+              :class="row.menu.route ? 'text-sm font-medium' : 'font-medium'"
             >
-              <UIcon
-                :name="child.icon ?? 'i-lucide-circle'"
-                class="size-4 shrink-0 text-muted"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-highlighted">
-                  {{ child.label }}
-                  <span
-                    v-if="!child.is_active"
-                    class="ms-1 text-xs font-normal text-muted"
-                  >(hidden)</span>
-                </p>
-                <p class="truncate text-xs text-muted">
-                  <code>{{ child.route }}</code> · {{ permissionText(child.permission) }}
-                </p>
-              </div>
-              <AdminMenuRowActions
-                :menu="child"
-                :first="childIndex === 0"
-                :last="childIndex === group.children.length - 1"
-                :built-in="BUILT_IN.has(child.code)"
-                @up="move(group.children, childIndex, -1)"
-                @down="move(group.children, childIndex, 1)"
-                @edit="edit(child)"
-                @toggle="setActive(child, $event)"
-                @remove="remove(child)"
-              />
-            </li>
-          </ol>
+              {{ row.menu.label }}
+              <span
+                v-if="!row.menu.is_active"
+                class="ms-1 text-xs font-normal text-muted"
+              >(hidden)</span>
+            </p>
+            <p class="truncate text-xs text-muted">
+              <code v-if="row.menu.route">{{ row.menu.route }}</code>
+              <span v-else>Group{{ row.children ? ` of ${row.children}` : ', empty: hidden in the sidebar' }}</span>
+              · {{ permissionText(row.menu.permission) }}
+            </p>
+          </div>
+          <AdminMenuRowActions
+            :menu="row.menu"
+            :first="row.index === 0"
+            :last="row.index === row.siblings.length - 1"
+            :built-in="BUILT_IN.has(row.menu.code)"
+            @up="move(row.siblings, row.index, -1)"
+            @down="move(row.siblings, row.index, 1)"
+            @edit="edit(row.menu)"
+            @toggle="setActive(row.menu, $event)"
+            @remove="remove(row.menu)"
+          />
         </li>
       </ol>
     </UCard>
     <p class="text-xs text-muted">
+      A group can hold pages and other groups, three groups deep (group › group › group › page). A group with nothing visible in it is hidden in the sidebar.
       Built-in items can be renamed, reordered and hidden but not deleted. Hiding an item does not remove access: the page still checks the permission.
     </p>
   </AppPage>

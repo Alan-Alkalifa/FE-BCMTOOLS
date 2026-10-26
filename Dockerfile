@@ -8,7 +8,9 @@ FROM deps AS dev
 COPY . .
 RUN npx nuxt prepare
 EXPOSE 3000
-CMD ["npx", "nuxt", "dev", "--host", "0.0.0.0"]
+# npm install on every start keeps the node_modules volume in step with package.json /
+# package-lock.json after a pull or a new package (it is quick when nothing changed).
+CMD ["sh", "-c", "npm install --no-audit --no-fund && exec npx nuxt dev --host 0.0.0.0"]
 
 FROM deps AS build
 ARG APP_VERSION=dev

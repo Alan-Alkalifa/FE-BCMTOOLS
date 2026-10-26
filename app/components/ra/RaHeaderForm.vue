@@ -142,7 +142,7 @@ async function onSubmit() {
               <UInputDate
                 v-model="assessmentDate"
                 :disabled="locked"
-                locale="id-ID"
+                locale="en-GB"
                 class="w-full"
               />
             </UFormField>
@@ -154,7 +154,7 @@ async function onSubmit() {
               <UInputDate
                 v-model="dueDate"
                 :disabled="locked"
-                locale="id-ID"
+                locale="en-GB"
                 class="w-full"
               />
             </UFormField>

@@ -1,5 +1,6 @@
 # Local development with hot reload: `docker compose up`, then open http://localhost:3000.
 # Start the backend repo's stack first; /api and /auth are proxied to it on port 8000.
+# If the backend uses another host port, set the same BACKEND_HOST_PORT in this repo's .env.
 name: bcm-frontend
 
 services:
@@ -8,7 +9,7 @@ services:
       context: .
       target: dev
     environment:
-      NUXT_DEV_BACKEND_URL: http://host.docker.internal:8000
+      NUXT_DEV_BACKEND_URL: http://host.docker.internal:${BACKEND_HOST_PORT:-8000}
       CHOKIDAR_USEPOLLING: "true"
     extra_hosts:
       - "host.docker.internal:host-gateway"

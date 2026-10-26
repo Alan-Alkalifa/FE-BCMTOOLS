@@ -55,6 +55,9 @@ export interface SccaAnswer {
 export interface SccaInterdependency {
   direction: SccaDirection
   seq?: number
+  /** The upstream/downstream application in the application master. */
+  application_id: number | null
+  /** The application's name as saved on this SCCA. */
   system_name: string
   criticality_category: SccaCategory | null
   rto: string | null
@@ -63,7 +66,10 @@ export interface SccaInterdependency {
   processing_mode: string | null
   dependency: SccaDependency | null
   workaround: string | null
+  /** Worked out by the app. */
   gaps: string | null
+  /** The assessor's own gap notes. */
+  gaps_note: string | null
 }
 
 export type SccaRecoveryValue = { kind: SccaRecoveryKind } & Record<SccaRecoveryField, string | null>
@@ -158,6 +164,8 @@ export interface SccaPermissions {
 
 export interface SccaAssessmentFields {
   ref_no?: string | null
+  /** The application master row (Annual review, System change pick it). */
+  application_id?: number | null
   application_code: string | null
   application_name: string
   application_description: string | null
@@ -181,8 +189,14 @@ export interface SccaAssessmentFields {
   cim_ref_no: string | null
 }
 
-/** An application already assessed in SCCA: the header of its latest SCCA (GET /api/scca/applications). */
+/** An active application of the master, with the header of its latest SCCA if it has one
+ * (GET /api/scca/applications). */
 export interface SccaApplication {
+  application_id: number
+  category: string | null
+  rto_hours: string | null
+  rpo: string | null
+  characteristics: ApplicationCharacteristics
   application_code: string | null
   application_name: string
   application_description: string | null
@@ -196,11 +210,12 @@ export interface SccaApplication {
   business_days: string | null
   business_hours: string | null
   last_assessment: {
+    id: number
     ref_no: string | null
     status: SccaStatus
     assessment_date: string | null
     due_date: string | null
-  }
+  } | null
 }
 
 export interface SccaAssessment extends SccaAssessmentFields {
@@ -244,6 +259,7 @@ export interface SccaAssessment extends SccaAssessmentFields {
 export interface SccaAssessmentSummary {
   id: number
   ref_no: string | null
+  application_id?: number | null
   application_code: string | null
   application_name: string
   assessment_reason: SccaReason | null
@@ -276,6 +292,7 @@ export interface SccaPage<T> {
 export interface SccaListQuery {
   q?: string
   category?: SccaCategory
+  reason?: string
   status?: SccaStatus
   /** "1": only assessments waiting for the signed-in user's approval. */
   waiting?: '1'

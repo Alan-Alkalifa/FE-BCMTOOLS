@@ -394,7 +394,7 @@ watch(() => props.version, () => {
             CIMBN recovery architecture standard
           </h2>
           <p class="mt-1 text-sm text-muted">
-            The text shows on the Recovery tab and the reports. The gap checks use the hours and the minimum uptime (empty: no limit).
+            The text shows on the Recovery tab and the reports. The gap checks use the hours and the minimum availability/SLA (empty: no limit).
           </p>
         </template>
         <fieldset
@@ -423,10 +423,10 @@ watch(() => props.version, () => {
                   RTO up to (h)
                 </th>
                 <th class="px-3 py-2">
-                  Uptime text
+                  Availability/SLA (per year)
                 </th>
                 <th class="px-3 py-2 pe-4">
-                  Uptime at least (%)
+                  Availability/SLA at least (%)
                 </th>
               </tr>
             </thead>

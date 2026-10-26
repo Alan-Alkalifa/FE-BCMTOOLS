@@ -6,6 +6,7 @@ import type {
   SccaHistoryRow,
   SccaInboxRow,
 } from '~/composables/useSccaWorkflow'
+import { parseDate, type CalendarDate } from '@internationalized/date'
 import SccaOnBehalfDialog from '~/components/scca/SccaOnBehalfDialog.vue'
 import SccaReassignDialog from '~/components/scca/SccaReassignDialog.vue'
 
@@ -28,6 +29,7 @@ const tab = computed<ApprovalTab>({
     if (value === 'board' && bcm.value) return 'board'
     return 'inbox'
   },
+  // Each tab starts with its own filters.
   set: (value) => router.replace({ query: { tab: value === 'inbox' ? undefined : value } }),
 })
 
@@ -40,6 +42,64 @@ function number(name: string) {
 }
 function setQuery(patch: Record<string, string | number | undefined>) {
   router.replace({ query: { ...route.query, ...patch } })
+}
+function text(name: string) {
+  const value = route.query[name]
+  return typeof value === 'string' && value ? value : undefined
+}
+
+// --- filters shared by My history and the BCM board, kept in the URL ------------------------
+
+const { data: activeConfig } = useSccaConfig()
+const search = ref(text('q') ?? '')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    if (value.trim() !== (text('q') ?? '')) setQuery({ q: value.trim() || undefined, page: undefined })
+  }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+// Switching tabs clears the filters (the URL keeps only the tab).
+watch(() => route.query.tab, () => {
+  clearTimeout(searchTimer)
+  search.value = text('q') ?? ''
+})
+const categoryFilter = computed<string>({
+  get: () => text('category') ?? 'all',
+  set: (value) => setQuery({ category: value === 'all' ? undefined : value, page: undefined }),
+})
+const categoryItems = computed(() => [
+  { label: 'All categories', value: 'all' },
+  ...SCCA_CATEGORIES.map((category) => ({ label: sccaCategory[category].label, value: category as string })),
+])
+const reasonFilter = computed<string>({
+  get: () => text('reason') ?? 'all',
+  set: (value) => setQuery({ reason: value === 'all' ? undefined : value, page: undefined }),
+})
+const reasonItems = computed(() => [
+  { label: 'All reasons', value: 'all' },
+  ...sccaListOptions(activeConfig.value, 'assessment_reason'),
+])
+const fromDate = computed<CalendarDate | undefined>({
+  get: () => (text('from') ? parseDate(text('from')!) : undefined),
+  set: (value) => setQuery({ from: value?.toString(), page: undefined }),
+})
+const toDate = computed<CalendarDate | undefined>({
+  get: () => (text('to') ? parseDate(text('to')!) : undefined),
+  set: (value) => setQuery({ to: value?.toString(), page: undefined }),
+})
+// The steps of the active configuration version (its titles also label older versions' steps).
+const stepCodes = computed(() => activeConfig.value?.steps.map((step) => step.code) ?? SCCA_SIGNOFF_ROLES.map((role) => role.value))
+const stepItems = computed(() => [
+  { label: 'Every step', value: 'all' as const },
+  ...stepCodes.value.map((code) => ({ label: signoffRoleLabel(code, true), value: code })),
+])
+const FILTER_KEYS = ['q', 'decision', 'step', 'level', 'category', 'reason', 'approver', 'from', 'to'] as const
+const filtered = computed(() => FILTER_KEYS.some((key) => !!route.query[key]))
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: { tab: route.query.tab } })
 }
 function pageTo(page: number) {
   return { query: { ...route.query, page: page > 1 ? page : undefined } }
@@ -77,8 +137,18 @@ const decision = computed<SccaHistoryKind | 'all'>({
   set: (value) => setQuery({ decision: value === 'all' ? undefined : value, page: undefined }),
 })
 const historyPage = pageOf('history')
+const historyStep = computed<string>({
+  get: () => (stepCodes.value.includes(String(route.query.step)) ? String(route.query.step) : 'all'),
+  set: (value) => setQuery({ step: value === 'all' ? undefined : value, page: undefined }),
+})
 const history = useSccaHistory(computed(() => ({
   decision: decision.value === 'all' ? undefined : decision.value,
+  step: tab.value === 'history' && historyStep.value !== 'all' ? historyStep.value : undefined,
+  category: tab.value === 'history' ? text('category') : undefined,
+  reason: tab.value === 'history' ? text('reason') : undefined,
+  q: tab.value === 'history' ? text('q') : undefined,
+  from: tab.value === 'history' ? text('from') : undefined,
+  to: tab.value === 'history' ? text('to') : undefined,
   page: historyPage.value,
   per_page: PER_PAGE,
 })))
@@ -107,21 +177,38 @@ const historyColumns: TableColumn<SccaHistoryRow>[] = [
 
 // --- BCM board ------------------------------------------------------------------------------
 
-// The steps of the active configuration version (its titles also label older versions' steps).
-const { data: activeConfig } = useSccaConfig()
-const stepCodes = computed(() => activeConfig.value?.steps.map((step) => step.code) ?? SCCA_SIGNOFF_ROLES.map((role) => role.value))
 const boardStep = computed<SccaSignoffRole | 'all'>({
   get: () => (stepCodes.value.includes(String(route.query.step)) ? route.query.step as SccaSignoffRole : 'all'),
   set: (value) => setQuery({ step: value === 'all' ? undefined : value, page: undefined }),
 })
 const boardPage = pageOf('board')
+const LEVELS: SccaWaitLevel[] = ['ok', 'reminder', 'escalated']
+const boardLevel = computed<SccaWaitLevel | 'all'>({
+  get: () => (LEVELS.includes(route.query.level as SccaWaitLevel) ? route.query.level as SccaWaitLevel : 'all'),
+  set: (value) => setQuery({ level: value === 'all' ? undefined : value, page: undefined }),
+})
+const levelItems = [
+  { label: 'Any waiting time', value: 'all' as const },
+  ...LEVELS.map((level) => ({ label: sccaWaitLevel[level].label, value: level })),
+]
+const boardApprover = computed<number | null>({
+  get: () => Number(route.query.approver) || null,
+  set: (value) => setQuery({ approver: value || undefined, page: undefined }),
+})
 const board = bcm.value
-  ? useSccaBoard(computed(() => ({ step: boardStep.value === 'all' ? undefined : boardStep.value, page: boardPage.value, per_page: PER_PAGE })))
+  ? useSccaBoard(computed(() => ({
+      step: boardStep.value === 'all' ? undefined : boardStep.value,
+      level: boardLevel.value === 'all' ? undefined : boardLevel.value,
+      approver_id: boardApprover.value ?? undefined,
+      category: tab.value === 'board' ? text('category') : undefined,
+      reason: tab.value === 'board' ? text('reason') : undefined,
+      q: tab.value === 'board' ? text('q') : undefined,
+      from: tab.value === 'board' ? text('from') : undefined,
+      to: tab.value === 'board' ? text('to') : undefined,
+      page: boardPage.value,
+      per_page: PER_PAGE,
+    })))
   : null
-const stepItems = computed(() => [
-  { label: 'Every step', value: 'all' as const },
-  ...stepCodes.value.map((code) => ({ label: signoffRoleLabel(code, true), value: code })),
-])
 const boardColumns: TableColumn<SccaBottleneckRow>[] = [
   { accessorKey: 'application_name', header: 'SCCA' },
   { accessorKey: 'step', header: 'Current step' },
@@ -269,10 +356,7 @@ const tabs = computed(() => [
             />
           </UCard>
 
-          <UCard
-            v-if="upcoming.data.value?.total"
-            :ui="{ body: 'p-0 sm:p-0' }"
-          >
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <template #header>
               <h2 class="font-semibold text-highlighted">
                 Coming up
@@ -281,7 +365,22 @@ const tabs = computed(() => [
                 In approval, with your step later in the order.
               </p>
             </template>
-            <ul class="divide-y divide-default">
+            <div
+              v-if="!upcoming.data.value?.total"
+              class="py-8 text-center"
+            >
+              <UIcon
+                name="i-lucide-calendar-clock"
+                class="size-6 text-dimmed"
+              />
+              <p class="mt-2 text-sm text-muted">
+                {{ upcoming.status.value === 'pending' ? 'Loading…' : 'Nothing coming up: no SCCA in approval has a later step for you.' }}
+              </p>
+            </div>
+            <ul
+              v-else
+              class="divide-y divide-default"
+            >
               <li
                 v-for="item in upcoming.data.value.items"
                 :key="item.id"
@@ -301,6 +400,7 @@ const tabs = computed(() => [
               </li>
             </ul>
             <TablePagination
+              v-if="upcoming.data.value?.total"
               :page="comingPage"
               :per-page="COMING_PER_PAGE"
               :total="upcoming.data.value.total"
@@ -316,16 +416,64 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                placeholder="Application, code or ref. no."
+                aria-label="Search my history"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="decision"
               value-key="value"
               :items="decisionItems"
               :search-input="false"
               aria-label="Decision"
-              class="w-60"
+              class="w-56"
             />
-          </div>
+            <USelectMenu
+              v-model="historyStep"
+              value-key="value"
+              :items="stepItems"
+              :search-input="false"
+              aria-label="Step"
+              class="w-48"
+            />
+            <USelectMenu
+              v-model="categoryFilter"
+              value-key="value"
+              :items="categoryItems"
+              :search-input="false"
+              aria-label="Category"
+              class="w-44"
+            />
+            <USelectMenu
+              v-model="reasonFilter"
+              value-key="value"
+              :items="reasonItems"
+              :search-input="false"
+              aria-label="Reason for assessment"
+              class="w-44"
+            />
+            <DatePicker
+              v-model="fromDate"
+              class="w-40"
+              placeholder="From"
+              aria-label="From"
+            />
+            <DatePicker
+              v-model="toDate"
+              class="w-40"
+              placeholder="To"
+              aria-label="To"
+            />
+          </ListFilterBar>
           <UTable
             :data="history.data.value?.items ?? []"
             :columns="historyColumns"
@@ -342,8 +490,10 @@ const tabs = computed(() => [
               >
                 {{ row.original.application_name }}
               </NuxtLink>
-              <p class="font-mono text-xs text-muted">
-                {{ row.original.ref_no }}
+              <p class="text-xs text-muted">
+                <span class="font-mono">{{ row.original.ref_no }}</span><template v-if="row.original.category">
+                  · {{ sccaCategory[row.original.category]?.label ?? row.original.category }}
+                </template>
               </p>
             </template>
             <template #step_title-cell="{ row }">
@@ -378,7 +528,7 @@ const tabs = computed(() => [
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
-                No decisions yet.
+                {{ filtered ? 'No decisions match these filters.' : 'No decisions yet.' }}
               </p>
             </template>
           </UTable>
@@ -400,15 +550,60 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                placeholder="Application, code or ref. no."
+                aria-label="Search the board"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="boardStep"
               value-key="value"
               :items="stepItems"
               :search-input="false"
               aria-label="Step"
+              class="w-48"
+            />
+            <USelectMenu
+              v-model="boardLevel"
+              value-key="value"
+              :items="levelItems"
+              :search-input="false"
+              aria-label="Waiting time"
+              class="w-44"
+            />
+            <USelectMenu
+              v-model="categoryFilter"
+              value-key="value"
+              :items="categoryItems"
+              :search-input="false"
+              aria-label="Category"
+              class="w-44"
+            />
+            <USelectMenu
+              v-model="reasonFilter"
+              value-key="value"
+              :items="reasonItems"
+              :search-input="false"
+              aria-label="Reason for assessment"
+              class="w-44"
+            />
+            <UserPicker
+              v-model="boardApprover"
+              placeholder="Any approver"
+              aria-label="Approver"
+              permission="scca.access"
               class="w-56"
             />
+          </ListFilterBar>
+          <div class="border-b border-default px-4 py-2">
             <p class="text-sm text-muted">
               Reminders and escalation follow
               <NuxtLink
@@ -483,7 +678,7 @@ const tabs = computed(() => [
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
-                Nothing is in approval.
+                {{ filtered ? 'Nothing in approval matches these filters.' : 'Nothing is in approval.' }}
               </p>
             </template>
           </UTable>

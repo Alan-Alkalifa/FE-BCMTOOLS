@@ -3,7 +3,7 @@ import type { CalendarDate } from '@internationalized/date'
 import { useFormField } from '#ui/composables/useFormField'
 
 /**
- * A date field that shows the date as "19 Okt 2026" and opens a calendar under it.
+ * A date field that shows the date as "19 Oct 2026" and opens a calendar under it.
  * `min` and `max` limit the days that can be picked. Inside a <UFormField> it takes the
  * field's id (so the label names it) and tells the form when the value changes.
  */
@@ -58,7 +58,7 @@ watch(open, (isOpen) => {
     <template #content>
       <UCalendar
         :model-value="model"
-        locale="id-ID"
+        locale="en-GB"
         :week-starts-on="1"
         :min-value="props.min"
         :max-value="props.max"

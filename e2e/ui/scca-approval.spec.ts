@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { EDITOR, allSignoffs, assessment, mockScca } from '../fixtures/scca'
+import { EDITOR, allSignoffs, assessment, mockScca, COMPLETE_INTERDEPENDENCY, completeRecovery } from '../fixtures/scca'
 
 test.setTimeout(90_000)
 
@@ -46,11 +46,17 @@ test('sign-off steps are picked from the user directory', async ({ page }) => {
 })
 
 test('submitting locks the assessment', async ({ page }) => {
-  await mockScca(page, assessment({ signoffs: allSignoffs() }))
+  await mockScca(page, assessment({
+    signoffs: allSignoffs(),
+    recovery_values: completeRecovery(),
+    interdependencies: [COMPLETE_INTERDEPENDENCY],
+  }))
   await page.goto('/scca/1?tab=result')
   await expect(page.getByRole('heading', { name: 'Approval' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/to fill in before you submit/)).toHaveCount(0)
   await page.getByRole('button', { name: 'Submit for approval' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Submit for approval' }).click()
+  // With gaps the confirm says how many ("Submit with 2 gaps"); they don't block.
+  await page.getByRole('dialog').getByRole('button', { name: /^Submit (for approval|with \d+ gaps?)$/ }).click()
   await expect(page.getByText('Submitted for approval').first()).toBeVisible()
   // Submitted: it leaves Manage for Monitoring, read-only, with no Save, recall or comment box.
   await expect(page).toHaveURL(/\/scca\/monitoring\/1\?tab=result$/)
