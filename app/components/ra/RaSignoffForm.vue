@@ -289,7 +289,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Risk assessment sign-off
         </h2>
         <p class="text-sm text-muted">
-          The statement each signer agrees to, from the LRP scorecard.
+          The statement or conditions that each signer is required to review and formally acknowledge their agreement to before signing the document.
         </p>
       </template>
       <blockquote

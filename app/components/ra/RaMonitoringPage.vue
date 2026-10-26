@@ -220,15 +220,21 @@ const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'lic', header: 'LIC' },
   { id: 'renewal', header: 'Renewal' },
 ])
+/** Like SCCA's Register: one row per building, judged by its last final (approved) RA. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
   { id: 'level', header: 'Highest residual' },
-  { id: 'approved', header: 'Approved' },
+  { id: 'approved', header: 'Last final RA' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Being worked on' },
-  { accessorKey: 'assessment_count', header: 'RAs', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { id: 'open', header: 'Open RA' },
   { id: 'lic', header: 'LIC' },
+  { accessorKey: 'assessment_count', header: 'RAs' },
 ])
+
+/** The building's name opens its last final RA, else the open one, else the newest (as SCCA). */
+function registerRecord(row: RaMonitorLocation) {
+  return row.approved ?? row.open ?? row.history?.[0] ?? null
+}
 const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
   { accessorKey: 'step', header: 'Current step' },
@@ -559,16 +565,18 @@ function record(id: number) {
           >
             <template #location-cell="{ row }">
               <NuxtLink
-                :to="locationPath(row.original.location.id)"
+                v-if="registerRecord(row.original)"
+                :to="record(registerRecord(row.original)!.id)"
                 class="font-medium text-primary hover:underline"
               >
                 {{ row.original.location.name }}
               </NuxtLink>
-              <p
-                v-if="row.original.location.region"
-                class="text-xs text-muted"
-              >
-                {{ row.original.location.region }}
+              <span
+                v-else
+                class="font-medium text-highlighted"
+              >{{ row.original.location.name }}</span>
+              <p class="text-xs text-muted">
+                {{ row.original.location.region || '—' }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -581,29 +589,22 @@ function record(id: number) {
               <span
                 v-else
                 class="text-muted"
-              >{{ row.original.approved ? 'Not rated' : 'Never approved' }}</span>
+              >{{ row.original.approved ? 'Not rated' : 'Not final yet' }}</span>
             </template>
             <template #approved-cell="{ row }">
-              <NuxtLink
-                v-if="row.original.approved"
-                :to="record(row.original.approved.id)"
-                class="font-mono text-xs text-primary hover:underline"
-              >
-                {{ refLabel(row.original.approved) }}
-              </NuxtLink>
-              <p
-                v-if="row.original.approved"
-                class="text-xs text-muted"
-              >
-                {{ formatDate(row.original.approved.assessment_date) || '—' }}
-              </p>
+              <template v-if="row.original.approved">
+                <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
+                <p class="text-xs text-muted">
+                  {{ formatDate(row.original.approved.approved_at) || formatDate(row.original.approved.assessment_date) || '—' }}
+                </p>
+              </template>
               <span
                 v-else
                 class="text-muted"
               >—</span>
             </template>
             <template #renewal_date-cell="{ row }">
-              <span :class="row.original.bucket === 'overdue' ? 'text-error' : ''">{{ formatDate(row.original.renewal_date) || '—' }}</span>
+              {{ formatDate(row.original.renewal_date) || '—' }}
             </template>
             <template #open-cell="{ row }">
               <NuxtLink
@@ -616,7 +617,6 @@ function record(id: number) {
                   :value="raStatusKey(row.original.open)"
                   size="sm"
                 />
-                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
                 <p
                   v-if="row.original.open.current_signoff_role"
                   class="mt-1 text-xs text-muted"
@@ -655,7 +655,7 @@ function record(id: number) {
                         </span>
                         <StatusBadge
                           :scale="raStatus"
-                          :value="item.status"
+                          :value="raStatusKey(item)"
                           size="sm"
                         />
                       </NuxtLink>

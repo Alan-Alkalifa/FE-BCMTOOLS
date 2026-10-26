@@ -516,9 +516,12 @@ function workflowLocations(branch: boolean) {
   const second = branch
     ? { id: 31, kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
     : { id: 2, kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
+  const approved = workflowRef(branch, 'approved')
+  // The 2026 cycle, returned for changes and being worked on again.
+  const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
   return [
-    { location: first, approved: workflowRef(branch, 'approved'), open: null, assessment_count: 1, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', lic_name: 'Legiran' },
-    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, lic_name: null },
+    { location: first, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', lic_name: 'Legiran', history: [open, approved] },
+    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, lic_name: null, history: [] },
   ]
 }
 

@@ -710,3 +710,28 @@ test('an approved assessment downloads as PDF or as the filled workbook', async 
   expect((await xlsx).suggestedFilename()).toBe('RA_RA-2025-0001_Griya-CIMB-Niaga-2.xlsx')
   expect(requested).toEqual(['pdf', 'xlsx'])
 })
+
+test('the List tab works like SCCA\'s Register', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/monitoring?tab=register')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Last final RA' })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Open RA' })).toBeVisible()
+  const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim())
+  expect(headers.at(-1)).toBe('RAs')
+  // The name opens the last final RA; its code is text, not a link.
+  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
+  await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()
+  await expect(table.getByRole('link', { name: 'RA-2025-0001' })).toHaveCount(0)
+  // Open RA: the status of the RA being worked on.
+  const row = table.getByRole('row', { name: /Griya CIMB Niaga 2/ })
+  await expect(row.getByRole('link', { name: 'Returned' })).toHaveAttribute('href', '/ra/monitoring/99')
+  // A building without an RA: plain name, not final yet.
+  await expect(table.getByRole('row', { name: /Graha CIMB Niaga/ })).toContainText('Not final yet')
+  // RAs: the count opens the building's RAs, newest first.
+  await row.getByRole('button', { name: 'RA history of Griya CIMB Niaga 2' }).click()
+  const history = page.getByRole('dialog')
+  await expect(history.getByRole('link')).toHaveCount(2)
+  await expect(history.getByRole('link').first()).toHaveAttribute('href', '/ra/monitoring/99')
+  await expect(history.getByRole('link').first()).toContainText('Returned')
+})
