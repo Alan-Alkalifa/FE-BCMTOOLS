@@ -200,7 +200,7 @@ async function onSubmit() {
             >
               <UInputDate
                 v-model="assessmentDate"
-                locale="id-ID"
+                locale="en-GB"
                 class="w-full"
               />
             </UFormField>

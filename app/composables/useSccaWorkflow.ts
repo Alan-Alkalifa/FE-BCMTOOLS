@@ -10,6 +10,8 @@ export interface SccaMonitoringFilters {
   status?: SccaStatus
   department?: string
   q?: string
+  /** Renewals: only this bucket. */
+  bucket?: 'overdue' | 'due_30' | 'due_90'
   page?: number
   per_page?: number
 }
@@ -84,6 +86,7 @@ export interface SccaBottleneckRow {
   application_code: string | null
   department: string | null
   category: SccaCategory | null
+  reason?: string | null
   step: SccaSignoffRole
   step_title: string
   approver: string | null
@@ -145,6 +148,9 @@ export interface SccaHistoryRow {
   id: number
   ref_no: string | null
   application_name: string
+  application_code?: string | null
+  category?: SccaCategory | null
+  reason?: string | null
   step: string | null
   step_title: string | null
   note: string | null
@@ -225,13 +231,28 @@ export function useSccaUpcoming(query: MaybeRefOrGetter<PageQuery> = {}) {
   })
 }
 
-export function useSccaHistory(query: MaybeRefOrGetter<{ decision?: SccaHistoryKind } & PageQuery>) {
+export interface SccaHistoryQuery {
+  decision?: SccaHistoryKind
+  step?: string
+  category?: string
+  reason?: string
+  q?: string
+  from?: string
+  to?: string
+}
+
+export function useSccaHistory(query: MaybeRefOrGetter<SccaHistoryQuery & PageQuery>) {
   return useFetch<Paged<SccaHistoryRow>>('/api/scca/approvals/history', {
     query: computed(() => clean(toValue(query))),
   })
 }
 
-export function useSccaBoard(query: MaybeRefOrGetter<SccaMonitoringFilters & { step?: SccaSignoffRole } & PageQuery>) {
+export function useSccaBoard(query: MaybeRefOrGetter<SccaMonitoringFilters & {
+  step?: SccaSignoffRole
+  level?: SccaWaitLevel
+  reason?: string
+  approver_id?: number
+} & PageQuery>) {
   return useFetch<Paged<SccaBottleneckRow>>('/api/scca/approvals/board', {
     query: computed(() => clean(toValue(query))),
   })

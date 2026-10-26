@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
+import type { ApplicationCharacteristics } from '~/composables/useApplications'
 import type { SccaApplication, SccaAssessment } from '~/composables/useScca'
 
 const props = defineProps<{ assessment?: SccaAssessment }>()
 const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
 
 const toast = useToast()
+const confirm = useConfirm()
 const { user } = useAuth()
 const form = useTemplateRef('form')
 const dirty = useSccaDirty()
@@ -29,17 +31,22 @@ function customDue(reason: string | null | undefined) {
   if (!config.value) return reason === 'system_change'
   return !!sccaListItem(config.value, 'assessment_reason', reason)?.attrs?.custom_due_date
 }
-const renewalReason = computed(() =>
-  config.value?.lists.assessment_reason.find((item) => item.active && item.attrs?.renewal)?.code ?? 'annual_review',
-)
+/** Whether the reason picks an existing application (Annual review, System change) or types a
+ * new one (New application): the reason's `lookup` rule in SCCA configuration > Lists. */
+function looksUp(reason: string | null | undefined) {
+  if (!reason) return false
+  const rule = sccaListItem(config.value, 'assessment_reason', reason)?.attrs?.lookup
+  return typeof rule === 'boolean' ? rule : reason !== 'new_application'
+}
 
 const assessorName = computed(() => props.assessment?.assessor || user.value?.name || '')
 /** Only the assessor (or a BCM admin) picks the contributor; a new assessment's creator is the assessor. */
 const canSetContributor = computed(() => !props.assessment || props.assessment.permissions.can_set_contributor)
 
 const schema = z.object({
-  application_code: z.string().trim().min(1, 'Enter an application code.'),
-  application_name: z.string().trim().min(1, 'Enter an application name.'),
+  application_id: z.number().nullable().optional(),
+  application_code: z.string().trim().max(TEXT_LIMITS.short),
+  application_name: z.string().trim().max(TEXT_LIMITS.name),
   application_description: z.string().optional(),
   assessment_reason: z.string('Select a reason.').min(1, 'Select a reason.'),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
@@ -55,6 +62,14 @@ const schema = z.object({
   business_days: z.string('Select the business days.').min(1, 'Select the business days.'),
   business_hours: z.string('Select the business hours.').min(1, 'Select the business hours.'),
 }).superRefine((value, context) => {
+  if (looksUp(value.assessment_reason)) {
+    if (!value.application_id) {
+      context.addIssue({ code: 'custom', path: ['application_id'], message: 'Pick the application.' })
+    }
+  } else if (value.assessment_reason) {
+    if (!value.application_code) context.addIssue({ code: 'custom', path: ['application_code'], message: 'Enter an application code.' })
+    if (!value.application_name) context.addIssue({ code: 'custom', path: ['application_name'], message: 'Enter an application name.' })
+  }
   if (!customDue(value.assessment_reason) || !value.assessment_date) return
   if (!value.due_date) {
     context.addIssue({ code: 'custom', path: ['due_date'], message: `Enter the renewal due date. It can be sooner than ${period.value}.` })
@@ -82,10 +97,12 @@ function addMonths(iso: string, months: number) {
 
 function fromAssessment(assessment?: SccaAssessment): State {
   return {
+    application_id: assessment?.application_id ?? null,
     application_code: assessment?.application_code ?? '',
     application_name: assessment?.application_name ?? '',
     application_description: assessment?.application_description ?? '',
-    assessment_reason: (assessment?.assessment_reason ?? 'new_application') as State['assessment_reason'],
+    // A new SCCA starts with no reason: it decides how the application is chosen.
+    assessment_reason: (assessment?.assessment_reason ?? '') as State['assessment_reason'],
     assessment_date: assessment?.assessment_date ?? '',
     due_date: assessment?.due_date ?? null,
     contributor_id: assessment?.contributor_id ?? null,
@@ -103,40 +120,98 @@ function fromAssessment(assessment?: SccaAssessment): State {
 
 const state = reactive<State>(fromAssessment(props.assessment))
 
-/** On a new assessment, the existing application picked in the Application name search. */
+/** The application picked in the lookup (Annual review, System change). */
 const pickedApplication = ref<SccaApplication | null>(null)
+const lookup = computed(() => looksUp(state.assessment_reason))
+const noReason = computed(() => !state.assessment_reason)
 
 function onPickApplication(application: SccaApplication | null) {
   pickedApplication.value = application
-  if (!application) return
-  Object.assign(state, {
-    application_code: application.application_code ?? '',
-    application_name: application.application_name,
-    application_description: application.application_description ?? '',
-    application_owner: application.application_owner ?? '',
-    it_support: application.it_support ?? '',
-    business_stakeholders: application.business_stakeholders ?? '',
-    country: application.country ?? '',
-    vendor_name: application.vendor_name ?? '',
-    deployment_model: (application.deployment_model ?? undefined) as State['deployment_model'],
-    customer_facing: application.customer_facing == null
-      ? undefined as unknown as State['customer_facing']
-      : application.customer_facing ? 'yes' : 'no',
-    business_days: (application.business_days ?? undefined) as State['business_days'],
-    business_hours: (application.business_hours ?? undefined) as State['business_hours'],
-  })
-  // An application that was assessed before is no longer a new application.
-  const current = sccaListItem(config.value, 'assessment_reason', state.assessment_reason)
-  if (config.value ? !current?.attrs?.renewal && !current?.attrs?.custom_due_date : state.assessment_reason === 'new_application') {
-    state.assessment_reason = renewalReason.value
+  if (!application) {
+    Object.assign(state, { application_id: null, application_code: '', application_name: '' })
+    return
+  }
+  state.application_id = application.application_id
+  state.application_code = application.application_code ?? ''
+  state.application_name = application.application_name
+  // A new SCCA copies the rest of the header from the application's latest SCCA.
+  if (!props.assessment) {
+    Object.assign(state, {
+      application_description: application.application_description ?? '',
+      application_owner: application.application_owner ?? '',
+      it_support: application.it_support ?? '',
+      business_stakeholders: application.business_stakeholders ?? '',
+      country: application.country ?? '',
+      vendor_name: application.vendor_name ?? '',
+      deployment_model: (application.deployment_model ?? undefined) as State['deployment_model'],
+      customer_facing: application.customer_facing == null
+        ? undefined as unknown as State['customer_facing']
+        : application.customer_facing ? 'yes' : 'no',
+      business_days: (application.business_days ?? undefined) as State['business_days'],
+      business_hours: (application.business_hours ?? undefined) as State['business_hours'],
+    })
   }
   form.value?.clear()
 }
 
+// Changing between "pick an application" and "type a new one" clears the application, after
+// asking when one was already chosen.
+let reverting = false
+watch(() => state.assessment_reason, async (reason, previous) => {
+  if (reverting) {
+    reverting = false
+    return
+  }
+  if (looksUp(reason) === looksUp(previous) || !previous) return
+  const chosen = state.application_id || state.application_code || state.application_name
+  if (chosen && !(await confirm({
+    title: 'Change the reason?',
+    description: looksUp(reason)
+      ? 'This reason picks an existing application, so the application code and name you typed are cleared.'
+      : 'A new application is typed, so the application you picked is cleared.',
+    confirmLabel: 'Change reason',
+  }))) {
+    reverting = true
+    state.assessment_reason = previous as State['assessment_reason']
+    return
+  }
+  pickedApplication.value = null
+  Object.assign(state, { application_id: null, application_code: '', application_name: '' })
+})
+
+/** The picked application's final characteristics (from its latest final SCCA). */
+const characteristics = ref<ApplicationCharacteristics | null>(null)
+watch(() => (lookup.value ? state.application_id : null), async (id) => {
+  characteristics.value = null
+  if (!id) return
+  if (pickedApplication.value?.application_id === id) {
+    characteristics.value = pickedApplication.value.characteristics
+    return
+  }
+  try {
+    characteristics.value = (await applicationsApi.get(id)).characteristics ?? null
+  } catch {
+    characteristics.value = null
+  }
+}, { immediate: true })
+
+const characteristicsSource = computed(() => {
+  const final = characteristics.value?.final
+  if (!final) return ''
+  return `From ${final.ref_no}${final.finalised_at ? `, final ${formatDate(final.finalised_at)}` : ''}.`
+})
+
 const pickedNote = computed(() => {
   const application = pickedApplication.value
-  if (!application) return null
+  if (!application || props.assessment) return null
   const last = application.last_assessment
+  if (!last) {
+    return {
+      color: 'info' as const,
+      title: 'No SCCA yet for this application',
+      description: 'Fill in the application details below.',
+    }
+  }
   const ref = [last.ref_no, last.assessment_date ? formatDate(last.assessment_date) : null].filter(Boolean).join(', ')
   const source = `Copied the application details from its last SCCA${ref ? ` (${ref})` : ''}.`
   if (last.status !== 'final') {
@@ -182,7 +257,8 @@ watch(state, () => {
 
 function payload() {
   return blankToNull({
-    application_code: state.application_code,
+    application_id: lookup.value ? state.application_id ?? null : null,
+    application_code: state.application_code.trim().toUpperCase(),
     application_name: state.application_name,
     application_description: state.application_description,
     assessment_reason: state.assessment_reason,
@@ -254,6 +330,21 @@ async function onSubmit() {
         </template>
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField
+            label="Reason for assessment"
+            name="assessment_reason"
+            required
+            :help="noReason ? 'Pick the reason first: it decides how the application is chosen.' : lookup
+              ? 'Pick the application from the application list.'
+              : 'Type the new application\'s code and name.'"
+          >
+            <USelect
+              v-model="state.assessment_reason"
+              :items="reasonItems"
+              placeholder="Select a reason"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
             v-if="assessment?.ref_no"
             label="SCCA ref. no."
             name="ref_no"
@@ -264,36 +355,143 @@ async function onSubmit() {
               class="w-full"
             />
           </UFormField>
-          <UFormField
-            label="Application code"
-            name="application_code"
-            required
-          >
-            <UInput
-              v-model="state.application_code"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField
-            label="Application name"
-            name="application_name"
-            required
-            :help="assessment ? undefined : 'Search applications assessed before, or type a new name.'"
-          >
-            <UInput
-              v-if="assessment"
-              v-model="state.application_name"
-              class="w-full"
-            />
-            <SccaApplicationSearch
-              v-else
-              v-model="state.application_name"
-              aria-label="Application name"
-              @pick="onPickApplication"
-            />
-          </UFormField>
+        </div>
+
+        <fieldset
+          :disabled="noReason"
+          class="mt-4 grid gap-4 sm:grid-cols-2"
+          :class="noReason ? 'opacity-60' : ''"
+        >
+          <legend class="sr-only">
+            Application
+          </legend>
+          <template v-if="lookup">
+            <UFormField
+              class="sm:col-span-2"
+              label="Application"
+              name="application_id"
+              required
+              help="Search the application list by code or name. Applications that aren't listed are added in Administration > Applications."
+            >
+              <SccaApplicationSearch
+                v-model="state.application_id"
+                :selected="state.application_id ? { code: state.application_code, name: state.application_name } : null"
+                aria-label="Application"
+                @pick="onPickApplication"
+              />
+            </UFormField>
+            <UFormField
+              label="Application code"
+              name="application_code"
+            >
+              <UInput
+                :model-value="state.application_code"
+                disabled
+                placeholder="From the application list"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="Application name"
+              name="application_name"
+            >
+              <UInput
+                :model-value="state.application_name"
+                disabled
+                placeholder="From the application list"
+                class="w-full"
+              />
+            </UFormField>
+            <div
+              v-if="state.application_id"
+              class="rounded-md border border-default p-3 text-sm sm:col-span-2"
+            >
+              <p class="font-medium text-highlighted">
+                Previous final characteristics
+              </p>
+              <p
+                v-if="!characteristics?.final"
+                class="mt-1 text-muted"
+              >
+                No final SCCA yet for this application.
+              </p>
+              <dl
+                v-else
+                class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4"
+              >
+                <div>
+                  <dt class="text-xs text-muted">
+                    Category
+                  </dt>
+                  <dd>{{ sccaListLabel(config, 'category', characteristics.criticality_category) ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted">
+                    RTO (hours)
+                  </dt>
+                  <dd class="tabular-nums">
+                    {{ characteristics.rto ?? '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted">
+                    RPO
+                  </dt>
+                  <dd>{{ characteristics.rpo ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted">
+                    DR capacity (%)
+                  </dt>
+                  <dd class="tabular-nums">
+                    {{ characteristics.dr_capacity ?? '—' }}
+                  </dd>
+                </div>
+                <p class="col-span-full text-xs text-muted">
+                  {{ characteristicsSource }}
+                </p>
+              </dl>
+            </div>
+          </template>
+          <template v-else>
+            <UFormField
+              label="Application code"
+              name="application_code"
+              required
+              help="A code that isn't in the application list yet."
+            >
+              <template #hint>
+                <FieldCount
+                  :value="state.application_code"
+                  :max="TEXT_LIMITS.short"
+                />
+              </template>
+              <UInput
+                v-model="state.application_code"
+                :maxlength="TEXT_LIMITS.short"
+                class="w-full uppercase"
+              />
+            </UFormField>
+            <UFormField
+              label="Application name"
+              name="application_name"
+              required
+            >
+              <template #hint>
+                <FieldCount
+                  :value="state.application_name"
+                  :max="TEXT_LIMITS.name"
+                />
+              </template>
+              <UInput
+                v-model="state.application_name"
+                :maxlength="TEXT_LIMITS.name"
+                class="w-full"
+              />
+            </UFormField>
+          </template>
           <UAlert
-            v-if="!assessment && pickedNote"
+            v-if="pickedNote"
             class="sm:col-span-2"
             :color="pickedNote.color"
             variant="subtle"
@@ -301,17 +499,6 @@ async function onSubmit() {
             :title="pickedNote.title"
             :description="pickedNote.description"
           />
-          <UFormField
-            label="Reason for assessment"
-            name="assessment_reason"
-            required
-          >
-            <USelect
-              v-model="state.assessment_reason"
-              :items="reasonItems"
-              class="w-full"
-            />
-          </UFormField>
           <UFormField
             label="Assessment date"
             name="assessment_date"
@@ -336,7 +523,7 @@ async function onSubmit() {
           </UFormField>
           <p
             v-else-if="standardDue"
-            class="text-sm text-muted sm:col-span-2"
+            class="self-end text-sm text-muted"
           >
             Renewal due {{ formatDate(standardDue) }}, {{ period }} after this assessment.
           </p>
@@ -345,8 +532,15 @@ async function onSubmit() {
             label="Description"
             name="application_description"
           >
+            <template #hint>
+              <FieldCount
+                :value="state.application_description"
+                :max="TEXT_LIMITS.long"
+              />
+            </template>
             <UTextarea
               v-model="state.application_description"
+              :maxlength="TEXT_LIMITS.long"
               class="w-full"
               :rows="3"
             />
@@ -372,7 +566,7 @@ async function onSubmit() {
             <UserPicker
               v-model="state.contributor_id"
               :selected="assessment?.contributor ?? null"
-              :disabled="!canSetContributor"
+              :disabled="!canSetContributor || noReason"
               aria-label="Contributor"
               permission="scca.access"
             />
@@ -402,8 +596,15 @@ async function onSubmit() {
             label="Country"
             name="country"
           >
+            <template #hint>
+              <FieldCount
+                :value="state.country"
+                :max="TEXT_LIMITS.medium"
+              />
+            </template>
             <UInput
               v-model="state.country"
+              :maxlength="TEXT_LIMITS.medium"
               class="w-full"
             />
           </UFormField>
@@ -411,8 +612,15 @@ async function onSubmit() {
             label="Vendor"
             name="vendor_name"
           >
+            <template #hint>
+              <FieldCount
+                :value="state.vendor_name"
+                :max="TEXT_LIMITS.name"
+              />
+            </template>
             <UInput
               v-model="state.vendor_name"
+              :maxlength="TEXT_LIMITS.name"
               class="w-full"
             />
           </UFormField>
@@ -467,7 +675,7 @@ async function onSubmit() {
               placeholder="Select"
             />
           </UFormField>
-        </div>
+        </fieldset>
       </UCard>
 
       <UCard class="lg:sticky lg:top-6">
@@ -479,9 +687,9 @@ async function onSubmit() {
         <div class="space-y-4 text-sm">
           <p>This form follows the SCCA Tools</p>
           <ol class="list-decimal space-y-3 pl-5">
-            <li>Application: the SCC_Rating header. Description, owner, IT support and stakeholders are saved on the application.</li>
+            <li>Application: pick the reason first. Annual review and System change pick an application from the list; a New application types its code and name.</li>
             <li>Rating: rate the 18 questions C1–P4 with the levels the form offers, and write a justification for each.</li>
-            <li>Interdependency: the A3 table of upstream and downstream systems. It suggests A3 and I4.</li>
+            <li>Interdependency: the A3 table of upstream and downstream applications, picked from the application list. It suggests A3 and I4.</li>
             <li>Recovery: IT committed, business and regulatory values, the agreed final values and the CIMBN Recovery Architecture standard.</li>
             <li>Result &amp; sign-off: category, upgrade or downgrade with a CIM / MKK / RA reference, signers and submit.</li>
           </ol>
@@ -489,17 +697,7 @@ async function onSubmit() {
         </div>
       </UCard>
     </div>
-
-    <!-- New assessment only: on a saved SCCA, Save is in the page's top bar. -->
-    <div
-      v-if="!assessment"
-      class="flex justify-end"
-    >
-      <UButton
-        type="submit"
-        label="Create assessment"
-        loading-auto
-      />
-    </div>
+    <!-- No button here: Create assessment (new) and Save (saved SCCA) are in the page's top bar
+         and submit this form by its id. -->
   </UForm>
 </template>

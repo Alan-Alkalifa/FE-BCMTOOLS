@@ -263,7 +263,7 @@ async function onSubmit() {
               :min="0.05"
               :max="200"
               :step="0.5"
-              locale="id-ID"
+              locale="en-GB"
               :format-options="{ maximumFractionDigits: 2 }"
               class="w-36"
             />

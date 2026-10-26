@@ -73,13 +73,25 @@ useHead(() => ({
   title: `${assessment.value?.application_name ?? 'Assessment'} · BCM Tools`,
 }))
 
-const tabItems = [
+/** Manage, a draft: each tab shows how many mandatory fields are still empty. */
+const missing = computed(() =>
+  props.section === 'manage' && assessment.value?.status === 'draft' && assessment.value.permissions.can_edit
+    ? sccaMissing(assessment.value, config.value)
+    : null,
+)
+const TAB_ITEMS = [
   { label: 'Application', value: 'details', icon: 'i-lucide-file-text', slot: 'details' },
   { label: 'Rating', value: 'rating', icon: 'i-lucide-list-checks', slot: 'rating' },
   { label: 'Interdependencies', value: 'interdependencies', icon: 'i-lucide-git-fork', slot: 'interdependencies' },
   { label: 'Recovery', value: 'recovery', icon: 'i-lucide-life-buoy', slot: 'recovery' },
   { label: 'Result and sign-off', value: 'result', icon: 'i-lucide-badge-check', slot: 'result' },
-]
+] as const
+const tabItems = computed(() => TAB_ITEMS.map((item) => {
+  const count = missing.value?.[item.value].length ?? 0
+  return count
+    ? { ...item, badge: { label: String(count), color: 'error' as const, variant: 'subtle' as const } }
+    : { ...item }
+}))
 
 async function confirmLeave() {
   return confirm({
@@ -405,6 +417,7 @@ function onSaved(saved: SccaAssessment) {
         v-if="panelOnTop"
         class="mb-6"
         :assessment="assessment"
+        :standards="standards?.items ?? []"
         @saved="onSaved"
       />
       <UTabs
@@ -503,6 +516,7 @@ function onSaved(saved: SccaAssessment) {
               v-if="!panelOnTop"
               :assessment="assessment"
               :actions="section === 'manage'"
+              :standards="standards?.items ?? []"
               @saved="onSaved"
             />
             <SccaTabComments

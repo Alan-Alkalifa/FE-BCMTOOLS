@@ -24,12 +24,40 @@ const iconItems = MENU_ICONS.map((name): { label: string, value: string, icon: s
   icon: name,
 }))
 
+/** A group with items keeps no route (its items would be unreachable). */
 const isGroup = computed(() => !!props.menu && !props.menu.route && props.menus.some((m) => m.parent_id === props.menu!.id))
+const byId = computed(() => new Map(props.menus.map((m) => [m.id, m])))
+function path(menu: AdminMenu): AdminMenu[] {
+  const chain: AdminMenu[] = []
+  let current: AdminMenu | undefined = menu
+  while (current && chain.length < 10) {
+    chain.unshift(current)
+    current = current.parent_id ? byId.value.get(current.parent_id) : undefined
+  }
+  return chain
+}
+/** This menu and everything under it: it can't move into them. */
+const own = computed(() => {
+  const ids = new Set<number>(props.menu ? [props.menu.id] : [])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const m of props.menus) {
+      if (m.parent_id && ids.has(m.parent_id) && !ids.has(m.id)) {
+        ids.add(m.id)
+        grew = true
+      }
+    }
+  }
+  return ids
+})
+// Any group (a menu without a route) up to the third level can be the parent.
 const parentItems = computed(() => [
   { label: 'Top level', value: null },
   ...props.menus
-    .filter((m) => m.parent_id === null && m.id !== props.menu?.id && !m.route)
-    .map((m) => ({ label: m.label, value: m.id })),
+    .filter((m) => !m.route && !own.value.has(m.id) && path(m).length <= 3)
+    .map((m) => ({ label: path(m).map((item) => item.label).join(' / '), value: m.id }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
 ])
 const permissionItems = computed(() => [
   { label: 'Everyone signed in', value: null, description: 'No permission needed' },
@@ -120,7 +148,6 @@ async function save() {
               value-key="value"
               :items="parentItems"
               :search-input="false"
-              :disabled="isGroup"
               class="w-full"
             />
           </UFormField>

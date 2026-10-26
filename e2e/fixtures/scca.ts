@@ -192,7 +192,7 @@ export function assessment(overrides: Record<string, unknown> = {}) {
     missing_answers: [],
     result: SAMPLE_RESULT,
     interdependencies: [
-      { direction: 'upstream', seq: 1, system_name: 'Core Banking', criticality_category: 'Critical', rto: '2 hours', rpo: null, dr_capacity: null, processing_mode: 'Online', dependency: 'Full', workaround: null, gaps: null },
+      { direction: 'upstream', seq: 1, application_id: 3, system_name: 'Core Banking', criticality_category: 'Critical', rto: '2 hours', rpo: null, dr_capacity: null, processing_mode: 'Online', dependency: 'Full', workaround: null, gaps: null, gaps_note: null },
     ],
     recovery_values: [],
     signoffs: [] as ReturnType<typeof signoff>[],
@@ -202,6 +202,23 @@ export function assessment(overrides: Record<string, unknown> = {}) {
     updated_at: '2026-03-01T00:00:00Z',
     ...overrides,
   }
+}
+
+/** Every recovery block an SCCA needs before Submit (Regulatory may stay empty). */
+export function completeRecovery() {
+  const empty = { availability_sla: null, mtd: null, rto: null, rpo: null, ha: null, dr_capacity: null, instance_type: null, dr_type: null }
+  return [
+    { ...empty, kind: 'current_it', availability_sla: '99.5', rto: '2', rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: '100', instance_type: 'Different' },
+    { ...empty, kind: 'business', availability_sla: '99.5', mtd: '4', rto: '2', rpo: 'LST', dr_capacity: '100' },
+    { ...empty, kind: 'regulatory' },
+    { ...empty, kind: 'cimbn_standard', availability_sla: '99.5', rto: '2', rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: '100', dr_type: 'Warm DR' },
+    { ...empty, kind: 'final', availability_sla: '99.5', mtd: '4', rto: '2', rpo: 'LST', ha: 'Active - Active', dr_capacity: '100%' },
+  ]
+}
+
+/** An upstream application with every required field. */
+export const COMPLETE_INTERDEPENDENCY = {
+  direction: 'upstream', seq: 1, application_id: 3, system_name: 'Core Banking', criticality_category: 'Critical', rto: '2', rpo: 'LST', dr_capacity: '100', processing_mode: 'Online', dependency: 'Full', workaround: null, gaps: null, gaps_note: null,
 }
 
 export function draft() {
@@ -278,9 +295,23 @@ export const LIST = {
   pages: 1,
 }
 
-/** GET /api/scca/applications: applications assessed before, from their latest SCCA. */
+const NO_FINAL = { criticality_category: null, rto: null, rpo: null, dr_capacity: null, final: null }
+
+/** GET /api/scca/applications: active applications of the master, with the header of their
+ * latest SCCA and their final characteristics. */
 export const APPLICATIONS = [
   {
+    application_id: 1,
+    category: 'Very Important',
+    rto_hours: '4',
+    rpo: 'LST',
+    characteristics: {
+      criticality_category: 'Very Important',
+      rto: '4',
+      rpo: 'LST',
+      dr_capacity: '100',
+      final: { id: 7, ref_no: 'SCCA-2024-0007', finalised_at: '2024-09-20T03:00:00Z' },
+    },
     application_code: 'CCOMNI',
     application_name: 'CC Omni Channel',
     application_description: 'Contact center voice, digital and video banking',
@@ -293,9 +324,14 @@ export const APPLICATIONS = [
     customer_facing: true,
     business_days: 'Mon-Sun',
     business_hours: '00-24',
-    last_assessment: { ref_no: 'SCCA-2024-0007', status: 'final', assessment_date: '2024-09-16', due_date: '2026-09-16' },
+    last_assessment: { id: 7, ref_no: 'SCCA-2024-0007', status: 'final', assessment_date: '2024-09-16', due_date: '2026-09-16' },
   },
   {
+    application_id: 2,
+    category: null,
+    rto_hours: null,
+    rpo: null,
+    characteristics: NO_FINAL,
     application_code: 'HR',
     application_name: 'HR Portal',
     application_description: null,
@@ -308,7 +344,33 @@ export const APPLICATIONS = [
     customer_facing: false,
     business_days: 'Mon-Fri',
     business_hours: '08-18',
-    last_assessment: { ref_no: 'SCCA-2026-0002', status: 'in_approval', assessment_date: '2026-02-01', due_date: '2028-02-01' },
+    last_assessment: { id: 2, ref_no: 'SCCA-2026-0002', status: 'in_approval', assessment_date: '2026-02-01', due_date: '2028-02-01' },
+  },
+  {
+    application_id: 3,
+    category: 'Critical',
+    rto_hours: '12',
+    rpo: 'LST',
+    characteristics: {
+      criticality_category: 'Critical',
+      rto: '12',
+      rpo: 'LST',
+      dr_capacity: '100',
+      final: { id: 9, ref_no: 'SCCA-2025-0009', finalised_at: '2025-11-02T03:00:00Z' },
+    },
+    application_code: 'CBS',
+    application_name: 'Core Banking',
+    application_description: null,
+    application_owner: 'Ops Owner',
+    it_support: 'IT Support',
+    business_stakeholders: 'Operations',
+    country: 'Indonesia',
+    vendor_name: null,
+    deployment_model: 'On-premise',
+    customer_facing: false,
+    business_days: 'Mon-Fri',
+    business_hours: '08-18',
+    last_assessment: null,
   },
 ]
 
@@ -323,6 +385,13 @@ export async function mockScca(page: Page, current = assessment(), config: Recor
     const items = APPLICATIONS.filter((row) =>
       `${row.application_code} ${row.application_name}`.toLowerCase().includes(q))
     return route.fulfill({ json: { items } })
+  })
+  await page.route(/\/api\/applications\/\d+$/, (route) => {
+    const id = Number(new URL(route.request().url()).pathname.split('/').pop())
+    const row = APPLICATIONS.find((item) => item.application_id === id)
+    return row
+      ? route.fulfill({ json: { id, application_code: row.application_code, application_name: row.application_name, characteristics: row.characteristics } })
+      : route.fulfill({ status: 404, json: { error: 'not_found' } })
   })
   await page.route('**/api/scca/calculate**', (route) =>
     route.fulfill({

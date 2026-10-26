@@ -341,7 +341,7 @@ function printReport() {
           v-if="!assessment.interdependencies.length"
           class="text-sm text-muted"
         >
-          No upstream or downstream systems recorded.
+          No upstream or downstream applications recorded.
         </p>
         <table
           v-else

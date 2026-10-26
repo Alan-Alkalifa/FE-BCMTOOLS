@@ -133,7 +133,17 @@ function clearFilters() {
 // --- data ------------------------------------------------------------------------------------
 
 const overview = useSccaOverview(filters)
-const renewals = useSccaRenewals(paged)
+/** The renewal KPI card picked: the list shows only that bucket. */
+const bucket = computed<SccaRenewalBucket | undefined>(() => {
+  const value = text('bucket')
+  return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
+})
+const renewals = useSccaRenewals(computed(() => ({ ...paged.value, bucket: bucket.value })))
+const renewalCards = [
+  { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
+  { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
+  { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
+]
 const register = useSccaRegister(paged)
 const bottlenecks = useSccaBottlenecks(paged)
 
@@ -165,6 +175,9 @@ const stepBars = computed(() =>
   stepRows.value.map((row) => ({ label: signoffRoleLabel(row.step, true), value: row.average_working_days ?? 0 })),
 )
 
+/** Same-day approvals average under a day: show them to two decimals. */
+const stepDigits = computed(() => (stepRows.value.some((row) => (row.average_working_days ?? 0) >= 1) ? 1 : 2))
+
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
 }
@@ -182,7 +195,7 @@ const monthSummary = computed(() => {
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
   const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
-  return slowest ? `Slowest step: ${signoffRoleLabel(slowest.step, true)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
+  return slowest ? `Slowest step: ${signoffRoleLabel(slowest.step, true)}, ${formatNumber(slowest.average_working_days, stepDigits.value)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: SccaMonitorRef | null) {
@@ -245,12 +258,46 @@ function pageTo(next: number) {
       : 'The SCCAs you assess, contribute to or sign: where each one is, renewals due and approvals waiting. Read-only.'"
     :crumbs="[{ label: 'SCCA' }, { label: 'Monitoring' }]"
   >
-    <UCard :ui="{ body: 'p-4 sm:p-4' }">
-      <div
-        class="flex flex-wrap items-end gap-2"
-        role="search"
-        aria-label="Monitoring filters"
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <ListFilterBar
+        :filtered="filtered"
+        :bordered="false"
+        @clear="clearFilters"
       >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Application, code or ref. no."
+            aria-label="Search applications"
+            class="w-full"
+          />
+        </template>
+        <USelectMenu
+          v-model="status"
+          value-key="value"
+          :items="statusItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="State"
+        />
+        <USelectMenu
+          v-model="categories"
+          value-key="value"
+          multiple
+          :items="categoryItems"
+          :search-input="false"
+          placeholder="All categories"
+          class="w-48"
+          aria-label="Category"
+        />
+        <USelectMenu
+          v-model="department"
+          value-key="value"
+          :items="departmentItems"
+          class="w-52"
+          aria-label="Department"
+        />
         <USelectMenu
           v-model="period"
           value-key="value"
@@ -273,47 +320,7 @@ function pageTo(next: number) {
             aria-label="To"
           />
         </template>
-        <USelectMenu
-          v-model="categories"
-          value-key="value"
-          multiple
-          :items="categoryItems"
-          :search-input="false"
-          placeholder="All categories"
-          class="w-48"
-          aria-label="Category"
-        />
-        <USelectMenu
-          v-model="status"
-          value-key="value"
-          :items="statusItems"
-          :search-input="false"
-          class="w-44"
-          aria-label="State"
-        />
-        <USelectMenu
-          v-model="department"
-          value-key="value"
-          :items="departmentItems"
-          class="w-52"
-          aria-label="Department"
-        />
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Application, code or ref. no."
-          aria-label="Search applications"
-          class="w-full sm:w-64"
-        />
-        <UButton
-          v-if="filtered"
-          color="neutral"
-          variant="link"
-          icon="i-lucide-x"
-          label="Clear filters"
-          @click="clearFilters"
-        />
-      </div>
+      </ListFilterBar>
     </UCard>
 
     <UTabs
@@ -325,34 +332,16 @@ function pageTo(next: number) {
       <template #overview>
         <div class="mt-4 space-y-6">
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <ULink
+            <KpiCard
               v-for="card in cards"
               :key="card.key"
               :to="cardLink(card.to)"
-              class="group rounded-lg border border-default bg-default p-4 transition hover:border-accented hover:bg-elevated/40"
-              :aria-label="`${card.label}: ${card.value ?? 'loading'}`"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="text-sm text-muted">
-                    {{ card.label }}
-                  </p>
-                  <p
-                    class="mt-1 text-3xl font-semibold tabular-nums"
-                    :class="card.tone === 'error' && card.value ? 'text-error' : card.tone === 'warning' && card.value ? 'text-warning' : 'text-highlighted'"
-                  >
-                    {{ card.value ?? '—' }}
-                  </p>
-                  <p class="mt-1 text-xs text-muted">
-                    {{ card.hint }}
-                  </p>
-                </div>
-                <UIcon
-                  :name="card.icon"
-                  class="size-5 text-dimmed group-hover:text-muted"
-                />
-              </div>
-            </ULink>
+              :label="card.label"
+              :value="card.value"
+              :hint="card.hint"
+              :icon="card.icon"
+              :tone="card.tone"
+            />
           </div>
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart
@@ -377,21 +366,27 @@ function pageTo(next: number) {
       </template>
 
       <template #renewals>
+        <div class="mt-4 grid gap-4 sm:grid-cols-3">
+          <KpiCard
+            v-for="card in renewalCards"
+            :key="card.bucket"
+            :to="{ query: { ...route.query, bucket: bucket === card.bucket ? undefined : card.bucket, page: undefined } }"
+            :label="card.label"
+            :value="renewals.data.value?.counts[card.bucket] ?? null"
+            :hint="bucket === card.bucket ? 'Showing only these. Click again to show all.' : card.hint"
+            :icon="card.icon"
+            :tone="card.tone"
+            :active="bucket === card.bucket"
+          />
+        </div>
         <UCard
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="bucket in (['overdue', 'due_30', 'due_90'] as const)"
-                :key="bucket"
-                :color="sccaRenewalBucket[bucket].color"
-                variant="subtle"
-                :icon="sccaRenewalBucket[bucket].icon"
-                :label="`${sccaRenewalBucket[bucket].label}: ${renewals.data.value?.counts[bucket] ?? 0}`"
-              />
-            </div>
+            <p class="text-sm text-muted">
+              {{ bucket ? `${sccaRenewalBucket[bucket].label}, soonest first.` : 'Overdue and due within 90 days, soonest first.' }}
+            </p>
             <UButton
               :to="sccaExportUrl('renewals', filters)"
               external
@@ -641,7 +636,7 @@ function pageTo(next: number) {
           <SccaBarChart
             title="Average working days per sign-off step"
             measure="Working days"
-            :digits="1"
+            :digits="stepDigits"
             :items="stepBars"
             :summary="stepSummary"
             :loading="bottlenecks.status.value === 'pending' && !bottlenecks.data.value"

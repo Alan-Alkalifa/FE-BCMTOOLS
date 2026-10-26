@@ -114,6 +114,7 @@ const state = reactive(fromAssessment())
 
 const computedCategory = computed(() => props.assessment.result.computed_category)
 
+/** Gaps from the earlier tabs: when there are any, the justification field shows. */
 const previousGaps = computed(() => previousTabGapMessages({
   missingAnswers: props.assessment.missing_answers,
   recoveryValues: props.assessment.recovery_values,
@@ -293,24 +294,7 @@ async function onSubmit() {
           />
         </UCard>
 
-        <UAlert
-          v-if="previousGaps.length"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-triangle-alert"
-          title="Gaps from earlier tabs"
-        >
-          <template #description>
-            <ul class="mt-1 list-disc space-y-1 pl-4">
-              <li
-                v-for="(gap, index) in previousGaps"
-                :key="index"
-              >
-                {{ gap }}
-              </li>
-            </ul>
-          </template>
-        </UAlert>
+        <!-- The gaps from the earlier tabs are listed in the gap check above (SccaGapSummary). -->
 
         <UCard>
           <template #header>
@@ -361,8 +345,15 @@ async function onSubmit() {
               required
               help="Required for an upgrade or downgrade."
             >
+              <template #hint>
+                <FieldCount
+                  :value="state.cim_ref_no"
+                  :max="TEXT_LIMITS.medium"
+                />
+              </template>
               <UInput
                 v-model="state.cim_ref_no"
+                :maxlength="TEXT_LIMITS.medium"
                 class="w-full"
               />
             </UFormField>
@@ -375,8 +366,15 @@ async function onSubmit() {
                 ? 'Use this for the process workaround or other remarks. Required when you change the category.'
                 : 'Explain the gaps above and any process workaround.'"
             >
+              <template #hint>
+                <FieldCount
+                  :value="state.justification"
+                  :max="TEXT_LIMITS.long"
+                />
+              </template>
               <UTextarea
                 v-model="state.justification"
+                :maxlength="TEXT_LIMITS.long"
                 name="justification"
                 class="w-full"
                 :rows="4"

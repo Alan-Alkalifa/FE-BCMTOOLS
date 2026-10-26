@@ -255,8 +255,15 @@ async function onSubmit() {
               :name="`justification.${question.code}`"
               label="Justification"
             >
+              <template #hint>
+                <FieldCount
+                  :value="state.answers[question.code]!.justification"
+                  :max="TEXT_LIMITS.long"
+                />
+              </template>
               <UTextarea
                 v-model="state.answers[question.code]!.justification"
+                :maxlength="TEXT_LIMITS.long"
                 class="w-full"
                 :rows="2"
               />

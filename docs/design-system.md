@@ -9,7 +9,7 @@ The visual and interaction rules for BCM Tools, CIMB Niaga's internal Business C
 | Colour mode | Light only |
 | Accessibility | WCAG 2.2 AA |
 | UI language | English |
-| Formats | Indonesian: `16 Okt 2026`, `1.234.567,89`, `Rp 1.234.567`, times in WIB |
+| Formats | Dates in English: `16 Oct 2026`; numbers and money Indonesian: `1.234.567,89`, `Rp 1.234.567`; times in WIB |
 
 **Where things live**
 
@@ -221,8 +221,8 @@ The UI is in English; numbers, dates and currency follow Indonesian conventions.
 
 | Function | Example output | Notes |
 |---|---|---|
-| `formatDate(value)` | `16 Okt 2026` | |
-| `formatDateTime(value)` | `16 Okt 2026, 22.30 WIB` | Always shown in Jakarta time, whatever the browser's time zone |
+| `formatDate(value)` | `16 Oct 2026` | Three-letter English months everywhere |
+| `formatDateTime(value)` | `16 Oct 2026, 22:30 WIB` | Always shown in Jakarta time, whatever the browser's time zone |
 | `formatNumber(value)` | `1.234.567,89` | Up to 2 decimals by default |
 | `formatCurrency(value)` | `Rp 1.234.567` | No decimals by default |
 | `formatPercent(0.125)` | `12,5%` | Input is a fraction |
@@ -276,7 +276,8 @@ Use `UForm` + `UFormField` with a [Zod](https://zod.dev) schema for validation.
 - **Help text** goes in `help`, below the field, in `text-muted`. Don't use placeholders as labels; placeholders are for format examples only (`e.g. 4 hours`).
 - **Validation:** validate on blur and on submit, not on every keystroke. Error text appears under the field in `error` colour, says what's wrong and how to fix it ("Enter an RTO between 1 and 72 hours"), and the field gets `aria-invalid`. On submit failure, focus the first invalid field.
 - **Server errors** that aren't about one field: a `UAlert color="error"` at the top of the form.
-- **Dates** are entered and shown as `16 Okt 2026`; send ISO dates (`2026-10-16`) to the API.
+- **Dates** are entered and shown as `16 Oct 2026`; send ISO dates (`2026-10-16`) to the API.
+- **Text limits**: every text field shows how many characters it uses of its limit under the field (`<FieldCount>` in the field's `#hint` slot, and `maxlength` on the input), with the limits of `utils/limits.ts` (`TEXT_LIMITS`: 32, 64, 255, 2,000), the same as the API's.
 - **Money:** prefix `Rp`, no decimals unless the field needs them; format with `formatCurrency` when displayed.
 
 ### Data tables
@@ -289,7 +290,7 @@ Use `UTable` (TanStack Table under the hood). The app config makes every table c
 | Columns | Most important identifying column first (name/ID). Actions column last, `sm` ghost icon buttons or a `...` dropdown |
 | Width | Don't wrap identifiers; truncate long text with a tooltip showing the full value |
 | Sorting | Sortable headers show an arrow icon; default sort is stated in the UI or obvious (e.g. newest first) |
-| Filtering | Toolbar above the table: search `UInput` with `i-lucide-search` on the left, filters (`USelectMenu`) next to it, primary action on the right |
+| Filtering | `<ListFilterBar>` above the table, the same on every list: search first (`#search`), then the filters in the order status/step → category → reason → person → dates, *Clear filters* when one is set, export or primary actions on the right (`#actions`). Filters live in the URL |
 | Pagination | `UPagination` below the table, right-aligned, with "Showing 1–25 of 312" on the left. 25 rows per page by default |
 | Row click | If rows open a detail page, the whole row is clickable **and** the name cell is a real link (for keyboard and new-tab use) |
 | Selection | Checkbox column first; bulk actions appear in the toolbar when rows are selected |

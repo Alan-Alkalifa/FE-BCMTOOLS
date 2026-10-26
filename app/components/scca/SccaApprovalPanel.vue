@@ -6,7 +6,10 @@ import type { SccaApprovalResult, SccaAssessment } from '~/composables/useScca'
  * and the history. There is no recall: once submitted, only a rejection returns it to draft.
  */
 /** `actions: false` (Monitoring) shows the status and history only. */
-const props = withDefaults(defineProps<{ assessment: SccaAssessment, actions?: boolean }>(), { actions: true })
+const props = withDefaults(
+  defineProps<{ assessment: SccaAssessment, actions?: boolean, standards?: SccaConfigStandard[] }>(),
+  { actions: true, standards: () => [] },
+)
 const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
 
 const toast = useToast()
@@ -22,22 +25,15 @@ const pendingSignoff = computed(() =>
   props.assessment.signoffs.find((row) => row.role === props.assessment.pending_role) ?? null,
 )
 
-// Required steps the assessor picks (fixed steps are set by BCM; optional ones may stay empty).
+// Every mandatory field on every tab must be filled before Submit (the API checks the same).
 const config = useSccaConfigContext()
-const unassigned = computed(() => {
-  const steps = config.value?.steps
-    ?? SCCA_SIGNOFF_ROLES.map((role) => ({ code: role.value, short: role.short, mandatory: true, signer_mode: 'chosen' }))
-  return steps
-    .filter((step) => step.mandatory && step.signer_mode !== 'fixed')
-    .filter((step) => !props.assessment.signoffs.some((row) => row.role === step.code && row.user_id))
-    .map((step) => step.short)
-})
+const missingCount = computed(() => sccaMissingCount(sccaMissing(props.assessment, config.value)))
+const gapCount = computed(() => sccaMissingCount(sccaGaps(props.assessment, config.value, props.standards)))
+const showChecks = computed(() => props.assessment.status !== 'final' || gapCount.value > 0)
 
 const submitBlockers = computed(() => {
   const blockers: string[] = []
-  const missing = props.assessment.missing_answers.length
-  if (missing) blockers.push(`Rate the ${missing} remaining question${missing === 1 ? '' : 's'}.`)
-  if (unassigned.value.length) blockers.push(`Pick a user for: ${unassigned.value.join(', ')}.`)
+  if (missingCount.value) blockers.push('Fill in the fields listed above first.')
   if (dirty?.value) blockers.push('Save your changes on this tab first.')
   return blockers
 })
@@ -87,10 +83,11 @@ function nextApprover(result: SccaApprovalResult) {
 }
 
 async function submit() {
+  const gaps = gapCount.value
   const ok = await confirm({
-    title: 'Submit for approval?',
-    description: 'The assessment is locked while the 9 sign-off steps approve it in order. You can\'t recall it: to change it, an approver must reject it back to draft.',
-    confirmLabel: 'Submit for approval',
+    title: gaps ? `Submit with ${gaps} gap${gaps === 1 ? '' : 's'}?` : 'Submit for approval?',
+    description: `${gaps ? 'The approvers see the gap check as it is now. ' : ''}The assessment is locked while the sign-off steps approve it in order. You can't recall it: to change it, an approver must reject it back to draft.`,
+    confirmLabel: gaps ? `Submit with ${gaps} gap${gaps === 1 ? '' : 's'}` : 'Submit for approval',
   })
   if (!ok) return
   await run(() => sccaApi.submit(props.assessment.id), (result) => ({
@@ -161,6 +158,13 @@ async function reject() {
         Draft. When it is complete, submit it: the sign-off steps approve one by one and each person is emailed when it's their turn.
       </p>
 
+      <SccaGapSummary
+        v-if="showChecks"
+        :assessment="assessment"
+        :standards="standards"
+        :show-missing="actions && permissions.can_submit"
+      />
+
       <div
         v-if="actions && permissions.can_submit"
         class="space-y-2"
@@ -194,8 +198,15 @@ async function reject() {
           help="Optional when you approve; required when you reject."
           :error="noteError ?? undefined"
         >
+          <template #hint>
+            <FieldCount
+              :value="note"
+              :max="TEXT_LIMITS.long"
+            />
+          </template>
           <UTextarea
             v-model="note"
+            :maxlength="TEXT_LIMITS.long"
             class="w-full"
             :rows="2"
             aria-label="Approval note"
