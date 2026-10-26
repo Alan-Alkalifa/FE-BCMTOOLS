@@ -140,6 +140,22 @@ async function remove(location: RaLocation) {
     description="Head office buildings and branches: each one's profile, map pin and RAs."
     :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]"
   >
+    <template #actions>
+      <UButton
+        :to="LOCATION_MAP_PATH"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-map"
+        label="Building map"
+      />
+      <UButton
+        v-if="canEdit"
+        :to="addTo"
+        icon="i-lucide-plus"
+        label="Input building data"
+      />
+    </template>
+
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
@@ -211,21 +227,6 @@ async function remove(location: RaLocation) {
           class="w-44"
           aria-label="Status"
         />
-        <div class="flex w-full flex-wrap gap-2 lg:ml-auto lg:w-auto">
-          <UButton
-            :to="LOCATION_MAP_PATH"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-map"
-            label="Building map"
-          />
-          <UButton
-            v-if="canEdit"
-            :to="addTo"
-            icon="i-lucide-plus"
-            label="Input building data"
-          />
-        </div>
       </div>
 
       <UTable

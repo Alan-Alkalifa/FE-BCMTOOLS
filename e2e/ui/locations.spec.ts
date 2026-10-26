@@ -135,3 +135,15 @@ test('an RA of a building waiting for approval can\'t be submitted yet', async (
   await expect(page.getByText('The building isn\'t approved yet')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
 })
+
+test('Building map and Input building data sit in the top bar', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/locations')
+  const add = page.getByRole('link', { name: 'Input building data' })
+  await expect(add).toHaveAttribute('href', '/locations/new', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Building map' }).first()).toHaveAttribute('href', '/locations/map')
+  const main = page.getByRole('main')
+  await expect(main.getByRole('link', { name: 'Input building data' })).toHaveCount(0)
+  const button = await add.boundingBox()
+  expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
+})
