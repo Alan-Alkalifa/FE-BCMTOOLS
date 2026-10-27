@@ -119,7 +119,6 @@ function removeGroup(groupIndex: number) {
           >
             <UInput
               v-model="category.name"
-              lang="id"
               class="w-full"
             />
           </UFormField>
@@ -159,14 +158,12 @@ function removeGroup(groupIndex: number) {
               v-model="hazard.short_name"
               :aria-label="`Type of Hazard ${numbers[groupIndex]?.[index]}`"
               placeholder="Type of Hazard"
-              lang="id"
               class="w-full"
             />
             <UTextarea
               v-model="hazard.name"
               :aria-label="`Full name of hazard ${numbers[groupIndex]?.[index]}`"
               placeholder="Full name"
-              lang="id"
               :rows="1"
               autoresize
               class="w-full"

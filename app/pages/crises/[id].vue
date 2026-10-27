@@ -293,7 +293,6 @@ const historyIcon: Record<string, string> = {
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h2
             class="text-2xl font-semibold text-highlighted"
-            lang="id"
           >
             {{ title }}
           </h2>
@@ -347,7 +346,7 @@ const historyIcon: Record<string, string> = {
                     What to do
                   </h2>
                   <p class="text-sm text-muted">
-                    BCM's guidebook for <span lang="id">{{ crisis.hazard.short_name }}</span>, for every affected place.
+                    BCM's guidebook for {{ crisis.hazard.short_name }}, for every affected place.
                   </p>
                 </div>
                 <StatusBadge

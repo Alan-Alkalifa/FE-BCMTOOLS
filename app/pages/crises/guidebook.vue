@@ -153,7 +153,6 @@ async function save() {
                   >
                     <span
                       class="min-w-0 flex-1 truncate"
-                      lang="id"
                     >{{ item.short_name }}</span>
                   </button>
                 </li>
@@ -167,7 +166,6 @@ async function save() {
             <div class="min-w-0">
               <h2
                 class="text-lg font-semibold"
-                lang="id"
               >
                 {{ selected.short_name }}
               </h2>

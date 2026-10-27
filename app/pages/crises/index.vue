@@ -182,7 +182,7 @@ async function declare() {
           </NuxtLink>
         </template>
         <template #hazard-cell="{ row }">
-          <span lang="id">{{ row.original.hazard.short_name }}</span>
+          <span>{{ row.original.hazard.short_name }}</span>
           <p class="text-xs text-muted">
             {{ row.original.hazard.category?.label }}
           </p>
