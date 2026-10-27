@@ -253,12 +253,19 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
             : 'By approving you agree to the sign-off statement below for this assessment.' }}
         </p>
       </template>
-      <UFormField
+            <UFormField
         label="Comment"
         help="Optional. Kept with your approval."
       >
+        <template #hint>
+          <FieldCount
+            :value="approvalComment"
+            :max="TEXT_LIMITS.long"
+          />
+        </template>
         <UTextarea
           v-model="approvalComment"
+          :maxlength="TEXT_LIMITS.long"
           :rows="3"
           autoresize
           class="w-full"

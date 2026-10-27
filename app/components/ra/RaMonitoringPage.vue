@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
-import type { RaMonitorLocation, RaMonitoringFilters, RaSignoffWaiting } from '~/composables/useRa'
-
+import type { RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting } from '~/composables/useRa'
 /**
  * RA (or RA Branch) Monitoring, as SCCA Monitoring: KPI cards and charts, renewals due, the
  * register of every location with its RA in force, and RAs waiting in sign-off. Read-only;
@@ -134,7 +133,17 @@ function clearFilters() {
 // --- data ------------------------------------------------------------------------------------
 
 const overview = useRaOverview(filters)
-const renewals = useRaRenewals(paged)
+/** The renewal KPI card picked: the list shows only that bucket. */
+const bucket = computed<Exclude<RaRenewalBucket, 'later'> | undefined>(() => {
+  const value = text('bucket')
+  return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
+})
+const renewals = useRaRenewals(computed(() => ({ ...paged.value, bucket: bucket.value })))
+const renewalCards = [
+  { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
+  { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
+  { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
+]
 const register = useRaRegister(paged)
 const bottlenecks = useRaBottlenecks(paged)
 const stepAverages = useRaBottlenecksStepAverages(filters)
@@ -205,6 +214,16 @@ function daysLeft(row: RaMonitorLocation) {
   return `${row.days_left} days left`
 }
 
+const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
+  { id: 'location', header: locationColumn.value },
+  { id: 'level', header: 'Highest residual' },
+  { id: 'approved', header: 'Last final RA' },
+  { accessorKey: 'renewal_date', header: 'Renewal date' },
+  { accessorKey: 'days_left', header: 'Due' },
+  { id: 'lic', header: 'LIC' },
+  { id: 'renewal', header: 'Renewal' },
+])
+
 /** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it; the rows
  *  carry the title from their own configuration version. */
 function stepLabel(role: string, title?: string | null) {
@@ -212,14 +231,6 @@ function stepLabel(role: string, title?: string | null) {
 }
 
 const locationColumn = computed(() => ra.value.location.single)
-const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
-  { id: 'location', header: locationColumn.value },
-  { id: 'level', header: 'Highest residual' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { accessorKey: 'days_left', header: 'Due' },
-  { id: 'lic', header: 'LIC' },
-  { id: 'renewal', header: 'Renewal' },
-])
 /** Like SCCA's Register: one row per building, judged by its last final (approved) RA. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
@@ -428,21 +439,27 @@ function record(id: number) {
       </template>
 
       <template #renewals>
+        <div class="mt-4 grid gap-4 sm:grid-cols-3">
+          <KpiCard
+            v-for="card in renewalCards"
+            :key="card.bucket"
+            :to="{ query: { ...route.query, bucket: bucket === card.bucket ? undefined : card.bucket, page: undefined } }"
+            :label="card.label"
+            :value="renewals.data.value?.counts?.[card.bucket] ?? null"
+            :hint="bucket === card.bucket ? 'Showing only these. Click again to show all.' : card.hint"
+            :icon="card.icon"
+            :tone="card.tone"
+            :active="bucket === card.bucket"
+          />
+        </div>
         <UCard
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="bucket in (['overdue', 'due_30', 'due_90'] as const)"
-                :key="bucket"
-                :color="raRenewalBucket[bucket].color"
-                variant="subtle"
-                :icon="raRenewalBucket[bucket].icon"
-                :label="`${raRenewalBucket[bucket].label}: ${renewals.data.value?.counts?.[bucket] ?? 0}`"
-              />
-            </div>
+            <p class="text-sm text-muted">
+              {{ bucket ? `${raRenewalBucket[bucket].label}, soonest first.` : 'Overdue and due within 90 days, soonest first.' }}
+            </p>
             <UButton
               :to="raExportUrl('renewals', filters)"
               external

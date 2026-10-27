@@ -222,14 +222,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
             :value="raStatusKey(row.original)"
             size="sm"
           />
-          <StatusBadge
-            v-if="!row.original.is_returned"
-            class="ms-1"
-            :scale="raCompletion"
-            :value="row.original.is_complete ? 'complete' : 'draft'"
-            size="sm"
-          />
-        </template>
+      </template>
         <template #created_by-cell="{ row }">
           {{ row.original.created_by || '—' }}
         </template>

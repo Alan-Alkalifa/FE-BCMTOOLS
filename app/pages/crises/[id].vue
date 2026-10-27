@@ -442,7 +442,7 @@ const historyIcon: Record<string, string> = {
                 <div class="grid gap-6 pb-4 lg:grid-cols-2">
                   <section>
                     <h3 class="font-medium text-highlighted">
-                      Its RA for this hazard
+                      RA for this hazard
                     </h3>
                     <template v-if="item.row.assessment">
                       <p class="mt-1 text-sm text-muted">

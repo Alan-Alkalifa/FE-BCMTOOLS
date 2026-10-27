@@ -37,6 +37,9 @@ function toggle(key: string) {
   open.value = { ...open.value, [key]: !open.value[key] }
 }
 
+/** True when at least one open level has hazards. Only then are the detail columns shown. */
+const anyOpen = computed(() => groups.value.some((level) => open.value[level.key] && level.rows.length > 0))
+
 function name(code: string) {
   return hazards.value.get(code)?.short_name ?? code
 }
@@ -120,36 +123,46 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
               >
                 Type of Hazard
               </th>
+              <template v-if="anyOpen">
+                <th
+                  scope="col"
+                  class="px-4 py-2 font-medium"
+                >
+                  Hazard
+                </th>
+                <th
+                  scope="col"
+                  class="px-4 py-2 font-medium"
+                >
+                  Hazard group
+                </th>
+                <th
+                  v-if="!singleRisk"
+                  scope="col"
+                  class="px-4 py-2 font-medium"
+                >
+                  Gross risk
+                </th>
+                <th
+                  scope="col"
+                  class="px-4 py-2 font-medium"
+                >
+                  CIM ref. no.
+                </th>
+                <th
+                  scope="col"
+                  class="px-4 py-2 font-medium"
+                >
+                  Action plan
+                </th>
+              </template>
               <th
+                v-else
                 scope="col"
-                class="px-4 py-2 font-medium"
+                :colspan="singleRisk ? 4 : 5"
+                class="px-4 py-2"
               >
-                Hazard
-              </th>
-              <th
-                scope="col"
-                class="px-4 py-2 font-medium"
-              >
-                Hazard group
-              </th>
-              <th
-                v-if="!singleRisk"
-                scope="col"
-                class="px-4 py-2 font-medium"
-              >
-                Gross risk
-              </th>
-              <th
-                scope="col"
-                class="px-4 py-2 font-medium"
-              >
-                CIM ref. no.
-              </th>
-              <th
-                scope="col"
-                class="px-4 py-2 font-medium"
-              >
-                Action plan
+                <span class="sr-only">Hazards</span>
               </th>
             </tr>
           </thead>

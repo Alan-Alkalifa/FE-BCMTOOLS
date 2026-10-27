@@ -179,7 +179,7 @@ const groupModel = computed<string>({
   },
 })
 const typeItems = computed(() => (activeHazard.value?.category.hazards ?? []).map((hazard) => ({
-  label: `${hazard.no}. ${hazard.short_name}`,
+  label: `${hazard.no} - ${hazard.short_name}`,
   value: hazard.code,
 })))
 const typeModel = computed<string>({
@@ -465,7 +465,7 @@ async function save() {
               v-for="(field, index) in probabilityFields"
               :key="field.key"
               v-model="active[field.key]"
-              :label="`${index + 1}. ${index === 0 ? 'Historical of occurrence' : 'Probability of occurrence'}`"
+              :label="`${index + 1} - ${index === 0 ? 'Historical of occurrence' : 'Probability of occurrence'}`"
               :guides="formula.guides[field.scale]"
               :issue="fieldIssue(field.key)"
               :disabled="locked"
@@ -517,7 +517,7 @@ async function save() {
               v-for="(field, index) in (singleRisk ? residualImpactFields : grossImpactFields)"
               :key="field.key"
               v-model="active[field.key]"
-              :label="`${index + 1}. ${field.label}`"
+              :label="`${index + 1} - ${field.label}`"
               :guides="formula.guides[field.scale]"
               :issue="fieldIssue(field.key)"
               :disabled="locked"

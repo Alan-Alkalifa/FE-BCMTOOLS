@@ -90,7 +90,7 @@ const statusItems = [
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'kind', header: 'Type' },
-  { accessorKey: 'region', header: 'Region' },
+  // { accessorKey: 'region', header: 'Region' },
   { accessorKey: 'address', header: 'Address' },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { id: 'latest', header: 'Latest residual' },
@@ -228,14 +228,14 @@ async function remove(location: RaLocation) {
           class="w-40"
           aria-label="Type"
         />
-        <USelectMenu
+        <!-- <USelectMenu
           v-if="type !== 'head_office'"
           v-model="regionModel"
           value-key="value"
           :items="regionItems"
           class="w-40"
           aria-label="Region"
-        />
+        /> -->
         <USelectMenu
           v-model="statusModel"
           value-key="value"
