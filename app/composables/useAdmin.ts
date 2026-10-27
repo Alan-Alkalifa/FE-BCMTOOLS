@@ -1,3 +1,5 @@
+import type { SealPurpose } from '~/utils/seal'
+
 /** Administration API: users, roles and permissions, menus, email settings, audit log. */
 
 export interface AdminRoleRef {
@@ -212,17 +214,21 @@ export interface Page<T> {
 
 const BASE = '/api/admin'
 
+/** Sends `body` with its `password` sealed (utils/seal.ts) when it carries one. */
+function withSealedPassword<T>(url: string, method: 'POST' | 'PUT', purpose: SealPurpose, body: { password?: string | null }) {
+  const { password, ...rest } = body
+  if (!password) return $fetch<T>(url, { method, body: password === '' ? { ...rest, password } : rest })
+  return sealedFetch<T>(url, purpose, { password }, { method, body: rest })
+}
+
 export const adminApi = {
   createUser: (body: AdminUserInput) =>
-    $fetch<{ user: AdminUser, invitation_sent: boolean }>(`${BASE}/users`, { method: 'POST', body }),
+    withSealedPassword<{ user: AdminUser, invitation_sent: boolean }>(`${BASE}/users`, 'POST', 'user_password', body),
   updateUser: (id: number, body: AdminUserInput) =>
     $fetch<AdminUser>(`${BASE}/users/${id}`, { method: 'PUT', body }),
   unlockUser: (id: number) => $fetch<AdminUser>(`${BASE}/users/${id}/unlock`, { method: 'POST' }),
   resetPassword: (id: number, password?: string) =>
-    $fetch<{ user: AdminUser, email_sent: boolean }>(`${BASE}/users/${id}/reset-password`, {
-      method: 'POST',
-      body: password ? { password } : {},
-    }),
+    withSealedPassword<{ user: AdminUser, email_sent: boolean }>(`${BASE}/users/${id}/reset-password`, 'POST', 'user_password', { password }),
   createRole: (body: { name: string, description?: string | null, permissions: string[] }) =>
     $fetch<AdminRole>(`${BASE}/roles`, { method: 'POST', body }),
   updateRole: (id: number, body: { name: string, description?: string | null, permissions: string[] }) =>
@@ -235,9 +241,9 @@ export const adminApi = {
     $fetch<{ items: AdminMenu[] }>(`${BASE}/menus/order`, { method: 'PUT', body: { items } }),
   deleteMenu: (id: number) => $fetch(`${BASE}/menus/${id}`, { method: 'DELETE' }),
   createProvider: (body: SmtpProviderInput) =>
-    $fetch<SmtpProvider>(`${BASE}/settings/mail/providers`, { method: 'POST', body }),
+    withSealedPassword<SmtpProvider>(`${BASE}/settings/mail/providers`, 'POST', 'smtp_password', body),
   updateProvider: (id: number, body: SmtpProviderInput) =>
-    $fetch<SmtpProvider>(`${BASE}/settings/mail/providers/${id}`, { method: 'PUT', body }),
+    withSealedPassword<SmtpProvider>(`${BASE}/settings/mail/providers/${id}`, 'PUT', 'smtp_password', body),
   deleteProvider: (id: number) => $fetch(`${BASE}/settings/mail/providers/${id}`, { method: 'DELETE' }),
   activateProvider: (id: number) =>
     $fetch<SmtpProviderList>(`${BASE}/settings/mail/providers/${id}/activate`, { method: 'POST' }),

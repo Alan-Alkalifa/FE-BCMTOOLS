@@ -54,7 +54,7 @@ const year = new Date().getFullYear()
               name="i-lucide-badge-check"
               class="size-5 shrink-0"
             />
-            Sequential sign-off with a full audit trail
+            Risk Assessment HO & Branch (RA)
           </li>
           <li class="flex items-center gap-3">
             <UIcon

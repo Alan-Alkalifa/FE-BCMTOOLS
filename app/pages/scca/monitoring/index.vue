@@ -212,7 +212,7 @@ const renewalColumns: TableColumn<SccaRenewalRow>[] = [
   { accessorKey: 'application_name', header: 'Application' },
   { accessorKey: 'category', header: 'Category' },
   { id: 'last_final', header: 'Last final SCCA' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
+  { accessorKey: 'renewal_date', header: 'Target Renewal date' },
   { accessorKey: 'days_left', header: 'Due' },
   { accessorKey: 'owner', header: 'Owner / assessor' },
   { accessorKey: 'renewal_status', header: 'Renewal' },
@@ -225,7 +225,7 @@ const registerColumns: TableColumn<SccaRegisterRow>[] = [
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open SCCA' },
   { accessorKey: 'owner', header: 'Owner / assessor' },
-  { accessorKey: 'scca_count', header: 'SCCAs' },
+  { accessorKey: 'scca_count', header: 'SCCA(s)' },
 ]
 const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
   { accessorKey: 'application_name', header: 'SCCA' },
@@ -239,8 +239,8 @@ const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
 const tabs = [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard', slot: 'overview' as const },
   { label: 'Renewals', value: 'renewals', icon: 'i-lucide-calendar-clock', slot: 'renewals' as const },
-  { label: 'Register', value: 'register', icon: 'i-lucide-list', slot: 'register' as const },
-  { label: 'Bottlenecks', value: 'bottlenecks', icon: 'i-lucide-hourglass', slot: 'bottlenecks' as const },
+  { label: 'List', value: 'register', icon: 'i-lucide-list', slot: 'register' as const },
+  { label: 'Approval', value: 'bottlenecks', icon: 'i-lucide-hourglass', slot: 'bottlenecks' as const },
 ]
 
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
