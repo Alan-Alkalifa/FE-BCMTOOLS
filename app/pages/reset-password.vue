@@ -19,7 +19,7 @@ async function onSubmit() {
   }
   busy.value = true
   try {
-    await $fetch('/api/auth/reset', { method: 'POST', body: { token: token.value, password: password.value } })
+    await sealedFetch('/api/auth/reset', 'reset_password', { token: token.value, password: password.value })
     await navigateTo({ path: '/login', query: { reset: '1' } }, { replace: true })
   } catch (failure) {
     const details = (failure as { data?: { details?: Record<string, string> } }).data?.details

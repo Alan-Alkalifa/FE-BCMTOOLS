@@ -76,7 +76,7 @@ const columns: TableColumn<SccaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
   { accessorKey: 'application_name', header: 'Application' },
   { accessorKey: 'my_role', header: 'My role' },
-  { accessorKey: 'computed_category', header: 'Category so far' },
+  { accessorKey: 'computed_category', header: 'Rating' },
   { accessorKey: 'next_step', header: 'Next step' },
   { accessorKey: 'updated_at', header: 'Last saved' },
   { id: 'actions', header: '' },

@@ -27,7 +27,8 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   nitro: {
     devProxy: {
-      '/api': { target: `${backendUrl}/api`, changeOrigin: true },
+      // The header skips ngrok's browser warning page when the backend is behind ngrok.
+      '/api': { target: `${backendUrl}/api`, changeOrigin: true, headers: { 'ngrok-skip-browser-warning': '1' } },
     },
   },
   vite: {

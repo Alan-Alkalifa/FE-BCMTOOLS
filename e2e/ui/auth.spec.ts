@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { USER, menuFor, signIn } from '../fixtures/auth'
+import { mockSealKey, unseal } from '../fixtures/seal'
 
 test.setTimeout(60_000)
 
@@ -21,6 +22,7 @@ test('signing in with ID and password sends the user where they were going', asy
     signedIn ? route.fulfill({ json: USER }) : route.fulfill({ status: 401, json: { error: 'unauthenticated' } }))
   await page.route('**/api/me/menu', (route) => route.fulfill({ json: { items: menuFor(USER.permissions) } }))
   let body: unknown
+  await mockSealKey(page)
   await page.route('**/api/auth/login', async (route) => {
     body = route.request().postDataJSON()
     signedIn = true
@@ -33,11 +35,15 @@ test('signing in with ID and password sends the user where they were going', asy
   await page.getByLabel('Password', { exact: true }).fill('Secret-password-1')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL('/profile')
-  expect(body).toEqual({ username: 'test@example.com', password: 'Secret-password-1' })
+  // The ID and password are sealed: nothing readable in the request body.
+  expect(JSON.stringify(body)).not.toContain('Secret-password-1')
+  expect(JSON.stringify(body)).not.toContain('test@example.com')
+  expect(unseal(body)).toEqual({ username: 'test@example.com', password: 'Secret-password-1', purpose: 'login' })
 })
 
 test('a wrong password and a locked account are explained', async ({ page }) => {
   let locked = false
+  await mockSealKey(page)
   await page.route('**/api/auth/login', (route) =>
     route.fulfill({
       status: 401,
@@ -85,6 +91,7 @@ test('forgot password always says the link is on its way', async ({ page }) => {
 
 test('a reset link sets a new password', async ({ page }) => {
   let body: unknown
+  await mockSealKey(page)
   await page.route('**/api/auth/reset', async (route) => {
     body = route.request().postDataJSON()
     await route.fulfill({ status: 204 })
@@ -99,12 +106,14 @@ test('a reset link sets a new password', async ({ page }) => {
   await submit.click()
   await expect(page).toHaveURL('/login?reset=1')
   await expect(page.getByText('Your password is set. Sign in with it.')).toBeVisible()
-  expect(body).toEqual({ token: 'abc123', password: 'Long-enough-pass-1' })
+  expect(JSON.stringify(body)).not.toContain('Long-enough-pass-1')
+  expect(unseal(body)).toEqual({ token: 'abc123', password: 'Long-enough-pass-1', purpose: 'reset_password' })
 })
 
 test('a temporary password must be changed before anything else', async ({ page }) => {
   await signIn(page, { must_change_password: true })
   let body: unknown
+  await mockSealKey(page)
   await page.route('**/api/auth/password', async (route) => {
     body = route.request().postDataJSON()
     await route.fulfill({ json: { ...USER, must_change_password: false } })
@@ -117,7 +126,8 @@ test('a temporary password must be changed before anything else', async ({ page 
   await page.getByLabel('Repeat the new password').fill('My-own-password-9')
   await page.getByRole('button', { name: 'Set password and continue' }).click()
   await expect(page).toHaveURL('/')
-  expect(body).toEqual({ current_password: 'Temporary-pass-1', password: 'My-own-password-9' })
+  expect(JSON.stringify(body)).not.toContain('My-own-password-9')
+  expect(unseal(body)).toEqual({ current_password: 'Temporary-pass-1', password: 'My-own-password-9', purpose: 'change_password' })
 })
 
 test('writes send the CSRF token from the session', async ({ page }) => {

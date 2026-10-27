@@ -57,10 +57,8 @@ export function useAuth() {
   }
 
   async function login(username: string, password: string) {
-    const signedIn = await $fetch<CurrentUser>('/api/auth/login', {
-      method: 'POST',
-      body: { username, password },
-    })
+    // The ID and password travel sealed (utils/seal.ts), never as readable JSON.
+    const signedIn = await sealedFetch<CurrentUser>('/api/auth/login', 'login', { username, password })
     setUser(signedIn)
     menu.value = null
     return signedIn
@@ -76,9 +74,9 @@ export function useAuth() {
   }
 
   async function changePassword(currentPassword: string, password: string) {
-    setUser(await $fetch<CurrentUser>('/api/auth/password', {
-      method: 'POST',
-      body: { current_password: currentPassword, password },
+    setUser(await sealedFetch<CurrentUser>('/api/auth/password', 'change_password', {
+      current_password: currentPassword,
+      password,
     }))
   }
 
