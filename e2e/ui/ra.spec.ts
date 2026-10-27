@@ -175,7 +175,7 @@ test('the hazards tab is a table; its pencil opens the hazard to rate', async ({
   await expect(table.getByRole('row', { name: /Terorisme/ })).toBeVisible()
   await table.getByRole('button', { name: 'Rate Terorisme' }).click()
   await expect(page).toHaveURL(/tab=hazards&hazard=H21/)
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('21. Terorisme')
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('21 - Terorisme')
   await page.getByRole('button', { name: 'Back to the hazards' }).click()
   await expect(page).not.toHaveURL(/hazard=/)
   await expect(page.getByRole('table')).toBeVisible()
@@ -184,13 +184,13 @@ test('the hazards tab is a table; its pencil opens the hazard to rate', async ({
 test('rating a hazard fills in its ratings and saves only that hazard', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('3. Gempa Bumi', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('3 - Gempa Bumi', { timeout: 60_000 })
   await expect(page.getByRole('textbox', { name: 'Probability rating' })).toHaveValue('3')
   await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('4')
   await expect(page.getByText('3 × 4', { exact: true })).toHaveCount(0)
 
   await page.getByRole('combobox', { name: /Monetary impact/ }).first().click()
-  await page.getByRole('option', { name: '5 · Critical' }).click()
+  await page.getByRole('option', { name: '5 - Critical' }).click()
   await expect(page.getByRole('textbox', { name: 'Impact rating' })).toHaveValue('5')
   await expect(page.getByText('1 hazard has unsaved changes')).toBeVisible()
 
@@ -203,7 +203,7 @@ test('rating a hazard fills in its ratings and saves only that hazard', async ({
 test('the action plan is optional, also for a high residual risk', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H28')
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28. Peretasan Sistem Komputer', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28 - Peretasan Sistem Komputer', { timeout: 60_000 })
   await expect(page.getByText('High', { exact: true }).filter({ visible: true }).first()).toBeVisible()
   await expect(page.getByText('Optional. A high residual risk is followed up through CIM.')).toBeVisible()
   await expect(page.getByText(/needs an action plan/)).toHaveCount(0)
@@ -233,9 +233,9 @@ test('the questionnaire guide opens the Lampiran tables', async ({ page }) => {
 test('marking a hazard not applicable rates it N/A', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('6. Cuaca Ekstream', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('6 - Cuaca Ekstream', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
-  await expect(page.getByText('N/A · Not applicable').first()).toBeVisible()
+  await expect(page.getByText('N/A - Not applicable').first()).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Probability rating' })).toHaveValue('N/A')
   await expect(page.getByText('Not applicable', { exact: true }).first()).toBeVisible()
 })
@@ -243,7 +243,7 @@ test('marking a hazard not applicable rates it N/A', async ({ page }) => {
 test('leaving a tab with unsaved ratings asks first', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('1. Banjir/ Banjir Bandang', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('1 - Banjir/ Banjir Bandang', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Mark as not applicable' }).click()
   // Back on the table the edit is kept, marked as unsaved.
   await page.getByRole('button', { name: 'Back to the hazards' }).click()
@@ -272,7 +272,7 @@ test('the Risk Summary counts hazards by level and shows gross and residual as t
   await expect(page.getByRole('button', { name: 'High: 1 hazard' })).toHaveAttribute('aria-expanded', 'true')
   await page.getByRole('button', { name: 'Peretasan Sistem Komputer' }).click()
   await expect(page).toHaveURL(/tab=hazards&hazard=H28/)
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28. Peretasan Sistem Komputer')
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28 - Peretasan Sistem Komputer')
 
   await page.getByRole('tab', { name: 'Risk Summary' }).click()
   // The Risk Matrix: gross and residual side by side, as tables.
@@ -477,19 +477,19 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   const type = page.getByRole('button', { name: 'Type of Hazard' })
-  await expect(type).toContainText('3. Gempa Bumi', { timeout: 60_000 })
+  await expect(type).toContainText('3 - Gempa Bumi', { timeout: 60_000 })
   const group = page.getByRole('combobox', { name: 'Hazard group name' })
   await expect(group).toContainText('Natural disasters')
 
   await group.click()
   await page.getByRole('option', { name: 'Security threats' }).click()
-  await expect(type).toContainText('14. Kebakaran')
+  await expect(type).toContainText('14 - Kebakaran')
   await type.click()
-  await page.getByRole('option', { name: '21. Terorisme' }).click()
+  await page.getByRole('option', { name: '21 - Terorisme' }).click()
   await expect(page).toHaveURL(/hazard=H21/)
   // Next hazard crosses into the next group.
   await page.getByRole('button', { name: 'Next hazard' }).click()
-  await expect(type).toContainText('22. Gangguan pasokan listrik')
+  await expect(type).toContainText('22 - Gangguan pasokan listrik')
   await expect(group).toContainText('Infrastructure')
 })
 

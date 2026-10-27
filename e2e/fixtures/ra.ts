@@ -29,9 +29,9 @@ const BRANCH_LOCATION = { ...BRANCH_LOCATION_RAW, id: BRANCH_ID, latest_assessme
 
 /** Pinned branches for the nearby-branches overlay: two within 5 km of Griya CIMB Niaga 2, one far away. */
 export const PINNED_BRANCHES = [
-  { name: 'KCP Bintaro Sektor 9', latitude: -6.2853, longitude: 106.7272 },
-  { name: 'KCP Pondok Indah', latitude: -6.2655, longitude: 106.7834 },
-  { name: 'KC Bandung Asia Afrika', latitude: -6.9215, longitude: 107.6106 },
+  { name: 'KCP Bintaro Sektor 9', latitude: -6.2853, longitude: 106.7272, province: 'Banten' },
+  { name: 'KCP Pondok Indah', latitude: -6.2655, longitude: 106.7834, province: 'DKI Jakarta' },
+  { name: 'KC Bandung Asia Afrika', latitude: -6.9215, longitude: 107.6106, province: 'Jawa Barat' },
 ].map((branch, index) => ({
   ...BRANCH_LOCATION,
   ...branch,
@@ -90,6 +90,7 @@ export const LOCATIONS = [
     kind: 'head_office',
     name: 'Griya CIMB Niaga 2',
     region: null,
+    province: 'Banten' as string | null,
     latitude: -6.271633,
     longitude: 106.719358,
     address: 'Jl. Wahid Hasyim Blok B4 No.3 Bintaro Jaya Sektor 7 Tangerang 15224',
@@ -103,6 +104,7 @@ export const LOCATIONS = [
     kind: 'head_office',
     name: 'Graha CIMB Niaga',
     region: null,
+    province: 'DKI Jakarta' as string | null,
     latitude: null,
     longitude: null,
     address: 'Jl. Jend. Sudirman Kav. 58, Jakarta',
@@ -408,9 +410,15 @@ export async function mockRa(
     const kind = params.get('kind') ?? 'head_office'
     const branches = [branchLocation, ...PINNED_BRANCHES]
     const q = (params.get('q') ?? '').toLowerCase()
-    const items = (kind === 'all' ? [...LOCATIONS, ...branches] : kind === 'branch' ? branches : LOCATIONS)
+    const ofKind = (kind === 'all' ? [...LOCATIONS, ...branches] : kind === 'branch' ? branches : LOCATIONS) as (typeof LOCATIONS[number] & { province?: string | null })[]
+    if (url.pathname.endsWith('/provinces')) {
+      await route.fulfill({ json: { items: [...new Set(ofKind.map((row) => row.province).filter(Boolean))].sort() } })
+      return
+    }
+    const items = ofKind
       .filter((row) => !q || [row.name, row.region, row.address].some((text) => text?.toLowerCase().includes(q)))
       .filter((row) => !params.get('region') || row.region === params.get('region'))
+      .filter((row) => !params.get('province') || row.province === params.get('province'))
       .filter((row) => !params.get('active') || String(row.is_active) === params.get('active'))
       .sort((a, b) => a.name.localeCompare(b.name))
       // Building 1 carries its approval (pending with `pendingLocation`).

@@ -603,6 +603,7 @@ export interface RaLocationRegisterQuery {
   kind: RaKind | 'all'
   q?: string
   region?: string
+  province?: string
   active?: boolean
   approval?: RaLocationApprovalStatus
   page: number
@@ -873,6 +874,14 @@ export function useRaBottlenecksStepAverages(filters: MaybeRefOrGetter<RaMonitor
   return useFetch<{ items: RaStepAverage[] }>('/api/ra/monitoring/bottlenecks/step-averages', {
     key: computed(() => `ra-bottlenecks-step-averages-${JSON.stringify(toValue(filters))}`),
     query: computed(() => toValue(filters)),
+  })
+}
+
+/** The provinces of the buildings (of a kind, or all), for the Buildings filter. */
+export function useRaProvinces(kind: MaybeRefOrGetter<RaKind | 'all'>) {
+  return useFetch<{ items: string[] }>('/api/ra/locations/provinces', {
+    key: computed(() => `ra-provinces-${toValue(kind)}`),
+    query: computed(() => ({ kind: toValue(kind) })),
   })
 }
 

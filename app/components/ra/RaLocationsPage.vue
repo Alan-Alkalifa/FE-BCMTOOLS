@@ -5,7 +5,7 @@ import type { RaLocation } from '~/composables/useRa'
 
 /**
  * The Buildings register: head office buildings and branches in one table, filtered by type,
- * region and status (all in the URL), one page at a time. A row opens the building's profile.
+ * province and status (all in the URL), one page at a time. A row opens the building's profile.
  * A new building, and making one inactive, waits for someone else's approval: the Status
  * Building column shows it, and the status filter lists the ones waiting.
  */
@@ -33,14 +33,13 @@ const statusFilter = computed<StatusFilter>(() => {
   const value = text('status')
   return value === 'active' || value === 'inactive' || value === 'pending' || value === 'rejected' ? value : 'all'
 })
-const region = computed(() => (type.value === 'head_office' ? undefined : text('region')))
+const province = computed(() => text('province'))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 
 function setQuery(name: string, value: string | undefined) {
   const next = value === undefined || value === 'all' || value === '' ? undefined : value
   if (next === (route.query[name] ?? undefined)) return
   const query: LocationQueryRaw = { ...route.query, [name]: next, page: undefined }
-  if (name === 'type' && next === 'head_office') query.region = undefined
   router.replace({ query })
 }
 
@@ -53,31 +52,31 @@ watch(search, (value) => {
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
 const typeModel = computed<TypeFilter>({ get: () => type.value, set: (value) => setQuery('type', value) })
-const regionModel = computed<string>({ get: () => region.value ?? 'all', set: (value) => setQuery('region', value) })
+const provinceModel = computed<string>({ get: () => province.value ?? 'all', set: (value) => setQuery('province', value) })
 const statusModel = computed<StatusFilter>({ get: () => statusFilter.value, set: (value) => setQuery('status', value) })
 
 const { data, status, error, refresh } = useRaLocationRegister(() => ({
   kind: type.value,
   q: text('q'),
-  region: region.value,
+  province: province.value,
   active: statusFilter.value === 'active' || statusFilter.value === 'inactive' ? statusFilter.value === 'active' : undefined,
   approval: statusFilter.value === 'pending' || statusFilter.value === 'rejected' ? statusFilter.value : undefined,
   page: page.value,
   per_page: PER_PAGE,
 }))
-const { data: regionData } = useRaRegions('branch')
+const { data: provinceData } = useRaProvinces(type)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const actionError = ref<string | null>(null)
-const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || region.value || statusFilter.value !== 'all'))
+const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || province.value || statusFilter.value !== 'all'))
 
 const typeItems = [
   { label: 'All types', value: 'all' as const },
   { label: 'Head office buildings', value: 'head_office' as const },
   { label: 'Branches', value: 'branch' as const },
 ]
-const regionItems = computed(() => [
-  { label: 'All regions', value: 'all' },
-  ...(regionData.value?.items ?? []).map((name) => ({ label: name, value: name })),
+const provinceItems = computed(() => [
+  { label: 'All provinces', value: 'all' },
+  ...(provinceData.value?.items ?? []).map((name) => ({ label: name, value: name })),
 ])
 const statusItems = [
   { label: 'Active and inactive', value: 'all' as const },
@@ -90,7 +89,7 @@ const statusItems = [
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'kind', header: 'Type' },
-  // { accessorKey: 'region', header: 'Region' },
+  { accessorKey: 'province', header: 'Province' },
   { accessorKey: 'address', header: 'Address' },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { id: 'latest', header: 'Latest residual' },
@@ -216,9 +215,9 @@ async function remove(location: RaLocation) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          placeholder="Search by name, region or address"
-          class="w-full sm:w-60"
-          aria-label="Search by name, region or address"
+          placeholder="Search by name, city, province or address"
+          class="w-full sm:w-64"
+          aria-label="Search by name, city, province or address"
         />
         <USelectMenu
           v-model="typeModel"
@@ -228,14 +227,13 @@ async function remove(location: RaLocation) {
           class="w-40"
           aria-label="Type"
         />
-        <!-- <USelectMenu
-          v-if="type !== 'head_office'"
-          v-model="regionModel"
+        <USelectMenu
+          v-model="provinceModel"
           value-key="value"
-          :items="regionItems"
-          class="w-40"
-          aria-label="Region"
-        /> -->
+          :items="provinceItems"
+          class="w-44"
+          aria-label="Province"
+        />
         <USelectMenu
           v-model="statusModel"
           value-key="value"
@@ -269,8 +267,8 @@ async function remove(location: RaLocation) {
             size="sm"
           />
         </template>
-        <template #region-cell="{ row }">
-          <span v-if="row.original.region">{{ row.original.region }}</span>
+        <template #province-cell="{ row }">
+          <span v-if="row.original.province">{{ row.original.province }}</span>
           <span
             v-else
             class="text-muted"

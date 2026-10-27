@@ -222,7 +222,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
             :value="raStatusKey(row.original)"
             size="sm"
           />
-      </template>
+        </template>
         <template #created_by-cell="{ row }">
           {{ row.original.created_by || '—' }}
         </template>

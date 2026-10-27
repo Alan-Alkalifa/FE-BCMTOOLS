@@ -253,7 +253,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
             : 'By approving you agree to the sign-off statement below for this assessment.' }}
         </p>
       </template>
-            <UFormField
+      <UFormField
         label="Comment"
         help="Optional. Kept with your approval."
       >

@@ -18,11 +18,14 @@ test('one register lists head office buildings and branches', async ({ page }) =
   await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Location\s*Buildings/)
 })
 
-test('the register filters by type, region, status and search, in the URL', async ({ page }) => {
+test('the register filters by type, province, status and search, in the URL', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations')
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toBeVisible({ timeout: 60_000 })
+  // The province column instead of the region.
+  await expect(table.getByRole('columnheader', { name: 'Province' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Region' })).toHaveCount(0)
 
   await page.getByLabel('Type', { exact: true }).click()
   await page.getByRole('option', { name: 'Branches', exact: true }).click()
@@ -30,13 +33,15 @@ test('the register filters by type, region, status and search, in the URL', asyn
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toHaveCount(0)
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toBeVisible()
 
-  await page.getByLabel('Region', { exact: true }).click()
-  await page.getByRole('option', { name: 'Region Jabar', exact: true }).click()
-  await expect(page).toHaveURL(/region=Region\+Jabar|region=Region%20Jabar/)
+  await page.getByLabel('Province', { exact: true }).click()
+  await page.getByRole('option', { name: 'Jawa Barat', exact: true }).click()
+  await expect(page).toHaveURL(/province=Jawa\+Barat|province=Jawa%20Barat/)
   const query = new URLSearchParams(log.locationQueries.at(-1))
   expect(query.get('kind')).toBe('branch')
-  expect(query.get('region')).toBe('Region Jabar')
+  expect(query.get('province')).toBe('Jawa Barat')
   expect(query.get('page')).toBe('1')
+  await expect(table.getByRole('link', { name: 'KC Bandung Asia Afrika', exact: true })).toBeVisible()
+  await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveCount(0)
 
   await page.getByLabel('Status', { exact: true }).click()
   await page.getByRole('option', { name: 'Inactive', exact: true }).click()
@@ -44,12 +49,11 @@ test('the register filters by type, region, status and search, in the URL', asyn
   await expect(page.getByText('No buildings match these filters.')).toBeVisible()
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('active')).toBe('false')
 
-  // Head office buildings have no region, so the region filter goes away with it.
-  await page.goto('/locations?type=head_office&region=Region+Jabar&q=graha')
+  // The province filter works for head office buildings too.
+  await page.goto('/locations?type=head_office&province=DKI+Jakarta&q=graha')
   await expect(table.getByRole('link', { name: 'Graha CIMB Niaga', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toHaveCount(0)
-  await expect(page.getByLabel('Region', { exact: true })).toHaveCount(0)
-  expect(new URLSearchParams(log.locationQueries.at(-1)).get('region')).toBeNull()
+  await expect(page.getByLabel('Province', { exact: true })).toContainText('DKI Jakarta')
 })
 
 test('Building Data Entry picks the type from a dropdown, with its description', async ({ page }) => {
