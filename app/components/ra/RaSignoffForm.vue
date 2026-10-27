@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import RaReturnModal from '~/components/ra/RaReturnModal.vue'
+import RaChangeSignerModal from '~/components/ra/RaChangeSignerModal.vue'
+import RaOnBehalfModal from '~/components/ra/RaOnBehalfModal.vue'
 import type { RaAssessment, RaFormula, RaSignoff, RaSignoffEvent, RaSignoffInput, RaUserRef } from '~/composables/useRa'
 
 /**
  * The sign-off workflow. In a draft, each role gets a BCM Tools user and the assessment is
  * submitted; the signers then approve one after another, and the current signer can return it
- * for changes. Rules live in the API; the buttons follow its can_* flags.
+ * for changes. BCM (ra.manage) can return it too, change the signer of the waiting step, or
+ * approve it on the signer's behalf with the evidence. Rules live in the API; the buttons follow
+ * its can_* flags.
  */
 const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
@@ -15,8 +19,9 @@ const ra = useRaModule()
 const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
 const toast = useToast()
 const dirty = useRaDirty()
-const { user } = useAuth()
 const returnModal = useOverlay().create(RaReturnModal)
+const changeSignerModal = useOverlay().create(RaChangeSignerModal)
+const onBehalfModal = useOverlay().create(RaOnBehalfModal)
 const formError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
 const snapshot = ref('')
@@ -152,11 +157,27 @@ async function sendBack() {
 }
 
 const currentRole = computed(() => roles.value.find((role) => role.value === props.assessment.current_signoff_role))
-/** Someone with ra.manage approving another person's step. */
-const onBehalf = computed(() => {
-  const signer = props.assessment.awaiting_signer
-  return Boolean(signer && user.value && signer.id !== user.value.id)
-})
+
+/** BCM: change the signer of the waiting step, or approve it on their behalf. */
+function waitingStep() {
+  const assessment = props.assessment
+  return {
+    id: assessment.id,
+    ref: assessment.ref_no ?? `#${assessment.id}`,
+    location: assessment.location?.name ?? '',
+    step: currentRole.value ? raSignoffRoleName(currentRole.value.value, roles.value) : 'The waiting step',
+    signer: assessment.awaiting_signer?.name ?? null,
+  }
+}
+
+async function actForSigner(dialog: 'change' | 'on_behalf') {
+  formError.value = null
+  const modal = dialog === 'change' ? changeSignerModal : onBehalfModal
+  const saved = await modal.open({ step: waitingStep() }).result
+  if (!saved) return
+  reset(saved)
+  emit('saved', saved)
+}
 
 const raSignoffStep = defineStatusScale({
   approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
@@ -176,10 +197,23 @@ function stepKey(role: string) {
   return state[role]?.signer_id ? null : 'unassigned'
 }
 
-const ACTIONS: Record<RaSignoffEvent['action'], { label: string, icon: string, class: string }> = {
+const ACTIONS: Record<RaSignoffEvent['action'] | 'on_behalf', { label: string, icon: string, class: string }> = {
   submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', class: 'text-info' },
   approved: { label: 'Approved', icon: 'i-lucide-badge-check', class: 'text-success' },
+  on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', class: 'text-success' },
   returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', class: 'text-warning' },
+  reassigned: { label: 'Signer changed', icon: 'i-lucide-user-round-cog', class: 'text-warning' },
+}
+
+function eventKind(event: RaSignoffEvent) {
+  return event.on_behalf ? 'on_behalf' : event.action
+}
+
+/** "Rina → Stand In" for a signer change, "for Alan" for an approval on his behalf. */
+function eventFor(event: RaSignoffEvent) {
+  if (event.action === 'reassigned') return `${event.for_user ?? 'Nobody'} → ${event.to_user ?? '—'}`
+  if (event.on_behalf) return `for ${event.for_user ?? 'the signer'}`
+  return null
 }
 
 function roleLabel(role: RaSignoffEvent['role']) {
@@ -248,9 +282,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Your approval: {{ currentRole.label }} ({{ currentRole.hint }})
         </h2>
         <p class="text-sm text-muted">
-          {{ onBehalf
-            ? `You are approving on behalf of ${assessment.awaiting_signer?.name}, as a BCM administrator.`
-            : 'By approving you agree to the sign-off statement below for this assessment.' }}
+          By approving you agree to the sign-off statement below for this assessment.
         </p>
       </template>
       <UFormField
@@ -282,12 +314,48 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           />
           <UButton
             icon="i-lucide-badge-check"
-            :label="onBehalf ? `Approve on behalf of ${currentRole.hint}` : 'Approve'"
+            label="Approve"
             loading-auto
             @click="approve"
           />
         </div>
       </template>
+    </UCard>
+
+    <UCard
+      v-else-if="assessment.can_act_for_signer && currentRole"
+      data-testid="ra-act-for-signer"
+    >
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Act for the signer: {{ currentRole.label }} ({{ currentRole.hint }})
+        </h2>
+        <p class="text-sm text-muted">
+          {{ assessment.awaiting_signer?.name ?? 'The signer' }} signs this step. As BCM you can give it to someone else, or approve it on their behalf when they approved outside BCM Tools.
+        </p>
+      </template>
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          v-if="assessment.can_return"
+          color="error"
+          variant="outline"
+          icon="i-lucide-undo-2"
+          label="Return for changes"
+          @click="sendBack"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-user-round-cog"
+          label="Change the signer"
+          @click="actForSigner('change')"
+        />
+        <UButton
+          icon="i-lucide-badge-check"
+          label="Approve on behalf"
+          @click="actForSigner('on_behalf')"
+        />
+      </div>
     </UCard>
 
     <UCard>
@@ -322,15 +390,18 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           class="flex gap-3"
         >
           <UIcon
-            :name="ACTIONS[event.action].icon"
+            :name="ACTIONS[eventKind(event)].icon"
             class="mt-0.5 size-4 shrink-0"
-            :class="ACTIONS[event.action].class"
+            :class="ACTIONS[eventKind(event)].class"
           />
           <div class="min-w-0 text-sm">
             <p class="text-highlighted">
-              <span class="font-medium">{{ ACTIONS[event.action].label }}</span>
+              <span class="font-medium">{{ ACTIONS[eventKind(event)].label }}</span>
               <template v-if="event.role">
                 · {{ roleLabel(event.role) }}
+              </template>
+              <template v-if="eventFor(event)">
+                · {{ eventFor(event) }}
               </template>
             </p>
             <p class="text-muted">
@@ -342,6 +413,18 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
             >
               {{ event.comment }}
             </p>
+            <ULink
+              v-if="event.attachment"
+              :href="event.attachment.url"
+              external
+              class="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              <UIcon
+                name="i-lucide-paperclip"
+                class="size-3.5"
+              />
+              {{ event.attachment.filename }}
+            </ULink>
           </div>
         </li>
       </ol>
@@ -496,6 +579,19 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
                     v-if="saved(role.value)?.approved_by && saved(role.value)?.approved_by !== saved(role.value)?.name"
                     class="text-muted"
                   >· by {{ saved(role.value)?.approved_by }} on their behalf</span>
+                </dd>
+                <dd v-if="saved(role.value)?.evidence">
+                  <ULink
+                    :href="saved(role.value)?.evidence?.url"
+                    external
+                    class="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <UIcon
+                      name="i-lucide-paperclip"
+                      class="size-3.5"
+                    />
+                    Evidence: {{ saved(role.value)?.evidence?.filename }}
+                  </ULink>
                 </dd>
               </div>
               <div v-if="saved(role.value)?.comment">

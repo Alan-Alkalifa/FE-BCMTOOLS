@@ -177,6 +177,18 @@ type MockSignoff = {
   approved_at: string | null
   approved_by: string | null
   comment: string | null
+  evidence?: { id: number, filename: string, size: number, url: string } | null
+}
+type MockEvent = {
+  action: string
+  role: string | null
+  user: string | null
+  comment: string | null
+  at: string
+  on_behalf?: boolean
+  for_user?: string | null
+  to_user?: string | null
+  attachment?: MockSignoff['evidence']
 }
 type MockAssessment = {
   kind: string
@@ -192,13 +204,14 @@ type MockAssessment = {
   can_submit: boolean
   can_approve: boolean
   can_return: boolean
+  can_act_for_signer?: boolean
   signoffs: MockSignoff[]
   returned_comment: string | null
   returned_by: string | null
   returned_at: string | null
   approved_at: string | null
   location_approved?: boolean
-  signoff_history: { action: string, role: string | null, user: string | null, comment: string | null, at: string }[]
+  signoff_history: MockEvent[]
 }
 
 const NOW = '2026-10-20T03:00:00Z'
@@ -292,7 +305,14 @@ const NO_APPROVAL_ACTIONS = { approve: false, reject: false, withdraw: false, re
  */
 export async function mockRa(
   page: Page,
-  options: { locationInUse?: boolean, ready?: boolean, status?: 'in_signoff' | 'approved', pendingLocation?: boolean } = {},
+  options: {
+    locationInUse?: boolean
+    ready?: boolean
+    status?: 'in_signoff' | 'approved'
+    pendingLocation?: boolean
+    /** Signed in as BCM, not the waiting step's signer: change the signer or approve on behalf. */
+    actForSigner?: boolean
+  } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
@@ -304,6 +324,12 @@ export async function mockRa(
   if (options.ready || options.status) readyToSubmit(current)
   if (options.status === 'in_signoff') setStatus(current, 'in_signoff', 'prepared_by')
   if (options.status === 'approved') setStatus(current, 'approved')
+  const actForSigner = (assessment: MockAssessment) => {
+    if (!options.actForSigner) return
+    assessment.can_act_for_signer = assessment.status === 'in_signoff'
+    assessment.can_approve = false
+  }
+  actForSigner(current)
   await signIn(page)
   await page.route('**/api/users**', (route) => {
     const term = (new URL(route.request().url()).searchParams.get('q') ?? '').toLowerCase()
@@ -461,6 +487,44 @@ export async function mockRa(
     const roles = assessment.kind === 'branch' ? BRANCH_ROLES : HO_ROLES
     if (method === 'POST' && url.pathname.endsWith('/nudge')) {
       log.signoff.push(['nudge', null])
+      await route.fulfill({ json: { sent: true, assessment } })
+      return
+    }
+    // The BCM board's rows are fixtures: the RA they act on is put in sign-off first.
+    if (method === 'POST' && /\/(change-signer|approve-on-behalf)$/.test(url.pathname) && !assessment.current_signoff_role) {
+      readyToSubmit(assessment)
+      setStatus(assessment, 'in_signoff', roles[0]!)
+    }
+    if (method === 'POST' && url.pathname.endsWith('/change-signer')) {
+      const body = route.request().postDataJSON() as { user_id: number, reason: string }
+      log.signoff.push(['change-signer', body])
+      const role = assessment.current_signoff_role!
+      const index = assessment.signoffs.findIndex((row) => row.role === role)
+      const previous = assessment.signoffs[index]?.name ?? null
+      assessment.signoffs[index] = signoffRow(role, body.user_id)
+      assessment.awaiting_signer = assessment.signoffs[index]!.signer
+      assessment.signoff_history.push({
+        action: 'reassigned', role, user: 'Test User', comment: body.reason, at: NOW,
+        for_user: previous, to_user: assessment.signoffs[index]!.name,
+      })
+      await route.fulfill({ json: { sent: true, assessment } })
+      return
+    }
+    if (method === 'POST' && url.pathname.endsWith('/approve-on-behalf')) {
+      const body = route.request().postData() ?? ''
+      log.signoff.push(['approve-on-behalf', body])
+      const role = assessment.current_signoff_role!
+      const row = assessment.signoffs.find((item) => item.role === role)!
+      const evidence = { id: 1, filename: 'approval.pdf', size: 13, url: '/api/ra/assessments/1/attachments/1' }
+      const reason = /name="reason"\r\n\r\n([^\r]*)/.exec(body)?.[1] ?? null
+      Object.assign(row, { approved_at: NOW, signed_on: '2026-10-20', approved_by: 'Test User', comment: reason, evidence })
+      assessment.signoff_history.push({
+        action: 'approved', role, user: 'Test User', comment: reason, at: NOW,
+        on_behalf: true, for_user: row.name, attachment: evidence,
+      })
+      const next = roles[roles.indexOf(role) + 1]
+      setStatus(assessment, next ? 'in_signoff' : 'approved', next ?? null)
+      actForSigner(assessment)
       await route.fulfill({ json: { sent: true, assessment } })
       return
     }
@@ -622,9 +686,14 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
       const rows = [
         { action: 'approved', role: roles[0], comment: 'Checked with the floor wardens.', at: '2026-10-14T03:00:00Z', assessment: { ...workflowRef(branch, 'in_signoff', roles[1]!), location: locations[0]!.location } },
         { action: 'submitted', role: null, comment: null, at: '2026-10-08T03:00:00Z', assessment: { ...workflowRef(branch, 'in_signoff', roles[1]!), location: locations[0]!.location } },
+        // BCM approved a step for me (on my behalf).
+        { action: 'approved', on_behalf: true, for_user: 'Test User', user: 'Dewi Lestari', role: roles[0], comment: 'Approved by email on 12 Oct.', at: '2026-10-06T03:00:00Z', assessment: { ...workflowRef(branch, 'approved', null), location: locations[0]!.location } },
       ]
       const action = url.searchParams.get('action')
-      await route.fulfill({ json: paged(action ? rows.filter((row) => row.action === action) : rows) })
+      const filtered = action === 'on_behalf'
+        ? rows.filter((row) => row.on_behalf)
+        : rows.filter((row) => !action || (row.action === action && !row.on_behalf))
+      await route.fulfill({ json: paged(filtered) })
     } else {
       await route.fulfill({ status: 404, json: { error: 'not_found' } })
     }

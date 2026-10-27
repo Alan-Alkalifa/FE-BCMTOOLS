@@ -107,6 +107,11 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await page.getByRole('option', { name: 'Submitted' }).click()
   await expect(page).toHaveURL(/action=submitted/)
   await expect(page.getByText('Checked with the floor wardens.')).toHaveCount(0)
+  // An approval BCM gave for me shows who gave it.
+  await page.getByLabel('Action').click()
+  await page.getByRole('option', { name: 'Approved on my behalf' }).click()
+  await expect(page).toHaveURL(/action=on_behalf/)
+  await expect(page.getByText('For Test User, by Dewi Lestari')).toBeVisible()
 
   await page.getByRole('tab', { name: 'BCM board' }).click()
   const board = page.getByRole('table').filter({ visible: true })
@@ -119,6 +124,38 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await page.getByRole('dialog').getByRole('button', { name: 'Send reminder' }).click()
   await expect(page.getByText('Reminder sent').first()).toBeVisible()
   expect(log.signoff.at(-1)).toEqual(['nudge', null])
+
+  // Like SCCA's board: change the signer of the waiting step, with a reason.
+  await page.getByRole('button', { name: /^Act on/ }).click()
+  await page.getByRole('menuitem', { name: 'Change the signer' }).click()
+  const change = page.getByRole('dialog', { name: 'Change the signer' })
+  await change.getByRole('button', { name: 'Change signer' }).click()
+  await expect(change.getByText('Pick the new signer.')).toBeVisible()
+  await expect(change.getByText('Say why the step moves, e.g. the signer is on leave.')).toBeVisible()
+  await change.getByLabel('New signer').click()
+  await page.keyboard.type('Dewi')
+  await page.getByRole('option', { name: /Dewi Lestari/ }).click()
+  await change.getByLabel('Reason').fill('Rina is on leave until 30 Oct.')
+  await change.getByRole('button', { name: 'Change signer' }).click()
+  await expect(page.getByText('Signer changed', { exact: true })).toBeVisible()
+  expect(log.signoff.at(-1)).toEqual(['change-signer', { user_id: 4, reason: 'Rina is on leave until 30 Oct.' }])
+
+  // ... or approve it on the signer's behalf, with the evidence.
+  await page.getByRole('button', { name: /^Act on/ }).click()
+  await page.getByRole('menuitem', { name: 'Approve on behalf' }).click()
+  const behalf = page.getByRole('dialog', { name: 'Approve on behalf' })
+  await behalf.getByRole('button', { name: 'Approve on behalf' }).click()
+  await expect(behalf.getByText('Attach the evidence: the signer\'s email or memo.')).toBeVisible()
+  await behalf.getByLabel('Reason').fill('Approved by email on 12 Oct 2026')
+  await behalf.getByLabel('Evidence file').setInputFiles({ name: 'approval.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') })
+  await expect(behalf.getByText('approval.pdf')).toBeVisible()
+  await behalf.getByRole('button', { name: 'Approve on behalf' }).click()
+  await expect(page.getByText(/^Approved on behalf of /)).toBeVisible()
+  const [sent, body] = log.signoff.at(-1)!
+  expect(sent).toBe('approve-on-behalf')
+  expect(String(body)).toContain('Approved by email on 12 Oct 2026')
+  expect(String(body)).toContain('filename="approval.pdf"')
+
   await page.getByLabel('Step').click()
   await page.getByRole('option', { name: 'Location Incident Coordinator (LIC)' }).click()
   await expect(page.getByText('No RA is in sign-off at this step.')).toBeVisible()
@@ -129,6 +166,36 @@ test('an approval record opens on the Sign-off tab', async ({ page }) => {
   await page.goto('/ra/approval/1')
   await expect(page.getByRole('button', { name: /^Approve/ })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('tab', { name: 'Sign-off' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('BCM acts for the signer from the Sign-off tab', async ({ page }) => {
+  const log = await mockRa(page, { status: 'in_signoff', actForSigner: true })
+  await page.goto('/ra/approval/1')
+  const card = page.getByTestId('ra-act-for-signer')
+  await expect(card.getByText('Legiran signs this step.', { exact: false })).toBeVisible({ timeout: 60_000 })
+  // Approve is for the signer; BCM approves on their behalf, with the evidence.
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+
+  await card.getByRole('button', { name: 'Change the signer' }).click()
+  const change = page.getByRole('dialog', { name: 'Change the signer' })
+  await expect(change.getByText('is with Legiran.')).toBeVisible()
+  await change.getByLabel('New signer').click()
+  await page.keyboard.type('Rina')
+  await page.getByRole('option', { name: /Rina Kartika/ }).click()
+  await change.getByLabel('Reason').fill('Legiran is on leave.')
+  await change.getByRole('button', { name: 'Change signer' }).click()
+  await expect(card.getByText('Rina Kartika signs this step.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Legiran → Rina Kartika')).toBeVisible()
+  expect(log.signoff.at(-1)?.[0]).toBe('change-signer')
+
+  await card.getByRole('button', { name: 'Approve on behalf' }).click()
+  const behalf = page.getByRole('dialog', { name: 'Approve on behalf' })
+  await behalf.getByLabel('Reason').fill('Approved by email on 12 Oct 2026')
+  await behalf.getByLabel('Evidence file').setInputFiles({ name: 'approval.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') })
+  await behalf.getByRole('button', { name: 'Approve on behalf' }).click()
+  await expect(page.getByText('Approved on behalf of Rina Kartika', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Evidence: approval.pdf' })).toHaveAttribute('href', '/api/ra/assessments/1/attachments/1')
+  await expect(page.getByText('for Rina Kartika')).toBeVisible()
 })
 
 test('old links land in the right section', async ({ page }) => {

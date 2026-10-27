@@ -118,14 +118,33 @@ export interface RaSignoff {
   approved_at: string | null
   approved_by: string | null
   comment: string | null
+  /** Approved on the signer's behalf: the evidence (their email or memo). */
+  evidence?: RaAttachmentRef | null
+}
+
+/** A file kept with an RA: the evidence of an approval on the signer's behalf. */
+export interface RaAttachmentRef {
+  id: number
+  filename: string
+  size: number
+  url: string
 }
 
 export interface RaSignoffEvent {
-  action: 'submitted' | 'approved' | 'returned'
+  /** `reassigned`: BCM changed the signer of the waiting step. */
+  action: 'submitted' | 'approved' | 'returned' | 'reassigned'
   role: RaSignoffRole | null
+  /** Who acted (BCM, for an approval on behalf or a signer change). */
   user: string | null
   comment: string | null
   at: string
+  /** An approval BCM gave for `for_user`, with the evidence in `attachment`. */
+  on_behalf?: boolean
+  /** The signer approved for, or the signer the step was taken from. */
+  for_user?: string | null
+  /** The new signer of a `reassigned` step. */
+  to_user?: string | null
+  attachment?: RaAttachmentRef | null
 }
 
 export interface RaWorkflow {
@@ -138,6 +157,8 @@ export interface RaWorkflow {
   location_approved?: boolean
   can_approve: boolean
   can_return: boolean
+  /** BCM (ra.manage): change the signer of the waiting step or approve it on their behalf. */
+  can_act_for_signer?: boolean
   submitted_at: string | null
   submitted_by: string | null
   approved_at: string | null
@@ -734,6 +755,21 @@ export const raApi = {
     $fetch<RaAssessment>(`${BASE}/${id}/approve`, { method: 'POST', body: { comment } }),
   returnToDraft: (id: number, comment: string) =>
     $fetch<RaAssessment>(`${BASE}/${id}/return`, { method: 'POST', body: { comment } }),
+  /** BCM: give the waiting step to another signer; `sent` is whether they were emailed. */
+  changeSigner: (id: number, userId: number, reason: string) =>
+    $fetch<RaActionResult>(`${BASE}/${id}/change-signer`, { method: 'POST', body: { user_id: userId, reason } }),
+  /** BCM: approve the waiting step for its signer, with the evidence (their email or memo). */
+  approveOnBehalf: (id: number, reason: string, file: File) => {
+    const form = new FormData()
+    form.append('reason', reason)
+    form.append('file', file)
+    return $fetch<RaActionResult>(`${BASE}/${id}/approve-on-behalf`, { method: 'POST', body: form })
+  },
+}
+
+export interface RaActionResult {
+  sent: boolean
+  assessment: RaAssessment
 }
 
 /** The workflow message of a 422 (e.g. "This assessment is in sign-off…"), if any. */
@@ -796,15 +832,15 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   level: 'ok' | 'reminder' | 'escalated'
 }
 
-export interface RaHistoryRow {
-  action: 'approved' | 'returned' | 'submitted'
+export interface RaHistoryRow extends Omit<RaSignoffEvent, 'role'> {
   role: string | null
   /** Who signs the role, e.g. "Location Incident Coordinator (LIC)". */
   role_title?: string | null
-  comment: string | null
-  at: string
   assessment: RaAssessmentRef & { location: RaLocationRef }
 }
+
+/** My history filter; `on_behalf` is an approval BCM gave for me. */
+export type RaHistoryAction = RaSignoffEvent['action'] | 'on_behalf'
 
 export interface RaMonitoringFilters {
   kind: RaKind
@@ -900,7 +936,7 @@ export function useRaUpcoming(query: Paged<{ kind: RaKind }>) {
   return useRaList<RaSignoffWaiting>('/api/ra/approvals/upcoming', query)
 }
 
-export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryRow['action'] }>) {
+export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryAction }>) {
   return useRaList<RaHistoryRow>('/api/ra/approvals/history', query)
 }
 
