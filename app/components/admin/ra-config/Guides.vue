@@ -9,9 +9,9 @@ const props = defineProps<{ version: RaConfigVersion }>()
 const emit = defineEmits<{ saved: [version: RaConfigVersion] }>()
 
 const SCALES: { key: RaGuideScale, label: string }[] = [
-  { key: 'historical', label: 'Historical of occurrence (Tabel 1)' },
-  { key: 'probability', label: 'Probability of occurrence (Tabel 2)' },
-  ...RA_IMPACTS.map((impact) => ({ key: impact.key as RaGuideScale, label: `${impact.label} impact (Tabel 3)` })),
+  { key: 'historical', label: 'Historical of occurrence' },
+  { key: 'probability', label: 'Probability of occurrence' },
+  ...RA_IMPACTS.map((impact) => ({ key: impact.key as RaGuideScale, label: `${impact.label} impact` })),
 ]
 const scale = ref<RaGuideScale>('historical')
 const scaleItems = SCALES.map((item) => ({ label: item.label, value: item.key }))

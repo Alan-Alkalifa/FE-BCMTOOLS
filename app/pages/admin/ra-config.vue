@@ -173,7 +173,7 @@ async function discard() {
         v-if="versionItems.length && !LIVE.includes(tab)"
         v-model="code"
         :items="versionItems"
-        class="w-52"
+        class="w-40"
         aria-label="Version"
       />
       <template v-if="!LIVE.includes(tab)">
