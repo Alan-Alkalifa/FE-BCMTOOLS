@@ -16,7 +16,6 @@ const { data: crisis, status, error, refresh } = useRaCrisis(id)
 const { data: map } = useRaMap()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !crisis.value)
 const toast = useToast()
-const confirm = useConfirm()
 const crisisModal = useOverlay().create(RaCrisisModal)
 const noteModal = useOverlay().create(RaCrisisNoteModal)
 const actionError = ref<string | null>(null)
@@ -38,6 +37,7 @@ const markers = computed<RaMapMarker[]>(() => {
           lng: crisis.value.longitude,
           label: `Incident point: ${place.value}`,
           variant: 'crisis' as const,
+          pending: crisis.value.status === 'pending',
         }]),
     ...crisis.value.affected.map((row) => ({
       id: row.location.id,
@@ -50,7 +50,7 @@ const markers = computed<RaMapMarker[]>(() => {
   ]
 })
 const circles = computed(() => (crisis.value
-  ? [{ id: crisis.value.id, lat: crisis.value.latitude, lng: crisis.value.longitude, radiusM: crisis.value.radius_m, crisis: true }]
+  ? [{ id: crisis.value.id, lat: crisis.value.latitude, lng: crisis.value.longitude, radiusM: crisis.value.radius_m, crisis: true, pending: crisis.value.status === 'pending' }]
   : []))
 
 const openPlaces = ref<string[]>([])
@@ -130,24 +130,6 @@ async function reopen() {
   await act(() => raCrisisApi.reopen(crisis.value!.id, note || null), 'Incident reopened')
 }
 
-async function remove() {
-  if (!crisis.value) return
-  const ok = await confirm({
-    title: `Delete ${crisis.value.ref_no}?`,
-    description: 'Only for an incident declared by mistake: it and its history are removed for good. Close a real incident instead.',
-    confirmLabel: 'Delete incident',
-    destructive: true,
-  })
-  if (!ok) return
-  try {
-    await raCrisisApi.remove(crisis.value.id)
-    toast.add({ title: 'Incident deleted', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(CRISES_PATH)
-  } catch (err) {
-    actionError.value = apiErrorMessage(err)
-  }
-}
-
 async function act(call: () => Promise<RaCrisis>, message: string) {
   actionError.value = null
   try {
@@ -220,14 +202,6 @@ const historyIcon: Record<string, string> = {
           @click="reopen"
         />
       </template>
-      <UButton
-        v-if="crisis?.can_delete"
-        color="error"
-        variant="soft"
-        icon="i-lucide-trash-2"
-        label="Delete incident"
-        @click="remove"
-      />
     </template>
 
     <SkeletonGroup

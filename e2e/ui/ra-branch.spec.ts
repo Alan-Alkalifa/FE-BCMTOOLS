@@ -142,7 +142,7 @@ test('an RA Branch user works on branches only', async ({ page }) => {
   await page.goto('/locations')
   await expect(page.getByRole('link', { name: 'Input building data' })).toHaveAttribute('href', '/locations/new?type=branch', { timeout: 60_000 })
   // Only one side: no Type filter.
-  await expect(page.getByLabel('Type')).toHaveCount(0)
+  await expect(page.getByLabel('Type', { exact: true })).toHaveCount(0)
   const sidebar = page.getByRole('navigation', { name: 'Main' })
   await expect(sidebar.getByRole('link', { name: 'Buildings' })).toBeVisible()
   await expect(sidebar.locator('a[href="/ra-branch/manage"]')).toHaveCount(1)

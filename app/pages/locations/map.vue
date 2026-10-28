@@ -113,6 +113,7 @@ const markers = computed<RaMapMarker[]>(() => [
     lng: crisis.longitude,
     label: `${crisis.status === 'pending' ? 'Pending approval: incident' : 'Incident'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
+    pending: crisis.status === 'pending',
   })),
 ])
 
@@ -123,6 +124,7 @@ const circles = computed(() => [
     lng: crisis.longitude,
     radiusM: crisis.radius_m,
     crisis: true,
+    pending: crisis.status === 'pending',
   })),
   ...(selected.value && ringKm.value !== 'off'
     ? [{ id: -1, ...pinOf(selected.value), radiusM: ringKm.value * 1000, active: true }]
@@ -287,18 +289,23 @@ function assessmentUrl(place: RaMapPlace) {
           />
 
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <span class="flex items-center gap-1"><UIcon
-              name="i-lucide-map-pin"
-              class="size-4"
+            <!-- The same symbols the map draws (RaMapSymbol). -->
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="building"
+              class="text-muted"
             /> Head office building</span>
-            <span class="flex items-center gap-1"><UIcon
-              name="i-lucide-square"
-              class="size-4"
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="branch"
+              class="text-muted"
             /> Branch</span>
-            <span class="flex items-center gap-1"><UIcon
-              name="i-lucide-siren"
-              class="size-4 text-error"
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="crisis"
+              class="text-error"
             /> Incident and its affected area</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="crisis"
+              class="text-warning"
+            /> Incident waiting for approval (dashed area)</span>
             <span>Colour: latest residual risk</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>

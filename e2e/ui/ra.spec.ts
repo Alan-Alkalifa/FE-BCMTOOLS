@@ -372,13 +372,15 @@ test('the Risk Summary counts hazards by level and shows gross and residual as t
   await expect(page.getByRole('button', { name: 'Show the residual risk table' })).toBeVisible()
 })
 
-test('a location with assessments cannot be deleted', async ({ page }) => {
-  await mockRa(page, { locationInUse: true })
+test('buildings have no Delete button: a building is made inactive instead', async ({ page }) => {
+  const log = await mockRa(page)
   await page.goto('/locations')
   await expect(page.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Delete Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete building' }).click()
-  await expect(page.getByText(/has assessments, so it can't be deleted/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
+  await page.goto('/locations/1')
+  await expect(page.getByRole('heading', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
+  expect(log.deletedLocations).toEqual([])
 })
 
 test('deleting an assessment returns to the list', async ({ page }) => {

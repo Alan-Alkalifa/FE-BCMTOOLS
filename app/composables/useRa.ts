@@ -240,6 +240,8 @@ export interface RaMapMarker extends RaPin {
   level?: RaLevel | 'na' | 'none' | null
   /** A head office building (pin), a branch (square), or an incident point (siren). */
   variant?: 'location' | 'branch' | 'crisis'
+  /** An incident waiting for approval: its point is orange. */
+  pending?: boolean
 }
 
 export interface RaMapCircle extends RaPin {
@@ -248,6 +250,8 @@ export interface RaMapCircle extends RaPin {
   active?: boolean
   /** An incident's affected area (error colour) rather than a distance ring. */
   crisis?: boolean
+  /** An incident waiting for approval: its area is orange and dashed. */
+  pending?: boolean
 }
 
 /** A pinned building or branch on the location map. */
@@ -645,6 +649,9 @@ export interface RaLocationRegisterQuery {
   province?: string
   active?: boolean
   approval?: RaLocationApprovalStatus
+  /** Column to sort by; the newest change first (updated_at desc) by default. */
+  sort?: 'name' | 'kind' | 'province' | 'assessments' | 'updated_at'
+  dir?: 'asc' | 'desc'
   page: number
   per_page: number
 }

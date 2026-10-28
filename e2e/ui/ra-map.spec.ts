@@ -221,23 +221,43 @@ test('a declared incident waits for someone else\'s approval', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Close incident' })).toBeVisible()
 })
 
-test('the map flags an incident waiting for approval', async ({ page }) => {
+test('the map flags an incident waiting for approval, with an orange area', async ({ page }) => {
   await mockRaMap(page, { pending: true })
   await page.goto('/locations/map')
   await expect(page.getByText(/^Pending approval: Banjir/)).toBeVisible({ timeout: 30_000 })
+  // Orange (and dashed) while it waits; red once approved.
+  await expect(page.locator('path.ra-radius-pending')).toHaveCount(1)
+  await expect(page.locator('path.ra-radius-crisis')).toHaveCount(0)
+  await expect(page.locator('.ra-pin-crisis.text-warning')).toHaveCount(1)
 })
 
-test('an approver rejects an incident from the Incidents list, with a reason', async ({ page }) => {
+test('the map legend shows the symbols the map draws', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/locations/map')
+  await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
+  const symbols = page.getByTestId('ra-map-symbol')
+  await expect(symbols).toHaveCount(4)
+  // The branch in the legend is the map's branch marker (a rounded square with a bank).
+  const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
+  await expect(branch).toHaveCount(1)
+  await expect(page.locator('path.ra-radius-crisis')).toHaveCount(1)
+})
+
+test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {
   const log = await mockRaMap(page, { pending: true })
   await page.goto('/crises')
   const row = page.getByRole('row', { name: /CR-2026-0001/ })
   await expect(row).toContainText('Pending approval', { timeout: 30_000 })
-  await row.getByRole('button', { name: 'Reject CR-2026-0001' }).click()
+  await expect(row.getByRole('button')).toHaveCount(0)
+  await row.getByRole('link', { name: 'CR-2026-0001' }).click()
+  await expect(page).toHaveURL(/\/crises\/7$/)
+  await page.getByTestId('approval-banner').getByRole('button', { name: 'Reject' }).click()
   const dialog = page.getByRole('dialog', { name: 'Reject this incident?' })
   await dialog.getByLabel('Reason').fill('A drill, not a flood.')
   await dialog.getByRole('button', { name: 'Reject' }).click()
-  await expect(page.getByText('CR-2026-0001 rejected').first()).toBeVisible()
-  expect(log.decisions).toEqual([['reject', { note: 'A drill, not a flood.' }]])
+  await expect.poll(() => log.decisions).toEqual([['reject', { note: 'A drill, not a flood.' }]])
+  // No Delete button: an incident declared by mistake is rejected (or closed).
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
 })
 
 test('who declared an incident is told someone else approves it', async ({ page }) => {

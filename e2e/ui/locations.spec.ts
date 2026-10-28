@@ -157,16 +157,42 @@ test('Building map and Input building data sit in the top bar', async ({ page })
   expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
 })
 
-test('an approver approves a building from the Buildings list', async ({ page }) => {
-  const log = await mockRa(page, { pendingLocation: true })
+test('a building waiting for approval is approved on its page, not in the Buildings list', async ({ page }) => {
+  await mockRa(page, { pendingLocation: true })
   await page.goto('/locations')
   const row = page.getByRole('row', { name: /Griya CIMB Niaga 2/ })
   await expect(row).toContainText('Waiting for approval', { timeout: 60_000 })
-  await row.getByRole('button', { name: 'Reject Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog', { name: 'Reject this building?' }).getByRole('button', { name: 'Cancel' }).click()
-  await row.getByRole('button', { name: 'Approve Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog', { name: 'Approve this building?' }).getByRole('button', { name: 'Approve' }).click()
-  await expect(page.getByText('Griya CIMB Niaga 2 approved').first()).toBeVisible()
-  expect(log.approvals).toEqual([['approve', { note: null }]])
-  await expect(row.getByRole('button', { name: 'Approve Griya CIMB Niaga 2' })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+  await row.getByRole('link', { name: 'Edit Griya CIMB Niaga 2' }).click()
+  await expect(page).toHaveURL(/\/locations\/1$/)
+  const banner = page.getByTestId('approval-banner')
+  await expect(banner.getByRole('button', { name: 'Approve' })).toBeVisible()
+  await expect(banner.getByRole('button', { name: 'Reject' })).toBeVisible()
+})
+
+test('the Buildings list shows the last update and sorts by a column, newest change first by default', async ({ page }) => {
+  const log = await mockRa(page)
+  // The register's own requests (the pickers and the province list send no page).
+  const lastPage = () => log.locationQueries.filter((query) => query.includes('page=')).at(-1)
+  await page.goto('/locations')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: /Last updated/ })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('1 Mar 2026')
+  // Sorted by Last updated, newest first, until another column is picked.
+  await expect(table.getByRole('button', { name: 'Last updated, sorted descending. Sort ascending' })).toBeVisible()
+  expect(lastPage()).toContain('sort=updated_at&dir=desc')
+
+  await table.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect(page).toHaveURL(/sort=name&dir=asc/)
+  await expect(table.getByRole('button', { name: 'Name, sorted ascending. Sort descending' })).toBeVisible()
+  await expect(table.getByRole('button', { name: 'Sort by Last updated' })).toBeVisible()
+  await expect.poll(lastPage).toContain('sort=name&dir=asc')
+
+  await table.getByRole('button', { name: 'Name, sorted ascending. Sort descending' }).click()
+  await expect(page).toHaveURL(/sort=name&dir=desc/)
+  await expect.poll(lastPage).toContain('sort=name&dir=desc')
+
+  // Back to the default: the URL carries no sort.
+  await table.getByRole('button', { name: 'Sort by Last updated' }).click()
+  await expect(page).not.toHaveURL(/sort=/)
 })
