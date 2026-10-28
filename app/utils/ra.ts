@@ -529,6 +529,10 @@ export const RA_REASONS: { value: RaReason, label: string, description: string }
   { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
   { value: 'after_incident', label: 'After an incident', description: 'Reassessed after an incident.' },
 ]
+/** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
+ *  every other reason renews a year after it. */
+export const RA_CUSTOM_DUE_REASON: RaReason = 'structural_change'
+
 export function raReasonLabel(value: string | null | undefined) {
   return RA_REASONS.find((reason) => reason.value === value)?.label ?? null
 }

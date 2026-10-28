@@ -17,11 +17,22 @@ const schema = computed(() => z.object({
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
+  due_date: z.string().nullable(),
   copy: z.boolean(),
   lic_user_id: z.number('Choose the LIC.'),
   lic_phone: required('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
+}).superRefine((value, context) => {
+  // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
+  if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
+  if (!value.due_date) {
+    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Enter the renewal due date. It can be sooner than one year.' })
+  } else if (value.due_date < value.assessment_date) {
+    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be before the assessment date.' })
+  } else if (value.due_date > parseDate(value.assessment_date).add({ years: 1 }).toString()) {
+    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be later than one year after the assessment date.' })
+  }
 }))
 type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id' | 'reason'> & {
   lic_user_id: number | null
@@ -37,6 +48,7 @@ const state = reactive<State>({
   period_year: new Date().getFullYear(),
   assessment_date: today('Asia/Jakarta').toString(),
   reason: undefined,
+  due_date: null,
   copy: true,
   lic_user_id: null,
   lic_phone: '',
@@ -133,6 +145,14 @@ const dueDate = computed(() => {
   const date = parseDate(state.assessment_date).add({ years: 1 })
   return date.toString()
 })
+/** Structural change picks its renewal date (like SCCA's System change). */
+const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
+const chosenDue = computed({
+  get: () => state.due_date ? parseDate(state.due_date) : undefined,
+  set: (value: CalendarDate | null | undefined) => {
+    state.due_date = value ? value.toString() : null
+  },
+})
 
 async function onSubmit() {
   formError.value = null
@@ -142,6 +162,7 @@ async function onSubmit() {
       period_year: state.period_year,
       assessment_date: state.assessment_date,
       reason: state.reason,
+      ...(customDue.value ? { due_date: state.due_date } : {}),
       copy_from_id: state.copy && previous.value ? previous.value.id : null,
       lic_user_id: state.lic_user_id ?? undefined,
       lic_phone: state.lic_phone.trim(),
@@ -187,6 +208,22 @@ async function onSubmit() {
         </template>
         <div class="space-y-4">
           <UFormField
+            label="Reason for assessment"
+            name="reason"
+            required
+            help="Annual review renews the last final RA; New building is the first RA."
+          >
+            <USelectMenu
+              v-model="reasonModel"
+              value-key="value"
+              :items="reasonItems"
+              :search-input="false"
+              placeholder="Select a reason"
+              class="w-full"
+              aria-label="Reason for assessment"
+            />
+          </UFormField>
+          <UFormField
             :label="ra.location.single"
             name="location_id"
             required
@@ -211,22 +248,6 @@ async function onSubmit() {
               />
             </div>
           </UFormField>
-          <UFormField
-            label="Reason for assessment"
-            name="reason"
-            required
-            help="Annual review renews the last final RA; New building is the first RA."
-          >
-            <USelectMenu
-              v-model="reasonModel"
-              value-key="value"
-              :items="reasonItems"
-              :search-input="false"
-              placeholder="Choose a reason"
-              class="w-full"
-              aria-label="Reason for assessment"
-            />
-          </UFormField>
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
               label="RA period"
@@ -249,11 +270,24 @@ async function onSubmit() {
               <DatePicker v-model="assessmentDate" />
             </UFormField>
           </div>
+          <UFormField
+            v-if="customDue"
+            label="Renewal due date"
+            name="due_date"
+            required
+            help="Standard renewal is one year after the assessment. A structural change can be sooner."
+          >
+            <DatePicker
+              v-model="chosenDue"
+              :min="assessmentDate"
+              :max="assessmentDate?.add({ years: 1 })"
+            />
+          </UFormField>
           <p
-            v-if="dueDate"
+            v-else-if="dueDate"
             class="text-sm text-muted"
           >
-            Renewal due {{ formatDate(dueDate) }}, one year after this assessment. You can change it later.
+            Renewal due {{ formatDate(dueDate) }}, one year after this assessment.
           </p>
           <UFormField
             v-if="previous"

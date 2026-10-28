@@ -70,6 +70,10 @@ const { data, status, error, refresh } = useRaAssessments(query)
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason || query.value.mine))
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: {} })
+}
 
 const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
@@ -153,28 +157,26 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="`Search ${ra.location.lower} or ref. no.`"
-          class="w-full sm:w-60"
-          :aria-label="`Search ${ra.location.lower} or ref. no.`"
-        />
+      <!-- As SCCA: search, then building → reason → whose → period (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="hasFilters"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="`${ra.location.single}, ID or ref. no.`"
+            class="w-full"
+            :aria-label="`Search ${ra.location.lower}, ID or ref. no.`"
+          />
+        </template>
         <USelectMenu
           v-model="locationFilter"
           value-key="value"
           :items="locationItems"
           class="w-48"
           :aria-label="`Filter by ${ra.location.lower}`"
-        />
-        <USelectMenu
-          v-model="yearFilter"
-          value-key="value"
-          :items="yearItems"
-          :search-input="false"
-          class="w-32"
-          aria-label="Filter by period"
         />
         <USelectMenu
           v-model="reasonFilter"
@@ -192,7 +194,15 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           class="w-40"
           aria-label="Whose drafts"
         />
-      </div>
+        <USelectMenu
+          v-model="yearFilter"
+          value-key="value"
+          :items="yearItems"
+          :search-input="false"
+          class="w-32"
+          aria-label="Filter by period"
+        />
+      </ListFilterBar>
 
       <UTable
         :data="data?.items ?? []"

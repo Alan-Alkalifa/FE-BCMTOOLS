@@ -295,13 +295,54 @@ function record(id: number) {
     :description="`Every ${ra.location.lower}'s RA in force: residual risk, renewals due and sign-offs that are waiting. Read-only.`"
     :crumbs="[{ label: ra.title }, { label: 'Monitoring' }]"
   >
-    <UCard :ui="{ body: 'p-4 sm:p-4' }">
-      <div
-        class="flex flex-wrap items-end gap-2"
-        role="search"
-        aria-label="Monitoring filters"
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <!-- As SCCA: search, then state → level → reason → region → dates (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="filtered"
+        :bordered="false"
+        @clear="clearFilters"
       >
-        <!-- Period: the assessment date of the RAs counted -->
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="ra.hasRegion ? 'Branch, ID, region or address' : 'Building, ID or address'"
+            :aria-label="`Search ${ra.location.lowerPlural}`"
+            class="w-full"
+          />
+        </template>
+        <USelectMenu
+          v-model="state"
+          value-key="value"
+          :items="stateItems"
+          :search-input="false"
+          class="w-48"
+          aria-label="State"
+        />
+        <USelectMenu
+          v-model="level"
+          value-key="value"
+          :items="levelItems"
+          :search-input="false"
+          class="w-48"
+          aria-label="Highest residual level"
+        />
+        <USelectMenu
+          v-model="reasonFilter"
+          value-key="value"
+          :items="reasonItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Reason for assessment"
+        />
+        <USelectMenu
+          v-if="ra.hasRegion"
+          v-model="region"
+          value-key="value"
+          :items="regionItems"
+          class="w-48"
+          aria-label="Region"
+        />
         <USelectMenu
           v-model="period"
           value-key="value"
@@ -324,65 +365,7 @@ function record(id: number) {
             aria-label="To"
           />
         </template>
-
-        <USelectMenu
-          v-if="ra.hasRegion"
-          v-model="region"
-          value-key="value"
-          :items="regionItems"
-          class="w-48"
-          aria-label="Region"
-        />
-        <USelectMenu
-          v-model="level"
-          value-key="value"
-          :items="levelItems"
-          :search-input="false"
-          class="w-48"
-          aria-label="Highest residual level"
-        />
-        <USelectMenu
-          v-model="state"
-          value-key="value"
-          :items="stateItems"
-          :search-input="false"
-          class="w-48"
-          aria-label="State"
-        />
-        <USelectMenu
-          v-model="reasonFilter"
-          value-key="value"
-          :items="reasonItems"
-          :search-input="false"
-          class="w-44"
-          aria-label="Reason for assessment"
-        />
-        <!-- TODO: Add department filter when backend supports it
-        <USelectMenu
-          v-model="department"
-          value-key="value"
-          :items="departmentItems"
-          class="w-52"
-          aria-label="Department"
-        />
-        -->
-
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="ra.hasRegion ? 'Branch, ID, region or address' : 'Building, ID or address'"
-          :aria-label="`Search ${ra.location.lowerPlural}`"
-          class="w-full sm:w-64"
-        />
-        <UButton
-          v-if="filtered"
-          color="neutral"
-          variant="link"
-          icon="i-lucide-x"
-          label="Clear filters"
-          @click="clearFilters"
-        />
-      </div>
+      </ListFilterBar>
     </UCard>
 
     <UTabs

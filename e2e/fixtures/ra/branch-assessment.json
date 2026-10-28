@@ -12,6 +12,7 @@
   "created_by": "Test User",
   "current_signoff_role": null,
   "due_date": "2026-04-02",
+  "reason": "new_building",
   "formula_version": "branch-2025-r4",
   "id": 2,
   "is_complete": false,

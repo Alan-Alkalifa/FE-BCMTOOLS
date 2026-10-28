@@ -31,6 +31,12 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await page.getByRole('option', { name: 'After an incident' }).click()
   await byReason
   await expect(page).toHaveURL(/reason=after_incident/)
+  // As SCCA's lists: search first, then building → reason → whose → period; Clear filters.
+  const bar = page.getByRole('search')
+  const labels = await bar.locator('[aria-label]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
+  expect(labels).toEqual(['Search building, ID or ref. no.', 'Filter by building', 'Reason for assessment', 'Whose drafts', 'Filter by period'])
+  await bar.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page).not.toHaveURL(/reason=/)
 
   const mine = page.waitForRequest((r) => r.url().includes('mine=1'))
   await page.getByLabel('Whose drafts').click()
@@ -230,10 +236,10 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(page.getByText('Choose the reason for this assessment.')).toBeVisible()
   await page.getByLabel('Reason for assessment').click()
   await expect(page.getByRole('option', { name: /Annual review/ })).toBeVisible()
-  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('option', { name: /After an incident/ }).click()
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'structural_change', copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'after_incident', copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -589,7 +595,7 @@ test('the location incident team is required', async ({ page }) => {
   expect(saved).toBe(false)
 })
 
-test('the assessment and renewal dates are picked from a calendar', async ({ page }) => {
+test('the assessment date is picked from a calendar; the renewal follows it', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
@@ -597,9 +603,13 @@ test('the assessment and renewal dates are picked from a calendar', async ({ pag
   await date.click()
   await page.getByRole('gridcell', { name: /17/ }).first().click()
   await expect(date).toContainText('17 Mar 2025')
+  // As SCCA: every reason but a structural change renews a year after the assessment.
+  await expect(page.getByText('Renewal due 17 Mar 2026, one year after this assessment.')).toBeVisible()
   const request = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1'))
   await page.getByRole('button', { name: 'Save assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ assessment_date: '2025-03-17', due_date: '2026-03-10' })
+  const body = (await request).postDataJSON()
+  expect(body).toMatchObject({ assessment_date: '2025-03-17', reason: 'new_building' })
+  expect(body).not.toHaveProperty('due_date')
 })
 
 test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {
@@ -844,4 +854,18 @@ test('Home shows only the side the user holds', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'RA Branch at a glance' })).toHaveCount(0)
   // Without ra.manage, stuck sign-offs open Monitoring > Bottlenecks.
   await expect(page.getByRole('link', { name: /Stuck sign-offs/ })).toHaveAttribute('href', '/ra/monitoring?tab=bottlenecks')
+})
+
+test('a structural change picks its renewal date, like SCCA\'s System change', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/new?location_id=1')
+  // The reason is the first field of the form.
+  const fields = page.locator('form label')
+  await expect(fields.first()).toContainText('Reason for assessment', { timeout: 60_000 })
+  await expect(page.getByText(/Renewal due .*, one year after this assessment\./)).toBeVisible()
+  await page.getByLabel('Reason for assessment').click()
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await expect(page.getByText('Standard renewal is one year after the assessment. A structural change can be sooner.')).toBeVisible()
+  await page.getByRole('button', { name: 'Create assessment' }).click()
+  await expect(page.getByText('Enter the renewal due date. It can be sooner than one year.')).toBeVisible()
 })

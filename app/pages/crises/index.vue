@@ -36,6 +36,12 @@ watch(search, (value) => {
   }, 300)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
+const filtered = computed(() => Boolean(route.query.q || route.query.status))
+function clearFilters() {
+  clearTimeout(searchTimer)
+  search.value = ''
+  router.replace({ query: {} })
+}
 
 const statusFilter = computed({
   get: () => query.value.status ?? 'all',
@@ -141,21 +147,26 @@ async function declare() {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Search by reference, hazard or place"
-          aria-label="Search by reference, hazard or place"
-          class="w-full sm:w-80"
-        />
+      <ListFilterBar
+        :filtered="filtered"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Reference, hazard or place"
+            aria-label="Search by reference, hazard or place"
+            class="w-full"
+          />
+        </template>
         <USelect
           v-model="statusFilter"
           :items="statusItems"
           class="w-40"
           aria-label="Filter by status"
         />
-      </div>
+      </ListFilterBar>
 
       <UAlert
         v-if="actionError"

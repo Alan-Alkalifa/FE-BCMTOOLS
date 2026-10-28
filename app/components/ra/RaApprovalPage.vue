@@ -47,6 +47,31 @@ function comingTo(page: number) {
   return { query: { ...route.query, coming: page > 1 ? page : undefined } }
 }
 const pageOf = (name: ApprovalTab) => computed(() => (tab.value === name ? number('page') : 1))
+
+// --- search and filters of My history and the BCM board, kept in the URL (as SCCA's) --------
+function text(name: string) {
+  const value = route.query[name]
+  return typeof value === 'string' && value ? value : undefined
+}
+const search = ref(text('q') ?? '')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    if (value.trim() !== (text('q') ?? '')) setQuery({ q: value.trim() || undefined, page: undefined })
+  }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+// Switching tabs clears the filters (the URL keeps only the tab).
+watch(() => route.query.tab, () => {
+  clearTimeout(searchTimer)
+  search.value = text('q') ?? ''
+})
+const filtered = computed(() => Boolean(text('q') || text('action') || text('step')))
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: { tab: route.query.tab } })
+}
 const kind = computed(() => ra.value.kind)
 
 // --- my inbox -------------------------------------------------------------------------------
@@ -90,6 +115,7 @@ const historyPage = pageOf('history')
 const history = useRaHistory(computed(() => ({
   kind: kind.value,
   action: action.value === 'all' ? undefined : action.value,
+  q: tab.value === 'history' ? text('q') : undefined,
   page: historyPage.value,
   per_page: PER_PAGE,
 })))
@@ -134,7 +160,13 @@ const boardStep = computed<string>({
 })
 const boardPage = pageOf('board')
 const board = useRaBoard(
-  computed(() => ({ kind: kind.value, step: boardStep.value === 'all' ? undefined : boardStep.value, page: boardPage.value, per_page: PER_PAGE })),
+  computed(() => ({
+    kind: kind.value,
+    step: boardStep.value === 'all' ? undefined : boardStep.value,
+    q: tab.value === 'board' ? text('q') : undefined,
+    page: boardPage.value,
+    per_page: PER_PAGE,
+  })),
   bcm,
 )
 const stepItems = computed(() => [
@@ -347,7 +379,19 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                :placeholder="`${ra.location.single}, ID or ref. no.`"
+                aria-label="Search my history"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="action"
               value-key="value"
@@ -356,7 +400,7 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Action"
             />
-          </div>
+          </ListFilterBar>
           <UTable
             :data="history.data.value?.items ?? []"
             :columns="historyColumns"
@@ -430,7 +474,19 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                :placeholder="`${ra.location.single}, ID or ref. no.`"
+                aria-label="Search the board"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="boardStep"
               value-key="value"
@@ -439,8 +495,15 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Step"
             />
+          </ListFilterBar>
+          <div class="border-b border-default px-4 py-2">
             <p class="text-sm text-muted">
-              Send the signer a reminder, change the signer, or approve the step on the signer's behalf.
+              Send the signer a reminder, change the signer, or approve the step on the signer's behalf. Reminders and escalation follow
+              <NuxtLink
+                v-if="can('ra.config.view')"
+                to="/admin/ra-config?tab=reminders"
+                class="text-primary hover:underline"
+              >RA configuration > Reminders and escalation</NuxtLink><span v-else>the RA reminder rules</span>.
             </p>
           </div>
           <UTable

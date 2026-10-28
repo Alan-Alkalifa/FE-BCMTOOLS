@@ -957,11 +957,11 @@ export function useRaUpcoming(query: Paged<{ kind: RaKind }>) {
   return useRaList<RaSignoffWaiting>('/api/ra/approvals/upcoming', query)
 }
 
-export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryAction }>) {
+export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryAction, q?: string }>) {
   return useRaList<RaHistoryRow>('/api/ra/approvals/history', query)
 }
 
-export function useRaBoard(query: Paged<{ kind: RaKind, step?: string }>, enabled: MaybeRefOrGetter<boolean>) {
+export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: string }>, enabled: MaybeRefOrGetter<boolean>) {
   return useFetch<RaPage<RaSignoffWaiting>>('/api/ra/approvals/board', {
     key: computed(() => `ra-board-${JSON.stringify(toValue(query))}`),
     query: computed(() => toValue(query)),

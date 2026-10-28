@@ -76,6 +76,11 @@ const { data: provinceData } = useRaProvinces(type)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const actionError = ref<string | null>(null)
 const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || province.value || statusFilter.value !== 'all'))
+function clearFilters() {
+  clearTimeout(searchTimer)
+  search.value = ''
+  router.replace({ query: {} })
+}
 
 const typeItems = [
   { label: 'All types', value: 'all' as const },
@@ -220,13 +225,27 @@ async function remove(location: RaLocation) {
         title="That didn't work"
         :description="actionError"
       />
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Search by name, ID, city, province or address"
-          class="w-full sm:w-64"
-          aria-label="Search by name, ID, city, province or address"
+      <!-- As SCCA: search, then status → type → province (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="hasFilters"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Name, ID, city, province or address"
+            class="w-full"
+            aria-label="Search by name, ID, city, province or address"
+          />
+        </template>
+        <USelectMenu
+          v-model="statusModel"
+          value-key="value"
+          :items="statusItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Status"
         />
         <USelectMenu
           v-if="kinds.length > 1"
@@ -244,15 +263,7 @@ async function remove(location: RaLocation) {
           class="w-44"
           aria-label="Province"
         />
-        <USelectMenu
-          v-model="statusModel"
-          value-key="value"
-          :items="statusItems"
-          :search-input="false"
-          class="w-44"
-          aria-label="Status"
-        />
-      </div>
+      </ListFilterBar>
 
       <UTable
         :data="data?.items ?? []"
