@@ -12,7 +12,7 @@ import 'leaflet/dist/leaflet.css'
  */
 const props = withDefaults(defineProps<{
   markers?: RaMapMarker[]
-  /** Rings: a distance around the selected place, or a crisis's affected area. */
+  /** Rings: a distance around the selected place, or an incident's affected area. */
   circles?: RaMapCircle[]
   /** A dashed line between two places, e.g. the distance being measured. */
   line?: [RaPin, RaPin] | null
@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
   autoFit?: boolean
   /** Move the view to the pin when it jumps far (typed coordinates, a reset). */
   recentre?: boolean
-  /** The editable pin's look: a building pin, or a crisis point. */
+  /** The editable pin's look: a building pin, or an incident point. */
   pinVariant?: 'location' | 'crisis'
 }>(), {
   markers: () => [],
@@ -77,7 +77,7 @@ const BRANCH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
   + '<path fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 17.5h12M7.5 15v-4.5M10.5 15v-4.5M13.5 15v-4.5M16.5 15v-4.5M5.5 9 12 5.5 18.5 9Z"/>'
   + '</svg>'
 
-/** A crisis point: a siren in a circle, in the error colour. */
+/** An incident point: a siren in a circle, in the error colour. */
 const CRISIS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">'
   + '<circle cx="12" cy="12" r="10.5" fill="currentColor" stroke="white" stroke-width="1.5"/>'
   + '<path fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M8 16.5v-4a4 4 0 0 1 8 0v4M6.5 16.5h11M12 5.5v1.2M6.7 7.7l.8.8M17.3 7.7l-.8.8"/>'
@@ -168,8 +168,8 @@ function drawPin(recentre: boolean) {
       draggable: true,
       keyboard: true,
       zIndexOffset: 1000,
-      title: crisis ? 'Crisis point. Drag to move.' : 'Location pin. Drag to move.',
-      alt: crisis ? 'Crisis point' : 'Location pin',
+      title: crisis ? 'Incident point. Drag to move.' : 'Location pin. Drag to move.',
+      alt: crisis ? 'Incident point' : 'Location pin',
     }).addTo(map)
     editMarker.on('dragend', () => {
       const position = editMarker!.getLatLng()

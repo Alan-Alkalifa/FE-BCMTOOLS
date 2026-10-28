@@ -14,9 +14,9 @@ const NONE = '__none__'
 
 const items = computed(() => [
   { label: 'Not rated yet', value: NONE },
-  { label: 'N/A · Not applicable', value: 'N/A' },
+  { label: 'N/A - Not applicable', value: 'N/A' },
   ...props.guides.map((guide) => ({
-    label: guide.label ? `${guide.rating} · ${guide.label}` : String(guide.rating),
+    label: guide.label ? `${guide.rating} - ${guide.label}` : String(guide.rating),
     value: String(guide.rating),
   })),
 ])

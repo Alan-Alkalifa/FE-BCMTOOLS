@@ -1,39 +1,50 @@
 <script setup lang="ts">
 import type { RaLocationDetail } from '~/composables/useRa'
 
-const ra = useRaModule()
+/**
+ * Building Data Entry: add a head office building or a branch. The type comes from the link
+ * (`?type=branch`, e.g. from RA Branch > New assessment), otherwise the user picks it in the
+ * form; every field follows it.
+ */
 const route = useRoute()
-/** Opened from "New assessment": go back there with the new location chosen. */
+
+const fixedType = computed<RaKind | null>(() =>
+  route.query.type === 'branch' || route.query.type === 'head_office' ? route.query.type : null)
+const chosen = ref<RaKind>(fixedType.value ?? 'head_office')
+watch(fixedType, (value) => {
+  if (value) chosen.value = value
+})
+const kind = computed<RaKind>(() => fixedType.value ?? chosen.value)
+provide(raKindKey, kind)
+
+/** Opened from "New assessment": go back there with the new building chosen. */
 const forAssessment = computed(() => route.query.then === 'assessment')
 
 function onSaved(location: RaLocationDetail) {
   return navigateTo(forAssessment.value
-    ? { path: raPath(ra.value.kind, 'manage', 'new'), query: { location_id: location.id } }
-    : `${ra.value.base}/locations/${location.id}?tab=contacts`)
+    ? { path: raPath(location.kind, 'manage', 'new'), query: { location_id: location.id } }
+    : locationPath(location.id, 'contacts'))
 }
 </script>
 
 <template>
   <AppPage
-    :title="`New ${ra.location.lower}`"
+    title="Building Data Entry"
+    icon="i-lucide-building"
     :crumbs="[
-      { label: ra.title, to: raPath(ra.kind, 'monitoring') },
-      { label: ra.location.plural, to: `${ra.base}/locations` },
-      { label: `New ${ra.location.lower}` },
+      { label: BUILDINGS_GROUP },
+      { label: 'Buildings', to: LOCATIONS_PATH },
+      { label: 'Building Data Entry' },
     ]"
   >
-    <div class="max-w-xl space-y-6">
-      <UAlert
-        color="info"
-        variant="subtle"
-        icon="i-lucide-info"
-        :title="ra.kind === 'branch' ? 'Add the branch first' : 'Add the building first'"
-        :description="ra.hasLcp
-          ? 'After saving you can add its emergency contacts, occupants, recovery team and call tree. Every RA cycle of this location uses them.'
-          : 'After saving you can add its emergency contacts. Every RA cycle of this branch uses them.'"
-      />
+    <div class="max-w-2xl space-y-6">
+      <p class="text-sm text-muted">
+        After saving you can add its emergency contacts, divisions, recovery team and call tree. Every RA cycle of this building uses them.
+      </p>
       <RaLocationForm
-        :cancel-to="forAssessment ? `${ra.base}/new` : `${ra.base}/locations`"
+        v-model:kind="chosen"
+        :kind-locked="Boolean(fixedType)"
+        :cancel-to="forAssessment ? raPath(kind, 'manage', 'new') : LOCATIONS_PATH"
         @saved="onSaved"
       />
     </div>

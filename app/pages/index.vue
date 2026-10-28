@@ -9,8 +9,9 @@ const subtitle = computed(() =>
 
 const MODULE_TEXT: Record<string, string> = {
   scca: 'System criticality categorisation: monitor every SCCA, manage yours, and sign off what waits for you.',
-  ra: 'Location risk assessment for head office buildings, the location map of every building and branch, and crises.',
-  ra_branch: 'Location risk assessment for branches.',
+  ra: 'Location risk assessment for head office buildings: monitor every RA, manage the drafts, and sign off what waits for you.',
+  ra_branch: 'Location risk assessment for branches, in the same three steps.',
+  locations: 'Every head office building and branch: its profile and map pin, the building map, incidents and the incident guidebook.',
   admin: 'Users, roles and permissions, menus, email settings and the audit log.',
 }
 

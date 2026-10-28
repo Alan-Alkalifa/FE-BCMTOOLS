@@ -4,8 +4,8 @@ import { z } from 'zod'
 import type { RaCrisis, RaCrisisInput, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
- * Declares a crisis, or edits an open one: the hazard, where it happens, the affected radius and
- * when it started (WIB). Closes with the saved crisis, or false.
+ * Declares an incident, or edits an open one: the hazard, where it happens, the affected radius and
+ * when it started (WIB). Closes with the saved incident, or false.
  *
  * Where is always a pin on the map: drop it by clicking the map, drag it, or pick a building or
  * branch (from the list or its marker) to put the pin on it. The ring shows the affected area.
@@ -98,7 +98,7 @@ const markers = computed<RaMapMarker[]>(() => props.places.map((place) => ({
   id: place.id,
   lat: place.latitude,
   lng: place.longitude,
-  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the crisis here.`,
+  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the incident here.`,
   level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
   variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
 })))
@@ -106,7 +106,7 @@ const circles = computed(() => (state.pin && state.radius_km > 0
   ? [{ id: 0, ...state.pin, radiusM: state.radius_km * 1000, crisis: true }]
   : []))
 
-/** The places inside the ring, nearest first: what the crisis will affect. */
+/** The places inside the ring, nearest first: what the incident will affect. */
 const affected = computed(() => {
   const pin = state.pin
   if (!pin) return []
@@ -158,10 +158,10 @@ async function onSubmit() {
 
 <template>
   <UModal
-    :title="editing ? `Update ${crisis!.ref_no}` : 'Declare a crisis'"
+    :title="editing ? `Update ${crisis!.ref_no}` : 'Declare an incident'"
     :description="editing
-      ? 'What changes is added to the crisis history.'
-      : 'Everyone sees it on the location map until it is closed. Each affected place gets its instructions.'"
+      ? 'What changes is added to the incident history.'
+      : 'It shows on the building map as pending until someone else with the approve permission confirms it; then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >
@@ -178,7 +178,7 @@ async function onSubmit() {
           color="error"
           variant="subtle"
           icon="i-lucide-circle-alert"
-          :title="editing ? 'Couldn\'t update the crisis' : 'Couldn\'t declare the crisis'"
+          :title="editing ? 'Couldn\'t update the incident' : 'Couldn\'t declare the incident'"
           :description="formError"
         />
 
@@ -225,7 +225,7 @@ async function onSubmit() {
               :markers="markers"
               :circles="circles"
               :selected="state.location_id ?? null"
-              label="Map for the crisis point. Click to drop the pin, or select a building or branch."
+              label="Map for the incident point. Click to drop the pin, or select a building or branch."
               height-class="h-72"
               @select="(id: number) => choosePlace(id)"
               @ready="showArea"
@@ -309,7 +309,7 @@ async function onSubmit() {
         <UFormField
           label="What is happening"
           name="description"
-          help="Optional. Shown with the crisis, e.g. the water level or the affected floors."
+          help="Optional. Shown with the incident, e.g. the water level or the affected floors."
         >
           <UTextarea
             v-model="state.description"
@@ -345,9 +345,8 @@ async function onSubmit() {
         <UButton
           type="submit"
           form="ra-crisis-form"
-          :color="editing ? 'primary' : 'error'"
           :icon="editing ? undefined : 'i-lucide-siren'"
-          :label="editing ? 'Save changes' : 'Declare crisis'"
+          :label="editing ? 'Save changes' : 'Submit disaster/incident'"
           :loading="saving"
         />
       </div>

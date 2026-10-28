@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.edit' })
+/** Adding a location moved to Locations. */
+definePageMeta({
+  permission: 'ra.edit',
+  redirect: (to) => ({ path: '/locations/new', query: { type: 'branch', ...to.query } }),
+})
 </script>
 
 <template>
-  <RaNewLocationPage />
+  <div />
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parseDate, today, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaAssessmentSummary } from '~/composables/useRa'
+import type { RaAssessmentSummary, RaUserRef } from '~/composables/useRa'
 
 const ra = useRaModule()
 const route = useRoute()
@@ -17,14 +17,17 @@ const schema = computed(() => z.object({
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   copy: z.boolean(),
-  lic_name: required('Enter the LIC name.'),
+  lic_user_id: z.number('Choose the LIC.'),
   lic_phone: required('Enter the LIC mobile number.'),
-  licom_name: required('Enter the LICOM name.'),
+  licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
 }))
-type State = z.infer<typeof schema.value>
-type TeamField = 'lic_name' | 'lic_phone' | 'licom_name' | 'licom_phone'
-const TEAM_FIELDS: TeamField[] = ['lic_name', 'lic_phone', 'licom_name', 'licom_phone']
+type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id'> & {
+  lic_user_id: number | null
+  licom_user_id: number | null
+}
+type Member = 'lic' | 'licom'
+const MEMBERS: Member[] = ['lic', 'licom']
 
 const initialLocation = Number(route.query.location_id) || undefined
 const state = reactive<State>({
@@ -32,11 +35,13 @@ const state = reactive<State>({
   period_year: new Date().getFullYear(),
   assessment_date: today('Asia/Jakarta').toString(),
   copy: true,
-  lic_name: '',
+  lic_user_id: null,
   lic_phone: '',
-  licom_name: '',
+  licom_user_id: null,
   licom_phone: '',
 })
+/** The picked users, for the pickers' labels and their mobile numbers. */
+const users = reactive<Record<Member, RaUserRef | null>>({ lic: null, licom: null })
 
 const assessmentDate = computed({
   get: () => state.assessment_date ? parseDate(state.assessment_date) : undefined,
@@ -55,14 +60,19 @@ const locationItems = computed(() =>
 
 /**
  * The most recent assessment of the chosen location, offered as the starting point. Its team
- * fills the empty team fields; whatever is typed in is kept.
+ * fills the members not picked yet; whoever was picked is kept.
  */
 const previous = ref<RaAssessmentSummary | null>(null)
-const prefilled = ref<Partial<Record<TeamField, string>>>({})
+const prefilled = ref<Partial<Record<Member, { user: RaUserRef, phone: string }>>>({})
 
 function clearPrefill() {
-  for (const field of TEAM_FIELDS) {
-    if (prefilled.value[field] !== undefined && state[field] === prefilled.value[field]) state[field] = ''
+  for (const member of MEMBERS) {
+    const filled = prefilled.value[member]
+    if (filled && state[`${member}_user_id`] === filled.user.id) {
+      state[`${member}_user_id`] = null
+      users[member] = null
+      if (state[`${member}_phone`] === filled.phone) state[`${member}_phone`] = ''
+    }
   }
   prefilled.value = {}
 }
@@ -70,13 +80,15 @@ function clearPrefill() {
 async function prefillTeam(source: RaAssessmentSummary) {
   const detail = await raApi.get(source.id)
   if (previous.value?.id !== source.id || !state.copy) return
-  const filled: Partial<Record<TeamField, string>> = {}
-  for (const field of TEAM_FIELDS) {
-    const value = detail[field]
-    if (value && !state[field].trim()) {
-      state[field] = value
-      filled[field] = value
-    }
+  const filled: typeof prefilled.value = {}
+  for (const member of MEMBERS) {
+    const user = detail[`${member}_user`]
+    if (!user || state[`${member}_user_id`]) continue
+    state[`${member}_user_id`] = user.id
+    users[member] = user
+    const phone = detail[`${member}_phone`] ?? ''
+    if (!state[`${member}_phone`].trim()) state[`${member}_phone`] = phone
+    filled[member] = { user, phone }
   }
   prefilled.value = filled
 }
@@ -114,7 +126,10 @@ async function onSubmit() {
       period_year: state.period_year,
       assessment_date: state.assessment_date,
       copy_from_id: state.copy && previous.value ? previous.value.id : null,
-      ...Object.fromEntries(TEAM_FIELDS.map((field) => [field, state[field].trim()])),
+      lic_user_id: state.lic_user_id ?? undefined,
+      lic_phone: state.lic_phone.trim(),
+      licom_user_id: state.licom_user_id ?? undefined,
+      licom_phone: state.licom_phone.trim(),
     })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
     await navigateTo(raPath(ra.value.kind, 'manage', created.id))
@@ -160,7 +175,7 @@ async function onSubmit() {
             required
             :help="ra.kind === 'branch'
               ? 'The branch to assess. One assessment per branch per period.'
-              : 'The building or work location to assess. One assessment per location per period.'"
+              : 'The building or work location to assess. One assessment per building per period.'"
           >
             <div class="flex gap-2">
               <USelectMenu
@@ -171,7 +186,7 @@ async function onSubmit() {
                 class="min-w-0 flex-1"
               />
               <UButton
-                :to="`${ra.base}/locations/new?then=assessment`"
+                :to="{ path: `${LOCATIONS_PATH}/new`, query: { type: ra.kind, then: 'assessment' } }"
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-plus"
@@ -198,11 +213,7 @@ async function onSubmit() {
               name="assessment_date"
               required
             >
-              <UInputDate
-                v-model="assessmentDate"
-                locale="en-GB"
-                class="w-full"
-              />
+              <DatePicker v-model="assessmentDate" />
             </UFormField>
           </div>
           <p
@@ -219,7 +230,7 @@ async function onSubmit() {
               v-model="state.copy"
               :label="`Start from ${previous.ref_no} (${previous.period_year})`"
               :description="ra.hasLcp
-                ? 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts, occupants, the recovery team and the call tree come from the location.'
+                ? 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts, divisions, the recovery team and the call tree come from the building.'
                 : 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts come from the branch.'"
             />
           </UFormField>
@@ -233,75 +244,26 @@ async function onSubmit() {
               Location incident team
             </h2>
             <p class="text-sm text-muted">
-              Who leads the response at this {{ ra.location.lower }}. Both are required.
+              Who leads the response at this {{ ra.location.lower }}, picked from the BCM Tools users. They also sign the RA.
             </p>
           </template>
           <div class="space-y-4">
-            <fieldset class="space-y-3">
+            <fieldset
+              v-for="member in MEMBERS"
+              :key="member"
+              class="space-y-3"
+            >
               <legend class="text-sm font-medium text-highlighted">
-                {{ ra.lic.label }}
-                <span class="block text-xs font-normal text-muted">{{ ra.lic.hint }}</span>
+                {{ ra[member].label }}
+                <span class="block text-xs font-normal text-muted">{{ ra[member].hint }}</span>
               </legend>
-              <div class="grid gap-4 sm:grid-cols-2">
-                <UFormField
-                  label="Name"
-                  name="lic_name"
-                  required
-                  eager-validation
-                >
-                  <UInput
-                    v-model="state.lic_name"
-                    autocomplete="off"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Mobile number"
-                  name="lic_phone"
-                  required
-                  eager-validation
-                >
-                  <UInput
-                    v-model="state.lic_phone"
-                    type="tel"
-                    autocomplete="off"
-                    class="w-full"
-                  />
-                </UFormField>
-              </div>
-            </fieldset>
-            <fieldset class="space-y-3">
-              <legend class="text-sm font-medium text-highlighted">
-                {{ ra.licom.label }}
-                <span class="block text-xs font-normal text-muted">{{ ra.licom.hint }}</span>
-              </legend>
-              <div class="grid gap-4 sm:grid-cols-2">
-                <UFormField
-                  label="Name"
-                  name="licom_name"
-                  required
-                  eager-validation
-                >
-                  <UInput
-                    v-model="state.licom_name"
-                    autocomplete="off"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Mobile number"
-                  name="licom_phone"
-                  required
-                  eager-validation
-                >
-                  <UInput
-                    v-model="state.licom_phone"
-                    type="tel"
-                    autocomplete="off"
-                    class="w-full"
-                  />
-                </UFormField>
-              </div>
+              <RaTeamMember
+                v-model:user-id="state[`${member}_user_id`]"
+                v-model:user="users[member]"
+                v-model:phone="state[`${member}_phone`]"
+                :member="member"
+                :label="ra[member].label"
+              />
             </fieldset>
           </div>
         </UCard>

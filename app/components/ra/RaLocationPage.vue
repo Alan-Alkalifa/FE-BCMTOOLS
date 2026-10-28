@@ -7,7 +7,6 @@ type Tab = (typeof TABS)[number]
 /** The LCP sheets are only in the HO workbook. */
 const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 
-const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
@@ -17,12 +16,10 @@ const id = computed(() => Number(route.params.id))
 const { data: location, status, error, refresh } = useRaLocation(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !location.value)
 
-// A branch opened under /ra/locations (or the reverse): show it in its own module.
-watch(() => location.value?.kind, (kind) => {
-  if (kind && kind !== ra.value.kind) {
-    router.replace({ path: `${RA_MODULES[kind].base}/locations/${id.value}`, query: route.query })
-  }
-}, { immediate: true })
+// One page for buildings and branches: the tabs below follow the location's own kind.
+const kind = computed<RaKind | null>(() => location.value?.kind ?? null)
+provide(raKindKey, kind)
+const ra = computed(() => RA_MODULES[kind.value ?? 'head_office'])
 
 const dirty = ref(false)
 const formKey = ref(0)
@@ -81,10 +78,12 @@ function onSaved(saved: RaLocationDetail) {
   dirty.value = false
 }
 
-const locationStatus = defineStatusScale({
-  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
-  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
-})
+/** Four-eyes approval of a new building or its deactivation (RaApprovalBanner). */
+async function decide(work: Promise<RaLocationDetail>) {
+  location.value = await work
+  dirty.value = false
+  formKey.value += 1
+}
 
 const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
@@ -94,17 +93,18 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'status', header: 'Status' },
 ]
 
+// Every field is required except the home phone (the API checks the same).
 const teamFields = [
-  { key: 'role', label: 'Role', wide: true },
+  { key: 'role', label: 'Role', wide: true, required: true },
   { key: 'name', label: 'Name', required: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
   { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
 ]
 const callTreeFields = [
-  { key: 'caller', label: 'Caller' },
+  { key: 'caller', label: 'Caller', required: true },
   { key: 'contact_name', label: 'Contact', required: true },
-  { key: 'division', label: 'Division or role', wide: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const },
+  { key: 'division', label: 'Division or role', wide: true, required: true },
+  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
   { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
 ]
 const callTreeLevels = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
@@ -131,7 +131,7 @@ async function removeLocation() {
   const ok = await confirm({
     title: `Delete '${location.value.name}'?`,
     description: ra.value.hasLcp
-      ? 'This permanently removes the location with its emergency contacts, occupants, recovery team and call tree.'
+      ? `This permanently removes the ${ra.value.location.lower} with its emergency contacts, divisions, recovery team and call tree.`
       : 'This permanently removes the branch with its emergency contacts.',
     confirmLabel: `Delete ${ra.value.location.lower}`,
     destructive: true,
@@ -141,7 +141,7 @@ async function removeLocation() {
     dirty.value = false
     await raApi.removeLocation(location.value.id)
     toast.add({ title: `${ra.value.location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(`${ra.value.base}/locations`)
+    await navigateTo(LOCATIONS_PATH)
   } catch (err) {
     toast.add({ title: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
   }
@@ -156,8 +156,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   <AppPage
     :title="location?.name ?? ra.location.single"
     :crumbs="[
-      { label: ra.title, to: raPath(ra.kind, 'monitoring') },
-      { label: ra.location.plural, to: `${ra.base}/locations` },
+      { label: BUILDINGS_GROUP },
+      { label: 'Buildings', to: LOCATIONS_PATH },
       ...(location ? [{ label: location.name }] : []),
     ]"
   >
@@ -165,8 +165,6 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
       <UButton
         v-if="location?.is_active && canEdit"
         :to="{ path: raPath(ra.kind, 'manage', 'new'), query: { location_id: location.id } }"
-        color="neutral"
-        variant="outline"
         icon="i-lucide-plus"
         label="New assessment"
       />
@@ -216,26 +214,47 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
       </template>
     </UAlert>
 
-    <template v-else-if="location && location.kind === ra.kind">
+    <template v-else-if="location">
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p class="text-2xl font-semibold text-highlighted">
           {{ location.name }}
         </p>
         <StatusBadge
-          :scale="locationStatus"
-          :value="location.is_active ? 'active' : 'inactive'"
+          :scale="raLocationKind"
+          :value="location.kind"
+        />
+        <StatusBadge
+          :scale="raBuildingStatus"
+          :value="raBuildingState(location)"
         />
         <span class="text-sm text-muted">
           <template v-if="ra.hasRegion && location.region">
             {{ location.region }} ·
           </template>
           <template v-if="ra.hasLcp">
-            {{ formatNumber(location.occupant_summary.units, 0) }} units ·
+            {{ formatNumber(location.occupant_summary.units, 0) }} {{ location.occupant_summary.units === 1 ? 'division' : 'divisions' }} ·
             {{ formatNumber(location.occupant_summary.employees, 0) }} employees ·
           </template>
           {{ formatNumber(location.assessments.length, 0) }} {{ location.assessments.length === 1 ? 'assessment' : 'assessments' }}
         </span>
       </div>
+
+      <RaApprovalBanner
+        v-if="location.approval"
+        :noun="ra.location.lower"
+        :status="location.approval.status"
+        :action="location.approval.action"
+        :requested-by="location.approval.requested_by"
+        :requested-at="location.approval.requested_at"
+        :decided-by="location.approval.decided_by"
+        :decided-at="location.approval.decided_at"
+        :note="location.approval.note"
+        :can="location.approval_can"
+        :approve="(note) => decide(raApi.approveLocation(location!.id, note))"
+        :reject="(note) => decide(raApi.rejectLocation(location!.id, note))"
+        :withdraw="() => decide(raApi.withdrawLocationRequest(location!.id))"
+        :resubmit="() => decide(raApi.resubmitLocation(location!.id))"
+      />
 
       <UAlert
         v-if="!canEdit"

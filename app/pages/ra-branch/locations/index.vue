@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.access' })
+/** The register moved to Locations, with buildings and branches together. */
+definePageMeta({
+  permission: 'ra.access',
+  redirect: (to) => ({ path: '/locations', query: { type: 'branch', ...to.query } }),
+})
 </script>
 
 <template>
-  <RaLocationsPage />
+  <div />
 </template>

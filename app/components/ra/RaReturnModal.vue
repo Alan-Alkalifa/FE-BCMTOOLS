@@ -5,7 +5,11 @@ import { z } from 'zod'
 const props = withDefaults(defineProps<{ reopen?: boolean }>(), { reopen: false })
 const emit = defineEmits<{ close: [comment: string | false] }>()
 
-const schema = z.object({ comment: z.string().trim().min(1, 'Say what needs to change.') })
+const schema = z.object({
+  comment: z.string().trim()
+    .min(1, 'Say what needs to change.')
+    .max(TEXT_LIMITS.long, `Keep it under ${TEXT_LIMITS.long} characters.`),
+})
 const state = reactive({ comment: '' })
 
 function onSubmit() {
@@ -35,8 +39,15 @@ function onSubmit() {
           help="Shown on the assessment until it is submitted again."
           eager-validation
         >
+          <template #hint>
+            <FieldCount
+              :value="state.comment"
+              :max="TEXT_LIMITS.long"
+            />
+          </template>
           <UTextarea
             v-model="state.comment"
+            :maxlength="TEXT_LIMITS.long"
             :rows="4"
             autoresize
             autofocus

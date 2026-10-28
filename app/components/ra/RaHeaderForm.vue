@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaAssessment } from '~/composables/useRa'
+import type { RaAssessment, RaUserRef } from '~/composables/useRa'
 
 const props = defineProps<{ assessment: RaAssessment }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
@@ -21,29 +21,39 @@ const schema = z.object({
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   due_date: z.string().nullable(),
-  lic_name: z.string().trim().min(1, 'Enter the LIC name.'),
+  lic_user_id: z.number('Choose the LIC.'),
   lic_phone: z.string().trim().min(1, 'Enter the LIC mobile number.'),
-  licom_name: z.string().trim().min(1, 'Enter the LICOM name.'),
+  licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: z.string().trim().min(1, 'Enter the LICOM mobile number.'),
 }).refine((value) => !value.due_date || value.due_date >= value.assessment_date, {
   path: ['due_date'],
   message: 'Cannot be before the assessment date.',
 })
-type State = z.infer<typeof schema>
+type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
+  lic_user_id: number | null
+  licom_user_id: number | null
+}
+type Member = 'lic' | 'licom'
+const MEMBERS: Member[] = ['lic', 'licom']
 
 function fromAssessment(assessment: RaAssessment): State {
   return {
     period_year: assessment.period_year,
     assessment_date: assessment.assessment_date ?? '',
     due_date: assessment.due_date,
-    lic_name: assessment.lic_name ?? '',
+    lic_user_id: assessment.lic_user?.id ?? null,
     lic_phone: assessment.lic_phone ?? '',
-    licom_name: assessment.licom_name ?? '',
+    licom_user_id: assessment.licom_user?.id ?? null,
     licom_phone: assessment.licom_phone ?? '',
   }
 }
 
 const state = reactive<State>(fromAssessment(props.assessment))
+/** The picked users, for the pickers' labels and their mobile numbers. */
+const users = reactive<Record<Member, RaUserRef | null>>({
+  lic: props.assessment.lic_user,
+  licom: props.assessment.licom_user,
+})
 
 const assessmentDate = computed({
   get: () => state.assessment_date ? parseDate(state.assessment_date) : undefined,
@@ -61,6 +71,7 @@ const dueDate = computed({
 
 function reset(assessment: RaAssessment) {
   Object.assign(state, fromAssessment(assessment))
+  Object.assign(users, { lic: assessment.lic_user, licom: assessment.licom_user })
   snapshot.value = JSON.stringify(state)
   if (dirty) dirty.value = false
 }
@@ -73,7 +84,13 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const saved = await raApi.update(props.assessment.id, blankToNull({ ...state }))
+    const { lic_user_id, licom_user_id, ...fields } = state
+    // An assessment from before users were picked keeps its typed names until someone is picked.
+    const saved = await raApi.update(props.assessment.id, {
+      ...blankToNull({ ...fields }),
+      ...(lic_user_id ? { lic_user_id } : {}),
+      ...(licom_user_id ? { licom_user_id } : {}),
+    })
     reset(saved)
     toast.add({ title: 'Assessment saved', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)
@@ -139,11 +156,9 @@ async function onSubmit() {
               name="assessment_date"
               required
             >
-              <UInputDate
+              <DatePicker
                 v-model="assessmentDate"
                 :disabled="locked"
-                locale="en-GB"
-                class="w-full"
               />
             </UFormField>
             <UFormField
@@ -151,11 +166,10 @@ async function onSubmit() {
               name="due_date"
               help="Defaults to one year after the assessment date."
             >
-              <UInputDate
+              <DatePicker
                 v-model="dueDate"
+                :min="assessmentDate"
                 :disabled="locked"
-                locale="en-GB"
-                class="w-full"
               />
             </UFormField>
           </div>
@@ -167,63 +181,24 @@ async function onSubmit() {
               Location incident team
             </h2>
             <p class="text-sm text-muted">
-              Section A of the LRP scorecard. Both are required.
+              Both are required.
             </p>
           </template>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              :label="ra.lic.label"
-              name="lic_name"
-              :help="ra.lic.hint"
-              required
-              eager-validation
-            >
-              <UInput
-                v-model="state.lic_name"
-                :disabled="locked"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="LIC mobile number"
-              name="lic_phone"
-              required
-              eager-validation
-            >
-              <UInput
-                v-model="state.lic_phone"
-                :disabled="locked"
-                type="tel"
-                placeholder="e.g. 0813 1226 2739"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              :label="ra.licom.label"
-              name="licom_name"
-              :help="ra.licom.hint"
-              required
-              eager-validation
-            >
-              <UInput
-                v-model="state.licom_name"
-                :disabled="locked"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="LICOM mobile number"
-              name="licom_phone"
-              required
-              eager-validation
-            >
-              <UInput
-                v-model="state.licom_phone"
-                :disabled="locked"
-                type="tel"
-                class="w-full"
-              />
-            </UFormField>
+          <div class="space-y-4">
+            <RaTeamMember
+              v-for="member in MEMBERS"
+              :key="member"
+              v-model:user-id="state[`${member}_user_id`]"
+              v-model:user="users[member]"
+              v-model:phone="state[`${member}_phone`]"
+              :member="member"
+              :label="ra[member].label"
+              :hint="ra[member].hint"
+              :legacy-name="assessment[`${member}_name`]"
+              :name-label="ra[member].label"
+              :phone-label="`${member.toUpperCase()} mobile number`"
+              :disabled="locked"
+            />
           </div>
         </UCard>
       </div>
@@ -252,7 +227,7 @@ async function onSubmit() {
             <span>
               No map pin yet.
               <NuxtLink
-                :to="`${ra.base}/locations/${assessment.location.id}?tab=map`"
+                :to="locationPath(assessment.location.id, 'map')"
                 class="text-primary hover:underline"
               >Add it on the {{ ra.location.lower }}'s Map tab</NuxtLink>.
             </span>
@@ -288,12 +263,12 @@ async function onSubmit() {
         </dl>
         <p class="mt-4 text-sm text-muted">
           {{ ra.hasLcp
-            ? 'Emergency contacts, occupants, the recovery team and the call tree are kept on the location and shared by every RA cycle.'
+            ? 'Emergency contacts, divisions, the recovery team and the call tree are kept on the building and shared by every RA cycle.'
             : 'Emergency contacts are kept on the branch and shared by every RA cycle.' }}
         </p>
         <template #footer>
           <UButton
-            :to="`${ra.base}/locations/${assessment.location.id}`"
+            :to="locationPath(assessment.location.id)"
             variant="link"
             trailing-icon="i-lucide-arrow-right"
             :label="`Open ${ra.location.lower} profile`"

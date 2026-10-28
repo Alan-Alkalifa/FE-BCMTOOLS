@@ -15,6 +15,10 @@ export const ALL_PERMISSIONS = [
   'ra.edit',
   'ra.manage',
   'ra.crisis.declare',
+  'ra.location.approve',
+  'ra.config.view',
+  'ra.config.manage',
+  'ra.config.publish',
   'admin.users.manage',
   'admin.roles.manage',
   'admin.menus.manage',
@@ -56,15 +60,17 @@ const MENUS = [
   { code: 'ra.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra/monitoring', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra/manage', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra/approval', parent: 'ra', permission: 'ra.access' },
-  { code: 'ra.locations', label: 'Locations', icon: 'i-lucide-building', route: '/ra/locations', parent: 'ra', permission: 'ra.access' },
-  { code: 'ra.map', label: 'Location map', icon: 'i-lucide-map', route: '/ra/map', parent: 'ra', permission: 'ra.access' },
-  { code: 'ra.crises', label: 'Crises', icon: 'i-lucide-siren', route: '/ra/crises', parent: 'ra', permission: 'ra.access' },
-  { code: 'ra.playbook', label: 'Crisis guidebook', icon: 'i-lucide-book-marked', route: '/ra/guidebook', parent: 'ra', permission: 'ra.access' },
   { code: 'ra_branch', label: 'RA Branch', icon: 'i-lucide-landmark', route: null, parent: null, permission: null },
   { code: 'ra_branch.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra-branch/monitoring', parent: 'ra_branch', permission: 'ra.access' },
   { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra.access' },
   { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra.access' },
-  { code: 'ra_branch.locations', label: 'Branches', icon: 'i-lucide-landmark', route: '/ra-branch/locations', parent: 'ra_branch', permission: 'ra.access' },
+  { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
+  { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.crises', label: 'Incidents', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
+  // Added last so the other menus keep their ids (the menu admin tests use them).
+  { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */

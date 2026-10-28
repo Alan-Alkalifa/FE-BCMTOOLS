@@ -25,6 +25,7 @@ interface DirectoryUser {
   email: string | null
   job_title: string | null
   department: string | null
+  mobile_phone?: string | null
 }
 
 interface Item {
@@ -63,6 +64,7 @@ async function load(term: string) {
       email: user.email,
       job_title: user.job_title,
       department: user.department,
+      mobile_phone: user.mobile_phone ?? null,
     }))
   } catch {
     found.value = []

@@ -1,0 +1,257 @@
+<script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+import type { RaCrisisStatus, RaCrisisSummary } from '~/composables/useRa'
+import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
+
+/** Every incident declared on the location map, open and closed, newest first. */
+definePageMeta({ permission: 'ra.access' })
+
+const route = useRoute()
+const router = useRouter()
+const PER_PAGE = 25
+
+function asStatus(value: unknown): RaCrisisStatus | undefined {
+  return value === 'pending' || value === 'open' || value === 'closed' || value === 'rejected' ? value : undefined
+}
+
+const query = computed(() => ({
+  status: asStatus(route.query.status),
+  q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
+  page: Math.max(1, Number(route.query.page) || 1),
+  per_page: PER_PAGE,
+}))
+const { data, status, error, refresh } = useRaCrises(query)
+const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+const { data: map } = useRaMap()
+const crisisModal = useOverlay().create(RaCrisisModal)
+
+const search = ref(query.value.q ?? '')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    const next = value.trim()
+    if (next === (query.value.q ?? '')) return
+    router.replace({ query: { ...route.query, q: next || undefined, page: undefined } })
+  }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+const statusFilter = computed({
+  get: () => query.value.status ?? 'all',
+  set: (value: RaCrisisStatus | 'all') => router.replace({
+    query: { ...route.query, status: value === 'all' ? undefined : value, page: undefined },
+  }),
+})
+const statusItems = [
+  { label: 'All incidents', value: 'all' },
+  { label: 'Pending approval', value: 'pending' },
+  { label: 'Open', value: 'open' },
+  { label: 'Closed', value: 'closed' },
+  { label: 'Rejected', value: 'rejected' },
+]
+
+const columns: TableColumn<RaCrisisSummary>[] = [
+  { accessorKey: 'ref_no', header: 'Reference' },
+  { id: 'hazard', header: 'Hazard' },
+  { id: 'place', header: 'Place' },
+  { accessorKey: 'started_at', header: 'Started' },
+  { accessorKey: 'radius_m', header: 'Radius', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { accessorKey: 'affected_count', header: 'Affected', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { accessorKey: 'status', header: 'Status' },
+  { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
+]
+
+/** Approve or reject (with a reason) an incident someone else declared. */
+const toast = useToast()
+const dialogs = useRaApprovalDialogs()
+const actionError = ref<string | null>(null)
+async function decide(crisis: RaCrisisSummary, decision: 'approve' | 'reject') {
+  actionError.value = null
+  const note = decision === 'approve' ? await dialogs.approve('incident') : await dialogs.reject('incident')
+  if (note === false) return
+  try {
+    if (decision === 'approve') await raCrisisApi.approve(crisis.id, note || null)
+    else await raCrisisApi.reject(crisis.id, note)
+    toast.add({ title: `${crisis.ref_no} ${decision === 'approve' ? 'approved' : 'rejected'}`, color: 'success', icon: 'i-lucide-circle-check' })
+    await refresh()
+  } catch (err) {
+    actionError.value = apiErrorMessage(err)
+  }
+}
+
+function openRow(_event: Event, row: { original: RaCrisisSummary }) {
+  navigateTo(crisisPath(row.original.id))
+}
+
+async function declare() {
+  const crisis = await crisisModal.open({ places: map.value?.places ?? [] }).result
+  if (crisis) await navigateTo(crisisPath(crisis.id))
+}
+</script>
+
+<template>
+  <AppPage
+    title="Incidents"
+    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Incidents' }]"
+  >
+    <template #actions>
+      <UButton
+        :to="LOCATION_MAP_PATH"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-map"
+        label="Building map"
+      />
+      <UButton
+        v-if="map?.can_declare"
+        icon="i-lucide-siren"
+        label="Declare incident/disaster"
+        @click="declare"
+      />
+    </template>
+
+    <SkeletonTable
+      v-if="showSkeleton"
+      toolbar
+      :columns="7"
+      :rows="5"
+      label="Loading incidents"
+    />
+
+    <UAlert
+      v-else-if="error"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      title="Could not load the incidents"
+      :description="apiErrorMessage(error)"
+    >
+      <template #actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Try again"
+          @click="refresh()"
+        />
+      </template>
+    </UAlert>
+
+    <UCard
+      v-else
+      :ui="{ body: 'p-0 sm:p-0' }"
+    >
+      <div class="flex flex-wrap items-center gap-2 p-4">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Search by reference, hazard or place"
+          aria-label="Search by reference, hazard or place"
+          class="w-full sm:w-80"
+        />
+        <USelect
+          v-model="statusFilter"
+          :items="statusItems"
+          class="w-40"
+          aria-label="Filter by status"
+        />
+      </div>
+
+      <UAlert
+        v-if="actionError"
+        class="m-4 mb-0"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="That didn't work"
+        :description="actionError"
+      />
+      <UTable
+        :data="data?.items ?? []"
+        :columns="columns"
+        :loading="status === 'pending'"
+        class="cursor-pointer"
+        :on-select="openRow"
+      >
+        <template #ref_no-cell="{ row }">
+          <NuxtLink
+            :to="crisisPath(row.original.id)"
+            class="font-medium whitespace-nowrap text-primary hover:underline"
+          >
+            {{ row.original.ref_no }}
+          </NuxtLink>
+        </template>
+        <template #hazard-cell="{ row }">
+          <span>{{ row.original.hazard.short_name }}</span>
+          <p class="text-xs text-muted">
+            {{ row.original.hazard.category?.label }}
+          </p>
+        </template>
+        <template #place-cell="{ row }">
+          {{ row.original.location?.name ?? raFormatCoordinates({ lat: row.original.latitude, lng: row.original.longitude }) }}
+        </template>
+        <template #started_at-cell="{ row }">
+          <span class="whitespace-nowrap">{{ formatDateTime(row.original.started_at) }}</span>
+        </template>
+        <template #radius_m-cell="{ row }">
+          <span class="tabular-nums">{{ raFormatDistance(row.original.radius_m) }}</span>
+        </template>
+        <template #affected_count-cell="{ row }">
+          <span class="tabular-nums">{{ formatNumber(row.original.affected_count, 0) }}</span>
+        </template>
+        <template #status-cell="{ row }">
+          <StatusBadge
+            :scale="raCrisisStatus"
+            :value="row.original.status"
+            size="sm"
+          />
+          <p
+            v-if="row.original.closed_at"
+            class="text-xs text-muted"
+          >
+            {{ formatDateTime(row.original.closed_at) }}
+          </p>
+        </template>
+        <template #actions-cell="{ row }">
+          <div
+            v-if="row.original.approval_can?.approve"
+            class="flex justify-end gap-1"
+          >
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-badge-check"
+              label="Approve"
+              :aria-label="`Approve ${row.original.ref_no}`"
+              @click.stop="decide(row.original, 'approve')"
+            />
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-circle-x"
+              label="Reject"
+              :aria-label="`Reject ${row.original.ref_no}`"
+              @click.stop="decide(row.original, 'reject')"
+            />
+          </div>
+        </template>
+        <template #empty>
+          <p class="py-10 text-center text-sm text-muted">
+            {{ query.q || query.status ? 'No incidents match these filters.' : 'No incident has been declared yet.' }}
+          </p>
+        </template>
+      </UTable>
+
+      <TablePagination
+        v-if="data"
+        :total="data.total"
+        :per-page="PER_PAGE"
+        label="Incidents"
+        :to="(page) => ({ query: { ...route.query, page } })"
+        :page="query.page"
+      />
+    </UCard>
+  </AppPage>
+</template>

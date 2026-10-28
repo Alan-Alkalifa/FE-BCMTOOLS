@@ -1,21 +1,27 @@
 <script setup lang="ts">
 import RaReturnModal from '~/components/ra/RaReturnModal.vue'
+import RaChangeSignerModal from '~/components/ra/RaChangeSignerModal.vue'
+import RaOnBehalfModal from '~/components/ra/RaOnBehalfModal.vue'
 import type { RaAssessment, RaFormula, RaSignoff, RaSignoffEvent, RaSignoffInput, RaUserRef } from '~/composables/useRa'
 
 /**
  * The sign-off workflow. In a draft, each role gets a BCM Tools user and the assessment is
  * submitted; the signers then approve one after another, and the current signer can return it
- * for changes. Rules live in the API; the buttons follow its can_* flags.
+ * for changes. BCM (ra.manage) can return it too, change the signer of the waiting step, or
+ * approve it on the signer's behalf with the evidence. Rules live in the API; the buttons follow
+ * its can_* flags.
  */
 const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 
 const ra = useRaModule()
-const roles = computed(() => ra.value.signoffRoles)
+/** The roles with the labels and titles of the assessment's configuration version. */
+const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
 const toast = useToast()
 const dirty = useRaDirty()
-const { user } = useAuth()
 const returnModal = useOverlay().create(RaReturnModal)
+const changeSignerModal = useOverlay().create(RaChangeSignerModal)
+const onBehalfModal = useOverlay().create(RaOnBehalfModal)
 const formError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
 const snapshot = ref('')
@@ -23,7 +29,6 @@ const snapshot = ref('')
 interface SignerState {
   signer_id: number | null
   signer: RaUserRef | null
-  designation: string
 }
 
 function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
@@ -32,7 +37,6 @@ function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
     return [value, {
       signer_id: saved?.signer?.id ?? null,
       signer: saved?.signer ?? null,
-      designation: saved?.designation ?? '',
     }]
   }))
 }
@@ -40,7 +44,7 @@ function fromAssessment(assessment: RaAssessment): Record<string, SignerState> {
 const state = reactive<Record<string, SignerState>>(fromAssessment(props.assessment))
 
 function key(values: Record<string, SignerState>) {
-  return JSON.stringify(Object.fromEntries(Object.entries(values).map(([role, item]) => [role, [item.signer_id, item.designation]])))
+  return JSON.stringify(Object.fromEntries(Object.entries(values).map(([role, item]) => [role, item.signer_id])))
 }
 
 function reset(assessment: RaAssessment) {
@@ -58,14 +62,13 @@ watch(changed, (value) => {
 
 const editing = computed(() => props.assessment.can_edit)
 const missingSigners = computed(() => roles.value.filter(({ value }) => !state[value]?.signer_id))
-const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && !missingSigners.value.length)
+/** A building waiting for approval (or rejected) can't have its RA submitted yet. */
+const locationApproved = computed(() => props.assessment.location_approved !== false)
+const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && locationApproved.value && !missingSigners.value.length)
 
-/** Picking a signer fills the designation with their job title, unless one was typed. */
+/** The designation is the picked signer's job title in the user directory. */
 function onPicked(role: string, picked: RaUserRef | null) {
-  const item = state[role]!
-  const previousTitle = item.signer?.job_title ?? ''
-  item.signer = picked
-  if (!item.designation || item.designation === previousTitle) item.designation = picked?.job_title ?? ''
+  state[role]!.signer = picked
   fieldErrors.value = Object.fromEntries(
     Object.entries(fieldErrors.value).filter(([field]) => !field.startsWith(`signoffs.${role}`)),
   )
@@ -73,17 +76,20 @@ function onPicked(role: string, picked: RaUserRef | null) {
 
 function clearSigner(role: string) {
   const item = state[role]!
-  if (item.designation === (item.signer?.job_title ?? '')) item.designation = ''
   item.signer_id = null
   item.signer = null
 }
 
+/** Prepared by is the LIC and Reviewed by the LICOM, both picked on the Details tab. */
+function teamMember(role: string) {
+  const member = RA_TEAM_SIGNOFF_ROLES[role]
+  return member ? member.toUpperCase() : null
+}
+
 function payload(): RaSignoffInput[] {
-  return roles.value.map(({ value }) => ({
-    role: value,
-    signer_id: state[value]!.signer_id,
-    designation: state[value]!.designation.trim() || null,
-  }))
+  return roles.value
+    .filter(({ value }) => !teamMember(value))
+    .map(({ value }) => ({ role: value, signer_id: state[value]!.signer_id }))
 }
 
 function fail(error: unknown, fallback: string) {
@@ -151,11 +157,27 @@ async function sendBack() {
 }
 
 const currentRole = computed(() => roles.value.find((role) => role.value === props.assessment.current_signoff_role))
-/** Someone with ra.manage approving another person's step. */
-const onBehalf = computed(() => {
-  const signer = props.assessment.awaiting_signer
-  return Boolean(signer && user.value && signer.id !== user.value.id)
-})
+
+/** BCM: change the signer of the waiting step, or approve it on their behalf. */
+function waitingStep() {
+  const assessment = props.assessment
+  return {
+    id: assessment.id,
+    ref: assessment.ref_no ?? `#${assessment.id}`,
+    location: assessment.location?.name ?? '',
+    step: currentRole.value ? raSignoffRoleName(currentRole.value.value, roles.value) : 'The waiting step',
+    signer: assessment.awaiting_signer?.name ?? null,
+  }
+}
+
+async function actForSigner(dialog: 'change' | 'on_behalf') {
+  formError.value = null
+  const modal = dialog === 'change' ? changeSignerModal : onBehalfModal
+  const saved = await modal.open({ step: waitingStep() }).result
+  if (!saved) return
+  reset(saved)
+  emit('saved', saved)
+}
 
 const raSignoffStep = defineStatusScale({
   approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
@@ -175,10 +197,23 @@ function stepKey(role: string) {
   return state[role]?.signer_id ? null : 'unassigned'
 }
 
-const ACTIONS: Record<RaSignoffEvent['action'], { label: string, icon: string, class: string }> = {
-  submitted: { label: 'Submitted for sign-off', icon: 'i-lucide-send', class: 'text-info' },
+const ACTIONS: Record<RaSignoffEvent['action'] | 'on_behalf', { label: string, icon: string, class: string }> = {
+  submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', class: 'text-info' },
   approved: { label: 'Approved', icon: 'i-lucide-badge-check', class: 'text-success' },
+  on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', class: 'text-success' },
   returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', class: 'text-warning' },
+  reassigned: { label: 'Signer changed', icon: 'i-lucide-user-round-cog', class: 'text-warning' },
+}
+
+function eventKind(event: RaSignoffEvent) {
+  return event.on_behalf ? 'on_behalf' : event.action
+}
+
+/** "Rina → Stand In" for a signer change, "for Alan" for an approval on his behalf. */
+function eventFor(event: RaSignoffEvent) {
+  if (event.action === 'reassigned') return `${event.for_user ?? 'Nobody'} → ${event.to_user ?? '—'}`
+  if (event.on_behalf) return `for ${event.for_user ?? 'the signer'}`
+  return null
 }
 
 function roleLabel(role: RaSignoffEvent['role']) {
@@ -207,6 +242,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       :title="`Returned for changes by ${assessment.returned_by ?? 'a signer'} on ${formatDateTime(assessment.returned_at)}`"
       :description="assessment.returned_comment"
       :ui="{ description: 'whitespace-pre-line' }"
+    />
+    <UAlert
+      v-if="assessment.status === 'draft' && !locationApproved"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-hourglass"
+      :title="`The ${ra.location.lower} isn't approved yet`"
+      :description="`Someone else approves a new ${ra.location.lower} first. You can rate the hazards and choose the signers now, and submit once it is approved.`"
     />
     <UAlert
       v-if="assessment.status === 'draft' && !assessment.is_complete"
@@ -239,17 +282,22 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Your approval: {{ currentRole.label }} ({{ currentRole.hint }})
         </h2>
         <p class="text-sm text-muted">
-          {{ onBehalf
-            ? `You are approving on behalf of ${assessment.awaiting_signer?.name}, as a BCM administrator.`
-            : 'By approving you agree to the sign-off statement below for this assessment.' }}
+          By approving you agree to the sign-off statement below for this assessment.
         </p>
       </template>
       <UFormField
         label="Comment"
         help="Optional. Kept with your approval."
       >
+        <template #hint>
+          <FieldCount
+            :value="approvalComment"
+            :max="TEXT_LIMITS.long"
+          />
+        </template>
         <UTextarea
           v-model="approvalComment"
+          :maxlength="TEXT_LIMITS.long"
           :rows="3"
           autoresize
           class="w-full"
@@ -266,12 +314,48 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           />
           <UButton
             icon="i-lucide-badge-check"
-            :label="onBehalf ? 'Approve on their behalf' : 'Approve'"
+            label="Approve"
             loading-auto
             @click="approve"
           />
         </div>
       </template>
+    </UCard>
+
+    <UCard
+      v-else-if="assessment.can_act_for_signer && currentRole"
+      data-testid="ra-act-for-signer"
+    >
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Act for the signer: {{ currentRole.label }} ({{ currentRole.hint }})
+        </h2>
+        <p class="text-sm text-muted">
+          {{ assessment.awaiting_signer?.name ?? 'The signer' }} signs this step. As BCM you can give it to someone else, or approve it on their behalf when they approved outside BCM Tools.
+        </p>
+      </template>
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          v-if="assessment.can_return"
+          color="error"
+          variant="outline"
+          icon="i-lucide-undo-2"
+          label="Return for changes"
+          @click="sendBack"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-user-round-cog"
+          label="Change the signer"
+          @click="actForSigner('change')"
+        />
+        <UButton
+          icon="i-lucide-badge-check"
+          label="Approve on behalf"
+          @click="actForSigner('on_behalf')"
+        />
+      </div>
     </UCard>
 
     <UCard>
@@ -280,15 +364,70 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Risk assessment sign-off
         </h2>
         <p class="text-sm text-muted">
-          The statement each signer agrees to, from the LRP scorecard.
+          The statement or conditions that each signer is required to review and formally acknowledge their agreement to before signing the document.
         </p>
       </template>
       <blockquote
-        lang="id"
+        v-if="formula.signoff_statement_en"
+        lang="en"
         class="border-l-2 border-accented pl-4 text-sm whitespace-pre-line text-default"
+        data-testid="signoff-statement-en"
       >
-        {{ formula.signoff_statement }}
+        {{ formula.signoff_statement_en }}
       </blockquote>
+    </UCard>
+
+    <UCard v-if="history.length">
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Sign-off history
+        </h2>
+      </template>
+      <ol class="space-y-4">
+        <li
+          v-for="(event, index) in history"
+          :key="index"
+          class="flex gap-3"
+        >
+          <UIcon
+            :name="ACTIONS[eventKind(event)].icon"
+            class="mt-0.5 size-4 shrink-0"
+            :class="ACTIONS[eventKind(event)].class"
+          />
+          <div class="min-w-0 text-sm">
+            <p class="text-highlighted">
+              <span class="font-medium">{{ ACTIONS[eventKind(event)].label }}</span>
+              <template v-if="event.role">
+                · {{ roleLabel(event.role) }}
+              </template>
+              <template v-if="eventFor(event)">
+                · {{ eventFor(event) }}
+              </template>
+            </p>
+            <p class="text-muted">
+              {{ event.user ?? 'Someone' }} · {{ formatDateTime(event.at) }}
+            </p>
+            <p
+              v-if="event.comment"
+              class="mt-1 whitespace-pre-line"
+            >
+              {{ event.comment }}
+            </p>
+            <ULink
+              v-if="event.attachment"
+              :href="event.attachment.url"
+              external
+              class="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              <UIcon
+                name="i-lucide-paperclip"
+                class="size-3.5"
+              />
+              {{ event.attachment.filename }}
+            </ULink>
+          </div>
+        </li>
+      </ol>
     </UCard>
 
     <section
@@ -345,6 +484,25 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
               class="space-y-4"
             >
               <UFormField
+                v-if="teamMember(role.value)"
+                label="Signer"
+                :name="`signoffs.${role.value}`"
+                :help="`The ${teamMember(role.value)}: change them on the Details tab.`"
+                :error="fieldErrors[`signoffs.${role.value}`]"
+                required
+              >
+                <UInput
+                  :model-value="state[role.value]!.signer?.name ?? ''"
+                  :placeholder="`Pick the ${teamMember(role.value)} on the Details tab`"
+                  :aria-label="`Signer: ${role.label}`"
+                  icon="i-lucide-lock"
+                  readonly
+                  disabled
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                v-else
                 label="Signer"
                 :name="`signoffs.${role.value}`"
                 :error="fieldErrors[`signoffs.${role.value}`] ?? fieldErrors[`signoffs.${role.value}.signer_id`]"
@@ -374,10 +532,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
               </UFormField>
               <UFormField
                 label="Designation"
-                help="Their job title, unless you change it."
+                help="The signer's job title in the user directory."
               >
                 <UInput
-                  v-model="state[role.value]!.designation"
+                  :model-value="state[role.value]!.signer?.job_title ?? ''"
+                  :placeholder="state[role.value]!.signer ? 'No job title in their profile' : 'Pick a signer first'"
+                  :aria-label="`Designation: ${role.label}`"
+                  readonly
+                  disabled
                   class="w-full"
                 />
               </UFormField>
@@ -418,6 +580,19 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
                     class="text-muted"
                   >· by {{ saved(role.value)?.approved_by }} on their behalf</span>
                 </dd>
+                <dd v-if="saved(role.value)?.evidence">
+                  <ULink
+                    :href="saved(role.value)?.evidence?.url"
+                    external
+                    class="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <UIcon
+                      name="i-lucide-paperclip"
+                      class="size-3.5"
+                    />
+                    Evidence: {{ saved(role.value)?.evidence?.filename }}
+                  </ULink>
+                </dd>
               </div>
               <div v-if="saved(role.value)?.comment">
                 <dt class="text-muted">
@@ -453,7 +628,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       />
       <UButton
         icon="i-lucide-send"
-        label="Submit for sign-off"
+        label="Submit for approval"
         :disabled="!canSubmit"
         loading-auto
         @click="submit"
@@ -471,43 +646,5 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
         @click="sendBack"
       />
     </div>
-
-    <UCard v-if="history.length">
-      <template #header>
-        <h2 class="text-lg font-semibold">
-          Sign-off history
-        </h2>
-      </template>
-      <ol class="space-y-4">
-        <li
-          v-for="(event, index) in history"
-          :key="index"
-          class="flex gap-3"
-        >
-          <UIcon
-            :name="ACTIONS[event.action].icon"
-            class="mt-0.5 size-4 shrink-0"
-            :class="ACTIONS[event.action].class"
-          />
-          <div class="min-w-0 text-sm">
-            <p class="text-highlighted">
-              <span class="font-medium">{{ ACTIONS[event.action].label }}</span>
-              <template v-if="event.role">
-                · {{ roleLabel(event.role) }}
-              </template>
-            </p>
-            <p class="text-muted">
-              {{ event.user ?? 'Someone' }} · {{ formatDateTime(event.at) }}
-            </p>
-            <p
-              v-if="event.comment"
-              class="mt-1 whitespace-pre-line"
-            >
-              {{ event.comment }}
-            </p>
-          </div>
-        </li>
-      </ol>
-    </UCard>
   </div>
 </template>

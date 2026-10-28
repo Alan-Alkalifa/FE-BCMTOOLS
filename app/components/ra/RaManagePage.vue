@@ -67,7 +67,7 @@ const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { id: 'location', header: ra.value.location.single },
   { accessorKey: 'period_year', header: 'Period' },
   { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual so far' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'created_by', header: 'Created by' },
   { accessorKey: 'updated_at', header: 'Last saved' },
@@ -98,6 +98,22 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
     description="The drafts being worked on, including those returned for changes. Submitted RAs are in Approval and Monitoring."
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage' }]"
   >
+    <template #actions>
+      <UButton
+        :to="{ path: LOCATIONS_PATH, query: { type: ra.kind } }"
+        color="neutral"
+        variant="outline"
+        :icon="ra.kind === 'branch' ? 'i-lucide-landmark' : 'i-lucide-building-2'"
+        :label="`View ${ra.location.lowerPlural}`"
+      />
+      <UButton
+        v-if="can('ra.edit')"
+        :to="raPath(ra.kind, 'manage', 'new')"
+        icon="i-lucide-plus"
+        label="New assessment"
+      />
+    </template>
+
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
@@ -158,21 +174,6 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           class="w-40"
           aria-label="Whose drafts"
         />
-        <div class="flex w-full flex-wrap gap-2 lg:ml-auto lg:w-auto">
-          <UButton
-            :to="`${ra.base}/locations`"
-            color="neutral"
-            variant="outline"
-            :icon="ra.kind === 'branch' ? 'i-lucide-landmark' : 'i-lucide-building-2'"
-            :label="`View ${ra.location.lowerPlural}`"
-          />
-          <UButton
-            v-if="can('ra.edit')"
-            :to="raPath(ra.kind, 'manage', 'new')"
-            icon="i-lucide-plus"
-            label="New assessment"
-          />
-        </div>
       </div>
 
       <UTable
@@ -219,13 +220,6 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           <StatusBadge
             :scale="raStatus"
             :value="raStatusKey(row.original)"
-            size="sm"
-          />
-          <StatusBadge
-            v-if="!row.original.is_returned"
-            class="ms-1"
-            :scale="raCompletion"
-            :value="row.original.is_complete ? 'complete' : 'draft'"
             size="sm"
           />
         </template>

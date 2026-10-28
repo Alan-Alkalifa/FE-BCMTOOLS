@@ -78,17 +78,25 @@ export const RA_KIND_INPUTS: Record<RaKind, RaRatingField[]> = {
   branch: [...RA_BRANCH_PROBABILITY_FIELDS, ...RA_BRANCH_IMPACT_FIELDS].map((field) => field.key),
 }
 
+/** The default sign-off roles; RA configuration can rename them per version
+ *  (`formula.signoff_role_labels`, see raRoleOptions). The hint is who signs: the role title. */
 export const RA_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'Location Incident Coordinator (LIC)' },
-  { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit critical business function' },
+  { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit Critical Business Function' },
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'Alternate Location Incident Commander' },
   { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
 ] as const
 
+/**
+ * Sign-off roles signed by the location incident team picked on the assessment (the backend's
+ * TEAM_SIGNOFF_ROLES): the LIC prepares, the LICOM reviews. The Sign-off tab shows them, read-only.
+ */
+export const RA_TEAM_SIGNOFF_ROLES: Partial<Record<string, 'lic' | 'licom'>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'BOSM' },
-  { value: 'approved_by', label: 'Approved by', hint: 'Branch manager (BM)' },
+  { value: 'approved_by', label: 'Approved by', hint: 'Branch Manager (BM)' },
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'NRSOH' },
 ] as const
 
@@ -110,7 +118,7 @@ export interface RaModule {
   /** Crumb and page title. */
   title: string
   description: string
-  /** The location register: "Location" / "Branch". */
+  /** The building register: "Building" / "Branch". */
   location: { single: string, plural: string, lower: string, lowerPlural: string }
   refPrefix: string
   /** Gross and residual risk (HO), or one residual risk (branch). */
@@ -129,13 +137,13 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     base: '/ra',
     title: 'RA',
     description: 'Location risk assessment for an office building.',
-    location: { single: 'Location', plural: 'Locations', lower: 'location', lowerPlural: 'locations' },
+    location: { single: 'Building', plural: 'Buildings', lower: 'building', lowerPlural: 'buildings' },
     refPrefix: 'RA',
     singleRisk: false,
     hasLcp: true,
     hasRegion: false,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'Name and mobile number.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Name and mobile number.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'Signs as Prepared by.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Signs as Reviewed by.' },
     signoffRoles: RA_SIGNOFF_ROLES,
   },
   branch: {
@@ -148,8 +156,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: true,
     hasLcp: true,
     hasRegion: true,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number. Signs as Prepared by.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number. Signs as Reviewed by.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
   },
 }
@@ -296,6 +304,36 @@ export function raSignoffLabel(role: RaSignoffRole, roles: readonly RaSignoffRol
   return roles.find((item) => item.value === role)?.label ?? role
 }
 
+/** Who signs a role, its title ("Location Incident Coordinator (LIC)"), as Monitoring and
+ *  Approval show the step (like SCCA). */
+export function raStepTitle(role: string | null | undefined, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
+  if (!role) return ''
+  return roles.find((item) => item.value === role)?.hint ?? role
+}
+
+/** The sign-off roles of a configuration version (their labels and titles as RA configuration
+ *  sets them), or the module's defaults. */
+export function raRoleOptions(
+  formula: { signoff_role_labels?: { role: RaSignoffRole, label: string, title: string }[] } | null | undefined,
+  fallback: readonly RaSignoffRoleOption[],
+): RaSignoffRoleOption[] {
+  const rows = formula?.signoff_role_labels
+  if (!rows?.length) return [...fallback]
+  return rows.map((row) => ({ value: row.role, label: row.label, hint: row.title }))
+}
+
+/** A division's maximum tolerable downtime band and its critical rating (the SCCA categories). */
+export const RA_MTD_BANDS = ['0-4 hours', '4-12 hours', '12-24 hours', '24-48 hours', '> 48 hours'] as const
+export const RA_CRITICAL_RATINGS = ['Critical', 'Very Important', 'Important', 'Necessary', 'Other'] as const
+/** The MTD band that goes with each critical rating, suggested when a division is added. */
+export const RA_RATING_MTD: Record<string, string> = {
+  'Critical': '0-4 hours',
+  'Very Important': '4-12 hours',
+  'Important': '12-24 hours',
+  'Necessary': '24-48 hours',
+  'Other': '> 48 hours',
+}
+
 /** LCP-Recovery Team Structure. The Location Recovery Team is level 1, the other teams level 2. */
 export const RA_RECOVERY_TEAMS = [
   { value: 'location_recovery_team', label: 'Location Recovery Team', level: 1, description: 'Incident commander, coordinator, IMT leads, RTF and BCM.' },
@@ -377,10 +415,35 @@ export function raDirectionsUrl(from: { lat: number, lng: number }, to: { lat: n
   return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`
 }
 
-export const raCrisisStatus = defineStatusScale<'open' | 'closed'>({
+export const raCrisisStatus = defineStatusScale<'pending' | 'open' | 'closed' | 'rejected'>({
+  pending: { label: 'Pending approval', color: 'warning', icon: 'i-lucide-hourglass' },
   open: { label: 'Open', color: 'error', icon: 'i-lucide-siren' },
   closed: { label: 'Closed', color: 'neutral', icon: 'i-lucide-circle-check' },
+  rejected: { label: 'Rejected', color: 'neutral', icon: 'i-lucide-circle-x' },
 })
+
+/**
+ * A building's status with its four-eyes approval: a new building waits for approval
+ * (pending), may be rejected, and making it inactive waits too (deactivating).
+ */
+export type RaBuildingState = 'pending' | 'rejected' | 'deactivating' | 'active' | 'inactive'
+export const raBuildingStatus = defineStatusScale<RaBuildingState>({
+  pending: { label: 'Waiting for approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  rejected: { label: 'Rejected', color: 'error', icon: 'i-lucide-circle-x' },
+  deactivating: { label: 'Deactivation requested', color: 'warning', icon: 'i-lucide-circle-pause' },
+  active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
+  inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
+})
+
+export function raBuildingState(location: {
+  is_active: boolean
+  approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
+}): RaBuildingState {
+  const approval = location.approval
+  if (approval?.status === 'rejected') return 'rejected'
+  if (approval?.status === 'pending') return approval.action === 'deactivate' ? 'deactivating' : 'pending'
+  return location.is_active ? 'active' : 'inactive'
+}
 
 export const raPlaybookReview = defineStatusScale<'reviewed' | 'starter'>({
   reviewed: { label: 'Reviewed by BCM', color: 'success', icon: 'i-lucide-badge-check' },
@@ -400,6 +463,8 @@ export const RA_PLACE_KIND_LABEL: Record<RaKind, string> = {
 
 export const RA_CRISIS_ACTION_LABEL: Record<string, string> = {
   declared: 'Declared',
+  approved: 'Approved',
+  rejected: 'Rejected',
   updated: 'Updated',
   note: 'Update',
   closed: 'Closed',
@@ -440,7 +505,7 @@ export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
   return `${RA_MODULES[kind].base}/${section}${id === undefined ? '' : `/${id}`}`
 }
 
-/** Where an assessment opens from elsewhere (a location, the map, a crisis): a draft in Manage
+/** Where an assessment opens from elsewhere (a location, the map, an incident): a draft in Manage
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
   return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
@@ -457,4 +522,36 @@ export const raRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_90'
   due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
   due_90: { label: 'Due in 31–90 days', color: 'info', icon: 'i-lucide-calendar' },
   later: { label: 'Not due yet', color: 'neutral', icon: 'i-lucide-calendar-check' },
+})
+
+/** Escalation/wait level for sign-off steps: ok → reminder → escalated. */
+export type RaWaitLevel = 'ok' | 'reminder' | 'escalated'
+export const raWaitLevel = defineStatusScale<RaWaitLevel>({
+  ok: { label: 'On track', color: 'success', icon: 'i-lucide-circle-check' },
+  reminder: { label: 'Reminder due', color: 'warning', icon: 'i-lucide-bell' },
+  escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-siren' },
+})
+
+/** The first crumb of the pages in the Location menu group (the register of head office
+ *  buildings and branches, the building map, incidents and the guidebook): Home › Location ›
+ *  Buildings. The routes keep their /locations names. */
+export const BUILDINGS_GROUP = 'Location'
+export const LOCATIONS_PATH = '/locations'
+export const LOCATION_MAP_PATH = '/locations/map'
+export const CRISES_PATH = '/crises'
+export const GUIDEBOOK_PATH = '/crises/guidebook'
+
+/** A location's profile, on a tab (`map`, `contacts`, ...) when given. */
+export function locationPath(id: number, tab?: string) {
+  return `${LOCATIONS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
+}
+
+export function crisisPath(id: number) {
+  return `${CRISES_PATH}/${id}`
+}
+
+/** The register's type badge: head office building or branch. */
+export const raLocationKind = defineStatusScale<RaKind>({
+  head_office: { label: 'Head office', color: 'neutral', icon: 'i-lucide-building-2' },
+  branch: { label: 'Branch', color: 'neutral', icon: 'i-lucide-landmark' },
 })

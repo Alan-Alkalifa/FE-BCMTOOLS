@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import type { RaHistoryRow, RaSignoffWaiting } from '~/composables/useRa'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import type { RaAssessment, RaHistoryAction, RaHistoryRow, RaSignoffWaiting } from '~/composables/useRa'
+import RaChangeSignerModal, { type RaWaitingStep } from '~/components/ra/RaChangeSignerModal.vue'
+import RaOnBehalfModal from '~/components/ra/RaOnBehalfModal.vue'
 
 /**
  * RA (or RA Branch) Approval, as SCCA Approval: my inbox (RAs whose current sign-off step is
  * mine, with those coming to me next), my history, and for BCM (ra.manage) the board of every
- * RA in sign-off. A row opens the RA on its Sign-off tab, where the signer (or BCM, on their
- * behalf) approves it or returns it with a comment.
+ * RA in sign-off. A row opens the RA on its Sign-off tab, where the signer approves it or returns
+ * it with a comment. From the board BCM also, as SCCA's, sends a reminder, changes the signer of
+ * the waiting step or approves it on the signer's behalf (with the evidence).
  */
 const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
 const { can } = useAuth()
+const confirm = useConfirm()
+const toast = useToast()
+const changeSignerDialog = useOverlay().create(RaChangeSignerModal)
+const onBehalfDialog = useOverlay().create(RaOnBehalfModal)
 
 const bcm = computed(() => can('ra.manage'))
 type ApprovalTab = 'inbox' | 'history' | 'board'
@@ -49,8 +56,9 @@ const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1)
 const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: PER_PAGE })))
 const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: COMING_PER_PAGE })))
 
-function stepLabel(role: string | null) {
-  return role ? raSignoffLabel(role as RaSignoffRole, ra.value.signoffRoles) : '—'
+/** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it. */
+function stepLabel(role: string | null, title?: string | null) {
+  return role ? (title || raStepTitle(role, ra.value.signoffRoles)) : '—'
 }
 
 const waitingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
@@ -73,9 +81,9 @@ function openReview(_event: Event, row: { original: { id: number } }) {
 
 // --- my history -----------------------------------------------------------------------------
 
-const ACTIONS = ['approved', 'returned', 'submitted'] as const
-const action = computed<RaHistoryRow['action'] | 'all'>({
-  get: () => (ACTIONS.includes(route.query.action as RaHistoryRow['action']) ? route.query.action as RaHistoryRow['action'] : 'all'),
+const ACTIONS: RaHistoryAction[] = ['approved', 'returned', 'submitted', 'on_behalf', 'reassigned']
+const action = computed<RaHistoryAction | 'all'>({
+  get: () => (ACTIONS.includes(route.query.action as RaHistoryAction) ? route.query.action as RaHistoryAction : 'all'),
   set: (value) => setQuery({ action: value === 'all' ? undefined : value, page: undefined }),
 })
 const historyPage = pageOf('history')
@@ -90,12 +98,26 @@ const actionItems = [
   { label: 'Approved', value: 'approved' as const },
   { label: 'Returned for changes', value: 'returned' as const },
   { label: 'Submitted', value: 'submitted' as const },
+  { label: 'Approved on my behalf', value: 'on_behalf' as const },
+  { label: 'Signer changed', value: 'reassigned' as const },
 ]
-const raAction = defineStatusScale<RaHistoryRow['action']>({
+const raAction = defineStatusScale<RaHistoryAction>({
   approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  on_behalf: { label: 'Approved on behalf', color: 'info', icon: 'i-lucide-badge-check' },
   returned: { label: 'Returned', color: 'warning', icon: 'i-lucide-undo-2' },
   submitted: { label: 'Submitted', color: 'info', icon: 'i-lucide-send' },
+  reassigned: { label: 'Signer changed', color: 'warning', icon: 'i-lucide-user-round-cog' },
 })
+/** The row's badge: an approval BCM gave for someone shows as "Approved on behalf". */
+function historyKind(row: RaHistoryRow): RaHistoryAction {
+  return row.on_behalf ? 'on_behalf' : row.action
+}
+/** Who did what for whom, under the badge. */
+function historyNote(row: RaHistoryRow) {
+  if (row.action === 'reassigned') return `${row.for_user ?? 'Nobody'} → ${row.to_user ?? '—'}, by ${row.user ?? 'BCM'}`
+  if (row.on_behalf) return `For ${row.for_user ?? 'the signer'}, by ${row.user ?? 'BCM'}`
+  return null
+}
 const historyColumns: TableColumn<RaHistoryRow>[] = [
   { accessorKey: 'at', header: 'When' },
   { id: 'assessment', header: 'RA' },
@@ -117,15 +139,63 @@ const board = useRaBoard(
 )
 const stepItems = computed(() => [
   { label: 'Every step', value: 'all' },
-  ...ra.value.signoffRoles.map((role) => ({ label: role.label, value: role.value })),
+  ...ra.value.signoffRoles.map((role) => ({ label: role.hint, value: role.value })),
 ])
 const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
   { accessorKey: 'step', header: 'Current step' },
   { id: 'signer', header: 'Signer' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
+  { accessorKey: 'reminders_sent', header: 'Reminders' },
   { id: 'actions', header: '' },
 ])
+
+/** BCM board: email the signer now, as SCCA's "Send a reminder now". It counts as a reminder. */
+async function nudge(row: RaSignoffWaiting) {
+  const ok = await confirm({
+    title: `Remind ${row.signer?.name ?? 'the signer'} now?`,
+    description: `They get an email asking them to sign off ${row.ref_no ?? row.location.name} (${stepLabel(row.step, row.step_title)}). It counts as a reminder.`,
+    confirmLabel: 'Send reminder',
+  })
+  if (!ok) return
+  try {
+    const result = await $fetch<{ sent: boolean, assessment: RaAssessment }>(`/api/ra/assessments/${row.id}/nudge`, { method: 'POST' })
+    toast.add(result.sent
+      ? { title: 'Reminder sent', color: 'success', icon: 'i-lucide-mail-check' }
+      : { title: 'The reminder email could not be sent', description: 'See Audit log > Email outbox.', color: 'warning', icon: 'i-lucide-mail-x' })
+    await board.refresh()
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+}
+
+function waitingStep(row: RaSignoffWaiting): RaWaitingStep {
+  return {
+    id: row.id,
+    ref: row.ref_no ?? `#${row.id}`,
+    location: row.location.name,
+    step: stepLabel(row.step, row.step_title),
+    signer: row.signer?.name ?? null,
+    working_days_waiting: row.working_days_waiting,
+  }
+}
+
+async function changeSigner(row: RaSignoffWaiting) {
+  if (await changeSignerDialog.open({ step: waitingStep(row) }).result) await board.refresh()
+}
+
+async function onBehalf(row: RaSignoffWaiting) {
+  if (await onBehalfDialog.open({ step: waitingStep(row) }).result) await board.refresh()
+}
+
+function boardActions(row: RaSignoffWaiting): DropdownMenuItem[] {
+  return [
+    { label: 'Open sign-off', icon: 'i-lucide-folder-open', to: raPath(ra.value.kind, 'approval', row.id) },
+    { label: 'Send a reminder now', icon: 'i-lucide-bell-ring', disabled: !row.signer, onSelect: () => nudge(row) },
+    { label: 'Change the signer', icon: 'i-lucide-user-round-cog', onSelect: () => changeSigner(row) },
+    { label: 'Approve on behalf', icon: 'i-lucide-badge-check', onSelect: () => onBehalf(row) },
+  ]
+}
 
 const tabs = computed(() => [
   { label: 'My inbox', value: 'inbox', icon: 'i-lucide-inbox', slot: 'inbox' as const, badge: inbox.data.value?.total || undefined },
@@ -190,7 +260,7 @@ const tabs = computed(() => [
                 >—</span>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step) }}
+                {{ stepLabel(row.original.step, row.original.step_title) }}
               </template>
               <template #submitted_by-cell="{ row }">
                 {{ row.original.submitted_by ?? '—' }}
@@ -243,7 +313,7 @@ const tabs = computed(() => [
                 </p>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step) }}
+                {{ stepLabel(row.original.step, row.original.step_title) }}
               </template>
               <template #signer-cell="{ row }">
                 {{ row.original.signer?.name ?? '—' }}
@@ -304,14 +374,20 @@ const tabs = computed(() => [
               </p>
             </template>
             <template #role-cell="{ row }">
-              {{ stepLabel(row.original.role) }}
+              {{ stepLabel(row.original.role, row.original.role_title) }}
             </template>
             <template #action-cell="{ row }">
               <StatusBadge
                 :scale="raAction"
-                :value="row.original.action"
+                :value="historyKind(row.original)"
                 size="sm"
               />
+              <p
+                v-if="historyNote(row.original)"
+                class="mt-1 text-xs text-muted"
+              >
+                {{ historyNote(row.original) }}
+              </p>
               <p
                 v-if="row.original.comment"
                 class="mt-1 max-w-72 text-xs whitespace-pre-line text-muted"
@@ -328,7 +404,7 @@ const tabs = computed(() => [
             </template>
             <template #empty>
               <p class="py-8 text-center text-sm text-muted">
-                {{ action === 'all' ? 'You haven\'t submitted, approved or returned an RA yet.' : 'No actions of this kind.' }}
+                {{ action === 'all' ? 'You haven\'t submitted, approved or returned an RA yet.' : 'Nothing of this kind.' }}
               </p>
             </template>
           </UTable>
@@ -360,7 +436,7 @@ const tabs = computed(() => [
               aria-label="Step"
             />
             <p class="text-sm text-muted">
-              Open an RA to approve or return its step on the signer's behalf.
+              Send the signer a reminder, change the signer, or approve the step on the signer's behalf.
             </p>
           </div>
           <UTable
@@ -381,22 +457,44 @@ const tabs = computed(() => [
               </p>
             </template>
             <template #step-cell="{ row }">
-              {{ stepLabel(row.original.step) }}
+              {{ stepLabel(row.original.step, row.original.step_title) }}
             </template>
             <template #signer-cell="{ row }">
               {{ row.original.signer?.name ?? '—' }}
             </template>
             <template #working_days_waiting-cell="{ row }">
-              <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ raWaiting(row.original.working_days_waiting) }}</span>
+              <StatusBadge
+                :scale="raWaitLevel"
+                :value="row.original.level"
+                size="sm"
+              />
+              <p class="mt-1 text-xs text-muted">
+                {{ raWaiting(row.original.working_days_waiting) }}
+              </p>
+            </template>
+            <template #reminders_sent-cell="{ row }">
+              <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
+              <p
+                v-if="row.original.escalated_at"
+                class="text-xs text-error"
+              >
+                Escalated {{ formatDate(row.original.escalated_at) }}
+              </p>
             </template>
             <template #actions-cell="{ row }">
-              <UButton
-                :to="raPath(ra.kind, 'approval', row.original.id)"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                label="Open sign-off"
-              />
+              <UDropdownMenu
+                :items="boardActions(row.original)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  label="Act"
+                  :aria-label="`Act on ${row.original.ref_no ?? row.original.location.name}`"
+                />
+              </UDropdownMenu>
             </template>
             <template #empty>
               <p class="py-8 text-center text-sm text-muted">
