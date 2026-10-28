@@ -26,11 +26,12 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await expect(page.getByRole('cell', { name: /Draft/ })).toBeVisible()
   // The reason for assessment: a column and a filter.
   await expect(page.getByRole('cell', { name: 'New building' })).toBeVisible()
-  const byReason = page.waitForRequest((r) => r.url().includes('reason=after_incident'))
+  const byReason = page.waitForRequest((r) => r.url().includes('reason=structural_change'))
   await page.getByLabel('Reason for assessment').click()
-  await page.getByRole('option', { name: 'After an incident' }).click()
+  await expect(page.getByRole('option', { name: 'After an incident' })).toHaveCount(0)
+  await page.getByRole('option', { name: 'Structural change' }).click()
   await byReason
-  await expect(page).toHaveURL(/reason=after_incident/)
+  await expect(page).toHaveURL(/reason=structural_change/)
   // As SCCA's lists: search first, then building → reason → whose → period; Clear filters.
   const bar = page.getByRole('search')
   const labels = await bar.locator('[aria-label]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
@@ -225,28 +226,35 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await mockRa(page)
   await page.goto('/ra/manage/new')
   await expect(page.getByRole('heading', { name: 'Assessment', exact: true })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  // As SCCA: nothing else can be filled in before the reason.
+  await expect(page.getByText('Pick the reason first: the other fields open once it is chosen, and it decides the renewal due date.')).toBeVisible()
+  const building = page.getByRole('button', { name: /^Building\*?$/ })
+  await expect(building).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Assessment date' })).toBeDisabled()
+  await expect(page.getByRole('link', { name: 'Add building' })).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toBeDisabled()
+  await page.getByRole('button', { name: 'Create assessment' }).click()
+  await expect(page.getByText('Choose the reason for this assessment.')).toBeVisible()
+  await page.getByLabel('Reason for assessment').click()
+  await expect(page.getByRole('option', { name: /New building/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /After an incident/ })).toHaveCount(0)
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  // The help under the reason follows the reason picked, across the whole row.
+  await expect(page.getByText('Renews the last final RA. Renewal is due one year after the assessment date.')).toBeVisible()
+  await expect(building).toBeEnabled()
+  await building.click()
   await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
   await expect(page.getByText('Start from RA-2025-0001 (2025)')).toBeVisible()
   // The location incident team of the previous cycle fills the team: users from the directory.
   await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
   await expect(page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')).toContainText('Budi Hartono')
-  // The building already has an RA but no final one: the reason is the user's to choose.
-  await expect(page.getByText('Pick the reason first: it decides the renewal due date.')).toBeVisible()
-  await page.getByRole('button', { name: 'Create assessment' }).click()
-  await expect(page.getByText('Choose the reason for this assessment.')).toBeVisible()
-  await page.getByLabel('Reason for assessment').click()
-  await expect(page.getByRole('option', { name: /Annual review/ })).toBeVisible()
-  await page.getByRole('option', { name: /After an incident/ }).click()
-  // As SCCA, the help under the reason follows the reason picked.
-  await expect(page.getByText('Reassessed after an incident. Renewal is due one year after the assessment date.')).toBeVisible()
   // No RA period field: the period is the year of the assessment date.
   await expect(page.getByLabel('RA period')).toHaveCount(0)
   const year = new Date().getFullYear()
   await expect(page.getByText(`RA period ${year}, the year of this date.`)).toBeVisible()
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'after_incident', period_year: year, copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'annual_review', period_year: year, copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -899,6 +907,9 @@ test('a structural change picks its renewal date, like SCCA\'s System change', a
   expect(building!.y).toBeLessThan(date!.y)
   expect(Math.abs(date!.y - due!.y)).toBeLessThan(2)
   expect(reason!.width).toBeLessThan(building!.width)
+  // The help under the reason uses the whole row, not only the half the select takes.
+  const help = await page.getByText(/^The building changed/).boundingBox()
+  expect(help!.width).toBeGreaterThan(reason!.width)
   await page.getByRole('button', { name: 'Create assessment' }).click()
   await expect(page.getByText('Enter the renewal due date. It can be sooner than one year.')).toBeVisible()
 })

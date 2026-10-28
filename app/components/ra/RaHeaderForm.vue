@@ -83,6 +83,9 @@ const periodShown = computed(() => state.assessment_date !== (props.assessment.a
   ? raPeriodOf(state.assessment_date) ?? state.period_year
   : state.period_year)
 
+/** As SCCA: every other field waits for the reason. */
+const noReason = computed(() => !state.reason)
+
 /** Structural change picks its renewal date; every other reason renews a year after the assessment. */
 const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
 const standardDue = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ years: 1 }).toString() : null)
@@ -156,32 +159,28 @@ async function onSubmit() {
               Assessment
             </h2>
           </template>
-          <div class="grid items-start gap-4 sm:grid-cols-2">
-            <UFormField
-              label="Reason for assessment"
-              name="reason"
-              required
-              :help="raReasonHelp(state.reason)"
-            >
-              <USelect
-                v-model="reasonModel"
-                :items="reasonItems"
-                :disabled="locked"
-                placeholder="Select a reason"
-                class="w-full"
-                aria-label="Reason for assessment"
-              />
-            </UFormField>
-            <UFormField
-              label="RA ref. no."
-              name="ref_no"
-            >
-              <UInput
-                :model-value="assessment.ref_no ?? ''"
-                disabled
-                class="w-full"
-              />
-            </UFormField>
+          <!-- As SCCA: the reason first (the select half width, its help the full row); the
+               other fields stay disabled until a reason is chosen. -->
+          <UFormField
+            label="Reason for assessment"
+            name="reason"
+            required
+            :help="raReasonHelp(state.reason)"
+          >
+            <USelect
+              v-model="reasonModel"
+              :items="reasonItems"
+              :disabled="locked"
+              placeholder="Select a reason"
+              class="w-full sm:w-[calc(50%-0.5rem)]"
+              aria-label="Reason for assessment"
+            />
+          </UFormField>
+          <fieldset
+            :disabled="noReason"
+            class="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2"
+            :class="noReason ? 'opacity-60' : ''"
+          >
             <UFormField
               label="Assessment date"
               name="assessment_date"
@@ -213,7 +212,17 @@ async function onSubmit() {
             >
               Renewal due {{ formatDate(standardDue) }}, one year after this assessment.
             </p>
-          </div>
+            <UFormField
+              label="RA ref. no."
+              name="ref_no"
+            >
+              <UInput
+                :model-value="assessment.ref_no ?? ''"
+                disabled
+                class="w-full"
+              />
+            </UFormField>
+          </fieldset>
         </UCard>
 
         <UCard>

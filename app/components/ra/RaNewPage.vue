@@ -143,6 +143,8 @@ const dueDate = computed(() => {
   const date = parseDate(state.assessment_date).add({ years: 1 })
   return date.toString()
 })
+/** As SCCA: every other field waits for the reason. */
+const noReason = computed(() => !state.reason)
 /** Structural change picks its renewal date (like SCCA's System change). */
 const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
 const chosenDue = computed({
@@ -205,22 +207,27 @@ async function onSubmit() {
             Assessment
           </h2>
         </template>
-        <!-- As SCCA: the reason first (half width), the building, then the dates side by side. -->
-        <div class="grid items-start gap-4 sm:grid-cols-2">
-          <UFormField
-            label="Reason for assessment"
-            name="reason"
-            required
-            :help="raReasonHelp(state.reason)"
-          >
-            <USelect
-              v-model="reasonModel"
-              :items="reasonItems"
-              placeholder="Select a reason"
-              class="w-full"
-              aria-label="Reason for assessment"
-            />
-          </UFormField>
+        <!-- As SCCA: the reason first (the select half width, its help the full row); the other
+             fields stay disabled until a reason is chosen. -->
+        <UFormField
+          label="Reason for assessment"
+          name="reason"
+          required
+          :help="raReasonHelp(state.reason)"
+        >
+          <USelect
+            v-model="reasonModel"
+            :items="reasonItems"
+            placeholder="Select a reason"
+            class="w-full sm:w-[calc(50%-0.5rem)]"
+            aria-label="Reason for assessment"
+          />
+        </UFormField>
+        <fieldset
+          :disabled="noReason"
+          class="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2"
+          :class="noReason ? 'opacity-60' : ''"
+        >
           <UFormField
             class="sm:col-span-2"
             :label="ra.location.single"
@@ -240,6 +247,7 @@ async function onSubmit() {
               />
               <UButton
                 :to="{ path: `${LOCATIONS_PATH}/new`, query: { type: ra.kind, then: 'assessment' } }"
+                :disabled="noReason"
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-plus"
@@ -287,7 +295,7 @@ async function onSubmit() {
                 : 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts come from the branch.'"
             />
           </UFormField>
-        </div>
+        </fieldset>
       </UCard>
 
       <div class="space-y-6">
@@ -300,7 +308,11 @@ async function onSubmit() {
               Who leads the response at this {{ ra.location.lower }}, picked from the BCM Tools users. They also sign the RA.
             </p>
           </template>
-          <div class="space-y-4">
+          <fieldset
+            :disabled="noReason"
+            class="space-y-4"
+            :class="noReason ? 'opacity-60' : ''"
+          >
             <fieldset
               v-for="member in MEMBERS"
               :key="member"
@@ -318,7 +330,7 @@ async function onSubmit() {
                 :label="ra[member].label"
               />
             </fieldset>
-          </div>
+          </fieldset>
         </UCard>
 
         <div class="flex justify-end gap-2">

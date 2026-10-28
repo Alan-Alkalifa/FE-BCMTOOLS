@@ -530,12 +530,11 @@ export function raRecordPath(kind: RaKind, assessment: { id: number, status?: Ra
 
 /** Why an RA is made, like SCCA's assessment reason. Annual review renews the building's last
  *  final RA; New building is its first RA (the API checks both). */
-export type RaReason = 'annual_review' | 'new_building' | 'structural_change' | 'after_incident'
+export type RaReason = 'annual_review' | 'new_building' | 'structural_change'
 export const RA_REASONS: { value: RaReason, label: string, description: string }[] = [
   { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
   { value: 'new_building', label: 'New building', description: 'The first RA of this building or branch.' },
   { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
-  { value: 'after_incident', label: 'After an incident', description: 'Reassessed after an incident.' },
 ]
 /** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
  *  every other reason renews a year after it. */
@@ -544,7 +543,7 @@ export const RA_CUSTOM_DUE_REASON: RaReason = 'structural_change'
 /** The help under Reason for assessment, which changes with the reason picked (as in SCCA). */
 export function raReasonHelp(value: string | null | undefined) {
   const reason = RA_REASONS.find((item) => item.value === value)
-  if (!reason) return 'Pick the reason first: it decides the renewal due date.'
+  if (!reason) return 'Pick the reason first: the other fields open once it is chosen, and it decides the renewal due date.'
   const renewal = reason.value === RA_CUSTOM_DUE_REASON
     ? 'Pick the renewal due date below: it can be sooner than one year.'
     : 'Renewal is due one year after the assessment date.'
