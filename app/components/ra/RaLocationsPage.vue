@@ -133,6 +133,7 @@ const columns: TableColumn<RaLocation>[] = [
   // The address gives way on narrower screens so Last updated stays in view (it is on the building page).
   { accessorKey: 'address', header: 'Address', meta: { class: { th: 'hidden 2xl:table-cell', td: 'hidden 2xl:table-cell' } } },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { id: 'latest_assessment', header: 'Latest assessment' },
   { id: 'latest', header: 'Latest residual' },
   { id: 'building_status', header: 'Status Building' },
   { id: 'assessment_status', header: 'Status Assessment' },
@@ -181,7 +182,7 @@ const addTo = computed(() => {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="10"
+      :columns="11"
       :rows="5"
       label="Loading buildings"
     />
@@ -335,25 +336,27 @@ const addTo = computed(() => {
         <template #assessment_count-cell="{ row }">
           {{ formatNumber(row.original.assessment_count, 0) }}
         </template>
-        <template #latest-cell="{ row }">
-          <div
+        <template #latest_assessment-cell="{ row }">
+          <NuxtLink
             v-if="row.original.latest_assessment"
-            class="flex flex-col items-start gap-1"
+            :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
+            class="whitespace-nowrap text-primary hover:underline"
+            @click.stop
           >
-            <NuxtLink
-              :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
-              class="whitespace-nowrap text-primary hover:underline"
-              @click.stop
-            >
-              {{ row.original.latest_assessment.ref_no }}
-            </NuxtLink>
-            <StatusBadge
-              v-if="row.original.latest_assessment.highest_residual_level"
-              :scale="raRiskLevel"
-              :value="row.original.latest_assessment.highest_residual_level"
-              size="sm"
-            />
-          </div>
+            {{ row.original.latest_assessment.ref_no }}
+          </NuxtLink>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #latest-cell="{ row }">
+          <StatusBadge
+            v-if="row.original.latest_assessment?.highest_residual_level"
+            :scale="raRiskLevel"
+            :value="row.original.latest_assessment.highest_residual_level"
+            size="sm"
+          />
           <span
             v-else
             class="text-muted"
@@ -367,10 +370,11 @@ const addTo = computed(() => {
           />
         </template>
         <template #assessment_status-cell="{ row }">
+          <!-- Draft (also when returned), In approval or Approved. -->
           <StatusBadge
             v-if="row.original.latest_assessment"
-            :scale="raStatus"
-            :value="raStatusKey(row.original.latest_assessment)"
+            :scale="raBuildingAssessmentStatus"
+            :value="row.original.latest_assessment.status"
             size="sm"
           />
           <span

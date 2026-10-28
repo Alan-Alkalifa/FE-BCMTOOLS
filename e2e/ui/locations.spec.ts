@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { BRANCH_ID, fillAddress, mockRa } from '../fixtures/ra'
+import { BRANCH_ID, BRANCH_LOCATION, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -195,4 +195,43 @@ test('the Buildings list shows the last update and sorts by a column, newest cha
   // Back to the default: the URL carries no sort.
   await table.getByRole('button', { name: 'Sort by Last updated' }).click()
   await expect(page).not.toHaveURL(/sort=/)
+})
+
+test('the Buildings list shows the latest assessment and its residual apart, and its status as Draft, In approval or Approved', async ({ page }) => {
+  await mockRa(page)
+  const latest = BRANCH_LOCATION.latest_assessment
+  const rows = [
+    { name: 'KCP Cibubur', ref_no: 'RAB-2026-0001', status: 'draft', is_returned: true, returned_comment: 'Fix H01', level: 'High' },
+    { name: 'KCP Cikarang', ref_no: 'RAB-2026-0002', status: 'in_signoff', is_returned: false, returned_comment: null, level: 'Medium' },
+    { name: 'KCP Cilegon', ref_no: 'RAB-2026-0003', status: 'approved', is_returned: false, returned_comment: null, level: 'Low' },
+  ].map(({ name, level, ...assessment }, index) => ({
+    ...BRANCH_LOCATION,
+    id: 41 + index,
+    name,
+    code: `RA-BR-00${41 + index}`,
+    latest_assessment: { ...latest, ...assessment, id: 51 + index, highest_residual_level: level },
+  }))
+  // Registered after mockRa, so it answers the register's paged request first.
+  await page.route(/\/api\/ra\/locations\?.*page=/, (route) =>
+    route.fulfill({ json: { items: rows, page: 1, per_page: 25, total: rows.length, pages: 1 } }),
+  )
+  await page.goto('/locations')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Latest assessment' })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Latest residual' })).toBeVisible()
+
+  const returned = table.getByRole('row', { name: /KCP Cibubur/ })
+  // The code and the residual level sit in their own cells.
+  const codeCell = returned.getByRole('cell').filter({ has: page.getByRole('link', { name: 'RAB-2026-0001' }) })
+  await expect(codeCell).toHaveCount(1)
+  await expect(codeCell).not.toContainText('High')
+  await expect(returned.getByRole('cell', { name: 'High', exact: true })).toHaveCount(1)
+  // Returned for changes is a draft again here.
+  await expect(returned).toContainText('Draft')
+  await expect(returned).not.toContainText('Returned')
+
+  const signing = table.getByRole('row', { name: /KCP Cikarang/ })
+  await expect(signing.locator('[class*="warning"]', { hasText: 'In approval' })).toHaveCount(1)
+  await expect(signing).not.toContainText('In sign-off')
+  await expect(table.getByRole('row', { name: /KCP Cilegon/ })).toContainText('Approved')
 })

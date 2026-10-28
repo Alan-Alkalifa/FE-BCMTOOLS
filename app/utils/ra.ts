@@ -444,6 +444,14 @@ export const raBuildingStatus = defineStatusScale<RaBuildingState>({
   inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
 })
 
+/** The Buildings register's Status Assessment: a returned RA is simply a draft again, and one
+ *  being signed off reads "In approval" (orange). The RA's own pages keep `raStatus`. */
+export const raBuildingAssessmentStatus = defineStatusScale<RaStatus>({
+  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
+})
+
 export function raBuildingState(location: {
   is_active: boolean
   approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
