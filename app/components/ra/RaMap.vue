@@ -241,7 +241,16 @@ watch(pin, (value, previous) => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
-  map?.remove()
+  if (map) {
+    // Leaflet ends a zoom animation from a 250 ms timer that remove() doesn't cancel: leaving the
+    // page (or closing a dialog) mid-zoom made that timer read the removed map pane ("Cannot read
+    // properties of undefined (reading '_leaflet_pos')"). Stop any pan, mark the zoom as done so
+    // the timer does nothing, drop the listeners, then remove the map.
+    map.stop()
+    ;(map as unknown as { _animatingZoom?: boolean })._animatingZoom = false
+    map.off()
+    map.remove()
+  }
   map = undefined
 })
 

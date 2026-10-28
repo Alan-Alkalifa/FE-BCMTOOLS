@@ -247,3 +247,31 @@ test('who declared an incident is told someone else approves it', async ({ page 
   await expect(banner).toContainText('This request requires approval by another user with approval rights (BCM Admin or BCM Management).', { timeout: 30_000 })
   await expect(banner.getByRole('button', { name: 'Approve' })).toHaveCount(0)
 })
+
+test('leaving the map while it zooms raises no error', async ({ page }) => {
+  // Leaflet ends a zoom 250 ms later from a timer that remove() doesn't cancel; it used to throw
+  // "Cannot read properties of undefined (reading '_leaflet_pos')" once the map was gone.
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await mockRaMap(page)
+  // Open Buildings once first, so leaving the map later is instant.
+  await page.goto('/locations')
+  const nav = page.getByRole('navigation', { name: 'Main' })
+  await nav.getByRole('link', { name: 'Building map' }).click({ timeout: 30_000 })
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
+  for (let round = 0; round < 3; round++) {
+    // Zoom (animated), then leave while the zoom is still running.
+    await page.evaluate(async () => {
+      const container = document.querySelector('.leaflet-container')!
+      const box = container.getBoundingClientRect()
+      container.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: box.left + 200, clientY: box.top + 150 }))
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      document.querySelector<HTMLAnchorElement>('nav[aria-label="Main"] a[href="/locations"]')!.click()
+    })
+    await expect(page).toHaveURL(/\/locations$/)
+    await page.waitForTimeout(500)
+    await nav.getByRole('link', { name: 'Building map' }).click()
+    await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
+  }
+  expect(errors).toEqual([])
+})
