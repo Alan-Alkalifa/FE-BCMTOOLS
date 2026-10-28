@@ -169,9 +169,9 @@ const cards = computed(() => {
   const value = overview.data.value?.cards
   return [
     { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
-    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA in force past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
+    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
-    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With an approved RA in force', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
+    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With an approved RA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
     { key: 'not_assessed', label: 'Never approved', hint: `Active ${places.value} without an approved RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
     { key: 'in_signoff', label: 'In sign-off', hint: 'RAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
@@ -292,7 +292,7 @@ function record(id: number) {
   <AppPage
     :title="`${ra.title} monitoring`"
     icon="i-lucide-chart-column"
-    :description="`Every ${ra.location.lower}'s RA in force: residual risk, renewals due and sign-offs that are waiting. Read-only.`"
+    :description="`Every ${ra.location.lower}'s residual risk, renewals due and sign-offs that are waiting. Read-only.`"
     :crumbs="[{ label: ra.title }, { label: 'Monitoring' }]"
   >
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
