@@ -166,6 +166,32 @@ Source is bind-mounted, so edits hot-reload. The container runs `npm install` ea
 
 The container reaches the backend at `http://host.docker.internal:8000`, so the backend can run in Docker or directly on your machine. If the backend is published on another host port (`BACKEND_HOST_PORT` in the backend's `.env`), add the same `BACKEND_HOST_PORT=8001` line to this repo's `.env` and run `docker compose up -d` again.
 
+### Run against a remote backend (ngrok)
+
+When the backend runs on another machine and is published with ngrok (backend README > Expose the backend with ngrok), point the dev proxy at its URL; the browser still talks only to `http://localhost:3000`, so sign-in, cookies and sealed passwords work unchanged.
+
+```dotenv
+# frontend/.env, Docker (docker compose up -d)
+BACKEND_URL=https://<name>.ngrok-free.app
+```
+
+```powershell
+# Node on your machine
+$env:NUXT_DEV_BACKEND_URL = "https://<name>.ngrok-free.app"; npm run dev
+```
+
+The proxy sends `ngrok-skip-browser-warning`, so ngrok's free-plan warning page never replaces an API response. The production nginx image does the same when its `BACKEND_URL` is an ngrok URL.
+
+#### Deployed on Vercel
+
+On Vercel there is no nginx: `middleware.ts` (Vercel Routing Middleware, matcher `/api/:path*`) forwards every `/api` request to the backend, with `ngrok-skip-browser-warning` so the ngrok warning page never replaces an API answer, the profile photo or a download. The browser keeps calling the Vercel origin, so cookies, CSRF and sealed passwords work as behind nginx.
+
+1. Vercel > Project > Settings > Environment Variables: `BACKEND_URL` = `https://<name>.ngrok-free.dev` (Production and Preview). Scheme and host only.
+2. Redeploy (or push a commit). Without `BACKEND_URL`, `/api` answers 404.
+3. In the backend's `.env`, set `PUBLIC_BASE_URL=https://<project>.vercel.app` so email links open the Vercel site, then `docker compose up -d`.
+
+Check it: `https://<project>.vercel.app/api/health` returns `{"status":"ok"}`.
+
 ### Option B: Node on your machine
 
 ```powershell
@@ -218,6 +244,7 @@ The built app has no environment-specific settings: the same image runs in every
 | `NUXT_DEV_BACKEND_URL` | Dev server | `http://localhost:8000` | Backend for the dev proxy. |
 | `CHOKIDAR_USEPOLLING` | Dev server | unset | `true` to poll for file changes (needed for Docker on Windows). |
 | `E2E_BASE_URL` | Playwright | `http://localhost:3000` | Site under test. |
+| `BACKEND_URL` | `compose.yaml` (dev) | — | A backend elsewhere, e.g. `https://<name>.ngrok-free.app`; overrides `BACKEND_HOST_PORT`. In the production image it is where nginx forwards `/api`. |
 | `BACKEND_HOST_PORT` | `compose.yaml` | `8000` | The backend's host port; the dev container proxies to `http://host.docker.internal:<port>`. Same value as in the backend's `.env`. |
 | `WEBSITES_PORT` | App Service | — | `8080`, the port nginx listens on. |
 
@@ -255,7 +282,8 @@ Public pages (sign-in, forgot and reset password) use `definePageMeta({ public: 
 
 ### Sign-in, password reset and CSRF
 
-- `/login` posts `{ username, password }`. Wrong ID or password, a locked account (5 failures, 15 minutes) and rate limits each show their own message.
+- `/login` posts the ID and password **sealed** (`utils/seal.ts`): `sealedFetch` gets the backend's public key and a one-time nonce from `GET /api/auth/seal-key`, encrypts the fields with AES-256-GCM and wraps the key with RSA-OAEP, so the request body carries no readable password or ID. Changing a password, the reset page, an administrator's temporary password and the SMTP password/API key are sealed the same way. Web Crypto needs HTTPS or `localhost`.
+- On `/login`, a wrong ID or password, a locked account (5 failures, 15 minutes) and rate limits each show their own message.
 - `/forgot-password` emails a reset link (30 minutes); `/reset-password?token=` sets the new password. Administrators' invitation emails use the same page (72 hours).
 - `plugins/api.client.ts` wraps `window.fetch`, so every `$fetch`/`useFetch` write to `/api/*` carries `X-CSRF-Token` from the session, and a 401 sends the user back to sign in.
 

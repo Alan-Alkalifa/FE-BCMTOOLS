@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ADMIN_MENU, ALL_PERMISSIONS, signIn } from '../fixtures/auth'
+import { mockSealKey, unseal } from '../fixtures/seal'
 
 test.setTimeout(60_000)
 
@@ -81,7 +82,7 @@ async function mockAdmin(page: Page) {
     adminUser(2, 'Rina Analyst', { is_locked: true }),
     adminUser(3, 'Budi Baru', { has_password: false, last_login_at: null, roles: [] }),
   ]
-  const calls: { method: string, url: string, body: unknown }[] = []
+  const calls: { method: string, url: string, body: unknown, raw: unknown }[] = []
   const menus = ADMIN_MENU.map((m, index) => ({
     id: index + 1,
     code: m.code,
@@ -101,12 +102,15 @@ async function mockAdmin(page: Page) {
     items: [...providers].sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name)),
     active_id: providers.find((row) => row.is_active)?.id ?? null,
   })
+  await mockSealKey(page)
   await page.route('**/api/admin/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method()
-    const body = request.postDataJSON?.() ?? null
-    calls.push({ method, url: url.pathname, body })
+    const raw = request.postDataJSON?.() ?? null
+    // Passwords arrive sealed: open them as the backend would; `raw` is what went on the wire.
+    const body = (raw ? unseal(raw) : null) as ReturnType<typeof request.postDataJSON>
+    calls.push({ method, url: url.pathname, body, raw })
     const path = url.pathname
     if (path === '/api/admin/users' && method === 'GET') {
       const q = (url.searchParams.get('q') ?? '').toLowerCase()
@@ -299,7 +303,8 @@ test('an admin stores the Resend API key and switches the emails to Resend', asy
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Resend saved', { exact: true })).toBeVisible()
   const save = calls.find((call) => call.method === 'PUT' && call.url === '/api/admin/settings/mail/providers/2')!
-  expect(save.body).toMatchObject({ kind: 'resend', host: 'smtp.resend.com', port: 465, security: 'ssl', username: 'resend', password: 're_test_key_123', from_address: 'noreply@bemlanja.com' })
+  expect(save.body).toMatchObject({ kind: 'resend', host: 'smtp.resend.com', port: 465, security: 'ssl', username: 'resend', password: 're_test_key_123', from_address: 'noreply@bemlanja.com', purpose: 'smtp_password' })
+  expect(JSON.stringify(save.raw)).not.toContain('re_test_key_123')
 
   await resend.getByRole('button', { name: 'Use this provider' }).click()
   await expect(page.getByText('Gmail stops sending.', { exact: false })).toBeVisible()
