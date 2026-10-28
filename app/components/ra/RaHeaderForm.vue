@@ -21,6 +21,7 @@ const schema = z.object({
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   due_date: z.string().nullable(),
+  reason: z.string('Choose the reason for this assessment.').nullable(),
   lic_user_id: z.number('Choose the LIC.'),
   lic_phone: z.string().trim().min(1, 'Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
@@ -35,12 +36,20 @@ type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
 }
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
+const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value, description: reason.description }))
+const reasonModel = computed<RaReason | undefined>({
+  get: () => (state.reason as RaReason | null) ?? undefined,
+  set: (value) => {
+    state.reason = value ?? null
+  },
+})
 
 function fromAssessment(assessment: RaAssessment): State {
   return {
     period_year: assessment.period_year,
     assessment_date: assessment.assessment_date ?? '',
     due_date: assessment.due_date,
+    reason: assessment.reason ?? null,
     lic_user_id: assessment.lic_user?.id ?? null,
     lic_phone: assessment.lic_phone ?? '',
     licom_user_id: assessment.licom_user?.id ?? null,
@@ -84,10 +93,11 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { lic_user_id, licom_user_id, ...fields } = state
+    const { lic_user_id, licom_user_id, reason, ...fields } = state
     // An assessment from before users were picked keeps its typed names until someone is picked.
     const saved = await raApi.update(props.assessment.id, {
       ...blankToNull({ ...fields }),
+      ...(reason ? { reason: reason as RaReason } : {}),
       ...(lic_user_id ? { lic_user_id } : {}),
       ...(licom_user_id ? { licom_user_id } : {}),
     })
@@ -159,6 +169,21 @@ async function onSubmit() {
               <DatePicker
                 v-model="assessmentDate"
                 :disabled="locked"
+              />
+            </UFormField>
+            <UFormField
+              label="Reason for assessment"
+              name="reason"
+              required
+            >
+              <USelectMenu
+                v-model="reasonModel"
+                value-key="value"
+                :items="reasonItems"
+                :search-input="false"
+                :disabled="locked"
+                class="w-full"
+                aria-label="Reason for assessment"
               />
             </UFormField>
             <UFormField

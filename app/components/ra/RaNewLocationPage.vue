@@ -8,8 +8,14 @@ import type { RaLocationDetail } from '~/composables/useRa'
  */
 const route = useRoute()
 
-const fixedType = computed<RaKind | null>(() =>
-  route.query.type === 'branch' || route.query.type === 'head_office' ? route.query.type : null)
+/** RA and RA Branch are granted separately: someone who adds only branches (or only head office
+ *  buildings) gets that type fixed. */
+const editKinds = useRaKinds('edit')
+const fixedType = computed<RaKind | null>(() => {
+  const asked = route.query.type === 'branch' || route.query.type === 'head_office' ? route.query.type : null
+  if (editKinds.value.length === 1) return editKinds.value[0]!
+  return asked
+})
 const chosen = ref<RaKind>(fixedType.value ?? 'head_office')
 watch(fixedType, (value) => {
   if (value) chosen.value = value

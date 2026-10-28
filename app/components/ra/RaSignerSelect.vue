@@ -18,6 +18,8 @@ const props = withDefaults(defineProps<{
   placeholder: 'Search by name or email',
 })
 const emit = defineEmits<{ picked: [user: RaUserRef | null] }>()
+/** Signers of an RA need access to its side: RA (ra.access) or RA Branch (ra_branch.access). */
+const ra = useRaModule()
 
 interface DirectoryUser {
   id: number
@@ -57,7 +59,7 @@ const items = computed(() => {
 
 async function load(term: string) {
   try {
-    const data = await $fetch<{ items: DirectoryUser[] }>('/api/users', { query: { q: term, permission: 'ra.access' } })
+    const data = await $fetch<{ items: DirectoryUser[] }>('/api/users', { query: { q: term, permission: ra.value.perm.access } })
     found.value = data.items.map((user) => toItem({
       id: user.id,
       name: user.display_name,

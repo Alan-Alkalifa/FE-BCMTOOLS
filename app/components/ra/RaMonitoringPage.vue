@@ -35,6 +35,7 @@ const filters = computed<RaMonitoringFilters>(() => ({
   region: text('region'),
   level: (LEVEL_FILTERS.includes(text('level') as RaLevel) ? text('level') as RaMonitoringFilters['level'] : undefined),
   state: (STATES.includes(text('state') as (typeof STATES)[number]) ? text('state') as RaMonitoringFilters['state'] : undefined),
+  reason: RA_REASONS.some((reason) => reason.value === text('reason')) ? text('reason') as RaReason : undefined,
   from: text('from'),
   to: text('to'),
 }))
@@ -95,6 +96,14 @@ const state = computed<string>({
   get: () => filters.value.state ?? 'any',
   set: (value) => setQuery({ state: value === 'any' ? undefined : value }),
 })
+const reasonFilter = computed<string>({
+  get: () => filters.value.reason ?? 'any',
+  set: (value) => setQuery({ reason: value === 'any' ? undefined : value }),
+})
+const reasonItems = [
+  { label: 'Any reason', value: 'any' },
+  ...RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value as string })),
+]
 const stateItems = [
   { label: 'Any state', value: 'any' },
   { label: 'Has an approved RA', value: 'approved' },
@@ -124,7 +133,7 @@ watch(search, (value) => {
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.from || filters.value.to))
+const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.reason || filters.value.from || filters.value.to))
 function clearFilters() {
   search.value = ''
   router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined } })
@@ -145,6 +154,13 @@ const renewalCards = [
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
 const register = useRaRegister(paged)
+/** List: buildings whose RAs are shown under their row ("Show in the table" in RA(s)). */
+const expanded = ref<Record<string, boolean>>({})
+function toggleRow(row: RaMonitorLocation, open: boolean) {
+  const id = String(row.location.id)
+  const others = Object.fromEntries(Object.entries(expanded.value).filter(([key]) => key !== id))
+  expanded.value = open ? { ...others, [id]: true } : others
+}
 const bottlenecks = useRaBottlenecks(paged)
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
@@ -333,6 +349,14 @@ function record(id: number) {
           class="w-48"
           aria-label="State"
         />
+        <USelectMenu
+          v-model="reasonFilter"
+          value-key="value"
+          :items="reasonItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Reason for assessment"
+        />
         <!-- TODO: Add department filter when backend supports it
         <USelectMenu
           v-model="department"
@@ -346,7 +370,7 @@ function record(id: number) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Building or address'"
+          :placeholder="ra.hasRegion ? 'Branch, ID, region or address' : 'Building, ID or address'"
           :aria-label="`Search ${ra.location.lowerPlural}`"
           class="w-full sm:w-64"
         />
@@ -484,10 +508,10 @@ function record(id: number) {
                 {{ row.original.location.name }}
               </NuxtLink>
               <p
-                v-if="row.original.location.region"
+                v-if="raLocationLine(row.original.location)"
                 class="text-xs text-muted"
               >
-                {{ row.original.location.region }}
+                {{ raLocationLine(row.original.location) }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -575,11 +599,19 @@ function record(id: number) {
             />
           </div>
           <UTable
+            v-model:expanded="expanded"
             :data="register.data.value?.items ?? []"
             :columns="registerColumns"
+            :get-row-id="(row: RaMonitorLocation) => String(row.location.id)"
             :loading="register.status.value === 'pending'"
             :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #expanded="{ row }">
+              <RaLocationAssessments
+                :location="row.original.location"
+                @hide="toggleRow(row.original, false)"
+              />
+            </template>
             <template #location-cell="{ row }">
               <NuxtLink
                 v-if="registerRecord(row.original)"
@@ -593,7 +625,7 @@ function record(id: number) {
                 class="font-medium text-highlighted"
               >{{ row.original.location.name }}</span>
               <p class="text-xs text-muted">
-                {{ row.original.location.region || '—' }}
+                {{ raLocationLine(row.original.location) || '—' }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -613,6 +645,12 @@ function record(id: number) {
                 <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
                 <p class="text-xs text-muted">
                   {{ formatDate(row.original.approved.approved_at) || formatDate(row.original.approved.assessment_date) || '—' }}
+                </p>
+                <p
+                  v-if="row.original.approved.reason"
+                  class="text-xs text-muted"
+                >
+                  {{ raReasonLabel(row.original.approved.reason) }}
                 </p>
               </template>
               <span
@@ -657,6 +695,17 @@ function record(id: number) {
                   :aria-label="`RA history of ${row.original.location.name}`"
                 />
                 <template #content>
+                  <div class="border-b border-default p-2">
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      block
+                      :icon="expanded[String(row.original.location.id)] ? 'i-lucide-chevron-up' : 'i-lucide-table-properties'"
+                      :label="expanded[String(row.original.location.id)] ? 'Hide from the table' : 'Show in the table'"
+                      @click="toggleRow(row.original, !expanded[String(row.original.location.id)])"
+                    />
+                  </div>
                   <ul class="w-72 divide-y divide-default text-sm">
                     <li
                       v-for="item in row.original.history"

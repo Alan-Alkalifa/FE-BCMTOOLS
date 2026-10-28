@@ -16,15 +16,17 @@ const schema = computed(() => z.object({
   location_id: z.number(`Choose the ${ra.value.location.lower}.`),
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
+  reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
   copy: z.boolean(),
   lic_user_id: z.number('Choose the LIC.'),
   lic_phone: required('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
 }))
-type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id'> & {
+type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id' | 'reason'> & {
   lic_user_id: number | null
   licom_user_id: number | null
+  reason: RaReason | undefined
 }
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
@@ -34,6 +36,7 @@ const state = reactive<State>({
   location_id: initialLocation as number,
   period_year: new Date().getFullYear(),
   assessment_date: today('Asia/Jakarta').toString(),
+  reason: undefined,
   copy: true,
   lic_user_id: null,
   lic_phone: '',
@@ -54,7 +57,7 @@ const locationItems = computed(() =>
   (locations.value?.items ?? []).map((location) => ({
     label: location.name,
     value: location.id,
-    description: (ra.value.hasRegion ? location.region : location.address) ?? undefined,
+    description: [location.code, ra.value.hasRegion ? location.region : location.address].filter(Boolean).join(' · ') || undefined,
   })),
 )
 
@@ -63,6 +66,16 @@ const locationItems = computed(() =>
  * fills the members not picked yet; whoever was picked is kept.
  */
 const previous = ref<RaAssessmentSummary | null>(null)
+/** The reason follows the building until the user picks one. */
+const reasonTouched = ref(false)
+const reasonModel = computed<RaReason | undefined>({
+  get: () => state.reason,
+  set: (value) => {
+    reasonTouched.value = true
+    state.reason = value
+  },
+})
+const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value, description: reason.description }))
 const prefilled = ref<Partial<Record<Member, { user: RaUserRef, phone: string }>>>({})
 
 function clearPrefill() {
@@ -101,6 +114,9 @@ watch(() => state.location_id, async (id) => {
     const detail = await raApi.getLocation(id)
     if (state.location_id !== id) return
     previous.value = detail.assessments[0] ?? null
+    // The usual reason: renew the final RA, or the building's first RA.
+    const hasFinal = detail.assessments.some((row) => row.status === 'approved')
+    if (!reasonTouched.value) state.reason = hasFinal ? 'annual_review' : detail.assessments.length ? undefined : 'new_building'
     if (previous.value && state.copy) await prefillTeam(previous.value)
   } catch {
     previous.value = null
@@ -125,6 +141,7 @@ async function onSubmit() {
       location_id: state.location_id,
       period_year: state.period_year,
       assessment_date: state.assessment_date,
+      reason: state.reason,
       copy_from_id: state.copy && previous.value ? previous.value.id : null,
       lic_user_id: state.lic_user_id ?? undefined,
       lic_phone: state.lic_phone.trim(),
@@ -193,6 +210,22 @@ async function onSubmit() {
                 :label="`Add ${ra.location.lower}`"
               />
             </div>
+          </UFormField>
+          <UFormField
+            label="Reason for assessment"
+            name="reason"
+            required
+            help="Annual review renews the last final RA; New building is the first RA."
+          >
+            <USelectMenu
+              v-model="reasonModel"
+              value-key="value"
+              :items="reasonItems"
+              :search-input="false"
+              placeholder="Choose a reason"
+              class="w-full"
+              aria-label="Reason for assessment"
+            />
           </UFormField>
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField

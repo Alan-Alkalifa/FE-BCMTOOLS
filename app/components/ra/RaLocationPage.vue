@@ -123,7 +123,7 @@ function saveCallTree(rows: RowValues[]) {
 
 const { can } = useAuth()
 /** Without ra.edit the profile is read-only (the API refuses changes too). */
-const canEdit = computed(() => can('ra.edit'))
+const canEdit = computed(() => can(ra.value.perm.edit))
 const canDelete = computed(() => Boolean(location.value?.can_delete && !location.value.assessments.length))
 
 async function removeLocation() {
@@ -155,6 +155,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
 <template>
   <AppPage
     :title="location?.name ?? ra.location.single"
+    :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
       { label: BUILDINGS_GROUP },
       { label: 'Buildings', to: LOCATIONS_PATH },

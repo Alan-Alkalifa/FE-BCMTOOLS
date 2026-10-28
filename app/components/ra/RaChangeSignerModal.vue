@@ -4,6 +4,8 @@ import type { RaAssessment } from '~/composables/useRa'
 /** The waiting step an RA action is for, as the BCM board or the Sign-off tab shows it. */
 export interface RaWaitingStep {
   id: number
+  /** RA (head office) or RA Branch: the new signer needs access to that side. */
+  kind: RaKind
   /** Ref. no. (or "#12") and the building, for the dialog's description. */
   ref: string
   location: string
@@ -17,6 +19,7 @@ export interface RaWaitingStep {
 const props = defineProps<{ step: RaWaitingStep }>()
 const emit = defineEmits<{ close: [assessment?: RaAssessment] }>()
 
+const side = computed(() => RA_MODULES[props.step.kind])
 const waited = computed(() => {
   const days = props.step.working_days_waiting
   if (days == null) return ''
@@ -80,12 +83,12 @@ async function save() {
           label="New signer"
           name="user_id"
           required
-          help="An active user with RA access."
+          :help="`An active user with ${side.title} access.`"
           :error="errors.user_id"
         >
           <UserPicker
             v-model="userId"
-            permission="ra.access"
+            :permission="side.perm.access"
             aria-label="New signer"
           />
         </UFormField>

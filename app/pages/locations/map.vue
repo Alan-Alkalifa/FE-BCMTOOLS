@@ -8,7 +8,7 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
  * between any two, see what is near a place, and declare an incident. Open incidents show for
  * everyone until they are closed.
  */
-definePageMeta({ permission: 'ra.access' })
+definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()

@@ -87,6 +87,7 @@ export const DIVISIONS = [
 export const LOCATIONS = [
   {
     id: 1,
+    code: 'RA-HQ-0001',
     kind: 'head_office',
     name: 'Griya CIMB Niaga 2',
     region: null,
@@ -101,6 +102,7 @@ export const LOCATIONS = [
   },
   {
     id: 2,
+    code: 'RA-HQ-0002',
     kind: 'head_office',
     name: 'Graha CIMB Niaga',
     region: null,
@@ -136,7 +138,8 @@ export const SUMMARY = {
   period_year: 2025,
   assessment_date: '2025-03-10',
   due_date: '2026-03-10',
-  location: { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
+  reason: 'new_building',
+  location: { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
   rated_count: 32,
   hazard_count: 33,
   highest_gross_level: 'High',
@@ -312,6 +315,8 @@ export async function mockRa(
     pendingLocation?: boolean
     /** Signed in as BCM, not the waiting step's signer: change the signer or approve on behalf. */
     actForSigner?: boolean
+    /** Signed in with only these permissions (default: an Administrator). */
+    permissions?: string[]
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
@@ -330,7 +335,7 @@ export async function mockRa(
     assessment.can_approve = false
   }
   actForSigner(current)
-  await signIn(page)
+  await signIn(page, options.permissions ? { permissions: options.permissions } : {})
   await page.route('**/api/users**', (route) => {
     const term = (new URL(route.request().url()).searchParams.get('q') ?? '').toLowerCase()
     return route.fulfill({ json: { items: USERS.filter((user) => user.display_name.toLowerCase().includes(term)) } })
@@ -601,11 +606,11 @@ function workflowRef(branch: boolean, status: string, role: string | null = null
 
 function workflowLocations(branch: boolean) {
   const first = branch
-    ? { id: BRANCH_ID, kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
-    : { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
+    ? { id: BRANCH_ID, code: 'RA-BR-0001', kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
+    : { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
   const second = branch
-    ? { id: 31, kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
-    : { id: 2, kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
+    ? { id: 31, code: 'RA-BR-0002', kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
+    : { id: 2, code: 'RA-HQ-0002', kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
   const approved = workflowRef(branch, 'approved')
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }

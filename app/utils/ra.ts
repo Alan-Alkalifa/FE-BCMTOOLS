@@ -129,7 +129,14 @@ export interface RaModule {
   lic: { label: string, hint: string }
   licom: { label: string, hint: string }
   signoffRoles: readonly RaSignoffRoleOption[]
+  /** RA (head office) and RA Branch are granted separately: ra.* and ra_branch.*. */
+  perm: { access: string, edit: string, manage: string }
 }
+
+/** Either side opens the shared Location pages (buildings, map, incidents, guidebook). */
+export const RA_ANY_ACCESS = ['ra.access', 'ra_branch.access']
+export const RA_ANY_EDIT = ['ra.edit', 'ra_branch.edit']
+export const RA_ANY_MANAGE = ['ra.manage', 'ra_branch.manage']
 
 export const RA_MODULES: Record<RaKind, RaModule> = {
   head_office: {
@@ -145,6 +152,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     lic: { label: 'Location incident coordinator (LIC)', hint: 'Signs as Prepared by.' },
     licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Signs as Reviewed by.' },
     signoffRoles: RA_SIGNOFF_ROLES,
+    perm: { access: 'ra.access', edit: 'ra.edit', manage: 'ra.manage' },
   },
   branch: {
     kind: 'branch',
@@ -159,6 +167,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number. Signs as Prepared by.' },
     licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number. Signs as Reviewed by.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
+    perm: { access: 'ra_branch.access', edit: 'ra_branch.edit', manage: 'ra_branch.manage' },
   },
 }
 
@@ -509,6 +518,24 @@ export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
   return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
+}
+
+/** Why an RA is made, like SCCA's assessment reason. Annual review renews the building's last
+ *  final RA; New building is its first RA (the API checks both). */
+export type RaReason = 'annual_review' | 'new_building' | 'structural_change' | 'after_incident'
+export const RA_REASONS: { value: RaReason, label: string, description: string }[] = [
+  { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
+  { value: 'new_building', label: 'New building', description: 'The first RA of this building or branch.' },
+  { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
+  { value: 'after_incident', label: 'After an incident', description: 'Reassessed after an incident.' },
+]
+export function raReasonLabel(value: string | null | undefined) {
+  return RA_REASONS.find((reason) => reason.value === value)?.label ?? null
+}
+
+/** The grey line under a building's name: its ID and, for a branch, its region. */
+export function raLocationLine(location: { code?: string | null, region?: string | null }) {
+  return [location.code, location.region].filter(Boolean).join(' · ')
 }
 
 /** The sign-off waiting time: "Today", "1 working day", "4 working days". */

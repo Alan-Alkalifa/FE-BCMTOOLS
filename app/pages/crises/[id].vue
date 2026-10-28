@@ -8,7 +8,7 @@ import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
  * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
  */
-definePageMeta({ permission: 'ra.access' })
+definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))

@@ -163,6 +163,7 @@ function waitingStep() {
   const assessment = props.assessment
   return {
     id: assessment.id,
+    kind: ra.value.kind,
     ref: assessment.ref_no ?? `#${assessment.id}`,
     location: assessment.location?.name ?? '',
     step: currentRole.value ? raSignoffRoleName(currentRole.value.value, roles.value) : 'The waiting step',

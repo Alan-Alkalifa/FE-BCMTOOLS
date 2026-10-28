@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.edit' })
+definePageMeta({ permission: 'ra_branch.edit' })
 </script>
 
 <template>

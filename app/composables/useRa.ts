@@ -220,6 +220,8 @@ export interface RaCallTreeEntry {
 
 export interface RaLocationRef {
   id: number
+  /** The building's permanent ID: RA-HQ-0001 (head office) or RA-BR-0001 (branch). */
+  code?: string | null
   kind: RaKind
   name: string
   region: string | null
@@ -422,6 +424,8 @@ export interface RaAssessmentFields {
   period_year: number
   assessment_date: string
   due_date: string | null
+  /** Why the RA is made (left out on a new RA: Annual review or New building, whichever fits). */
+  reason?: RaReason | null
   lic_phone: string | null
   licom_phone: string | null
 }
@@ -438,6 +442,7 @@ export interface RaAssessmentSummary {
   period_year: number
   assessment_date: string | null
   due_date: string | null
+  reason?: RaReason | null
   location: RaLocationRef
   rated_count: number
   hazard_count: number
@@ -446,7 +451,12 @@ export interface RaAssessmentSummary {
   is_complete: boolean
   status: RaStatus
   current_signoff_role: RaSignoffRole | null
+  /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
+  current_step_title?: string | null
   is_returned: boolean
+  approved_at?: string | null
+  /** An approved RA's renewal date (its due date, or a year after it was assessed). */
+  renewal_date?: string | null
   created_by: string | null
   updated_at: string
 }
@@ -485,6 +495,7 @@ export interface RaListQuery {
   location_id?: number
   year?: number
   level?: RaLevel
+  reason?: RaReason
   status?: RaStatus
   awaiting?: 'me'
   /** Only the assessments the user created (Manage). */
@@ -549,6 +560,13 @@ export function useRaModule() {
       ? RA_MODULES.branch
       : RA_MODULES.head_office
   })
+}
+
+/** The kinds (head office, branch) the user holds `level` on: RA (ra.*) and RA Branch
+ *  (ra_branch.*) are granted separately. */
+export function useRaKinds(level: 'access' | 'edit' | 'manage' = 'access') {
+  const { can } = useAuth()
+  return computed(() => (Object.keys(RA_MODULES) as RaKind[]).filter((kind) => can(RA_MODULES[kind].perm[level])))
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -791,6 +809,7 @@ export interface RaAssessmentRef {
   ref_no: string | null
   period_year: number
   assessment_date: string | null
+  reason?: RaReason | null
   status: RaStatus
   current_signoff_role: string | null
   /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
@@ -848,6 +867,8 @@ export interface RaMonitoringFilters {
   region?: string
   level?: RaLevel | 'none'
   state?: 'approved' | 'draft' | 'in_signoff' | 'none'
+  /** The reason of the building's RA in force or the one being worked on. */
+  reason?: RaReason
   // Date range filters (assessment date)
   from?: string
   to?: string

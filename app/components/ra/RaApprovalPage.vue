@@ -20,7 +20,7 @@ const toast = useToast()
 const changeSignerDialog = useOverlay().create(RaChangeSignerModal)
 const onBehalfDialog = useOverlay().create(RaOnBehalfModal)
 
-const bcm = computed(() => can('ra.manage'))
+const bcm = computed(() => can(ra.value.perm.manage))
 type ApprovalTab = 'inbox' | 'history' | 'board'
 const tab = computed<ApprovalTab>({
   get: () => {
@@ -172,6 +172,7 @@ async function nudge(row: RaSignoffWaiting) {
 function waitingStep(row: RaSignoffWaiting): RaWaitingStep {
   return {
     id: row.id,
+    kind: ra.value.kind,
     ref: row.ref_no ?? `#${row.id}`,
     location: row.location.name,
     step: stepLabel(row.step, row.step_title),
@@ -244,7 +245,10 @@ const tabs = computed(() => [
                   {{ row.original.location.name }}
                 </NuxtLink>
                 <p class="font-mono text-xs text-muted">
-                  {{ row.original.ref_no ?? `#${row.original.id}` }}
+                  {{ row.original.ref_no ?? `#${row.original.id}` }}<span
+                    v-if="row.original.reason"
+                    class="font-sans"
+                  > · {{ raReasonLabel(row.original.reason) }}</span>
                 </p>
               </template>
               <template #highest_residual_level-cell="{ row }">
@@ -453,7 +457,10 @@ const tabs = computed(() => [
                 {{ row.original.location.name }}
               </NuxtLink>
               <p class="font-mono text-xs text-muted">
-                {{ row.original.ref_no ?? `#${row.original.id}` }}
+                {{ row.original.ref_no ?? `#${row.original.id}` }}<span
+                  v-if="row.original.reason"
+                  class="font-sans"
+                > · {{ raReasonLabel(row.original.reason) }}</span>
               </p>
             </template>
             <template #step-cell="{ row }">

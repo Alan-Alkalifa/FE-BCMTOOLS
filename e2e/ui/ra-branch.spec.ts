@@ -8,7 +8,7 @@ const ASSESSMENT = `/ra-branch/manage/${BRANCH_ASSESSMENT_ID}`
 test('the home page links to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'RA Branch' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'RA Branch', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
   await expect(main.getByRole('link', { name: 'Branches' })).toHaveCount(0)
   await main.locator('a[href="/ra-branch/monitoring"]').click()
@@ -134,4 +134,19 @@ test('a branch assessment opened under RA moves to RA Branch', async ({ page }) 
   await page.goto(`/ra/${BRANCH_ASSESSMENT_ID}?tab=summary`)
   await expect(page).toHaveURL(new RegExp(`/ra-branch/manage/${BRANCH_ASSESSMENT_ID}\\?tab=summary$`), { timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA Branch' })).toBeVisible()
+})
+
+test('an RA Branch user works on branches only', async ({ page }) => {
+  // RA (head office) and RA Branch are granted separately (ra.* and ra_branch.*).
+  await mockRa(page, { permissions: ['ra_branch.access', 'ra_branch.edit'] })
+  await page.goto('/locations')
+  await expect(page.getByRole('link', { name: 'Input building data' })).toHaveAttribute('href', '/locations/new?type=branch', { timeout: 60_000 })
+  // Only one side: no Type filter.
+  await expect(page.getByLabel('Type')).toHaveCount(0)
+  const sidebar = page.getByRole('navigation', { name: 'Main' })
+  await expect(sidebar.getByRole('link', { name: 'Buildings' })).toBeVisible()
+  await expect(sidebar.locator('a[href="/ra-branch/manage"]')).toHaveCount(1)
+  await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
+  await page.goto('/ra/manage')
+  await expect(page).toHaveURL(/\/forbidden\?from=/, { timeout: 60_000 })
 })

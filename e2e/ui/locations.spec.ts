@@ -10,6 +10,8 @@ test('one register lists head office buildings and branches', async ({ page }) =
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toBeVisible()
   await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('Head office')
+  // The building ID in grey under the name.
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('RA-HQ-0001')
   await expect(table.getByRole('row', { name: /KCP Bogor Pajajaran/ })).toContainText('Branch')
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/locations/${BRANCH_ID}`)
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('kind')).toBe('all')

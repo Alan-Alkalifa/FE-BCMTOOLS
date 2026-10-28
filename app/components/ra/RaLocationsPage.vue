@@ -10,8 +10,16 @@ import type { RaLocation } from '~/composables/useRa'
  * Building column shows it, and the status filter lists the ones waiting.
  */
 const { can } = useAuth()
-const canEdit = computed(() => can('ra.edit'))
-const canDelete = computed(() => can('ra.edit', 'ra.manage'))
+/** RA and RA Branch are granted separately: the register lists the sides the user holds. */
+const kinds = useRaKinds()
+const editKinds = useRaKinds('edit')
+const canEdit = computed(() => editKinds.value.length > 0)
+function canEditRow(location: RaLocation) {
+  return can(RA_MODULES[location.kind].perm.edit)
+}
+function canDeleteRow(location: RaLocation) {
+  return can(RA_MODULES[location.kind].perm.edit, RA_MODULES[location.kind].perm.manage)
+}
 const confirm = useConfirm()
 const toast = useToast()
 const route = useRoute()
@@ -106,10 +114,11 @@ function openRow(_event: Event, row: { original: RaLocation }) {
   navigateTo(locationPath(row.original.id))
 }
 
-const addTo = computed(() => ({
-  path: `${LOCATIONS_PATH}/new`,
-  query: type.value === 'all' ? {} : { type: type.value },
-}))
+const addTo = computed(() => {
+  const only = editKinds.value.length === 1 ? editKinds.value[0] : undefined
+  const kind = type.value === 'all' ? only : type.value
+  return { path: `${LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
+})
 
 /** Approve or reject (with a reason) a building waiting for someone else's approval. */
 const dialogs = useRaApprovalDialogs()
@@ -215,11 +224,12 @@ async function remove(location: RaLocation) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          placeholder="Search by name, city, province or address"
+          placeholder="Search by name, ID, city, province or address"
           class="w-full sm:w-64"
-          aria-label="Search by name, city, province or address"
+          aria-label="Search by name, ID, city, province or address"
         />
         <USelectMenu
+          v-if="kinds.length > 1"
           v-model="typeModel"
           value-key="value"
           :items="typeItems"
@@ -259,6 +269,12 @@ async function remove(location: RaLocation) {
           >
             {{ row.original.name }}
           </NuxtLink>
+          <p
+            v-if="row.original.code"
+            class="text-xs text-muted"
+          >
+            {{ row.original.code }}
+          </p>
         </template>
         <template #kind-cell="{ row }">
           <StatusBadge
@@ -354,19 +370,19 @@ async function remove(location: RaLocation) {
                 @click.stop="decide(row.original, 'reject')"
               />
             </template>
-            <UTooltip :text="canEdit ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
+            <UTooltip :text="canEditRow(row.original) ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
                 :to="locationPath(row.original.id)"
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                :icon="canEdit ? 'i-lucide-pencil' : 'i-lucide-eye'"
-                :aria-label="`${canEdit ? 'Edit' : 'Open'} ${row.original.name}`"
+                :icon="canEditRow(row.original) ? 'i-lucide-pencil' : 'i-lucide-eye'"
+                :aria-label="`${canEditRow(row.original) ? 'Edit' : 'Open'} ${row.original.name}`"
                 @click.stop
               />
             </UTooltip>
             <UTooltip
-              v-if="canDelete"
+              v-if="canDeleteRow(row.original)"
               :text="`Delete ${noun(row.original)}`"
             >
               <UButton
