@@ -444,9 +444,9 @@ export const raBuildingStatus = defineStatusScale<RaBuildingState>({
   inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
 })
 
-/** The Buildings register's Status Assessment: a returned RA is simply a draft again, and one
- *  being signed off reads "In approval" (orange). The RA's own pages keep `raStatus`. */
-export const raBuildingAssessmentStatus = defineStatusScale<RaStatus>({
+/** An RA's status in the lists (Buildings, Manage): a returned RA is simply a draft again, and
+ *  one being signed off reads "In approval" (orange). The RA's own page keeps `raStatus`. */
+export const raListStatus = defineStatusScale<RaStatus>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
   in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
   approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
@@ -540,6 +540,22 @@ export const RA_REASONS: { value: RaReason, label: string, description: string }
 /** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
  *  every other reason renews a year after it. */
 export const RA_CUSTOM_DUE_REASON: RaReason = 'structural_change'
+
+/** The help under Reason for assessment, which changes with the reason picked (as in SCCA). */
+export function raReasonHelp(value: string | null | undefined) {
+  const reason = RA_REASONS.find((item) => item.value === value)
+  if (!reason) return 'Pick the reason first: it decides the renewal due date.'
+  const renewal = reason.value === RA_CUSTOM_DUE_REASON
+    ? 'Pick the renewal due date below: it can be sooner than one year.'
+    : 'Renewal is due one year after the assessment date.'
+  return `${reason.description} ${renewal}`
+}
+
+/** The RA period is the year of the assessment date ("2026-10-28" → 2026). */
+export function raPeriodOf(date: string | null | undefined) {
+  const year = Number(date?.slice(0, 4))
+  return Number.isInteger(year) && year > 0 ? year : null
+}
 
 export function raReasonLabel(value: string | null | undefined) {
   return RA_REASONS.find((reason) => reason.value === value)?.label ?? null

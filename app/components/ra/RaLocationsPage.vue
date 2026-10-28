@@ -373,7 +373,7 @@ const addTo = computed(() => {
           <!-- Draft (also when returned), In approval or Approved. -->
           <StatusBadge
             v-if="row.original.latest_assessment"
-            :scale="raBuildingAssessmentStatus"
+            :scale="raListStatus"
             :value="row.original.latest_assessment.status"
             size="sm"
           />

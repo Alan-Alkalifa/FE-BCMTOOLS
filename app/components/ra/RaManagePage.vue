@@ -246,8 +246,8 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         </template>
         <template #status-cell="{ row }">
           <StatusBadge
-            :scale="raStatus"
-            :value="raStatusKey(row.original)"
+            :scale="raListStatus"
+            :value="row.original.status"
             size="sm"
           />
         </template>

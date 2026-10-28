@@ -14,7 +14,6 @@ const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, active:
 const required = (message: string) => z.string().trim().min(1, message)
 const schema = computed(() => z.object({
   location_id: z.number(`Choose the ${ra.value.location.lower}.`),
-  period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
   due_date: z.string().nullable(),
@@ -45,7 +44,6 @@ const MEMBERS: Member[] = ['lic', 'licom']
 const initialLocation = Number(route.query.location_id) || undefined
 const state = reactive<State>({
   location_id: initialLocation as number,
-  period_year: new Date().getFullYear(),
   assessment_date: today('Asia/Jakarta').toString(),
   reason: undefined,
   due_date: null,
@@ -87,7 +85,7 @@ const reasonModel = computed<RaReason | undefined>({
     state.reason = value
   },
 })
-const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value, description: reason.description }))
+const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value }))
 const prefilled = ref<Partial<Record<Member, { user: RaUserRef, phone: string }>>>({})
 
 function clearPrefill() {
@@ -159,7 +157,8 @@ async function onSubmit() {
   try {
     const created = await raApi.create({
       location_id: state.location_id,
-      period_year: state.period_year,
+      // The RA period is the year of the assessment date.
+      period_year: raPeriodOf(state.assessment_date) ?? new Date().getFullYear(),
       assessment_date: state.assessment_date,
       reason: state.reason,
       ...(customDue.value ? { due_date: state.due_date } : {}),
@@ -206,24 +205,24 @@ async function onSubmit() {
             Assessment
           </h2>
         </template>
-        <div class="space-y-4">
+        <!-- As SCCA: the reason first (half width), the building, then the dates side by side. -->
+        <div class="grid items-start gap-4 sm:grid-cols-2">
           <UFormField
             label="Reason for assessment"
             name="reason"
             required
-            help="Annual review renews the last final RA; New building is the first RA."
+            :help="raReasonHelp(state.reason)"
           >
-            <USelectMenu
+            <USelect
               v-model="reasonModel"
-              value-key="value"
               :items="reasonItems"
-              :search-input="false"
               placeholder="Select a reason"
               class="w-full"
               aria-label="Reason for assessment"
             />
           </UFormField>
           <UFormField
+            class="sm:col-span-2"
             :label="ra.location.single"
             name="location_id"
             required
@@ -248,28 +247,14 @@ async function onSubmit() {
               />
             </div>
           </UFormField>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              label="RA period"
-              name="period_year"
-              required
-            >
-              <UInputNumber
-                v-model="state.period_year"
-                :min="2000"
-                :max="2100"
-                :format-options="{ useGrouping: false }"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Assessment date"
-              name="assessment_date"
-              required
-            >
-              <DatePicker v-model="assessmentDate" />
-            </UFormField>
-          </div>
+          <UFormField
+            label="Assessment date"
+            name="assessment_date"
+            required
+            :help="raPeriodOf(state.assessment_date) ? `RA period ${raPeriodOf(state.assessment_date)}, the year of this date.` : undefined"
+          >
+            <DatePicker v-model="assessmentDate" />
+          </UFormField>
           <UFormField
             v-if="customDue"
             label="Renewal due date"
@@ -285,12 +270,13 @@ async function onSubmit() {
           </UFormField>
           <p
             v-else-if="dueDate"
-            class="text-sm text-muted"
+            class="self-center text-sm text-muted sm:pt-6"
           >
             Renewal due {{ formatDate(dueDate) }}, one year after this assessment.
           </p>
           <UFormField
             v-if="previous"
+            class="sm:col-span-2"
             name="copy"
           >
             <UCheckbox

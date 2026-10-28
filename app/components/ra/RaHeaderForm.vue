@@ -43,7 +43,7 @@ type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
 }
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
-const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value, description: reason.description }))
+const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value }))
 const reasonModel = computed<RaReason | undefined>({
   get: () => (state.reason as RaReason | null) ?? undefined,
   set: (value) => {
@@ -78,6 +78,11 @@ const assessmentDate = computed({
   },
 })
 
+/** The period shown under the date: the saved one until the date is changed. */
+const periodShown = computed(() => state.assessment_date !== (props.assessment.assessment_date ?? '')
+  ? raPeriodOf(state.assessment_date) ?? state.period_year
+  : state.period_year)
+
 /** Structural change picks its renewal date; every other reason renews a year after the assessment. */
 const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
 const standardDue = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ years: 1 }).toString() : null)
@@ -103,10 +108,14 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { lic_user_id, licom_user_id, reason, due_date, ...fields } = state
+    const { lic_user_id, licom_user_id, reason, due_date, period_year, ...fields } = state
+    // The RA period is the year of the assessment date: it follows a changed date. An RA whose
+    // date was not changed keeps its period.
+    const dateChanged = state.assessment_date !== (props.assessment.assessment_date ?? '')
     // An assessment from before users were picked keeps its typed names until someone is picked.
     const saved = await raApi.update(props.assessment.id, {
       ...blankToNull({ ...fields }),
+      period_year: dateChanged ? raPeriodOf(state.assessment_date) ?? period_year : period_year,
       ...(reason ? { reason: reason as RaReason } : {}),
       ...(reason === RA_CUSTOM_DUE_REASON ? { due_date } : {}),
       ...(lic_user_id ? { lic_user_id } : {}),
@@ -147,18 +156,16 @@ async function onSubmit() {
               Assessment
             </h2>
           </template>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid items-start gap-4 sm:grid-cols-2">
             <UFormField
               label="Reason for assessment"
               name="reason"
               required
-              help="Annual review renews the last final RA; New building is the first RA."
+              :help="raReasonHelp(state.reason)"
             >
-              <USelectMenu
+              <USelect
                 v-model="reasonModel"
-                value-key="value"
                 :items="reasonItems"
-                :search-input="false"
                 :disabled="locked"
                 placeholder="Select a reason"
                 class="w-full"
@@ -176,23 +183,10 @@ async function onSubmit() {
               />
             </UFormField>
             <UFormField
-              label="RA period"
-              name="period_year"
-              required
-            >
-              <UInputNumber
-                v-model="state.period_year"
-                :disabled="locked"
-                :min="2000"
-                :max="2100"
-                :format-options="{ useGrouping: false }"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
               label="Assessment date"
               name="assessment_date"
               required
+              :help="`RA period ${periodShown}, the year of this date.`"
             >
               <DatePicker
                 v-model="assessmentDate"
@@ -215,7 +209,7 @@ async function onSubmit() {
             </UFormField>
             <p
               v-else-if="standardDue"
-              class="self-end text-sm text-muted"
+              class="self-center text-sm text-muted sm:pt-6"
             >
               Renewal due {{ formatDate(standardDue) }}, one year after this assessment.
             </p>
