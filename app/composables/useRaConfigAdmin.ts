@@ -1,9 +1,9 @@
-import type { RaDivision, RaDivisionInput, RaFormula, RaRoleLabel } from '~/composables/useRa'
+import type { RaDivision, RaDivisionInput, RaFormula, RaSignoffStep } from '~/composables/useRa'
 
 /**
  * Administration > RA configuration, like the SCCA one: versions per kind (RA and RA Branch)
- * with the hazards and guides, sign-off role titles, statements and notes; the division list
- * and the reminder rules (live, not versioned).
+ * with the hazards and guides, sign-off steps, statements and notes; the live default and fixed
+ * signers, the division list and the reminder rules (live, not versioned).
  */
 export interface RaConfigVersionMeta {
   id: number
@@ -32,9 +32,24 @@ export type RaConfigTextField
 export interface RaConfigVersion extends Omit<RaFormula, 'status'>, RaConfigVersionMeta {
   stored_texts: Record<RaConfigTextField, string | null>
   default_texts: Partial<Record<RaConfigTextField, string>>
-  default_roles: RaRoleLabel[]
+  default_steps: RaSignoffStep[]
   problems: string[]
   can: { edit: boolean, request_publish: boolean, withdraw_request: boolean, publish: boolean, discard: boolean }
+}
+
+/** A default or fixed step of the active and draft versions, with its live signer (not
+ *  versioned: saved at once for every version of the kind). */
+export interface RaSignerStep {
+  code: string
+  label: string
+  title: string
+  signer_mode: 'default' | 'fixed'
+  signer_roles: string[]
+  versions: { code: string, status: string }[]
+  signer: { id: number, display_name: string | null, email: string | null, job_title: string | null, department: string | null } | null
+  problem: string | null
+  updated_by: string | null
+  updated_at: string | null
 }
 
 export interface RaConfigChange {
@@ -94,8 +109,11 @@ export const raConfigApi = {
     $fetch<RaConfigVersion>(at(version, '/guides'), { method: 'PUT', body: { guides } }),
   setMitigationExamples: (version: RaVersionRef, examples: { area: string, example: string }[]) =>
     $fetch<RaConfigVersion>(at(version, '/mitigation-examples'), { method: 'PUT', body: { examples } }),
-  setRoles: (version: RaVersionRef, roles: RaRoleLabel[]) =>
-    $fetch<RaConfigVersion>(at(version, '/roles'), { method: 'PUT', body: { roles } }),
+  setSteps: (version: RaVersionRef, steps: RaSignoffStep[]) =>
+    $fetch<RaConfigVersion>(at(version, '/steps'), { method: 'PUT', body: { steps } }),
+  signers: (kind: RaKind) => $fetch<{ items: RaSignerStep[] }>(`${BASE}/signers?kind=${kind}`),
+  setSigner: (kind: RaKind, step: string, userId: number | null) =>
+    $fetch<RaSignerStep>(`${BASE}/signers/${encodeURIComponent(step)}?kind=${kind}`, { method: 'PUT', body: { user_id: userId } }),
   setTexts: (version: RaVersionRef, texts: Partial<Record<RaConfigTextField, string | null>>) =>
     $fetch<RaConfigVersion>(at(version, '/texts'), { method: 'PUT', body: texts }),
   diff: (version: RaVersionRef) => $fetch<{ against: string | null, changes: RaConfigChange[] }>(at(version, '/diff')),

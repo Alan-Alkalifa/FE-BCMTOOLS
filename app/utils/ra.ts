@@ -82,8 +82,8 @@ export const RA_KIND_INPUTS: Record<RaKind, RaRatingField[]> = {
   branch: [...RA_BRANCH_PROBABILITY_FIELDS, ...RA_BRANCH_IMPACT_FIELDS].map((field) => field.key),
 }
 
-/** The default sign-off roles; RA configuration can rename them per version
- *  (`formula.signoff_role_labels`, see raRoleOptions). The hint is who signs: the role title. */
+/** The workbook's sign-off steps. RA configuration can add, remove, reorder and rename them per
+ *  version (`formula.signoff_steps`, see raRoleOptions). The hint is who signs: the step title. */
 export const RA_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'Location Incident Coordinator (LIC)' },
   { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit Critical Business Function' },
@@ -91,11 +91,18 @@ export const RA_SIGNOFF_ROLES = [
   { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
 ] as const
 
-/**
- * Sign-off roles signed by the location incident team picked on the assessment (the backend's
- * TEAM_SIGNOFF_ROLES): the LIC prepares, the LICOM reviews. The Sign-off tab shows them, read-only.
- */
-export const RA_TEAM_SIGNOFF_ROLES: Partial<Record<string, 'lic' | 'licom'>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+/** Who picks the signer of the workbook's steps when a version has none stored: the LIC prepares,
+ *  the LICOM reviews, the others are chosen. */
+export const RA_DEFAULT_SIGNER_MODES: Partial<Record<string, RaSignerMode>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+
+/** Who picks a step's signer, as RA configuration and the Sign-off tab describe it. */
+export const raSignerModes: Record<RaSignerMode, { label: string, description: string }> = {
+  chosen: { label: 'Chosen', description: 'The assessor picks the signer on the Sign-off tab.' },
+  default: { label: 'Default', description: 'The signer picked below is filled in on new RAs. The assessor can change it.' },
+  fixed: { label: 'Fixed', description: 'The signer picked below signs every RA. It is put on the step at Submit and nobody on the RA changes it.' },
+  lic: { label: 'The LIC', description: 'The location incident coordinator picked on the Details tab.' },
+  licom: { label: 'The LICOM', description: 'The location incident commander picked on the Details tab.' },
+}
 
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
@@ -104,14 +111,21 @@ export const RA_BRANCH_SIGNOFF_ROLES = [
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'NRSOH' },
 ] as const
 
-export type RaSignoffRole
-  = | (typeof RA_SIGNOFF_ROLES)[number]['value']
-    | (typeof RA_BRANCH_SIGNOFF_ROLES)[number]['value']
+/** A sign-off step code: the workbook's (prepared_by, …) or one RA configuration added. */
+export type RaSignoffRole = string
+
+/** Who picks a sign-off step's signer (like SCCA's): chosen on the Sign-off tab, a default
+ *  filled in on a new RA, a fixed signer put on the step at Submit, or the LIC / LICOM of the
+ *  Details tab. */
+export type RaSignerMode = 'chosen' | 'default' | 'fixed' | 'lic' | 'licom'
 
 export interface RaSignoffRoleOption {
   value: RaSignoffRole
   label: string
   hint: string
+  /** Who picks the signer and whether the step is required (RA configuration). */
+  mode?: RaSignerMode
+  mandatory?: boolean
 }
 
 /** Everything that differs between RA and RA Branch on screen. The API decides the rules. */
@@ -325,15 +339,23 @@ export function raStepTitle(role: string | null | undefined, roles: readonly RaS
   return roles.find((item) => item.value === role)?.hint ?? role
 }
 
-/** The sign-off roles of a configuration version (their labels and titles as RA configuration
- *  sets them), or the module's defaults. */
+/** The sign-off steps of a configuration version (as RA configuration sets them), or the
+ *  module's defaults. */
 export function raRoleOptions(
-  formula: { signoff_role_labels?: { role: RaSignoffRole, label: string, title: string }[] } | null | undefined,
+  formula: { signoff_steps?: { code: RaSignoffRole, label: string, title: string, signer_mode?: RaSignerMode, mandatory?: boolean }[] } | null | undefined,
   fallback: readonly RaSignoffRoleOption[],
 ): RaSignoffRoleOption[] {
-  const rows = formula?.signoff_role_labels
-  if (!rows?.length) return [...fallback]
-  return rows.map((row) => ({ value: row.role, label: row.label, hint: row.title }))
+  const rows = formula?.signoff_steps
+  if (!rows?.length) {
+    return fallback.map((row) => ({ ...row, mode: RA_DEFAULT_SIGNER_MODES[row.value] ?? 'chosen', mandatory: true }))
+  }
+  return rows.map((row) => ({
+    value: row.code,
+    label: row.label,
+    hint: row.title,
+    mode: row.signer_mode ?? 'chosen',
+    mandatory: row.mandatory ?? true,
+  }))
 }
 
 /** A division's maximum tolerable downtime band and its critical rating (the SCCA categories). */

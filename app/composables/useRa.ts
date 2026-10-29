@@ -20,12 +20,18 @@ export interface RaGuide {
   guidance: string
 }
 
-/** A sign-off role as RA configuration names it: "Prepared by" signed by the "Location
- *  Incident Coordinator (LIC)". */
-export interface RaRoleLabel {
-  role: RaSignoffRole
+/** A sign-off step as RA configuration sets it: "Prepared by" signed by the "Location
+ *  Incident Coordinator (LIC)", in approval order. `role` repeats `code`. */
+export interface RaSignoffStep {
+  code: RaSignoffRole
+  role?: RaSignoffRole
   label: string
   title: string
+  mandatory: boolean
+  signer_mode: RaSignerMode
+  signer_roles: string[]
+  /** Its box on the Excel report (1–4, RA Branch 1–3), or null when it is not on the form. */
+  report_box: number | null
 }
 
 export interface RaFormula {
@@ -36,7 +42,7 @@ export interface RaFormula {
   /** The rating inputs of this kind, in questionnaire order. */
   inputs: RaRatingField[]
   signoff_roles: RaSignoffRole[]
-  signoff_role_labels?: RaRoleLabel[]
+  signoff_steps?: RaSignoffStep[]
   levels: RaLevel[]
   signoff_statement_en?: string | null
   risk_summary_note_en?: string | null

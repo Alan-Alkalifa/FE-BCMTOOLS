@@ -48,18 +48,25 @@ export { ASSESSMENT, BRANCH_ASSESSMENT, BRANCH_FORMULA, BRANCH_LOCATION, FORMULA
 export const HAZARD_INTRO = 'Identify all threats relevant to the location. Threats that are not relevant to the workplace do not need to be filled in and may be marked as Not Applicable (NA). Threats classified as "Historical of Occurrence" must be assessed.'
 export const STATEMENT_EN = 'I declare that the Risk Assessment carried out on the business functions is ACCURATE and CORRECT.'
 export const CIM_NOTE_EN = 'All threats with a Residual Risk above "Medium" must be followed up through Control Issue Management (CIM) by the unit concerned.'
-const ROLE_LABELS = {
-  head_office: [
-    { role: 'prepared_by', label: 'Prepared by', title: 'Location Incident Coordinator (LIC)' },
-    { role: 'acknowledged_by_unit', label: 'Acknowledged by', title: 'Unit Critical Business Function' },
-    { role: 'reviewed_by', label: 'Reviewed by', title: 'Alternate Location Incident Commander' },
-    { role: 'acknowledged_by_bcm', label: 'Acknowledged by', title: 'Business Continuity Management Head' },
-  ],
-  branch: [
-    { role: 'prepared_by', label: 'Prepared by', title: 'BOSM' },
-    { role: 'approved_by', label: 'Approved by', title: 'Branch Manager (BM)' },
-    { role: 'reviewed_by', label: 'Reviewed by', title: 'NRSOH' },
-  ],
+type Mode = 'chosen' | 'default' | 'fixed' | 'lic' | 'licom'
+function steps(rows: [string, string, string, Mode][]) {
+  return rows.map(([code, label, title, mode], index) => ({
+    code, role: code, label, title, mandatory: true, signer_mode: mode, signer_roles: [] as string[], report_box: index + 1 as number | null,
+  }))
+}
+/** The workbooks' sign-off steps (the backend's texts.default_steps). */
+export const SIGNOFF_STEPS = {
+  head_office: steps([
+    ['prepared_by', 'Prepared by', 'Location Incident Coordinator (LIC)', 'lic'],
+    ['acknowledged_by_unit', 'Acknowledged by', 'Unit Critical Business Function', 'chosen'],
+    ['reviewed_by', 'Reviewed by', 'Alternate Location Incident Commander', 'licom'],
+    ['acknowledged_by_bcm', 'Acknowledged by', 'Business Continuity Management Head', 'chosen'],
+  ]),
+  branch: steps([
+    ['prepared_by', 'Prepared by', 'BOSM', 'lic'],
+    ['approved_by', 'Approved by', 'Branch Manager (BM)', 'chosen'],
+    ['reviewed_by', 'Reviewed by', 'NRSOH', 'licom'],
+  ]),
 }
 
 export function withTexts<T extends { kind: string }>(formula: T) {
@@ -70,7 +77,7 @@ export function withTexts<T extends { kind: string }>(formula: T) {
     signoff_statement_en: STATEMENT_EN,
     risk_summary_note_en: CIM_NOTE_EN,
     type_description: formula.kind === 'branch' ? 'The branch that is assessed each RA cycle.' : 'The building or work location that is assessed each RA cycle.',
-    signoff_role_labels: ROLE_LABELS[formula.kind as keyof typeof ROLE_LABELS],
+    signoff_steps: SIGNOFF_STEPS[formula.kind as keyof typeof SIGNOFF_STEPS],
   }
 }
 
@@ -346,6 +353,8 @@ export async function mockRa(
     permissions?: string[]
     /** The region directory has regions (the DataRegion sheet, LDAP in production). */
     regions?: boolean
+    /** The RA version's sign-off steps, as RA configuration sets them (default: the workbook's). */
+    steps?: (typeof SIGNOFF_STEPS)['head_office']
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
@@ -378,7 +387,9 @@ export async function mockRa(
   await page.route(/\/api\/ra\/formula/, (route) => {
     const params = new URL(route.request().url()).searchParams
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
-    return route.fulfill({ json: withTexts(branch ? BRANCH_FORMULA : FORMULA) })
+    const formula = withTexts(branch ? BRANCH_FORMULA : FORMULA)
+    if (!branch && options.steps) Object.assign(formula, { signoff_steps: options.steps, signoff_roles: options.steps.map((row) => row.code) })
+    return route.fulfill({ json: formula })
   })
   await page.route('**/api/ra/building-types', (route) => route.fulfill({ json: { items: BUILDING_TYPES } }))
   const divisions = structuredClone(DIVISIONS)
@@ -651,7 +662,7 @@ function workflowLocations(branch: boolean) {
 }
 
 function stepTitle(branch: boolean, role: string) {
-  return ROLE_LABELS[branch ? 'branch' : 'head_office'].find((row) => row.role === role)?.title ?? role
+  return SIGNOFF_STEPS[branch ? 'branch' : 'head_office'].find((row) => row.code === role)?.title ?? role
 }
 
 function waitingRow(branch: boolean, step: string, signerId: number, days: number) {

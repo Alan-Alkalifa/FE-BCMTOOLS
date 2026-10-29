@@ -15,7 +15,8 @@ const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 
 const ra = useRaModule()
-/** The roles with the labels and titles of the assessment's configuration version. */
+/** The steps of the assessment's configuration version: labels, titles, who picks the signer
+ *  and whether the step is required. */
 const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
 const toast = useToast()
 const dirty = useRaDirty()
@@ -61,7 +62,8 @@ watch(changed, (value) => {
 })
 
 const editing = computed(() => props.assessment.can_edit)
-const missingSigners = computed(() => roles.value.filter(({ value }) => !state[value]?.signer_id))
+/** Required steps still without a signer. A fixed step gets its signer at Submit. */
+const missingSigners = computed(() => roles.value.filter((role) => role.mandatory !== false && role.mode !== 'fixed' && !state[role.value]?.signer_id))
 /** A building waiting for approval (or rejected) can't have its RA submitted yet. */
 const locationApproved = computed(() => props.assessment.location_approved !== false)
 const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && locationApproved.value && !missingSigners.value.length)
@@ -80,22 +82,31 @@ function clearSigner(role: string) {
   item.signer = null
 }
 
-/** Prepared by is the LIC and Reviewed by the LICOM, both picked on the Details tab. */
+function modeOf(role: string) {
+  return roles.value.find((item) => item.value === role)?.mode ?? 'chosen'
+}
+
+/** A step signed by the LIC or LICOM picked on the Details tab. */
 function teamMember(role: string) {
-  const member = RA_TEAM_SIGNOFF_ROLES[role]
-  return member ? member.toUpperCase() : null
+  const mode = modeOf(role)
+  return mode === 'lic' || mode === 'licom' ? mode.toUpperCase() : null
+}
+
+/** A step signed by the fixed signer BCM sets in RA configuration (put on it at Submit). */
+function isFixed(role: string) {
+  return modeOf(role) === 'fixed'
 }
 
 function payload(): RaSignoffInput[] {
   return roles.value
-    .filter(({ value }) => !teamMember(value))
+    .filter(({ value }) => !teamMember(value) && !isFixed(value))
     .map(({ value }) => ({ role: value, signer_id: state[value]!.signer_id }))
 }
 
 function fail(error: unknown, fallback: string) {
   const details = (error as { data?: { details?: Record<string, string> } } | null)?.data?.details ?? {}
   fieldErrors.value = Object.fromEntries(Object.entries(details).filter(([field]) => field.startsWith('signoffs.')))
-  formError.value = raStatusMessage(error) ?? (Object.keys(fieldErrors.value).length ? 'Choose who signs every role.' : null) ?? fallback
+  formError.value = raStatusMessage(error) ?? (Object.keys(fieldErrors.value).length ? 'Choose who signs every required step.' : null) ?? fallback
 }
 
 async function saveSigners() {
@@ -185,17 +196,29 @@ const raSignoffStep = defineStatusScale({
   current: { label: 'Waiting for approval', color: 'info', icon: 'i-lucide-hourglass' },
   waiting: { label: 'Not yet', color: 'neutral', icon: 'i-lucide-circle-dashed' },
   unassigned: { label: 'Signer needed', color: 'warning', icon: 'i-lucide-user-x' },
+  optional: { label: 'Optional', color: 'neutral', icon: 'i-lucide-circle-dashed' },
+  skipped: { label: 'Not required', color: 'neutral', icon: 'i-lucide-circle-minus' },
 })
 
 function saved(role: string): RaSignoff | undefined {
   return props.assessment.signoffs.find((row) => row.role === role)
 }
 
+function isOptional(role: string) {
+  return roles.value.find((item) => item.value === role)?.mandatory === false
+}
+
 function stepKey(role: string) {
   const row = saved(role)
   if (row?.approved_at) return 'approved'
-  if (props.assessment.status === 'in_signoff') return role === props.assessment.current_signoff_role ? 'current' : 'waiting'
-  return state[role]?.signer_id ? null : 'unassigned'
+  if (props.assessment.status !== 'draft') {
+    if (!row?.signer) return 'skipped'
+    if (props.assessment.status === 'in_signoff') return role === props.assessment.current_signoff_role ? 'current' : 'waiting'
+    return null
+  }
+  if (state[role]?.signer_id) return null
+  if (isFixed(role)) return null
+  return isOptional(role) ? 'optional' : 'unassigned'
 }
 
 const ACTIONS: Record<RaSignoffEvent['action'] | 'on_behalf', { label: string, icon: string, class: string }> = {
@@ -503,11 +526,30 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
                 />
               </UFormField>
               <UFormField
+                v-else-if="isFixed(role.value)"
+                label="Signer"
+                :name="`signoffs.${role.value}`"
+                help="The fixed signer BCM sets in RA configuration. Put on the step at Submit."
+                :error="fieldErrors[`signoffs.${role.value}`]"
+                :required="role.mandatory !== false"
+              >
+                <UInput
+                  :model-value="state[role.value]!.signer?.name ?? ''"
+                  placeholder="Set by BCM in RA configuration"
+                  :aria-label="`Signer: ${role.label}`"
+                  icon="i-lucide-lock"
+                  readonly
+                  disabled
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
                 v-else
                 label="Signer"
                 :name="`signoffs.${role.value}`"
+                :help="role.mandatory === false ? 'Optional. The step is skipped when no one signs it.' : role.mode === 'default' ? 'Filled in from RA configuration. You can change it.' : undefined"
                 :error="fieldErrors[`signoffs.${role.value}`] ?? fieldErrors[`signoffs.${role.value}.signer_id`]"
-                required
+                :required="role.mandatory !== false"
               >
                 <div class="flex gap-2">
                   <RaSignerSelect
@@ -617,7 +659,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
         v-if="missingSigners.length"
         class="text-sm text-muted"
       >
-        {{ missingSigners.length === 1 ? '1 role still needs a signer.' : `${missingSigners.length} roles still need a signer.` }}
+        {{ missingSigners.length === 1 ? '1 step still needs a signer.' : `${missingSigners.length} steps still need a signer.` }}
       </p>
       <UButton
         color="neutral"

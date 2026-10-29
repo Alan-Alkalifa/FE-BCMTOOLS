@@ -7,6 +7,8 @@ export const TEXT_LIMITS = {
   medium: 64,
   name: 255,
   long: 2000,
+  /** An RA hazard's free text: existing mitigation, action plan (app/schemas/ra/types.py). */
+  hazard: 3000,
 } as const
 
 export type TextLimit = keyof typeof TEXT_LIMITS

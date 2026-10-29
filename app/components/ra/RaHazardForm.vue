@@ -544,8 +544,15 @@ async function save() {
           :required="mitigationRequired"
           :help="mitigationHelp"
         >
+          <template #hint>
+            <FieldCount
+              :value="active.mitigation"
+              :max="TEXT_LIMITS.hazard"
+            />
+          </template>
           <UTextarea
             v-model="active.mitigation"
+            :maxlength="TEXT_LIMITS.hazard"
             :disabled="locked"
             :rows="4"
             :maxrows="12"
@@ -613,8 +620,15 @@ async function save() {
               label="Action plan"
               :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
             >
+              <template #hint>
+                <FieldCount
+                  :value="active.action_plan"
+                  :max="TEXT_LIMITS.hazard"
+                />
+              </template>
               <UTextarea
                 v-model="active.action_plan"
+                :maxlength="TEXT_LIMITS.hazard"
                 :disabled="locked"
                 :rows="3"
                 autoresize
@@ -622,8 +636,15 @@ async function save() {
               />
             </UFormField>
             <UFormField label="CIM ref. no.">
+              <template #hint>
+                <FieldCount
+                  :value="active.cim_ref_no"
+                  :max="TEXT_LIMITS.medium"
+                />
+              </template>
               <UInput
                 v-model="active.cim_ref_no"
+                :maxlength="TEXT_LIMITS.medium"
                 :disabled="locked"
                 class="w-full"
               />

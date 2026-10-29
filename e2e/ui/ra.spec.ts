@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { LOCATION, LOCATIONS, SUMMARY, fillAddress, mockRa } from '../fixtures/ra'
+import { LOCATION, LOCATIONS, SIGNOFF_STEPS, SUMMARY, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -333,15 +333,16 @@ test('the questionnaire guide opens the Lampiran tables', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'How to fill in the questionnaire' })
   await expect(dialog.getByRole('tab')).toHaveText(['Historical', 'Probability', 'Impact', 'Mitigation'])
   await expect(dialog.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true')
-  await expect(dialog.getByRole('cell', { name: 'Terjadi sekali dalam 10 tahun kebelakang' })).toBeVisible()
+  await expect(dialog.getByRole('cell', { name: 'Once in the past 10 years' })).toBeVisible()
   await dialog.getByRole('tab', { name: 'Probability' }).click()
   await expect(dialog.getByRole('cell', { name: '5 (Almost certain)' })).toBeVisible()
   await dialog.getByRole('tab', { name: 'Impact' }).click()
   await expect(dialog.getByRole('columnheader', { name: 'Infrastructure impact' })).toBeVisible()
   await expect(dialog.getByRole('cell', { name: '5 (Critical)' })).toBeVisible()
-  await expect(dialog.getByRole('cell', { name: /≥ Rp 3.5 milyar/ })).toBeVisible()
+  await expect(dialog.getByRole('cell', { name: /Rp 3.5 billion or more/ })).toBeVisible()
   await dialog.getByRole('tab', { name: 'Mitigation' }).click()
   await expect(dialog.getByRole('rowheader', { name: 'KEY PERSONNEL /LOSS OF PEOPLE' })).toBeVisible()
+  await expect(dialog.getByText(/^Replacement staff are available/)).toBeVisible()
   await dialog.getByRole('button', { name: 'Close' }).last().click()
   await expect(dialog).toHaveCount(0)
 })
@@ -386,6 +387,10 @@ test('the Risk Summary counts hazards by level and shows gross and residual as t
 
   // High is open: its hazard opens on the Hazards tab.
   await expect(page.getByRole('button', { name: 'High: 1 hazard' })).toHaveAttribute('aria-expanded', 'true')
+  // Each hazard shows its existing mitigation measures, not the CIM reference or action plan.
+  await expect(page.getByRole('columnheader', { name: 'Existing mitigation measures' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'CIM ref. no.' })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: 'Action plan' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Peretasan Sistem Komputer' }).click()
   await expect(page).toHaveURL(/tab=hazards&hazard=H28/)
   await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('28 - Peretasan Sistem Komputer')
@@ -611,6 +616,12 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
   await expect(type).toContainText('3 - Gempa Bumi', { timeout: 60_000 })
   const group = page.getByRole('combobox', { name: 'Hazard group name' })
   await expect(group).toContainText('Natural disasters')
+  // The free text boxes take up to 3,000 characters, with a counter.
+  for (const name of [/^Existing mitigation measures/, /^Action plan/]) {
+    await expect(page.getByRole('textbox', { name })).toHaveAttribute('maxlength', '3000')
+  }
+  await expect(page.getByText(/^\d+\/3,?000$/).first()).toBeVisible()
+  await expect(page.getByRole('textbox', { name: /^CIM ref\. no\./ })).toHaveAttribute('maxlength', '64')
 
   await group.click()
   await page.getByRole('option', { name: 'Security threats' }).click()
@@ -802,7 +813,7 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
   await expect(page.getByText('Complete the hazards before submitting')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
   // Prepared by and Reviewed by are the LIC and LICOM picked on the Details tab.
-  await expect(page.getByText('2 roles still need a signer.')).toBeVisible()
+  await expect(page.getByText('2 steps still need a signer.')).toBeVisible()
   const prepared = page.getByRole('listitem').filter({ hasText: 'Step 1 of 4' })
   await expect(prepared.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
   await expect(prepared.getByRole('textbox', { name: 'Signer: Prepared by' })).not.toBeEditable()
@@ -823,7 +834,31 @@ test('signers are chosen per role; an incomplete assessment cannot be submitted'
       { role: 'acknowledged_by_bcm', signer_id: null },
     ],
   })
-  await expect(page.getByText('1 role still needs a signer.')).toBeVisible()
+  await expect(page.getByText('1 step still needs a signer.')).toBeVisible()
+})
+
+test('the Sign-off tab follows the configured steps: fixed and optional steps', async ({ page }) => {
+  const steps = SIGNOFF_STEPS.head_office.map((row) => ({ ...row }))
+  // BCM sets a fixed signer for the BCM head; the unit's step is optional.
+  Object.assign(steps[3]!, { signer_mode: 'fixed' })
+  Object.assign(steps[1]!, { mandatory: false })
+  const log = await mockRa(page, { steps })
+  await page.goto('/ra/manage/1?tab=signoff')
+  await expect(page.getByText('Complete the hazards before submitting')).toBeVisible({ timeout: 60_000 })
+  // Nothing else to pick: the LIC and LICOM sign theirs, the fixed signer is put on at Submit.
+  await expect(page.getByText(/still needs? a signer/)).toHaveCount(0)
+  const fixed = page.getByRole('listitem').filter({ hasText: 'Step 4 of 4' })
+  await expect(fixed.getByRole('textbox', { name: 'Signer: Acknowledged by' })).not.toBeEditable()
+  await expect(fixed.getByText('The fixed signer BCM sets in RA configuration. Put on the step at Submit.')).toBeVisible()
+  const optional = page.getByRole('listitem').filter({ hasText: 'Step 2 of 4' })
+  await expect(optional.getByText('Optional', { exact: true })).toBeVisible()
+  await expect(optional.getByText('Optional. The step is skipped when no one signs it.')).toBeVisible()
+  await optional.getByRole('combobox').or(optional.getByRole('button').first()).first().click()
+  await page.getByRole('option', { name: /Rina Kartika/ }).click()
+  await page.getByRole('button', { name: 'Save signers' }).click()
+  await expect(page.getByText('Signers saved').first()).toBeVisible()
+  // Only the chosen step is sent: not the team's, not the fixed one.
+  expect(log.signoff[0]?.[1]).toEqual({ signoffs: [{ role: 'acknowledged_by_unit', signer_id: 2 }] })
 })
 
 test('submitting, approving and returning an assessment', async ({ page }) => {

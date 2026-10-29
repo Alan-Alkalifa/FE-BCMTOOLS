@@ -154,8 +154,12 @@ const historyColumns: TableColumn<RaHistoryRow>[] = [
 
 // --- BCM board ------------------------------------------------------------------------------
 
+/** The steps of the active configuration version (RA configuration can add steps). */
+const { data: activeFormula } = useRaFormula(kind)
+const steps = computed(() => raRoleOptions(activeFormula.value, ra.value.signoffRoles))
+
 const boardStep = computed<string>({
-  get: () => (ra.value.signoffRoles.some((role) => role.value === route.query.step) ? String(route.query.step) : 'all'),
+  get: () => (route.query.step && (steps.value.some((role) => role.value === route.query.step) || !activeFormula.value) ? String(route.query.step) : 'all'),
   set: (value) => setQuery({ step: value === 'all' ? undefined : value, page: undefined }),
 })
 const boardPage = pageOf('board')
@@ -171,7 +175,7 @@ const board = useRaBoard(
 )
 const stepItems = computed(() => [
   { label: 'Every step', value: 'all' },
-  ...ra.value.signoffRoles.map((role) => ({ label: role.hint, value: role.value })),
+  ...steps.value.map((role) => ({ label: role.hint, value: role.value })),
 ])
 const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
