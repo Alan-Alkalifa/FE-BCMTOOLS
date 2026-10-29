@@ -554,6 +554,26 @@ export function raHeaderErrors<T extends { name?: string }>(errors: T[]): T[] {
   return errors.map((item) => (item.name === 'period_year' ? { ...item, name: 'assessment_date' } : item))
 }
 
+/** The fields of an RA's header, for the error banner. */
+const RA_FIELD_LABELS: Record<string, string> = {
+  reason: 'Reason for assessment',
+  location_id: 'Building',
+  assessment_date: 'Assessment date',
+  period_year: 'Assessment date',
+  due_date: 'Renewal due date',
+  lic_user_id: 'LIC',
+  lic_phone: 'LIC mobile number',
+  licom_user_id: 'LICOM',
+  licom_phone: 'LICOM mobile number',
+  copy_from_id: 'Previous RA',
+}
+
+/** As SCCA's banner (apiErrorText): what went wrong, then each field's message. */
+export function raErrorText(error: unknown) {
+  const lines = apiFieldErrors(error).map((item) => `• ${RA_FIELD_LABELS[item.name ?? ''] ?? (item.name ?? '').replaceAll('_', ' ')}: ${item.message}`)
+  return [apiErrorMessage(error), ...lines].join('\n')
+}
+
 /** The RA period is the year of the assessment date ("2026-10-28" → 2026). */
 export function raPeriodOf(date: string | null | undefined) {
   const year = Number(date?.slice(0, 4))

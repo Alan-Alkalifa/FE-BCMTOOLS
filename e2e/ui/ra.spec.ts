@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { SUMMARY, fillAddress, mockRa } from '../fixtures/ra'
+import { LOCATION, LOCATIONS, SUMMARY, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -224,8 +224,16 @@ test('old links land in the right section', async ({ page }) => {
   await expect(page).toHaveURL(/\/ra\/manage\/1\?tab=summary$/, { timeout: 60_000 })
 })
 
+/** The building picker's list, with Griya's earlier RA final (so Annual review can renew it). */
+async function griyaHasAFinalRa(page: import('@playwright/test').Page) {
+  await page.route(/\/api\/ra\/locations\?kind=head_office&active=true$/, (route) => route.fulfill({
+    json: { items: LOCATIONS.map((row) => (row.id === 1 ? { ...row, final_assessment: { ...SUMMARY, status: 'approved' } } : row)) },
+  }))
+}
+
 test('creating an assessment can start from the previous cycle', async ({ page }) => {
   await mockRa(page)
+  await griyaHasAFinalRa(page)
   await page.goto('/ra/manage/new')
   await expect(page.getByRole('heading', { name: 'Assessment', exact: true })).toBeVisible({ timeout: 60_000 })
   // As SCCA: nothing else can be filled in before the reason.
@@ -246,7 +254,12 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(building).toBeEnabled()
   await building.click()
   await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
-  await expect(page.getByText('Start from RA-2025-0001 (2025)')).toBeVisible()
+  // As SCCA's note on a picked application: no checkbox; it starts from the last RA, and its
+  // last RA is still a draft.
+  const note = page.getByTestId('building-note')
+  await expect(note).toContainText('This building already has an RA draft')
+  await expect(note).toContainText('Copied the LIC and LICOM, hazard ratings, mitigation, action plans and signers from its last RA (RA-2025-0001, 10 Mar 2025)')
+  await expect(page.getByRole('checkbox')).toHaveCount(0)
   // The location incident team of the previous cycle fills the team: users from the directory.
   await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
   await expect(page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')).toContainText('Budi Hartono')
@@ -671,10 +684,89 @@ test('a new assessment without an earlier cycle asks for the team', async ({ pag
   const log = await mockRa(page)
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('building-note')).toContainText('No RA yet for this building')
   await page.getByRole('button', { name: 'Create assessment' }).click()
   await expect(page.getByText('Choose the LIC.')).toBeVisible()
   await expect(page.getByText('Enter the LICOM mobile number.')).toBeVisible()
+  // As SCCA's banner: each field's message under the summary.
   expect(log.created).toHaveLength(0)
+})
+
+test('the reason decides which buildings can be picked, as SCCA\'s reason decides the application', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/new')
+  const reason = page.getByLabel('Reason for assessment')
+  const building = page.getByRole('button', { name: /^Building\*?$/ })
+  await reason.click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /New building/ }).click()
+  await expect(page.getByText('Only buildings without an RA yet. Not listed? Use Add building.')).toBeVisible()
+  await building.click()
+  // Griya already has an RA: not a new building.
+  await expect(page.getByRole('option', { name: /Graha CIMB Niaga/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /Griya CIMB Niaga 2/ })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await reason.click()
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  await building.click()
+  // Neither has a final RA to renew.
+  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await reason.click()
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await building.click()
+  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(2)
+})
+
+test('a reason the picked building doesn\'t fit asks first, then clears the building', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/new')
+  const reason = page.getByLabel('Reason for assessment')
+  const building = page.getByRole('button', { name: /^Building\*?$/ })
+  await reason.click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await building.click()
+  await page.getByRole('option', { name: /Griya CIMB Niaga 2/ }).click()
+  await expect(page.getByTestId('building-note')).toBeVisible()
+
+  await reason.click()
+  await page.getByRole('option', { name: /New building/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Change the reason?' })
+  await expect(dialog).toContainText('Griya CIMB Niaga 2 already has an RA, so it isn\'t a new building. The building you picked is cleared.')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  // Kept: the reason and the building.
+  await expect(reason).toContainText('Structural change')
+  await expect(building).toContainText('Griya CIMB Niaga 2')
+
+  await reason.click()
+  await page.getByRole('option', { name: /New building/ }).click()
+  await page.getByRole('dialog', { name: 'Change the reason?' }).getByRole('button', { name: 'Change reason' }).click()
+  await expect(reason).toContainText('New building')
+  await expect(building).not.toContainText('Griya')
+  await expect(page.getByTestId('building-note')).toHaveCount(0)
+})
+
+test('a building that already has an RA for the period says so on the date, before saving', async ({ page }) => {
+  const log = await mockRa(page)
+  const year = new Date().getFullYear()
+  await page.route('**/api/ra/locations/1', (route) => (route.request().method() === 'GET'
+    ? route.fulfill({ json: { ...LOCATION, id: 1, assessments: [{ ...SUMMARY, ref_no: `RA-${year}-0005`, period_year: year }] } })
+    : route.fallback()))
+  await page.goto('/ra/manage/new?location_id=1')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('button', { name: 'Create assessment' }).click()
+  await expect(page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA.`)).toBeVisible()
+  expect(log.created).toHaveLength(0)
+})
+
+test('on the Details tab a reason the building doesn\'t fit is offered disabled', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  // Its only RA is this one: no final RA to renew; it is the building's first RA.
+  await expect(page.getByRole('option', { name: /Annual review/ })).toHaveAttribute('data-disabled', '')
+  await expect(page.getByRole('option', { name: /Annual review/ })).toContainText('There is no final RA to renew.')
+  await expect(page.getByRole('option', { name: /New building/ })).not.toHaveAttribute('data-disabled', '')
 })
 
 test('signers are chosen per role; an incomplete assessment cannot be submitted', async ({ page }) => {
@@ -950,6 +1042,8 @@ test('an assessment date whose period already has an RA says so on the date', as
   await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()
   // There is no period field: the message replaces the date's help ("RA period …").
-  await expect(page.getByText('This location already has an assessment for 2026.')).toBeVisible()
+  await expect(page.getByText('This location already has an assessment for 2026.', { exact: true })).toBeVisible()
   await expect(page.getByText(/^RA period \d{4}, the year of this date\.$/)).toHaveCount(0)
+  // As SCCA's banner: the summary, then each field's message.
+  await expect(page.getByText(/^Some fields need attention/)).toContainText('• Assessment date: This location already has an assessment for 2026.')
 })

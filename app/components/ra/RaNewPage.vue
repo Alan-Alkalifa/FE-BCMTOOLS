@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { parseDate, today, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaAssessmentSummary, RaUserRef } from '~/composables/useRa'
+import type { RaAssessmentSummary, RaLocation, RaLocationDetail, RaUserRef } from '~/composables/useRa'
 
+/**
+ * New assessment, with SCCA's conditions (SccaDetailsForm): the reason comes first and decides
+ * which buildings can be picked — New building only those without an RA, Annual review only
+ * those with a final RA to renew, Structural change any. Changing the reason to one the picked
+ * building doesn't fit asks first and clears the building (or keeps the reason). Picking a
+ * building says what its last RA is and copies from it, as SCCA copies an application's last
+ * SCCA; a building that already has an RA for the period is flagged on the assessment date.
+ */
 const ra = useRaModule()
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
 const form = useTemplateRef('form')
 const formError = ref<string | null>(null)
 
@@ -17,12 +26,17 @@ const schema = computed(() => z.object({
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
   due_date: z.string().nullable(),
-  copy: z.boolean(),
   lic_user_id: z.number('Choose the LIC.'),
   lic_phone: required('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
 }).superRefine((value, context) => {
+  // One RA per building per period (the year of the assessment date), said before the API does.
+  const year = raPeriodOf(value.assessment_date)
+  const taken = year ? detail.value?.assessments.find((row) => row.period_year === year) : undefined
+  if (taken && detail.value?.id === value.location_id) {
+    context.addIssue({ code: 'custom', path: ['assessment_date'], message: `This ${ra.value.location.lower} already has an RA for ${year} (${taken.ref_no ?? `#${taken.id}`}). Pick a date in another year, or open that RA.` })
+  }
   // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {
@@ -47,7 +61,6 @@ const state = reactive<State>({
   assessment_date: today('Asia/Jakarta').toString(),
   reason: undefined,
   due_date: null,
-  copy: true,
   lic_user_id: null,
   lic_phone: '',
   licom_user_id: null,
@@ -63,29 +76,38 @@ const assessmentDate = computed({
   },
 })
 
+/** Whether a building can be assessed for a reason (the API checks the same). */
+function fits(reason: RaReason | undefined, location: RaLocation | undefined) {
+  if (!reason || !location) return true
+  if (reason === 'new_building') return location.assessment_count === 0
+  if (reason === 'annual_review') return Boolean(location.final_assessment)
+  return true
+}
+const chosen = computed(() => locations.value?.items.find((item) => item.id === state.location_id))
+/** As SCCA's application lookup: only the buildings the reason fits (and the one picked). */
 const locationItems = computed(() =>
-  (locations.value?.items ?? []).map((location) => ({
-    label: location.name,
-    value: location.id,
-    description: [location.code, ra.value.hasRegion ? location.region : location.address].filter(Boolean).join(' · ') || undefined,
-  })),
+  (locations.value?.items ?? [])
+    .filter((location) => location.id === state.location_id || fits(state.reason, location))
+    .map((location) => ({
+      label: location.name,
+      value: location.id,
+      description: [location.code, ra.value.hasRegion ? location.region : location.address].filter(Boolean).join(' · ') || undefined,
+    })),
 )
-
-/**
- * The most recent assessment of the chosen location, offered as the starting point. Its team
- * fills the members not picked yet; whoever was picked is kept.
- */
-const previous = ref<RaAssessmentSummary | null>(null)
-/** The reason follows the building until the user picks one. */
-const reasonTouched = ref(false)
-const reasonModel = computed<RaReason | undefined>({
-  get: () => state.reason,
-  set: (value) => {
-    reasonTouched.value = true
-    state.reason = value
-  },
+const locationHelp = computed(() => {
+  const { lower, lowerPlural } = ra.value.location
+  if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet. Not listed? Use Add ${lower}.`
+  if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew.`
+  if (state.reason === 'structural_change') return `The ${lower} that changed. One assessment per ${lower} per period.`
+  return `The ${lower} to assess. One assessment per ${lower} per period.`
 })
+
+/** The chosen building with its RAs, newest first. */
+const detail = ref<RaLocationDetail | null>(null)
+/** Its most recent RA: the new one starts from it (team, ratings, signers), as SCCA copies. */
+const previous = computed<RaAssessmentSummary | null>(() => detail.value?.assessments[0] ?? null)
 const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value }))
+/** The picked users copied from the previous RA, cleared again if the building changes. */
 const prefilled = ref<Partial<Record<Member, { user: RaUserRef, phone: string }>>>({})
 
 function clearPrefill() {
@@ -101,15 +123,15 @@ function clearPrefill() {
 }
 
 async function prefillTeam(source: RaAssessmentSummary) {
-  const detail = await raApi.get(source.id)
-  if (previous.value?.id !== source.id || !state.copy) return
+  const full = await raApi.get(source.id)
+  if (previous.value?.id !== source.id) return
   const filled: typeof prefilled.value = {}
   for (const member of MEMBERS) {
-    const user = detail[`${member}_user`]
+    const user = full[`${member}_user`]
     if (!user || state[`${member}_user_id`]) continue
     state[`${member}_user_id`] = user.id
     users[member] = user
-    const phone = detail[`${member}_phone`] ?? ''
+    const phone = full[`${member}_phone`] ?? ''
     if (!state[`${member}_phone`].trim()) state[`${member}_phone`] = phone
     filled[member] = { user, phone }
   }
@@ -118,24 +140,76 @@ async function prefillTeam(source: RaAssessmentSummary) {
 
 watch(() => state.location_id, async (id) => {
   clearPrefill()
-  previous.value = null
+  detail.value = null
   if (!id) return
   try {
-    const detail = await raApi.getLocation(id)
+    const loaded = await raApi.getLocation(id)
     if (state.location_id !== id) return
-    previous.value = detail.assessments[0] ?? null
-    // The usual reason: renew the final RA, or the building's first RA.
-    const hasFinal = detail.assessments.some((row) => row.status === 'approved')
-    if (!reasonTouched.value) state.reason = hasFinal ? 'annual_review' : detail.assessments.length ? undefined : 'new_building'
-    if (previous.value && state.copy) await prefillTeam(previous.value)
+    detail.value = loaded
+    // Opened from a building page: the usual reason, renewing its final RA or its first RA.
+    if (!state.reason) {
+      const hasFinal = loaded.assessments.some((row) => row.status === 'approved')
+      state.reason = hasFinal ? 'annual_review' : loaded.assessments.length ? undefined : 'new_building'
+    }
+    if (previous.value) await prefillTeam(previous.value)
   } catch {
-    previous.value = null
+    detail.value = null
   }
 }, { immediate: true })
 
-watch(() => state.copy, (copy) => {
-  if (!copy) clearPrefill()
-  else if (previous.value) prefillTeam(previous.value).catch(() => {})
+// As SCCA: a reason the picked building doesn't fit asks first, then clears the building; or
+// the reason stays as it was.
+let reverting = false
+watch(() => state.reason, async (reason, before) => {
+  if (reverting) {
+    reverting = false
+    return
+  }
+  const location = chosen.value
+  if (!before || !location || fits(reason, location)) return
+  const noun = ra.value.location.lower
+  const why = reason === 'new_building'
+    ? `${location.name} already has an RA${location.latest_assessment?.ref_no ? ` (${location.latest_assessment.ref_no})` : ''}, so it isn't a new ${noun}.`
+    : `${location.name} has no final RA to renew yet.`
+  const ok = await confirm({
+    title: 'Change the reason?',
+    description: `${why} The ${noun} you picked is cleared.`,
+    confirmLabel: 'Change reason',
+  })
+  if (!ok) {
+    reverting = true
+    state.reason = before
+    return
+  }
+  state.location_id = undefined as unknown as number
+})
+
+/** What the picked building already has, as SCCA's note on the picked application. */
+const pickedNote = computed(() => {
+  if (!state.location_id || !detail.value) return null
+  const last = previous.value
+  const noun = ra.value.location.lower
+  if (!last) {
+    return {
+      color: 'info' as const,
+      title: `No RA yet for this ${noun}`,
+      description: 'Pick the location incident team below; the hazards are rated from scratch.',
+    }
+  }
+  const ref = [last.ref_no, last.assessment_date ? formatDate(last.assessment_date) : null].filter(Boolean).join(', ')
+  const copied = `Copied the LIC and LICOM, hazard ratings, mitigation, action plans and signers from its last RA${ref ? ` (${ref})` : ''}; approvals start over.`
+  if (last.status !== 'approved') {
+    return {
+      color: 'warning' as const,
+      title: `This ${noun} already has an RA ${raStatus[last.status].label.toLowerCase()}`,
+      description: `${copied} Check with its LIC before starting another one.`,
+    }
+  }
+  return {
+    color: 'info' as const,
+    title: `Existing ${noun}`,
+    description: `${copied} Check each rating and change anything that is different now.`,
+  }
 })
 
 const dueDate = computed(() => {
@@ -164,7 +238,8 @@ async function onSubmit() {
       assessment_date: state.assessment_date,
       reason: state.reason,
       ...(customDue.value ? { due_date: state.due_date } : {}),
-      copy_from_id: state.copy && previous.value ? previous.value.id : null,
+      // As SCCA: always from the building's last RA, when it has one.
+      copy_from_id: previous.value?.id ?? null,
       lic_user_id: state.lic_user_id ?? undefined,
       lic_phone: state.lic_phone.trim(),
       licom_user_id: state.licom_user_id ?? undefined,
@@ -174,7 +249,7 @@ async function onSubmit() {
     await navigateTo(raPath(ra.value.kind, 'manage', created.id))
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
-    formError.value = apiErrorMessage(error)
+    formError.value = raErrorText(error)
   }
 }
 </script>
@@ -199,6 +274,7 @@ async function onSubmit() {
         icon="i-lucide-circle-alert"
         title="Couldn't create the assessment"
         :description="formError"
+        :ui="{ description: 'whitespace-pre-line' }"
       />
 
       <UCard>
@@ -216,7 +292,7 @@ async function onSubmit() {
           :help="raReasonHelp(state.reason)"
         >
           <USelect
-            v-model="reasonModel"
+            v-model="state.reason"
             :items="reasonItems"
             placeholder="Select a reason"
             class="w-full sm:w-[calc(50%-0.5rem)]"
@@ -233,9 +309,7 @@ async function onSubmit() {
             :label="ra.location.single"
             name="location_id"
             required
-            :help="ra.kind === 'branch'
-              ? 'The branch to assess. One assessment per branch per period.'
-              : 'The building or work location to assess. One assessment per building per period.'"
+            :help="locationHelp"
           >
             <div class="flex gap-2">
               <USelectMenu
@@ -255,6 +329,18 @@ async function onSubmit() {
               />
             </div>
           </UFormField>
+          <!-- As SCCA's note on a picked application: what the building's last RA is, and that
+               the new one starts from it. -->
+          <UAlert
+            v-if="pickedNote"
+            class="sm:col-span-2"
+            :color="pickedNote.color"
+            variant="subtle"
+            :icon="pickedNote.color === 'warning' ? 'i-lucide-triangle-alert' : 'i-lucide-history'"
+            :title="pickedNote.title"
+            :description="pickedNote.description"
+            data-testid="building-note"
+          />
           <UFormField
             label="Assessment date"
             name="assessment_date"
@@ -282,19 +368,6 @@ async function onSubmit() {
           >
             Renewal due {{ formatDate(dueDate) }}, one year after this assessment.
           </p>
-          <UFormField
-            v-if="previous"
-            class="sm:col-span-2"
-            name="copy"
-          >
-            <UCheckbox
-              v-model="state.copy"
-              :label="`Start from ${previous.ref_no} (${previous.period_year})`"
-              :description="ra.hasLcp
-                ? 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts, divisions, the recovery team and the call tree come from the building.'
-                : 'Copies the LIC and LICOM, hazard ratings, mitigation, action plans and the signers. Approvals start over. Contacts come from the branch.'"
-            />
-          </UFormField>
         </fieldset>
       </UCard>
 

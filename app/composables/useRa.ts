@@ -399,6 +399,8 @@ export interface RaLocation extends RaLocationRef {
   approval_can?: RaApprovalCan
   assessment_count: number
   latest_assessment: RaAssessmentSummary | null
+  /** Its last final RA: Annual review renews it. */
+  final_assessment?: RaAssessmentSummary | null
   updated_at: string
 }
 

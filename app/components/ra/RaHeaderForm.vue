@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaAssessment, RaUserRef } from '~/composables/useRa'
+import type { RaAssessment, RaAssessmentSummary, RaUserRef } from '~/composables/useRa'
 
 const props = defineProps<{ assessment: RaAssessment }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
@@ -43,7 +43,25 @@ type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
 }
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
-const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value }))
+/** The building's other RAs: as on New assessment (SCCA's conditions), New building fits only
+ *  its first RA and Annual review only a building with another final RA. The building can't
+ *  change here, so a reason it doesn't fit is offered disabled, saying why. */
+const others = ref<RaAssessmentSummary[] | null>(null)
+watch(() => props.assessment.location.id, async (id) => {
+  try {
+    const location = await raApi.getLocation(id)
+    others.value = location.assessments.filter((row) => row.id !== props.assessment.id)
+  } catch {
+    others.value = null
+  }
+}, { immediate: true })
+const reasonItems = computed(() => RA_REASONS.map((reason) => {
+  const list = others.value
+  let why: string | undefined
+  if (list && reason.value === 'new_building' && list.length) why = 'This building already has another RA.'
+  if (list && reason.value === 'annual_review' && !list.some((row) => row.status === 'approved')) why = 'There is no final RA to renew.'
+  return { label: reason.label, value: reason.value, disabled: Boolean(why) && state.reason !== reason.value, description: why }
+}))
 const reasonModel = computed<RaReason | undefined>({
   get: () => (state.reason as RaReason | null) ?? undefined,
   set: (value) => {
@@ -129,7 +147,7 @@ async function onSubmit() {
     emit('saved', saved)
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
-    formError.value = apiErrorMessage(error)
+    formError.value = raErrorText(error)
   }
 }
 </script>
@@ -149,6 +167,7 @@ async function onSubmit() {
       icon="i-lucide-circle-alert"
       title="Couldn't save the assessment"
       :description="formError"
+      :ui="{ description: 'whitespace-pre-line' }"
     />
 
     <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
