@@ -92,7 +92,7 @@ test('a branch has occupants, a recovery team and a call tree; without the regio
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KCP Bogor Pajajaran', { timeout: 60_000 })
   // No region directory loaded (it comes from LDAP in production): a free-text Region.
   await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
-  await expect(page.getByText('The region list comes from LDAP in production')).toBeVisible()
+  await expect(page.getByText('The region list comes from LDAP.')).toBeVisible()
   await expect(page.getByLabel('Area')).toHaveCount(0)
   for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(page.getByRole('tab', { name })).toBeVisible()
