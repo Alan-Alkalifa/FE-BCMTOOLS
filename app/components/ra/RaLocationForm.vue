@@ -284,7 +284,7 @@ async function onSubmit() {
             v-else
             label="Region"
             name="region"
-            help="The region list comes from LDAP in production and isn't loaded here yet, so type the region (optional)."
+            help="The region list comes from LDAP."
           >
             <UInput
               v-model="state.region"
