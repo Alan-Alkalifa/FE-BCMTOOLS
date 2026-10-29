@@ -656,7 +656,7 @@ async function save() {
           variant="subtle"
           icon="i-lucide-info"
           :title="warning.message"
-          description="Check the ratings; mitigation normally lowers the risk."
+          description="Check the ratings. Mitigation normally lowers the risk."
         />
       </div>
 

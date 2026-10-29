@@ -41,7 +41,7 @@ async function save() {
     const result = await raApi.changeSigner(props.step.id, userId.value!, reason.value.trim())
     toast.add({
       title: 'Signer changed',
-      description: result.sent ? 'The new signer has been emailed.' : 'The email could not be sent; please let the new signer know.',
+      description: result.sent ? 'The new signer has been emailed.' : 'The email could not be sent. Please let the new signer know.',
       color: 'success',
       icon: 'i-lucide-circle-check',
     })
@@ -109,7 +109,7 @@ async function save() {
             :maxlength="TEXT_LIMITS.long"
             :rows="3"
             class="w-full"
-            placeholder="e.g. Kurniawati is on leave until 30 Oct; her deputy signs."
+            placeholder="e.g. Kurniawati is on leave until 30 Oct. Her deputy signs."
           />
         </UFormField>
       </form>

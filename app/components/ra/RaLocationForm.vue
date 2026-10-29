@@ -155,7 +155,7 @@ async function onSubmit() {
     // A new building, and making one inactive, wait for someone else's approval.
     const asked = saved.approval?.status === 'pending' && saved.approval.action === 'deactivate' && props.location?.approval?.action !== 'deactivate'
     toast.add({
-      title: props.location ? (asked ? `${noun} saved; making it inactive waits for approval` : `${noun} saved`) : `${noun} added; it waits for approval`,
+      title: props.location ? (asked ? `${noun} saved. Making it inactive waits for approval` : `${noun} saved`) : `${noun} added. It waits for approval`,
       color: 'success',
       icon: 'i-lucide-circle-check',
     })

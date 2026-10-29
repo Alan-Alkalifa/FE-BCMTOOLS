@@ -159,7 +159,7 @@ async function discard() {
   <AppPage
     title="RA configuration"
     icon="i-lucide-file-cog"
-    description="The RA and RA Branch hazards and guides, sign-off roles, statements and notes by version; the division list and the reminder rules."
+    description="The RA and RA Branch hazards and guides, sign-off roles, statements and notes by version. Also the division list and the reminder rules."
     :crumbs="[{ label: 'Administration' }, { label: 'RA configuration' }]"
   >
     <template #actions>

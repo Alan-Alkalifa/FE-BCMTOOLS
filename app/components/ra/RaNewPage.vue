@@ -31,11 +31,16 @@ const schema = computed(() => z.object({
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
 }).superRefine((value, context) => {
-  // One RA per building per period (the year of the assessment date), said before the API does.
+  // One RA per building per period (the year of the assessment date), said before the API
+  // does. A Structural change may follow in the same period once that period's RA is final.
   const year = raPeriodOf(value.assessment_date)
-  const taken = year ? detail.value?.assessments.find((row) => row.period_year === year) : undefined
-  if (taken && detail.value?.id === value.location_id) {
-    context.addIssue({ code: 'custom', path: ['assessment_date'], message: `This ${ra.value.location.lower} already has an RA for ${year} (${taken.ref_no ?? `#${taken.id}`}). Pick a date in another year, or open that RA.` })
+  const same = year && detail.value?.id === value.location_id ? detail.value.assessments.filter((row) => row.period_year === year) : []
+  const open = same.find((row) => row.status !== 'approved')
+  const refOf = (row: RaAssessmentSummary) => row.ref_no ?? `#${row.id}`
+  if (same.length && value.reason !== RA_CUSTOM_DUE_REASON) {
+    context.addIssue({ code: 'custom', path: ['assessment_date'], message: `This ${ra.value.location.lower} already has an RA for ${year} (${refOf(same[0]!)}). Pick a date in another year, or open that RA. Only a structural change can follow a final RA in the same year.` })
+  } else if (open) {
+    context.addIssue({ code: 'custom', path: ['assessment_date'], message: `The RA for ${year} (${refOf(open)}) isn't final yet. A structural change can start once it is final.` })
   }
   // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
@@ -98,7 +103,7 @@ const locationHelp = computed(() => {
   const { lower, lowerPlural } = ra.value.location
   if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet. Not listed? Use Add ${lower}.`
   if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew.`
-  if (state.reason === 'structural_change') return `The ${lower} that changed. One assessment per ${lower} per period.`
+  if (state.reason === 'structural_change') return `The ${lower} that changed. It can follow a final RA in the same period.`
   return `The ${lower} to assess. One assessment per ${lower} per period.`
 })
 
@@ -193,11 +198,11 @@ const pickedNote = computed(() => {
     return {
       color: 'info' as const,
       title: `No RA yet for this ${noun}`,
-      description: 'Pick the location incident team below; the hazards are rated from scratch.',
+      description: 'Pick the location incident team below. The hazards are rated from scratch.',
     }
   }
   const ref = [last.ref_no, last.assessment_date ? formatDate(last.assessment_date) : null].filter(Boolean).join(', ')
-  const copied = `Copied the LIC and LICOM, hazard ratings, mitigation, action plans and signers from its last RA${ref ? ` (${ref})` : ''}; approvals start over.`
+  const copied = `Copied the assessment details from its last RA${ref ? ` (${ref})` : ''}. Approvals start over.`
   if (last.status !== 'approved') {
     return {
       color: 'warning' as const,

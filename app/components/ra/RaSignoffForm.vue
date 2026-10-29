@@ -274,7 +274,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       variant="subtle"
       icon="i-lucide-badge-check"
       title="Final"
-      :description="`Every signer approved this assessment; the last approval was on ${formatDateTime(assessment.approved_at)}. It can no longer be changed.`"
+      :description="`Every signer approved this assessment. The last approval was on ${formatDateTime(assessment.approved_at)}. It can no longer be changed.`"
     />
 
     <UCard v-if="assessment.can_approve && currentRole">
@@ -443,7 +443,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Signers
         </h2>
         <p class="text-sm text-muted">
-          They approve in this order. Only BCM Tools users can sign; ask a signer to sign in once if you can't find them.
+          They approve in this order. Only BCM Tools users can sign. Ask a signer to sign in once if you can't find them.
         </p>
       </div>
       <ol

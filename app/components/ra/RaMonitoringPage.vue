@@ -211,7 +211,7 @@ const levelSummary = computed(() => {
 const monthSummary = computed(() => {
   const total = monthPoints.value.reduce((sum, row) => sum + row.value, 0)
   const top = [...monthPoints.value].sort((a, b) => b.value - a.value)[0]
-  return top && total ? `${plural(total, 'RA')} approved in the last 12 months; the most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
+  return top && total ? `${plural(total, 'RA')} approved in the last 12 months. The most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
 })
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]

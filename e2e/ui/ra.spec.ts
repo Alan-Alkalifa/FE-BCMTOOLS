@@ -258,7 +258,7 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   // last RA is still a draft.
   const note = page.getByTestId('building-note')
   await expect(note).toContainText('This building already has an RA draft')
-  await expect(note).toContainText('Copied the LIC and LICOM, hazard ratings, mitigation, action plans and signers from its last RA (RA-2025-0001, 10 Mar 2025)')
+  await expect(note).toContainText('Copied the assessment details from its last RA (RA-2025-0001, 10 Mar 2025). Approvals start over. Check with its LIC before starting another one.')
   await expect(page.getByRole('checkbox')).toHaveCount(0)
   // The location incident team of the previous cycle fills the team: users from the directory.
   await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
@@ -745,18 +745,45 @@ test('a reason the picked building doesn\'t fit asks first, then clears the buil
   await expect(page.getByTestId('building-note')).toHaveCount(0)
 })
 
-test('a building that already has an RA for the period says so on the date, before saving', async ({ page }) => {
-  const log = await mockRa(page)
+/** Building 1 with one RA in this year's period, as a draft or final. */
+async function griyaHasAnRaThisYear(page: import('@playwright/test').Page, status: 'draft' | 'approved') {
   const year = new Date().getFullYear()
   await page.route('**/api/ra/locations/1', (route) => (route.request().method() === 'GET'
-    ? route.fulfill({ json: { ...LOCATION, id: 1, assessments: [{ ...SUMMARY, ref_no: `RA-${year}-0005`, period_year: year }] } })
+    ? route.fulfill({ json: { ...LOCATION, id: 1, assessments: [{ ...SUMMARY, ref_no: `RA-${year}-0005`, period_year: year, status }] } })
     : route.fallback()))
+  return year
+}
+
+test('a building that already has an RA for the period says so on the date, before saving', async ({ page }) => {
+  const log = await mockRa(page)
+  const year = await griyaHasAnRaThisYear(page, 'draft')
   await page.goto('/ra/manage/new?location_id=1')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
   await page.getByRole('option', { name: /Structural change/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  await expect(page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA.`)).toBeVisible()
+  // Even a structural change waits until the period's RA is final.
+  await expect(page.getByText(`The RA for ${year} (RA-${year}-0005) isn't final yet. A structural change can start once it is final.`)).toBeVisible()
   expect(log.created).toHaveLength(0)
+})
+
+test('a structural change can follow a final RA in the same period', async ({ page }) => {
+  await mockRa(page)
+  const year = await griyaHasAnRaThisYear(page, 'approved')
+  await page.goto('/ra/manage/new?location_id=1')
+  const reason = page.getByLabel('Reason for assessment')
+  // Its RA is final: renewing it is the usual reason, but not in the same year.
+  await expect(reason).toContainText('Annual review', { timeout: 60_000 })
+  await expect(page.getByTestId('building-note')).toContainText(`Copied the assessment details from its last RA (RA-${year}-0005, 10 Mar 2025). Approvals start over. Check each rating and change anything that is different now.`)
+  await page.getByRole('button', { name: 'Create assessment' }).click()
+  const taken = page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA. Only a structural change can follow a final RA in the same year.`)
+  await expect(taken).toBeVisible()
+  await reason.click()
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('button', { name: 'Create assessment' }).click()
+  await expect(taken).toHaveCount(0)
+  await expect(page.getByText(/isn't final yet/)).toHaveCount(0)
+  // What's left is the structural change's own renewal date.
+  await expect(page.getByText('Enter the renewal due date. It can be sooner than one year.')).toBeVisible()
 })
 
 test('on the Details tab a reason the building doesn\'t fit is offered disabled', async ({ page }) => {

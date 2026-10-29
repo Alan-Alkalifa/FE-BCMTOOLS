@@ -22,7 +22,7 @@ function onSubmit() {
     :title="props.reopen ? 'Reopen the approved assessment?' : 'Return for changes?'"
     :description="props.reopen
       ? 'It goes back to draft and every approval is cleared. The signers stay assigned.'
-      : 'It goes back to draft so it can be changed. Approvals given so far are cleared; the signers stay assigned.'"
+      : 'It goes back to draft so it can be changed. Approvals given so far are cleared. The signers stay assigned.'"
     @update:open="(open) => !open && emit('close', false)"
   >
     <template #body>
