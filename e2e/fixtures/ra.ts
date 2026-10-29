@@ -306,6 +306,33 @@ const NO_APPROVAL_ACTIONS = { approve: false, reject: false, withdraw: false, re
  * Mocks /api/ra/* for RA and RA Branch (`?kind=branch`, branch 11, assessment 12). Saving ratings
  * echoes the assessment back; the log records what was sent.
  */
+/** Two regions of the DataRegion sheet, as GET /api/ra/regions returns them. */
+export const REGION_DIRECTORY = [
+  {
+    region: 'Network - Jabar & Jateng Region',
+    directorate: 'Network & Digital Banking',
+    level: 'D-1',
+    head: 'Region Head Jabar',
+    office: 'KC - Bandung - Asia Afrika - BAA',
+    city: 'BANDUNG',
+    areas: [
+      { area: 'Network - Jabar & Jateng Region - Jabar Area I', level: 'D-2', head: 'Area Head Jabar I', office: 'KC - Bandung - Asia Afrika - BAA', city: 'BANDUNG' },
+      { area: 'Network - Jabar & Jateng Region - Jabar Area II', level: 'D-2', head: 'Area Head Jabar II', office: 'KC - Bandung - Dago - DGO', city: 'BANDUNG' },
+    ],
+  },
+  {
+    region: 'Network - Jakarta Region',
+    directorate: 'Network & Digital Banking',
+    level: 'D-1',
+    head: 'Region Head Jakarta',
+    office: 'KC - Tangerang - Alam Sutera Icon - CAS',
+    city: 'TANGERANG SELATAN',
+    areas: [
+      { area: 'Jakarta Region Area I', level: 'D-2', head: 'Area Head Jakarta I', office: 'KC - Jakarta - Graha CIMB Niaga - NAA', city: 'JAKARTA SELATAN' },
+    ],
+  },
+]
+
 export async function mockRa(
   page: Page,
   options: {
@@ -317,6 +344,8 @@ export async function mockRa(
     actForSigner?: boolean
     /** Signed in with only these permissions (default: an Administrator). */
     permissions?: string[]
+    /** The region directory has regions (the DataRegion sheet, LDAP in production). */
+    regions?: boolean
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
@@ -336,6 +365,7 @@ export async function mockRa(
   }
   actForSigner(current)
   await signIn(page, options.permissions ? { permissions: options.permissions } : {})
+  await page.route('**/api/ra/regions', (route) => route.fulfill({ json: { items: options.regions ? REGION_DIRECTORY : [] } }))
   await page.route('**/api/users**', (route) => {
     const term = (new URL(route.request().url()).searchParams.get('q') ?? '').toLowerCase()
     return route.fulfill({ json: { items: USERS.filter((user) => user.display_name.toLowerCase().includes(term)) } })

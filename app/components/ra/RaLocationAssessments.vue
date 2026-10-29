@@ -78,8 +78,11 @@ function step(row: RaAssessmentSummary) {
             <th class="px-3 py-2 font-medium">
               Assessment date
             </th>
-            <th class="px-3 py-2 font-medium">
+            <th class="px-3 py-2 text-center font-medium">
               Status
+            </th>
+            <th class="px-3 py-2 font-medium">
+              Waiting for
             </th>
             <th class="px-3 py-2 font-medium">
               Highest residual
@@ -114,18 +117,15 @@ function step(row: RaAssessmentSummary) {
             <td class="px-3 py-2 whitespace-nowrap">
               {{ formatDate(row.assessment_date) || '—' }}
             </td>
-            <td class="px-3 py-2">
+            <td class="px-3 py-2 text-center">
               <StatusBadge
                 :scale="raStatus"
                 :value="raStatusKey(row)"
                 size="sm"
               />
-              <p
-                v-if="step(row)"
-                class="mt-1 text-xs text-muted"
-              >
-                {{ step(row) }}
-              </p>
+            </td>
+            <td class="px-3 py-2 text-xs text-muted">
+              {{ step(row) || '—' }}
             </td>
             <td class="px-3 py-2">
               <StatusBadge

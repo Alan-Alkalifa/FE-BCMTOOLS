@@ -2,7 +2,7 @@
 import type { RaOverview } from '~/composables/useRa'
 
 /**
- * Home: "RA at a glance" (or "RA Branch at a glance"), like SCCA's: the RAs waiting for the
+ * Home: "RA HO at a glance" (or "RA Branch at a glance"), like SCCA's: the RAs waiting for the
  * user's sign-off, then four cards that open Monitoring or the BCM board. Shown for each side the
  * user can open.
  */
@@ -31,7 +31,7 @@ const cards = computed(() => {
   return [
     { label: 'Overdue renewals', value: value.overdue_renewals, icon: 'i-lucide-circle-alert', to: monitoring('renewals'), alert: value.overdue_renewals > 0 },
     { label: 'Renewals due in 90 days', value: value.due_in_90_days, icon: 'i-lucide-calendar-clock', to: monitoring('renewals'), alert: false },
-    { label: 'In sign-off', value: value.in_signoff, icon: 'i-lucide-hourglass', to: monitoring('bottlenecks'), alert: false },
+    { label: 'In approval', value: value.in_signoff, icon: 'i-lucide-hourglass', to: monitoring('bottlenecks'), alert: false },
     { label: 'Stuck sign-offs', value: value.stuck_approvals, icon: 'i-lucide-siren', to: stuckTo, alert: value.stuck_approvals > 0 },
   ]
 })

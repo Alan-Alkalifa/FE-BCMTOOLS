@@ -128,7 +128,7 @@ async function onSubmit() {
     toast.add({ title: 'Assessment saved', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)
   } catch (error) {
-    form.value?.setErrors(apiFieldErrors(error))
+    form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
     formError.value = apiErrorMessage(error)
   }
 }

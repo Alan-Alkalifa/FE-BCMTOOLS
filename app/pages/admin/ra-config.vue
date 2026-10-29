@@ -96,7 +96,7 @@ async function run(action: string, work: () => Promise<RaConfigVersion | null | 
   }
 }
 
-const kindTitle = computed(() => (kind.value === 'branch' ? 'RA Branch' : 'RA'))
+const kindTitle = computed(() => (kind.value === 'branch' ? 'RA Branch' : 'RA HO'))
 
 async function startDraft() {
   const ok = await confirm({

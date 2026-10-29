@@ -136,7 +136,7 @@ const columns: TableColumn<RaLocation>[] = [
   { id: 'latest_assessment', header: 'Latest assessment' },
   { id: 'latest', header: 'Latest residual' },
   { id: 'building_status', header: 'Status Building' },
-  { id: 'assessment_status', header: 'Status Assessment' },
+  { id: 'assessment_status', header: 'Status Assessment', meta: RA_STATUS_COLUMN },
   { accessorKey: 'updated_at', header: 'Last updated' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
@@ -373,7 +373,7 @@ const addTo = computed(() => {
           <!-- Draft (also when returned), In approval or Approved. -->
           <StatusBadge
             v-if="row.original.latest_assessment"
-            :scale="raListStatus"
+            :scale="raStatus"
             :value="row.original.latest_assessment.status"
             size="sm"
           />

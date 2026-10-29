@@ -82,7 +82,7 @@ const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { accessorKey: 'reason', header: 'Reason' },
   { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'highest_residual_level', header: 'Highest residual' },
-  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
   { accessorKey: 'created_by', header: 'Created by' },
   { accessorKey: 'updated_at', header: 'Last saved' },
 ])
@@ -107,7 +107,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
 
 <template>
   <AppPage
-    :title="`Manage ${ra.title === 'RA' ? 'RAs' : `${ra.title} RAs`}`"
+    :title="`Manage ${ra.title}`"
     icon="i-lucide-list-checks"
     description="The drafts being worked on, including those returned for changes. Submitted RAs are in Approval and Monitoring."
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage' }]"
@@ -246,7 +246,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         </template>
         <template #status-cell="{ row }">
           <StatusBadge
-            :scale="raListStatus"
+            :scale="raStatus"
             :value="row.original.status"
             size="sm"
           />

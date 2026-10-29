@@ -266,14 +266,14 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       variant="subtle"
       icon="i-lucide-hourglass"
       :title="`Waiting for ${currentRole ? raSignoffRoleName(currentRole.value, roles) : 'the next signer'}`"
-      :description="`${assessment.awaiting_signer?.name ?? 'The signer'} approves next. The assessment can't be changed while it is in sign-off.`"
+      :description="`${assessment.awaiting_signer?.name ?? 'The signer'} approves next. The assessment can't be changed while it is in approval.`"
     />
     <UAlert
       v-else-if="assessment.status === 'approved'"
       color="success"
       variant="subtle"
       icon="i-lucide-badge-check"
-      title="Approved"
+      title="Final"
       :description="`Every signer approved this assessment; the last approval was on ${formatDateTime(assessment.approved_at)}. It can no longer be changed.`"
     />
 

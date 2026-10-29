@@ -72,13 +72,12 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   // What was typed is kept when the type changes.
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
-  // A branch has no Region field any more.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  // A branch has a Region: typed (optional) while the region list isn't loaded.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
   await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920' })
-  expect(log.created[0]).not.toHaveProperty('region')
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920', region: null, area: null })
 })
 
 test('adding a building from New assessment returns to the new assessment', async ({ page }) => {
@@ -233,5 +232,5 @@ test('the Buildings list shows the latest assessment and its residual apart, and
   const signing = table.getByRole('row', { name: /KCP Cikarang/ })
   await expect(signing.locator('[class*="warning"]', { hasText: 'In approval' })).toHaveCount(1)
   await expect(signing).not.toContainText('In sign-off')
-  await expect(table.getByRole('row', { name: /KCP Cilegon/ })).toContainText('Approved')
+  await expect(table.getByRole('row', { name: /KCP Cilegon/ })).toContainText('Final')
 })

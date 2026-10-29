@@ -89,7 +89,7 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'period_year', header: 'Period' },
   { accessorKey: 'due_date', header: 'Renewal due' },
   { accessorKey: 'highest_residual_level', header: 'Highest residual' },
-  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
 
 // Every field is required except the home phone (the API checks the same).

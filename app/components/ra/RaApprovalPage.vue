@@ -149,7 +149,7 @@ const historyColumns: TableColumn<RaHistoryRow>[] = [
   { id: 'assessment', header: 'RA' },
   { accessorKey: 'role', header: 'Step' },
   { accessorKey: 'action', header: 'Action' },
-  { id: 'status_now', header: 'Status now' },
+  { id: 'status_now', header: 'Status now', meta: RA_STATUS_COLUMN },
 ]
 
 // --- BCM board ------------------------------------------------------------------------------
@@ -241,7 +241,7 @@ const tabs = computed(() => [
   <AppPage
     :title="`${ra.title} approval`"
     icon="i-lucide-badge-check"
-    description="RAs waiting for your sign-off, the ones you've acted on and, for BCM, every RA in sign-off."
+    description="RAs waiting for your sign-off, the ones you've acted on and, for BCM, every RA in approval."
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Approval' }]"
   >
     <UTabs
@@ -328,7 +328,7 @@ const tabs = computed(() => [
                 Coming up
               </h2>
               <p class="text-sm text-muted">
-                RAs in sign-off where you sign a later step.
+                RAs in approval where you sign a later step.
               </p>
             </template>
             <UTable
@@ -568,7 +568,7 @@ const tabs = computed(() => [
             </template>
             <template #empty>
               <p class="py-8 text-center text-sm text-muted">
-                No RA is in sign-off{{ boardStep === 'all' ? '' : ' at this step' }}.
+                No RA is in approval{{ boardStep === 'all' ? '' : ' at this step' }}.
               </p>
             </template>
           </UTable>

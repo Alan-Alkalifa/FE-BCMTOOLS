@@ -106,10 +106,10 @@ const reasonItems = [
 ]
 const stateItems = [
   { label: 'Any state', value: 'any' },
-  { label: 'Has an approved RA', value: 'approved' },
+  { label: 'Has a final RA', value: 'approved' },
   { label: 'Draft open', value: 'draft' },
-  { label: 'In sign-off', value: 'in_signoff' },
-  { label: 'Never approved', value: 'none' },
+  { label: 'In approval', value: 'in_signoff' },
+  { label: 'No final RA yet', value: 'none' },
 ]
 const { data: regionData } = useRaRegions(() => ra.value.kind)
 const region = computed<string>({
@@ -171,9 +171,9 @@ const cards = computed(() => {
     { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
     { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
-    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With an approved RA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
-    { key: 'not_assessed', label: 'Never approved', hint: `Active ${places.value} without an approved RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
-    { key: 'in_signoff', label: 'In sign-off', hint: 'RAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
+    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With a final RA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
+    { key: 'not_assessed', label: 'No final RA yet', hint: `Active ${places.value} without a final RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
+    { key: 'in_signoff', label: 'In approval', hint: 'RAs waiting for their signers', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
   ] as const
 })
@@ -205,7 +205,7 @@ const levelSummary = computed(() => {
   const total = levelBars.value.reduce((sum, row) => sum + row.value, 0)
   const high = overview.data.value?.cards.high_residual ?? 0
   return total
-    ? `${plural(total, ra.value.location.lower, ra.value.location.lowerPlural)} with an approved RA; ${formatNumber(high, 0)} with a High residual risk.`
+    ? `${plural(total, ra.value.location.lower, ra.value.location.lowerPlural)} with a final RA; ${formatNumber(high, 0)} with a High residual risk.`
     : ''
 })
 const monthSummary = computed(() => {
@@ -249,14 +249,43 @@ function stepLabel(role: string, title?: string | null) {
 const locationColumn = computed(() => ra.value.location.single)
 /** Like SCCA's Register: one row per building, judged by its last final (approved) RA. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
+  { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'location', header: locationColumn.value },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Open RA' },
+  { id: 'open', header: 'Open RA', meta: RA_STATUS_COLUMN },
+  { id: 'open_step', header: 'Waiting for' },
   { id: 'lic', header: 'LIC' },
   { accessorKey: 'assessment_count', header: 'RA(s)' },
 ])
+
+/** Buildings ticked for the Excel export, kept across pages and filters until cleared. */
+const picked = ref<Map<number, string>>(new Map())
+const pickedIds = computed(() => [...picked.value.keys()])
+const pageRows = computed(() => register.data.value?.items ?? [])
+const pageState = computed<boolean | 'indeterminate'>(() => {
+  const ticked = pageRows.value.filter((row) => picked.value.has(row.location.id)).length
+  if (!ticked) return false
+  return ticked === pageRows.value.length ? true : 'indeterminate'
+})
+function pick(row: RaMonitorLocation, value: boolean | 'indeterminate') {
+  const next = new Map(picked.value)
+  if (value === true) next.set(row.location.id, row.location.name)
+  else next.delete(row.location.id)
+  picked.value = next
+}
+function pickPage(value: boolean | 'indeterminate') {
+  const next = new Map(picked.value)
+  for (const row of pageRows.value) {
+    if (value === true) next.set(row.location.id, row.location.name)
+    else next.delete(row.location.id)
+  }
+  picked.value = next
+}
+function clearPicked() {
+  picked.value = new Map()
+}
 
 /** The building's name opens its last final RA, else the open one, else the newest (as SCCA). */
 function registerRecord(row: RaMonitorLocation) {
@@ -269,7 +298,7 @@ const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
   { accessorKey: 'escalated_at', header: 'Escalated' },
-  { accessorKey: 'working_days_in_signoff', header: 'In sign-off' },
+  { accessorKey: 'working_days_in_signoff', header: 'In approval' },
 ])
 
 const tabs = [
@@ -431,7 +460,7 @@ function record(id: number) {
               :items="levelBars"
               :summary="levelSummary"
               :loading="overview.status.value === 'pending' && !overview.data.value"
-              :empty="levelSummary ? null : `No ${ra.location.lower} has an approved RA yet for these filters.`"
+              :empty="levelSummary ? null : `No ${ra.location.lower} has a final RA yet for these filters.`"
             />
             <SccaLineChart
               title="RAs approved per month"
@@ -569,17 +598,30 @@ function record(id: number) {
         >
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
             <p class="text-sm text-muted">
-              {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}
+              {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}<template v-if="pickedIds.length">
+                · <span class="font-medium text-highlighted">{{ pickedIds.length }} selected</span>
+              </template>
             </p>
-            <UButton
-              :to="raExportUrl('register', filters)"
-              external
-              download
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-file-spreadsheet"
-              label="Export to Excel"
-            />
+            <div class="flex flex-wrap items-center gap-2">
+              <UButton
+                v-if="pickedIds.length"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-x"
+                label="Clear selection"
+                @click="clearPicked"
+              />
+              <!-- Every RA of each building (one row per RA): the ticked ones, else all that match. -->
+              <UButton
+                :to="raExportUrl('register', filters, pickedIds)"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                :label="pickedIds.length ? `Export ${pickedIds.length} selected to Excel` : 'Export to Excel'"
+              />
+            </div>
           </div>
           <UTable
             v-model:expanded="expanded"
@@ -593,6 +635,20 @@ function record(id: number) {
               <RaLocationAssessments
                 :location="row.original.location"
                 @hide="toggleRow(row.original, false)"
+              />
+            </template>
+            <template #select-header>
+              <UCheckbox
+                :model-value="pageState"
+                :aria-label="`Select every ${ra.location.lower} on this page for the Excel export`"
+                @update:model-value="pickPage"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="picked.has(row.original.location.id)"
+                :aria-label="`Select ${row.original.location.name} for the Excel export`"
+                @update:model-value="(value: boolean | 'indeterminate') => pick(row.original, value)"
               />
             </template>
             <template #location-cell="{ row }">
@@ -644,24 +700,32 @@ function record(id: number) {
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
             </template>
+            <!-- The open RA's status and, apart, whose step it waits for. -->
             <template #open-cell="{ row }">
               <NuxtLink
                 v-if="row.original.open"
                 :to="record(row.original.open.id)"
-                class="hover:underline"
+                class="inline-block hover:underline"
+                :aria-label="`${refLabel(row.original.open)}: ${raStatus[row.original.open.status].label}`"
               >
                 <StatusBadge
                   :scale="raStatus"
                   :value="raStatusKey(row.original.open)"
                   size="sm"
                 />
-                <p
-                  v-if="row.original.open.current_signoff_role"
-                  class="mt-1 text-xs text-muted"
-                >
-                  {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-                </p>
               </NuxtLink>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+            <template #open_step-cell="{ row }">
+              <span
+                v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role"
+                class="text-sm"
+              >
+                {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+              </span>
               <span
                 v-else
                 class="text-muted"
@@ -749,7 +813,7 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                RAs in sign-off, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
+                RAs in approval, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
               </p>
               <UButton
                 :to="raExportUrl('bottlenecks', filters)"
@@ -815,7 +879,7 @@ function record(id: number) {
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">
-                  No RA is in sign-off.
+                  No RA is in approval.
                 </p>
               </template>
             </UTable>

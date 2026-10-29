@@ -22,19 +22,23 @@ export const raCompletion = defineStatusScale({
   draft: { label: 'Incomplete', color: 'neutral', icon: 'i-lucide-circle-dashed' },
 })
 
-/** Sign-off workflow status. A returned draft is shown as "Returned". */
+/** An RA's status, in SCCA's words and colours (`sccaStatus`): Draft, In approval, Final. A
+ *  returned RA is a draft again; its page says it was returned and why. */
 export type RaStatus = 'draft' | 'in_signoff' | 'approved'
 export const RA_STATUSES: RaStatus[] = ['draft', 'in_signoff', 'approved']
-export const raStatus = defineStatusScale<RaStatus | 'returned'>({
+export const raStatus = defineStatusScale<RaStatus>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
-  returned: { label: 'Returned', color: 'warning', icon: 'i-lucide-undo-2' },
-  in_signoff: { label: 'In sign-off', color: 'info', icon: 'i-lucide-hourglass' },
-  approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
 })
 
-export function raStatusKey(item: { status: RaStatus, is_returned?: boolean, returned_comment?: string | null }) {
-  return item.status === 'draft' && (item.is_returned || item.returned_comment) ? 'returned' : item.status
+/** The scale key of an RA's status (a returned RA is a draft). */
+export function raStatusKey(item: { status: RaStatus }): RaStatus {
+  return item.status
 }
+
+/** A status column: the badges centred under a centred header (as SCCA's lists). */
+export const RA_STATUS_COLUMN = { class: { th: 'text-center', td: 'text-center' } }
 
 /** "N/A", 1–5, or null while not filled in. Matches the API. */
 export type RaRatingValue = 'N/A' | 1 | 2 | 3 | 4 | 5 | null
@@ -142,7 +146,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
   head_office: {
     kind: 'head_office',
     base: '/ra',
-    title: 'RA',
+    // "RA HO" beside "RA Branch": the menu group, page titles and breadcrumbs.
+    title: 'RA HO',
     description: 'Location risk assessment for an office building.',
     location: { single: 'Building', plural: 'Buildings', lower: 'building', lowerPlural: 'buildings' },
     refPrefix: 'RA',
@@ -444,14 +449,6 @@ export const raBuildingStatus = defineStatusScale<RaBuildingState>({
   inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
 })
 
-/** An RA's status in the lists (Buildings, Manage): a returned RA is simply a draft again, and
- *  one being signed off reads "In approval" (orange). The RA's own page keeps `raStatus`. */
-export const raListStatus = defineStatusScale<RaStatus>({
-  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
-  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
-  approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
-})
-
 export function raBuildingState(location: {
   is_active: boolean
   approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
@@ -548,6 +545,13 @@ export function raReasonHelp(value: string | null | undefined) {
     ? 'Pick the renewal due date below: it can be sooner than one year.'
     : 'Renewal is due one year after the assessment date.'
   return `${reason.description} ${renewal}`
+}
+
+/** The API's field errors for an RA's header, with the period's ("This location already has an
+ *  assessment for 2026.") on the assessment date, which sets the period: there is no period
+ *  field to show it on. */
+export function raHeaderErrors<T extends { name?: string }>(errors: T[]): T[] {
+  return errors.map((item) => (item.name === 'period_year' ? { ...item, name: 'assessment_date' } : item))
 }
 
 /** The RA period is the year of the assessment date ("2026-10-28" → 2026). */

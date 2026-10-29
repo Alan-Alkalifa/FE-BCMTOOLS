@@ -59,7 +59,7 @@ const MENUS = [
   { code: 'admin.mail', label: 'Email settings', icon: 'i-lucide-mail', route: '/admin/settings/email', parent: 'admin', permission: 'admin.settings.mail' },
   { code: 'admin.scca_config', label: 'SCCA configuration', icon: 'i-lucide-file-cog', route: '/admin/scca-config', parent: 'admin', permission: 'scca.config.view' },
   { code: 'admin.audit', label: 'Audit log', icon: 'i-lucide-scroll-text', route: '/admin/audit', parent: 'admin', permission: 'admin.audit.view' },
-  { code: 'ra', label: 'RA', icon: 'i-lucide-building-2', route: null, parent: null, permission: null },
+  { code: 'ra', label: 'RA HO', icon: 'i-lucide-building-2', route: null, parent: null, permission: null },
   { code: 'ra.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra/monitoring', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra/manage', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra/approval', parent: 'ra', permission: 'ra.access' },

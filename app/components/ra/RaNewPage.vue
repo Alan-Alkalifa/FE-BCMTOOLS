@@ -173,7 +173,7 @@ async function onSubmit() {
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
     await navigateTo(raPath(ra.value.kind, 'manage', created.id))
   } catch (error) {
-    form.value?.setErrors(apiFieldErrors(error))
+    form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
     formError.value = apiErrorMessage(error)
   }
 }

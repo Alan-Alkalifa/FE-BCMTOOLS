@@ -225,6 +225,8 @@ export interface RaLocationRef {
   kind: RaKind
   name: string
   region: string | null
+  /** A branch's area (the Group of its region) in the Network organisation. */
+  area?: string | null
 }
 
 /** A map pin (WGS 84). */
@@ -387,6 +389,8 @@ export interface RaLocation extends RaLocationRef {
   city?: string | null
   district?: string | null
   zip_code?: string | null
+  /** A branch's directorate, from the region directory. */
+  directorate?: string | null
   latitude: number | null
   longitude: number | null
   is_active: boolean
@@ -949,6 +953,32 @@ export function useRaProvinces(kind: MaybeRefOrGetter<RaKind | 'all'>) {
   })
 }
 
+/** One unit of the region directory: a region (Sub Directorate) or an area (Group), with its
+ *  head (D-1 / D-2), the office they work from and its city. */
+export interface RaNetworkHead {
+  level: string | null
+  head: string | null
+  office: string | null
+  city: string | null
+}
+export interface RaNetworkArea extends RaNetworkHead {
+  area: string
+}
+export interface RaNetworkRegion extends RaNetworkHead {
+  region: string
+  directorate: string
+  areas: RaNetworkArea[]
+}
+
+/** The region directory for a branch's Region and Area (the DataRegion sheet; LDAP in
+ *  production). Empty until it is imported: the region is then free text. */
+export function useRaRegionDirectory() {
+  return useFetch<{ items: RaNetworkRegion[] }>('/api/ra/regions', {
+    key: 'ra-region-directory',
+    default: () => ({ items: [] }),
+  })
+}
+
 export function useRaRegions(kind: MaybeRefOrGetter<RaKind>) {
   return useFetch<{ items: string[] }>('/api/ra/monitoring/regions', {
     key: computed(() => `ra-regions-${toValue(kind)}`),
@@ -983,13 +1013,16 @@ export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: strin
 // }
 
 /** The Excel download of a Monitoring view, with the same filters (all rows). */
-export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters) {
+/** A Monitoring view as Excel, with the same filters; `ids`: only these buildings (the List
+ *  tab's ticked rows), every RA of each. */
+export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters, ids: number[] = []) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
       query.set(key, String(value))
     }
   }
+  if (ids.length) query.set('ids', ids.join(','))
   const text = query.toString()
   return `/api/ra/monitoring/${view}.xlsx${text ? `?${text}` : ''}`
 }
