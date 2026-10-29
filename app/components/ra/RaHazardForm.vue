@@ -599,7 +599,7 @@ async function save() {
             </h3>
             <p class="flex items-center gap-2 text-sm text-muted">
               Probability <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_probability) }}</span>
-              · Impact <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_impact) }}</span>
+              - Gross Impact <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_impact) }}</span>
               <StatusBadge
                 v-if="activeEvaluation.result.is_rated"
                 :scale="raRiskLevel"
