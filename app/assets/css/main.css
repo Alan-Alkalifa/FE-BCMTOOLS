@@ -46,6 +46,7 @@
   --ui-radius: 0.25rem;
   --ui-bg: var(--color-white);
   --ui-bg-muted: var(--ui-color-neutral-50);
+  
 }
 
 body {
@@ -74,7 +75,6 @@ body {
     animation-iteration-count: infinite !important;
   }
 }
-
 
 @media print {
   @page {
