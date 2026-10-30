@@ -20,7 +20,7 @@ const toast = useToast()
 const changeSignerDialog = useOverlay().create(RaChangeSignerModal)
 const onBehalfDialog = useOverlay().create(RaOnBehalfModal)
 
-const bcm = computed(() => can('ra.manage'))
+const bcm = computed(() => can(ra.value.perm.manage))
 type ApprovalTab = 'inbox' | 'history' | 'board'
 const tab = computed<ApprovalTab>({
   get: () => {
@@ -47,6 +47,31 @@ function comingTo(page: number) {
   return { query: { ...route.query, coming: page > 1 ? page : undefined } }
 }
 const pageOf = (name: ApprovalTab) => computed(() => (tab.value === name ? number('page') : 1))
+
+// --- search and filters of My history and the BCM board, kept in the URL (as SCCA's) --------
+function text(name: string) {
+  const value = route.query[name]
+  return typeof value === 'string' && value ? value : undefined
+}
+const search = ref(text('q') ?? '')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    if (value.trim() !== (text('q') ?? '')) setQuery({ q: value.trim() || undefined, page: undefined })
+  }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+// Switching tabs clears the filters (the URL keeps only the tab).
+watch(() => route.query.tab, () => {
+  clearTimeout(searchTimer)
+  search.value = text('q') ?? ''
+})
+const filtered = computed(() => Boolean(text('q') || text('action') || text('step')))
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: { tab: route.query.tab } })
+}
 const kind = computed(() => ra.value.kind)
 
 // --- my inbox -------------------------------------------------------------------------------
@@ -90,6 +115,7 @@ const historyPage = pageOf('history')
 const history = useRaHistory(computed(() => ({
   kind: kind.value,
   action: action.value === 'all' ? undefined : action.value,
+  q: tab.value === 'history' ? text('q') : undefined,
   page: historyPage.value,
   per_page: PER_PAGE,
 })))
@@ -123,23 +149,33 @@ const historyColumns: TableColumn<RaHistoryRow>[] = [
   { id: 'assessment', header: 'RA' },
   { accessorKey: 'role', header: 'Step' },
   { accessorKey: 'action', header: 'Action' },
-  { id: 'status_now', header: 'Status now' },
+  { id: 'status_now', header: 'Status now', meta: RA_STATUS_COLUMN },
 ]
 
 // --- BCM board ------------------------------------------------------------------------------
 
+/** The steps of the active configuration version (RA configuration can add steps). */
+const { data: activeFormula } = useRaFormula(kind)
+const steps = computed(() => raRoleOptions(activeFormula.value, ra.value.signoffRoles))
+
 const boardStep = computed<string>({
-  get: () => (ra.value.signoffRoles.some((role) => role.value === route.query.step) ? String(route.query.step) : 'all'),
+  get: () => (route.query.step && (steps.value.some((role) => role.value === route.query.step) || !activeFormula.value) ? String(route.query.step) : 'all'),
   set: (value) => setQuery({ step: value === 'all' ? undefined : value, page: undefined }),
 })
 const boardPage = pageOf('board')
 const board = useRaBoard(
-  computed(() => ({ kind: kind.value, step: boardStep.value === 'all' ? undefined : boardStep.value, page: boardPage.value, per_page: PER_PAGE })),
+  computed(() => ({
+    kind: kind.value,
+    step: boardStep.value === 'all' ? undefined : boardStep.value,
+    q: tab.value === 'board' ? text('q') : undefined,
+    page: boardPage.value,
+    per_page: PER_PAGE,
+  })),
   bcm,
 )
 const stepItems = computed(() => [
   { label: 'Every step', value: 'all' },
-  ...ra.value.signoffRoles.map((role) => ({ label: role.hint, value: role.value })),
+  ...steps.value.map((role) => ({ label: role.hint, value: role.value })),
 ])
 const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
@@ -172,6 +208,7 @@ async function nudge(row: RaSignoffWaiting) {
 function waitingStep(row: RaSignoffWaiting): RaWaitingStep {
   return {
     id: row.id,
+    kind: ra.value.kind,
     ref: row.ref_no ?? `#${row.id}`,
     location: row.location.name,
     step: stepLabel(row.step, row.step_title),
@@ -208,7 +245,7 @@ const tabs = computed(() => [
   <AppPage
     :title="`${ra.title} approval`"
     icon="i-lucide-badge-check"
-    description="RAs waiting for your sign-off, the ones you've acted on and, for BCM, every RA in sign-off."
+    description="RAs waiting for your sign-off, the ones you've acted on and, for BCM, every RA in approval."
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Approval' }]"
   >
     <UTabs
@@ -244,7 +281,10 @@ const tabs = computed(() => [
                   {{ row.original.location.name }}
                 </NuxtLink>
                 <p class="font-mono text-xs text-muted">
-                  {{ row.original.ref_no ?? `#${row.original.id}` }}
+                  {{ row.original.ref_no ?? `#${row.original.id}` }}<span
+                    v-if="row.original.reason"
+                    class="font-sans"
+                  > · {{ raReasonLabel(row.original.reason) }}</span>
                 </p>
               </template>
               <template #highest_residual_level-cell="{ row }">
@@ -292,7 +332,7 @@ const tabs = computed(() => [
                 Coming up
               </h2>
               <p class="text-sm text-muted">
-                RAs in sign-off where you sign a later step.
+                RAs in approval where you sign a later step.
               </p>
             </template>
             <UTable
@@ -343,7 +383,19 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                :placeholder="`${ra.location.single}, ID or ref. no.`"
+                aria-label="Search my history"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="action"
               value-key="value"
@@ -352,7 +404,7 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Action"
             />
-          </div>
+          </ListFilterBar>
           <UTable
             :data="history.data.value?.items ?? []"
             :columns="historyColumns"
@@ -426,7 +478,19 @@ const tabs = computed(() => [
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+          <ListFilterBar
+            :filtered="filtered"
+            @clear="clearFilters"
+          >
+            <template #search>
+              <UInput
+                v-model="search"
+                icon="i-lucide-search"
+                :placeholder="`${ra.location.single}, ID or ref. no.`"
+                aria-label="Search the board"
+                class="w-full"
+              />
+            </template>
             <USelectMenu
               v-model="boardStep"
               value-key="value"
@@ -435,8 +499,15 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Step"
             />
+          </ListFilterBar>
+          <div class="border-b border-default px-4 py-2">
             <p class="text-sm text-muted">
-              Send the signer a reminder, change the signer, or approve the step on the signer's behalf.
+              Send the signer a reminder, change the signer, or approve the step on the signer's behalf. Reminders and escalation follow
+              <NuxtLink
+                v-if="can('ra.config.view')"
+                to="/admin/ra-config?tab=reminders"
+                class="text-primary hover:underline"
+              >RA configuration > Reminders and escalation</NuxtLink><span v-else>the RA reminder rules</span>.
             </p>
           </div>
           <UTable
@@ -453,7 +524,10 @@ const tabs = computed(() => [
                 {{ row.original.location.name }}
               </NuxtLink>
               <p class="font-mono text-xs text-muted">
-                {{ row.original.ref_no ?? `#${row.original.id}` }}
+                {{ row.original.ref_no ?? `#${row.original.id}` }}<span
+                  v-if="row.original.reason"
+                  class="font-sans"
+                > · {{ raReasonLabel(row.original.reason) }}</span>
               </p>
             </template>
             <template #step-cell="{ row }">
@@ -498,7 +572,7 @@ const tabs = computed(() => [
             </template>
             <template #empty>
               <p class="py-8 text-center text-sm text-muted">
-                No RA is in sign-off{{ boardStep === 'all' ? '' : ' at this step' }}.
+                No RA is in approval{{ boardStep === 'all' ? '' : ' at this step' }}.
               </p>
             </template>
           </UTable>

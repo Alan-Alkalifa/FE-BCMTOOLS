@@ -25,6 +25,7 @@ const query = computed<RaListQuery>(() => ({
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
   location_id: asNumber(route.query.location_id),
   year: asNumber(route.query.year),
+  reason: RA_REASONS.some((reason) => reason.value === route.query.reason) ? route.query.reason as RaReason : undefined,
   ...(route.query.mine === '1' ? { mine: '1' as const } : {}),
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: PER_PAGE,
@@ -52,6 +53,14 @@ const yearFilter = computed<number | 'all'>({
   get: () => query.value.year ?? 'all',
   set: (value) => setQuery('year', value),
 })
+const reasonFilter = computed<RaReason | 'all'>({
+  get: () => query.value.reason ?? 'all',
+  set: (value) => setQuery('reason', value),
+})
+const reasonItems = [
+  { label: 'All reasons', value: 'all' as const },
+  ...RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value })),
+]
 const whose = computed<'all' | 'mine'>({
   get: () => (query.value.mine ? 'mine' : 'all'),
   set: (value) => setQuery('mine', value === 'mine' ? '1' : undefined),
@@ -60,22 +69,27 @@ const whose = computed<'all' | 'mine'>({
 const { data, status, error, refresh } = useRaAssessments(query)
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.mine))
+const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason || query.value.mine))
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: {} })
+}
 
 const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
   { id: 'location', header: ra.value.location.single },
   { accessorKey: 'period_year', header: 'Period' },
+  { accessorKey: 'reason', header: 'Reason' },
   { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'highest_residual_level', header: 'Highest residual' },
-  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
   { accessorKey: 'created_by', header: 'Created by' },
   { accessorKey: 'updated_at', header: 'Last saved' },
 ])
 
 const locationItems = computed(() => [
   { label: `All ${ra.value.location.lowerPlural}`, value: 'all' as const },
-  ...(locations.value?.items ?? []).map((location) => ({ label: location.name, value: location.id })),
+  ...(locations.value?.items ?? []).map((location) => ({ label: location.name, value: location.id, description: location.code ?? undefined })),
 ])
 const yearItems = [
   { label: 'All periods', value: 'all' as const },
@@ -93,7 +107,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
 
 <template>
   <AppPage
-    :title="`Manage ${ra.title === 'RA' ? 'RAs' : `${ra.title} RAs`}`"
+    :title="`Manage ${ra.title}`"
     icon="i-lucide-list-checks"
     description="The drafts being worked on, including those returned for changes. Submitted RAs are in Approval and Monitoring."
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage' }]"
@@ -107,7 +121,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         :label="`View ${ra.location.lowerPlural}`"
       />
       <UButton
-        v-if="can('ra.edit')"
+        v-if="can(ra.perm.edit)"
         :to="raPath(ra.kind, 'manage', 'new')"
         icon="i-lucide-plus"
         label="New assessment"
@@ -117,7 +131,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="8"
+      :columns="9"
       label="Loading drafts"
     />
 
@@ -143,14 +157,20 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="`Search ${ra.location.lower} or ref. no.`"
-          class="w-full sm:w-60"
-          :aria-label="`Search ${ra.location.lower} or ref. no.`"
-        />
+      <!-- As SCCA: search, then building → reason → whose → period (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="hasFilters"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="`${ra.location.single}, ID or ref. no.`"
+            class="w-full"
+            :aria-label="`Search ${ra.location.lower}, ID or ref. no.`"
+          />
+        </template>
         <USelectMenu
           v-model="locationFilter"
           value-key="value"
@@ -159,12 +179,12 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           :aria-label="`Filter by ${ra.location.lower}`"
         />
         <USelectMenu
-          v-model="yearFilter"
+          v-model="reasonFilter"
           value-key="value"
-          :items="yearItems"
+          :items="reasonItems"
           :search-input="false"
-          class="w-32"
-          aria-label="Filter by period"
+          class="w-44"
+          aria-label="Reason for assessment"
         />
         <USelectMenu
           v-model="whose"
@@ -174,7 +194,15 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           class="w-40"
           aria-label="Whose drafts"
         />
-      </div>
+        <USelectMenu
+          v-model="yearFilter"
+          value-key="value"
+          :items="yearItems"
+          :search-input="false"
+          class="w-32"
+          aria-label="Filter by period"
+        />
+      </ListFilterBar>
 
       <UTable
         :data="data?.items ?? []"
@@ -219,9 +247,12 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         <template #status-cell="{ row }">
           <StatusBadge
             :scale="raStatus"
-            :value="raStatusKey(row.original)"
+            :value="row.original.status"
             size="sm"
           />
+        </template>
+        <template #reason-cell="{ row }">
+          {{ raReasonLabel(row.original.reason) ?? '—' }}
         </template>
         <template #created_by-cell="{ row }">
           {{ row.original.created_by || '—' }}

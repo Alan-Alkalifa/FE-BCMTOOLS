@@ -221,23 +221,43 @@ test('a declared incident waits for someone else\'s approval', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Close incident' })).toBeVisible()
 })
 
-test('the map flags an incident waiting for approval', async ({ page }) => {
+test('the map flags an incident waiting for approval, with an orange area', async ({ page }) => {
   await mockRaMap(page, { pending: true })
   await page.goto('/locations/map')
   await expect(page.getByText(/^Pending approval: Banjir/)).toBeVisible({ timeout: 30_000 })
+  // Orange (and dashed) while it waits; red once approved.
+  await expect(page.locator('path.ra-radius-pending')).toHaveCount(1)
+  await expect(page.locator('path.ra-radius-crisis')).toHaveCount(0)
+  await expect(page.locator('.ra-pin-crisis.text-warning')).toHaveCount(1)
 })
 
-test('an approver rejects an incident from the Incidents list, with a reason', async ({ page }) => {
+test('the map legend shows the symbols the map draws', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/locations/map')
+  await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
+  const symbols = page.getByTestId('ra-map-symbol')
+  await expect(symbols).toHaveCount(4)
+  // The branch in the legend is the map's branch marker (a rounded square with a bank).
+  const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
+  await expect(branch).toHaveCount(1)
+  await expect(page.locator('path.ra-radius-crisis')).toHaveCount(1)
+})
+
+test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {
   const log = await mockRaMap(page, { pending: true })
   await page.goto('/crises')
   const row = page.getByRole('row', { name: /CR-2026-0001/ })
   await expect(row).toContainText('Pending approval', { timeout: 30_000 })
-  await row.getByRole('button', { name: 'Reject CR-2026-0001' }).click()
+  await expect(row.getByRole('button')).toHaveCount(0)
+  await row.getByRole('link', { name: 'CR-2026-0001' }).click()
+  await expect(page).toHaveURL(/\/crises\/7$/)
+  await page.getByTestId('approval-banner').getByRole('button', { name: 'Reject' }).click()
   const dialog = page.getByRole('dialog', { name: 'Reject this incident?' })
   await dialog.getByLabel('Reason').fill('A drill, not a flood.')
   await dialog.getByRole('button', { name: 'Reject' }).click()
-  await expect(page.getByText('CR-2026-0001 rejected').first()).toBeVisible()
-  expect(log.decisions).toEqual([['reject', { note: 'A drill, not a flood.' }]])
+  await expect.poll(() => log.decisions).toEqual([['reject', { note: 'A drill, not a flood.' }]])
+  // No Delete button: an incident declared by mistake is rejected (or closed).
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
 })
 
 test('who declared an incident is told someone else approves it', async ({ page }) => {
@@ -246,4 +266,32 @@ test('who declared an incident is told someone else approves it', async ({ page 
   const banner = page.getByTestId('approval-banner')
   await expect(banner).toContainText('This request requires approval by another user with approval rights (BCM Admin or BCM Management).', { timeout: 30_000 })
   await expect(banner.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+})
+
+test('leaving the map while it zooms raises no error', async ({ page }) => {
+  // Leaflet ends a zoom 250 ms later from a timer that remove() doesn't cancel; it used to throw
+  // "Cannot read properties of undefined (reading '_leaflet_pos')" once the map was gone.
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await mockRaMap(page)
+  // Open Buildings once first, so leaving the map later is instant.
+  await page.goto('/locations')
+  const nav = page.getByRole('navigation', { name: 'Main' })
+  await nav.getByRole('link', { name: 'Building map' }).click({ timeout: 30_000 })
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
+  for (let round = 0; round < 3; round++) {
+    // Zoom (animated), then leave while the zoom is still running.
+    await page.evaluate(async () => {
+      const container = document.querySelector('.leaflet-container')!
+      const box = container.getBoundingClientRect()
+      container.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: box.left + 200, clientY: box.top + 150 }))
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      document.querySelector<HTMLAnchorElement>('nav[aria-label="Main"] a[href="/locations"]')!.click()
+    })
+    await expect(page).toHaveURL(/\/locations$/)
+    await page.waitForTimeout(500)
+    await nav.getByRole('link', { name: 'Building map' }).click()
+    await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
+  }
+  expect(errors).toEqual([])
 })

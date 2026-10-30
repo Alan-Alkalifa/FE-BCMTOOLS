@@ -35,6 +35,7 @@ const filters = computed<RaMonitoringFilters>(() => ({
   region: text('region'),
   level: (LEVEL_FILTERS.includes(text('level') as RaLevel) ? text('level') as RaMonitoringFilters['level'] : undefined),
   state: (STATES.includes(text('state') as (typeof STATES)[number]) ? text('state') as RaMonitoringFilters['state'] : undefined),
+  reason: RA_REASONS.some((reason) => reason.value === text('reason')) ? text('reason') as RaReason : undefined,
   from: text('from'),
   to: text('to'),
 }))
@@ -95,12 +96,20 @@ const state = computed<string>({
   get: () => filters.value.state ?? 'any',
   set: (value) => setQuery({ state: value === 'any' ? undefined : value }),
 })
+const reasonFilter = computed<string>({
+  get: () => filters.value.reason ?? 'any',
+  set: (value) => setQuery({ reason: value === 'any' ? undefined : value }),
+})
+const reasonItems = [
+  { label: 'Any reason', value: 'any' },
+  ...RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value as string })),
+]
 const stateItems = [
   { label: 'Any state', value: 'any' },
-  { label: 'Has an approved RA', value: 'approved' },
+  { label: 'Has a final RA', value: 'approved' },
   { label: 'Draft open', value: 'draft' },
-  { label: 'In sign-off', value: 'in_signoff' },
-  { label: 'Never approved', value: 'none' },
+  { label: 'In approval', value: 'in_signoff' },
+  { label: 'No final RA yet', value: 'none' },
 ]
 const { data: regionData } = useRaRegions(() => ra.value.kind)
 const region = computed<string>({
@@ -124,7 +133,7 @@ watch(search, (value) => {
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.from || filters.value.to))
+const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.reason || filters.value.from || filters.value.to))
 function clearFilters() {
   search.value = ''
   router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined } })
@@ -145,6 +154,13 @@ const renewalCards = [
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
 const register = useRaRegister(paged)
+/** List: buildings whose RAs are shown under their row ("Show in the table" in RA(s)). */
+const expanded = ref<Record<string, boolean>>({})
+function toggleRow(row: RaMonitorLocation, open: boolean) {
+  const id = String(row.location.id)
+  const others = Object.fromEntries(Object.entries(expanded.value).filter(([key]) => key !== id))
+  expanded.value = open ? { ...others, [id]: true } : others
+}
 const bottlenecks = useRaBottlenecks(paged)
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
@@ -153,11 +169,11 @@ const cards = computed(() => {
   const value = overview.data.value?.cards
   return [
     { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' },
-    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA in force past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
+    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'RA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
-    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With an approved RA in force', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
-    { key: 'not_assessed', label: 'Never approved', hint: `Active ${places.value} without an approved RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
-    { key: 'in_signoff', label: 'In sign-off', hint: 'RAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
+    { key: 'assessed', label: `${ra.value.location.plural} assessed`, hint: 'With a final RA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' },
+    { key: 'not_assessed', label: 'No final RA yet', hint: `Active ${places.value} without a final RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
+    { key: 'in_signoff', label: 'In approval', hint: 'RAs waiting for their signers', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
   ] as const
 })
@@ -189,13 +205,13 @@ const levelSummary = computed(() => {
   const total = levelBars.value.reduce((sum, row) => sum + row.value, 0)
   const high = overview.data.value?.cards.high_residual ?? 0
   return total
-    ? `${plural(total, ra.value.location.lower, ra.value.location.lowerPlural)} with an approved RA; ${formatNumber(high, 0)} with a High residual risk.`
+    ? `${plural(total, ra.value.location.lower, ra.value.location.lowerPlural)} with a final RA; ${formatNumber(high, 0)} with a High residual risk.`
     : ''
 })
 const monthSummary = computed(() => {
   const total = monthPoints.value.reduce((sum, row) => sum + row.value, 0)
   const top = [...monthPoints.value].sort((a, b) => b.value - a.value)[0]
-  return top && total ? `${plural(total, 'RA')} approved in the last 12 months; the most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
+  return top && total ? `${plural(total, 'RA')} approved in the last 12 months. The most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
 })
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
@@ -233,14 +249,43 @@ function stepLabel(role: string, title?: string | null) {
 const locationColumn = computed(() => ra.value.location.single)
 /** Like SCCA's Register: one row per building, judged by its last final (approved) RA. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
+  { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'location', header: locationColumn.value },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Open RA' },
+  { id: 'open', header: 'Open RA', meta: RA_STATUS_COLUMN },
+  { id: 'open_step', header: 'Waiting for' },
   { id: 'lic', header: 'LIC' },
   { accessorKey: 'assessment_count', header: 'RA(s)' },
 ])
+
+/** Buildings ticked for the Excel export, kept across pages and filters until cleared. */
+const picked = ref<Map<number, string>>(new Map())
+const pickedIds = computed(() => [...picked.value.keys()])
+const pageRows = computed(() => register.data.value?.items ?? [])
+const pageState = computed<boolean | 'indeterminate'>(() => {
+  const ticked = pageRows.value.filter((row) => picked.value.has(row.location.id)).length
+  if (!ticked) return false
+  return ticked === pageRows.value.length ? true : 'indeterminate'
+})
+function pick(row: RaMonitorLocation, value: boolean | 'indeterminate') {
+  const next = new Map(picked.value)
+  if (value === true) next.set(row.location.id, row.location.name)
+  else next.delete(row.location.id)
+  picked.value = next
+}
+function pickPage(value: boolean | 'indeterminate') {
+  const next = new Map(picked.value)
+  for (const row of pageRows.value) {
+    if (value === true) next.set(row.location.id, row.location.name)
+    else next.delete(row.location.id)
+  }
+  picked.value = next
+}
+function clearPicked() {
+  picked.value = new Map()
+}
 
 /** The building's name opens its last final RA, else the open one, else the newest (as SCCA). */
 function registerRecord(row: RaMonitorLocation) {
@@ -253,7 +298,7 @@ const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
   { accessorKey: 'escalated_at', header: 'Escalated' },
-  { accessorKey: 'working_days_in_signoff', header: 'In sign-off' },
+  { accessorKey: 'working_days_in_signoff', header: 'In approval' },
 ])
 
 const tabs = [
@@ -276,16 +321,57 @@ function record(id: number) {
   <AppPage
     :title="`${ra.title} monitoring`"
     icon="i-lucide-chart-column"
-    :description="`Every ${ra.location.lower}'s RA in force: residual risk, renewals due and sign-offs that are waiting. Read-only.`"
+    :description="`Every ${ra.location.lower}'s residual risk, renewals due and sign-offs that are waiting. Read-only.`"
     :crumbs="[{ label: ra.title }, { label: 'Monitoring' }]"
   >
-    <UCard :ui="{ body: 'p-4 sm:p-4' }">
-      <div
-        class="flex flex-wrap items-end gap-2"
-        role="search"
-        aria-label="Monitoring filters"
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <!-- As SCCA: search, then state → level → reason → region → dates (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="filtered"
+        :bordered="false"
+        @clear="clearFilters"
       >
-        <!-- Period: the assessment date of the RAs counted -->
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="ra.hasRegion ? 'Branch, ID, region or address' : 'Building, ID or address'"
+            :aria-label="`Search ${ra.location.lowerPlural}`"
+            class="w-full"
+          />
+        </template>
+        <USelectMenu
+          v-model="state"
+          value-key="value"
+          :items="stateItems"
+          :search-input="false"
+          class="w-48"
+          aria-label="State"
+        />
+        <USelectMenu
+          v-model="level"
+          value-key="value"
+          :items="levelItems"
+          :search-input="false"
+          class="w-48"
+          aria-label="Highest residual level"
+        />
+        <USelectMenu
+          v-model="reasonFilter"
+          value-key="value"
+          :items="reasonItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Reason for assessment"
+        />
+        <USelectMenu
+          v-if="ra.hasRegion"
+          v-model="region"
+          value-key="value"
+          :items="regionItems"
+          class="w-48"
+          aria-label="Region"
+        />
         <USelectMenu
           v-model="period"
           value-key="value"
@@ -308,57 +394,7 @@ function record(id: number) {
             aria-label="To"
           />
         </template>
-
-        <USelectMenu
-          v-if="ra.hasRegion"
-          v-model="region"
-          value-key="value"
-          :items="regionItems"
-          class="w-48"
-          aria-label="Region"
-        />
-        <USelectMenu
-          v-model="level"
-          value-key="value"
-          :items="levelItems"
-          :search-input="false"
-          class="w-48"
-          aria-label="Highest residual level"
-        />
-        <USelectMenu
-          v-model="state"
-          value-key="value"
-          :items="stateItems"
-          :search-input="false"
-          class="w-48"
-          aria-label="State"
-        />
-        <!-- TODO: Add department filter when backend supports it
-        <USelectMenu
-          v-model="department"
-          value-key="value"
-          :items="departmentItems"
-          class="w-52"
-          aria-label="Department"
-        />
-        -->
-
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="ra.hasRegion ? 'Branch, region or address' : 'Building or address'"
-          :aria-label="`Search ${ra.location.lowerPlural}`"
-          class="w-full sm:w-64"
-        />
-        <UButton
-          v-if="filtered"
-          color="neutral"
-          variant="link"
-          icon="i-lucide-x"
-          label="Clear filters"
-          @click="clearFilters"
-        />
-      </div>
+      </ListFilterBar>
     </UCard>
 
     <UTabs
@@ -424,7 +460,7 @@ function record(id: number) {
               :items="levelBars"
               :summary="levelSummary"
               :loading="overview.status.value === 'pending' && !overview.data.value"
-              :empty="levelSummary ? null : `No ${ra.location.lower} has an approved RA yet for these filters.`"
+              :empty="levelSummary ? null : `No ${ra.location.lower} has a final RA yet for these filters.`"
             />
             <SccaLineChart
               title="RAs approved per month"
@@ -484,10 +520,10 @@ function record(id: number) {
                 {{ row.original.location.name }}
               </NuxtLink>
               <p
-                v-if="row.original.location.region"
+                v-if="raLocationLine(row.original.location)"
                 class="text-xs text-muted"
               >
-                {{ row.original.location.region }}
+                {{ raLocationLine(row.original.location) }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -562,24 +598,59 @@ function record(id: number) {
         >
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
             <p class="text-sm text-muted">
-              {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}
+              {{ plural(register.data.value?.total ?? 0, ra.location.lower, ra.location.lowerPlural) }}<template v-if="pickedIds.length">
+                · <span class="font-medium text-highlighted">{{ pickedIds.length }} selected</span>
+              </template>
             </p>
-            <UButton
-              :to="raExportUrl('register', filters)"
-              external
-              download
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-file-spreadsheet"
-              label="Export to Excel"
-            />
+            <div class="flex flex-wrap items-center gap-2">
+              <UButton
+                v-if="pickedIds.length"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-x"
+                label="Clear selection"
+                @click="clearPicked"
+              />
+              <!-- Every RA of each building (one row per RA): the ticked ones, else all that match. -->
+              <UButton
+                :to="raExportUrl('register', filters, pickedIds)"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                :label="pickedIds.length ? `Export ${pickedIds.length} selected to Excel` : 'Export to Excel'"
+              />
+            </div>
           </div>
           <UTable
+            v-model:expanded="expanded"
             :data="register.data.value?.items ?? []"
             :columns="registerColumns"
+            :get-row-id="(row: RaMonitorLocation) => String(row.location.id)"
             :loading="register.status.value === 'pending'"
             :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #expanded="{ row }">
+              <RaLocationAssessments
+                :location="row.original.location"
+                @hide="toggleRow(row.original, false)"
+              />
+            </template>
+            <template #select-header>
+              <UCheckbox
+                :model-value="pageState"
+                :aria-label="`Select every ${ra.location.lower} on this page for the Excel export`"
+                @update:model-value="pickPage"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="picked.has(row.original.location.id)"
+                :aria-label="`Select ${row.original.location.name} for the Excel export`"
+                @update:model-value="(value: boolean | 'indeterminate') => pick(row.original, value)"
+              />
+            </template>
             <template #location-cell="{ row }">
               <NuxtLink
                 v-if="registerRecord(row.original)"
@@ -593,7 +664,7 @@ function record(id: number) {
                 class="font-medium text-highlighted"
               >{{ row.original.location.name }}</span>
               <p class="text-xs text-muted">
-                {{ row.original.location.region || '—' }}
+                {{ raLocationLine(row.original.location) || '—' }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -614,6 +685,12 @@ function record(id: number) {
                 <p class="text-xs text-muted">
                   {{ formatDate(row.original.approved.approved_at) || formatDate(row.original.approved.assessment_date) || '—' }}
                 </p>
+                <p
+                  v-if="row.original.approved.reason"
+                  class="text-xs text-muted"
+                >
+                  {{ raReasonLabel(row.original.approved.reason) }}
+                </p>
               </template>
               <span
                 v-else
@@ -623,24 +700,32 @@ function record(id: number) {
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
             </template>
+            <!-- The open RA's status and, apart, whose step it waits for. -->
             <template #open-cell="{ row }">
               <NuxtLink
                 v-if="row.original.open"
                 :to="record(row.original.open.id)"
-                class="hover:underline"
+                class="inline-block hover:underline"
+                :aria-label="`${refLabel(row.original.open)}: ${raStatus[row.original.open.status].label}`"
               >
                 <StatusBadge
                   :scale="raStatus"
                   :value="raStatusKey(row.original.open)"
                   size="sm"
                 />
-                <p
-                  v-if="row.original.open.current_signoff_role"
-                  class="mt-1 text-xs text-muted"
-                >
-                  {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-                </p>
               </NuxtLink>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+            <template #open_step-cell="{ row }">
+              <span
+                v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role"
+                class="text-sm"
+              >
+                {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+              </span>
               <span
                 v-else
                 class="text-muted"
@@ -657,6 +742,17 @@ function record(id: number) {
                   :aria-label="`RA history of ${row.original.location.name}`"
                 />
                 <template #content>
+                  <div class="border-b border-default p-2">
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      block
+                      :icon="expanded[String(row.original.location.id)] ? 'i-lucide-chevron-up' : 'i-lucide-table-properties'"
+                      :label="expanded[String(row.original.location.id)] ? 'Hide from the table' : 'Show in the table'"
+                      @click="toggleRow(row.original, !expanded[String(row.original.location.id)])"
+                    />
+                  </div>
                   <ul class="w-72 divide-y divide-default text-sm">
                     <li
                       v-for="item in row.original.history"
@@ -717,7 +813,7 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                RAs in sign-off, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
+                RAs in approval, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
               </p>
               <UButton
                 :to="raExportUrl('bottlenecks', filters)"
@@ -783,7 +879,7 @@ function record(id: number) {
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">
-                  No RA is in sign-off.
+                  No RA is in approval.
                 </p>
               </template>
             </UTable>

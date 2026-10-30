@@ -49,6 +49,9 @@ const monitorCards = computed(() => {
   ]
 })
 
+/** RA at a glance and RA Branch at a glance, for each side the user can open. */
+const raKinds = useRaKinds()
+
 const greeting = computed(() => {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jakarta' }).format(new Date()))
   return hour < 11 ? 'Good morning' : hour < 15 ? 'Good afternoon' : 'Good evening'
@@ -152,6 +155,12 @@ const greeting = computed(() => {
         </NuxtLink>
       </div>
     </section>
+
+    <RaHomeGlance
+      v-for="kind in raKinds"
+      :key="kind"
+      :kind="kind"
+    />
 
     <section
       v-if="modules.length"

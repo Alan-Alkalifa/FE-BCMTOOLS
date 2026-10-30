@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { BRANCH_ID, fillAddress, mockRa } from '../fixtures/ra'
+import { BRANCH_ID, BRANCH_LOCATION, fillAddress, mockRa } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -10,6 +10,8 @@ test('one register lists head office buildings and branches', async ({ page }) =
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toBeVisible()
   await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('Head office')
+  // The building ID in grey under the name.
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('RA-HQ-0001')
   await expect(table.getByRole('row', { name: /KCP Bogor Pajajaran/ })).toContainText('Branch')
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/locations/${BRANCH_ID}`)
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('kind')).toBe('all')
@@ -70,13 +72,12 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   // What was typed is kept when the type changes.
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
-  // A branch has no Region field any more.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  // A branch has a Region: typed (optional) while the region list isn't loaded.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
   await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920' })
-  expect(log.created[0]).not.toHaveProperty('region')
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920', region: null, area: null })
 })
 
 test('adding a building from New assessment returns to the new assessment', async ({ page }) => {
@@ -155,16 +156,81 @@ test('Building map and Input building data sit in the top bar', async ({ page })
   expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
 })
 
-test('an approver approves a building from the Buildings list', async ({ page }) => {
-  const log = await mockRa(page, { pendingLocation: true })
+test('a building waiting for approval is approved on its page, not in the Buildings list', async ({ page }) => {
+  await mockRa(page, { pendingLocation: true })
   await page.goto('/locations')
   const row = page.getByRole('row', { name: /Griya CIMB Niaga 2/ })
   await expect(row).toContainText('Waiting for approval', { timeout: 60_000 })
-  await row.getByRole('button', { name: 'Reject Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog', { name: 'Reject this building?' }).getByRole('button', { name: 'Cancel' }).click()
-  await row.getByRole('button', { name: 'Approve Griya CIMB Niaga 2' }).click()
-  await page.getByRole('dialog', { name: 'Approve this building?' }).getByRole('button', { name: 'Approve' }).click()
-  await expect(page.getByText('Griya CIMB Niaga 2 approved').first()).toBeVisible()
-  expect(log.approvals).toEqual([['approve', { note: null }]])
-  await expect(row.getByRole('button', { name: 'Approve Griya CIMB Niaga 2' })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+  await row.getByRole('link', { name: 'Edit Griya CIMB Niaga 2' }).click()
+  await expect(page).toHaveURL(/\/locations\/1$/)
+  const banner = page.getByTestId('approval-banner')
+  await expect(banner.getByRole('button', { name: 'Approve' })).toBeVisible()
+  await expect(banner.getByRole('button', { name: 'Reject' })).toBeVisible()
+})
+
+test('the Buildings list shows the last update and sorts by a column, newest change first by default', async ({ page }) => {
+  const log = await mockRa(page)
+  // The register's own requests (the pickers and the province list send no page).
+  const lastPage = () => log.locationQueries.filter((query) => query.includes('page=')).at(-1)
+  await page.goto('/locations')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: /Last updated/ })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('1 Mar 2026')
+  // Sorted by Last updated, newest first, until another column is picked.
+  await expect(table.getByRole('button', { name: 'Last updated, sorted descending. Sort ascending' })).toBeVisible()
+  expect(lastPage()).toContain('sort=updated_at&dir=desc')
+
+  await table.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect(page).toHaveURL(/sort=name&dir=asc/)
+  await expect(table.getByRole('button', { name: 'Name, sorted ascending. Sort descending' })).toBeVisible()
+  await expect(table.getByRole('button', { name: 'Sort by Last updated' })).toBeVisible()
+  await expect.poll(lastPage).toContain('sort=name&dir=asc')
+
+  await table.getByRole('button', { name: 'Name, sorted ascending. Sort descending' }).click()
+  await expect(page).toHaveURL(/sort=name&dir=desc/)
+  await expect.poll(lastPage).toContain('sort=name&dir=desc')
+
+  // Back to the default: the URL carries no sort.
+  await table.getByRole('button', { name: 'Sort by Last updated' }).click()
+  await expect(page).not.toHaveURL(/sort=/)
+})
+
+test('the Buildings list shows the latest assessment and its residual apart, and its status as Draft, In approval or Approved', async ({ page }) => {
+  await mockRa(page)
+  const latest = BRANCH_LOCATION.latest_assessment
+  const rows = [
+    { name: 'KCP Cibubur', ref_no: 'RAB-2026-0001', status: 'draft', is_returned: true, returned_comment: 'Fix H01', level: 'High' },
+    { name: 'KCP Cikarang', ref_no: 'RAB-2026-0002', status: 'in_signoff', is_returned: false, returned_comment: null, level: 'Medium' },
+    { name: 'KCP Cilegon', ref_no: 'RAB-2026-0003', status: 'approved', is_returned: false, returned_comment: null, level: 'Low' },
+  ].map(({ name, level, ...assessment }, index) => ({
+    ...BRANCH_LOCATION,
+    id: 41 + index,
+    name,
+    code: `RA-BR-00${41 + index}`,
+    latest_assessment: { ...latest, ...assessment, id: 51 + index, highest_residual_level: level },
+  }))
+  // Registered after mockRa, so it answers the register's paged request first.
+  await page.route(/\/api\/ra\/locations\?.*page=/, (route) =>
+    route.fulfill({ json: { items: rows, page: 1, per_page: 25, total: rows.length, pages: 1 } }),
+  )
+  await page.goto('/locations')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Latest assessment' })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Latest residual' })).toBeVisible()
+
+  const returned = table.getByRole('row', { name: /KCP Cibubur/ })
+  // The code and the residual level sit in their own cells.
+  const codeCell = returned.getByRole('cell').filter({ has: page.getByRole('link', { name: 'RAB-2026-0001' }) })
+  await expect(codeCell).toHaveCount(1)
+  await expect(codeCell).not.toContainText('High')
+  await expect(returned.getByRole('cell', { name: 'High', exact: true })).toHaveCount(1)
+  // Returned for changes is a draft again here.
+  await expect(returned).toContainText('Draft')
+  await expect(returned).not.toContainText('Returned')
+
+  const signing = table.getByRole('row', { name: /KCP Cikarang/ })
+  await expect(signing.locator('[class*="warning"]', { hasText: 'In approval' })).toHaveCount(1)
+  await expect(signing).not.toContainText('In sign-off')
+  await expect(table.getByRole('row', { name: /KCP Cilegon/ })).toContainText('Final')
 })

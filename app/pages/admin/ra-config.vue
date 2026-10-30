@@ -16,18 +16,19 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'hazards', 'roles', 'texts', 'divisions', 'reminders', 'changes'] as const
+const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'changes'] as const
 type Tab = (typeof TABS)[number]
 /** Tabs that edit live rules rather than a version. */
 const LIVE: Tab[] = ['divisions', 'reminders']
 const tab = computed<Tab>({
-  get: () => (TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'versions'),
+  // ?tab=roles is the older name of the Sign-off steps tab.
+  get: () => (route.query.tab === 'roles' ? 'steps' : TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'versions'),
   set: (value) => router.replace({ query: { ...route.query, tab: value === 'versions' ? undefined : value } }),
 })
 const tabItems = [
   { label: 'Versions', value: 'versions', icon: 'i-lucide-git-branch', slot: 'versions' },
   { label: 'Hazards and guides', value: 'hazards', icon: 'i-lucide-list-checks', slot: 'hazards' },
-  { label: 'Sign-off roles', value: 'roles', icon: 'i-lucide-signature', slot: 'roles' },
+  { label: 'Sign-off steps', value: 'steps', icon: 'i-lucide-signature', slot: 'steps' },
   { label: 'Statements and notes', value: 'texts', icon: 'i-lucide-text-quote', slot: 'texts' },
   { label: 'Divisions', value: 'divisions', icon: 'i-lucide-building-2', slot: 'divisions' },
   { label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' },
@@ -96,12 +97,12 @@ async function run(action: string, work: () => Promise<RaConfigVersion | null | 
   }
 }
 
-const kindTitle = computed(() => (kind.value === 'branch' ? 'RA Branch' : 'RA'))
+const kindTitle = computed(() => (kind.value === 'branch' ? 'RA Branch' : 'RA HO'))
 
 async function startDraft() {
   const ok = await confirm({
     title: `Start a draft ${kindTitle.value} version?`,
-    description: `The draft starts as a copy of ${activeCode.value}: hazards and guides, sign-off roles, statements and notes. Assessments keep using ${activeCode.value} until the draft is published.`,
+    description: `The draft starts as a copy of ${activeCode.value}: hazards and guides, sign-off steps, statements and notes. Assessments keep using ${activeCode.value} until the draft is published.`,
     confirmLabel: 'Start draft',
   })
   if (!ok) return
@@ -159,7 +160,7 @@ async function discard() {
   <AppPage
     title="RA configuration"
     icon="i-lucide-file-cog"
-    description="The RA and RA Branch hazards and guides, sign-off roles, statements and notes by version; the division list and the reminder rules."
+    description="The RA and RA Branch hazards and guides, sign-off steps, statements and notes by version. Also the default and fixed signers, the division list and the reminder rules."
     :crumbs="[{ label: 'Administration' }, { label: 'RA configuration' }]"
   >
     <template #actions>
@@ -311,8 +312,8 @@ async function discard() {
             />
           </div>
         </template>
-        <template #roles>
-          <AdminRaConfigRoles
+        <template #steps>
+          <AdminRaConfigSteps
             class="mt-4"
             :version="version"
             @saved="onSaved"

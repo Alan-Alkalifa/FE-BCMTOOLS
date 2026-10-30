@@ -544,8 +544,15 @@ async function save() {
           :required="mitigationRequired"
           :help="mitigationHelp"
         >
+          <template #hint>
+            <FieldCount
+              :value="active.mitigation"
+              :max="TEXT_LIMITS.hazard"
+            />
+          </template>
           <UTextarea
             v-model="active.mitigation"
+            :maxlength="TEXT_LIMITS.hazard"
             :disabled="locked"
             :rows="4"
             :maxrows="12"
@@ -599,7 +606,7 @@ async function save() {
             </h3>
             <p class="flex items-center gap-2 text-sm text-muted">
               Probability <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_probability) }}</span>
-              · Impact <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_impact) }}</span>
+              - Gross Impact <span class="font-medium text-highlighted tabular-nums">{{ rating(activeEvaluation.result.residual_impact) }}</span>
               <StatusBadge
                 v-if="activeEvaluation.result.is_rated"
                 :scale="raRiskLevel"
@@ -613,8 +620,15 @@ async function save() {
               label="Action plan"
               :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
             >
+              <template #hint>
+                <FieldCount
+                  :value="active.action_plan"
+                  :max="TEXT_LIMITS.hazard"
+                />
+              </template>
               <UTextarea
                 v-model="active.action_plan"
+                :maxlength="TEXT_LIMITS.hazard"
                 :disabled="locked"
                 :rows="3"
                 autoresize
@@ -622,8 +636,15 @@ async function save() {
               />
             </UFormField>
             <UFormField label="CIM ref. no.">
+              <template #hint>
+                <FieldCount
+                  :value="active.cim_ref_no"
+                  :max="TEXT_LIMITS.medium"
+                />
+              </template>
               <UInput
                 v-model="active.cim_ref_no"
+                :maxlength="TEXT_LIMITS.medium"
                 :disabled="locked"
                 class="w-full"
               />
@@ -656,7 +677,7 @@ async function save() {
           variant="subtle"
           icon="i-lucide-info"
           :title="warning.message"
-          description="Check the ratings; mitigation normally lowers the risk."
+          description="Check the ratings. Mitigation normally lowers the risk."
         />
       </div>
 

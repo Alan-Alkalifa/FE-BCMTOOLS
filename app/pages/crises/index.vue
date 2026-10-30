@@ -4,7 +4,7 @@ import type { RaCrisisStatus, RaCrisisSummary } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /** Every incident declared on the location map, open and closed, newest first. */
-definePageMeta({ permission: 'ra.access' })
+definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +36,12 @@ watch(search, (value) => {
   }, 300)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
+const filtered = computed(() => Boolean(route.query.q || route.query.status))
+function clearFilters() {
+  clearTimeout(searchTimer)
+  search.value = ''
+  router.replace({ query: {} })
+}
 
 const statusFilter = computed({
   get: () => query.value.status ?? 'all',
@@ -59,26 +65,7 @@ const columns: TableColumn<RaCrisisSummary>[] = [
   { accessorKey: 'radius_m', header: 'Radius', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'affected_count', header: 'Affected', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'status', header: 'Status' },
-  { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
-
-/** Approve or reject (with a reason) an incident someone else declared. */
-const toast = useToast()
-const dialogs = useRaApprovalDialogs()
-const actionError = ref<string | null>(null)
-async function decide(crisis: RaCrisisSummary, decision: 'approve' | 'reject') {
-  actionError.value = null
-  const note = decision === 'approve' ? await dialogs.approve('incident') : await dialogs.reject('incident')
-  if (note === false) return
-  try {
-    if (decision === 'approve') await raCrisisApi.approve(crisis.id, note || null)
-    else await raCrisisApi.reject(crisis.id, note)
-    toast.add({ title: `${crisis.ref_no} ${decision === 'approve' ? 'approved' : 'rejected'}`, color: 'success', icon: 'i-lucide-circle-check' })
-    await refresh()
-  } catch (err) {
-    actionError.value = apiErrorMessage(err)
-  }
-}
 
 function openRow(_event: Event, row: { original: RaCrisisSummary }) {
   navigateTo(crisisPath(row.original.id))
@@ -141,31 +128,27 @@ async function declare() {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Search by reference, hazard or place"
-          aria-label="Search by reference, hazard or place"
-          class="w-full sm:w-80"
-        />
+      <ListFilterBar
+        :filtered="filtered"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Reference, hazard or place"
+            aria-label="Search by reference, hazard or place"
+            class="w-full"
+          />
+        </template>
         <USelect
           v-model="statusFilter"
           :items="statusItems"
           class="w-40"
           aria-label="Filter by status"
         />
-      </div>
+      </ListFilterBar>
 
-      <UAlert
-        v-if="actionError"
-        class="m-4 mb-0"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-circle-alert"
-        title="That didn't work"
-        :description="actionError"
-      />
       <UTable
         :data="data?.items ?? []"
         :columns="columns"
@@ -211,31 +194,6 @@ async function declare() {
           >
             {{ formatDateTime(row.original.closed_at) }}
           </p>
-        </template>
-        <template #actions-cell="{ row }">
-          <div
-            v-if="row.original.approval_can?.approve"
-            class="flex justify-end gap-1"
-          >
-            <UButton
-              color="neutral"
-              variant="outline"
-              size="sm"
-              icon="i-lucide-badge-check"
-              label="Approve"
-              :aria-label="`Approve ${row.original.ref_no}`"
-              @click.stop="decide(row.original, 'approve')"
-            />
-            <UButton
-              color="error"
-              variant="ghost"
-              size="sm"
-              icon="i-lucide-circle-x"
-              label="Reject"
-              :aria-label="`Reject ${row.original.ref_no}`"
-              @click.stop="decide(row.original, 'reject')"
-            />
-          </div>
         </template>
         <template #empty>
           <p class="py-10 text-center text-sm text-muted">

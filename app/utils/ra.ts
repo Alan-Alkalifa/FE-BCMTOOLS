@@ -22,19 +22,23 @@ export const raCompletion = defineStatusScale({
   draft: { label: 'Incomplete', color: 'neutral', icon: 'i-lucide-circle-dashed' },
 })
 
-/** Sign-off workflow status. A returned draft is shown as "Returned". */
+/** An RA's status, in SCCA's words and colours (`sccaStatus`): Draft, In approval, Final. A
+ *  returned RA is a draft again; its page says it was returned and why. */
 export type RaStatus = 'draft' | 'in_signoff' | 'approved'
 export const RA_STATUSES: RaStatus[] = ['draft', 'in_signoff', 'approved']
-export const raStatus = defineStatusScale<RaStatus | 'returned'>({
+export const raStatus = defineStatusScale<RaStatus>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
-  returned: { label: 'Returned', color: 'warning', icon: 'i-lucide-undo-2' },
-  in_signoff: { label: 'In sign-off', color: 'info', icon: 'i-lucide-hourglass' },
-  approved: { label: 'Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
 })
 
-export function raStatusKey(item: { status: RaStatus, is_returned?: boolean, returned_comment?: string | null }) {
-  return item.status === 'draft' && (item.is_returned || item.returned_comment) ? 'returned' : item.status
+/** The scale key of an RA's status (a returned RA is a draft). */
+export function raStatusKey(item: { status: RaStatus }): RaStatus {
+  return item.status
 }
+
+/** A status column: the badges centred under a centred header (as SCCA's lists). */
+export const RA_STATUS_COLUMN = { class: { th: 'text-center', td: 'text-center' } }
 
 /** "N/A", 1–5, or null while not filled in. Matches the API. */
 export type RaRatingValue = 'N/A' | 1 | 2 | 3 | 4 | 5 | null
@@ -78,8 +82,8 @@ export const RA_KIND_INPUTS: Record<RaKind, RaRatingField[]> = {
   branch: [...RA_BRANCH_PROBABILITY_FIELDS, ...RA_BRANCH_IMPACT_FIELDS].map((field) => field.key),
 }
 
-/** The default sign-off roles; RA configuration can rename them per version
- *  (`formula.signoff_role_labels`, see raRoleOptions). The hint is who signs: the role title. */
+/** The workbook's sign-off steps. RA configuration can add, remove, reorder and rename them per
+ *  version (`formula.signoff_steps`, see raRoleOptions). The hint is who signs: the step title. */
 export const RA_SIGNOFF_ROLES = [
   { value: 'prepared_by', label: 'Prepared by', hint: 'Location Incident Coordinator (LIC)' },
   { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit Critical Business Function' },
@@ -87,11 +91,18 @@ export const RA_SIGNOFF_ROLES = [
   { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
 ] as const
 
-/**
- * Sign-off roles signed by the location incident team picked on the assessment (the backend's
- * TEAM_SIGNOFF_ROLES): the LIC prepares, the LICOM reviews. The Sign-off tab shows them, read-only.
- */
-export const RA_TEAM_SIGNOFF_ROLES: Partial<Record<string, 'lic' | 'licom'>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+/** Who picks the signer of the workbook's steps when a version has none stored: the LIC prepares,
+ *  the LICOM reviews, the others are chosen. */
+export const RA_DEFAULT_SIGNER_MODES: Partial<Record<string, RaSignerMode>> = { prepared_by: 'lic', reviewed_by: 'licom' }
+
+/** Who picks a step's signer, as RA configuration and the Sign-off tab describe it. */
+export const raSignerModes: Record<RaSignerMode, { label: string, description: string }> = {
+  chosen: { label: 'Chosen', description: 'The assessor picks the signer on the Sign-off tab.' },
+  default: { label: 'Default', description: 'The signer picked below is filled in on new RAs. The assessor can change it.' },
+  fixed: { label: 'Fixed', description: 'The signer picked below signs every RA. It is put on the step at Submit and nobody on the RA changes it.' },
+  lic: { label: 'The LIC', description: 'The location incident coordinator picked on the Details tab.' },
+  licom: { label: 'The LICOM', description: 'The location incident commander picked on the Details tab.' },
+}
 
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
@@ -100,14 +111,21 @@ export const RA_BRANCH_SIGNOFF_ROLES = [
   { value: 'reviewed_by', label: 'Reviewed by', hint: 'NRSOH' },
 ] as const
 
-export type RaSignoffRole
-  = | (typeof RA_SIGNOFF_ROLES)[number]['value']
-    | (typeof RA_BRANCH_SIGNOFF_ROLES)[number]['value']
+/** A sign-off step code: the workbook's (prepared_by, …) or one RA configuration added. */
+export type RaSignoffRole = string
+
+/** Who picks a sign-off step's signer (like SCCA's): chosen on the Sign-off tab, a default
+ *  filled in on a new RA, a fixed signer put on the step at Submit, or the LIC / LICOM of the
+ *  Details tab. */
+export type RaSignerMode = 'chosen' | 'default' | 'fixed' | 'lic' | 'licom'
 
 export interface RaSignoffRoleOption {
   value: RaSignoffRole
   label: string
   hint: string
+  /** Who picks the signer and whether the step is required (RA configuration). */
+  mode?: RaSignerMode
+  mandatory?: boolean
 }
 
 /** Everything that differs between RA and RA Branch on screen. The API decides the rules. */
@@ -129,13 +147,21 @@ export interface RaModule {
   lic: { label: string, hint: string }
   licom: { label: string, hint: string }
   signoffRoles: readonly RaSignoffRoleOption[]
+  /** RA (head office) and RA Branch are granted separately: ra.* and ra_branch.*. */
+  perm: { access: string, edit: string, manage: string }
 }
+
+/** Either side opens the shared Location pages (buildings, map, incidents, guidebook). */
+export const RA_ANY_ACCESS = ['ra.access', 'ra_branch.access']
+export const RA_ANY_EDIT = ['ra.edit', 'ra_branch.edit']
+export const RA_ANY_MANAGE = ['ra.manage', 'ra_branch.manage']
 
 export const RA_MODULES: Record<RaKind, RaModule> = {
   head_office: {
     kind: 'head_office',
     base: '/ra',
-    title: 'RA',
+    // "RA HO" beside "RA Branch": the menu group, page titles and breadcrumbs.
+    title: 'RA HO',
     description: 'Location risk assessment for an office building.',
     location: { single: 'Building', plural: 'Buildings', lower: 'building', lowerPlural: 'buildings' },
     refPrefix: 'RA',
@@ -145,6 +171,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     lic: { label: 'Location incident coordinator (LIC)', hint: 'Signs as Prepared by.' },
     licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Signs as Reviewed by.' },
     signoffRoles: RA_SIGNOFF_ROLES,
+    perm: { access: 'ra.access', edit: 'ra.edit', manage: 'ra.manage' },
   },
   branch: {
     kind: 'branch',
@@ -159,6 +186,7 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number. Signs as Prepared by.' },
     licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number. Signs as Reviewed by.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
+    perm: { access: 'ra_branch.access', edit: 'ra_branch.edit', manage: 'ra_branch.manage' },
   },
 }
 
@@ -311,15 +339,23 @@ export function raStepTitle(role: string | null | undefined, roles: readonly RaS
   return roles.find((item) => item.value === role)?.hint ?? role
 }
 
-/** The sign-off roles of a configuration version (their labels and titles as RA configuration
- *  sets them), or the module's defaults. */
+/** The sign-off steps of a configuration version (as RA configuration sets them), or the
+ *  module's defaults. */
 export function raRoleOptions(
-  formula: { signoff_role_labels?: { role: RaSignoffRole, label: string, title: string }[] } | null | undefined,
+  formula: { signoff_steps?: { code: RaSignoffRole, label: string, title: string, signer_mode?: RaSignerMode, mandatory?: boolean }[] } | null | undefined,
   fallback: readonly RaSignoffRoleOption[],
 ): RaSignoffRoleOption[] {
-  const rows = formula?.signoff_role_labels
-  if (!rows?.length) return [...fallback]
-  return rows.map((row) => ({ value: row.role, label: row.label, hint: row.title }))
+  const rows = formula?.signoff_steps
+  if (!rows?.length) {
+    return fallback.map((row) => ({ ...row, mode: RA_DEFAULT_SIGNER_MODES[row.value] ?? 'chosen', mandatory: true }))
+  }
+  return rows.map((row) => ({
+    value: row.code,
+    label: row.label,
+    hint: row.title,
+    mode: row.signer_mode ?? 'chosen',
+    mandatory: row.mandatory ?? true,
+  }))
 }
 
 /** A division's maximum tolerable downtime band and its critical rating (the SCCA categories). */
@@ -509,6 +545,70 @@ export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
   return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
+}
+
+/** Why an RA is made, like SCCA's assessment reason. Annual review renews the building's last
+ *  final RA; New building is its first RA (the API checks both). */
+export type RaReason = 'annual_review' | 'new_building' | 'structural_change'
+export const RA_REASONS: { value: RaReason, label: string, description: string }[] = [
+  { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
+  { value: 'new_building', label: 'New building', description: 'The first RA of this building or branch.' },
+  { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
+]
+/** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
+ *  every other reason renews a year after it. */
+export const RA_CUSTOM_DUE_REASON: RaReason = 'structural_change'
+
+/** The help under Reason for assessment, which changes with the reason picked (as in SCCA). */
+export function raReasonHelp(value: string | null | undefined) {
+  const reason = RA_REASONS.find((item) => item.value === value)
+  if (!reason) return 'Pick the reason first: the other fields open once it is chosen, and it decides the renewal due date.'
+  const renewal = reason.value === RA_CUSTOM_DUE_REASON
+    ? 'Pick the renewal due date below: it can be sooner than one year.'
+    : 'Renewal is due one year after the assessment date.'
+  return `${reason.description} ${renewal}`
+}
+
+/** The API's field errors for an RA's header, with the period's ("This location already has an
+ *  assessment for 2026.") on the assessment date, which sets the period: there is no period
+ *  field to show it on. */
+export function raHeaderErrors<T extends { name?: string }>(errors: T[]): T[] {
+  return errors.map((item) => (item.name === 'period_year' ? { ...item, name: 'assessment_date' } : item))
+}
+
+/** The fields of an RA's header, for the error banner. */
+const RA_FIELD_LABELS: Record<string, string> = {
+  reason: 'Reason for assessment',
+  location_id: 'Building',
+  assessment_date: 'Assessment date',
+  period_year: 'Assessment date',
+  due_date: 'Renewal due date',
+  lic_user_id: 'LIC',
+  lic_phone: 'LIC mobile number',
+  licom_user_id: 'LICOM',
+  licom_phone: 'LICOM mobile number',
+  copy_from_id: 'Previous RA',
+}
+
+/** As SCCA's banner (apiErrorText): what went wrong, then each field's message. */
+export function raErrorText(error: unknown) {
+  const lines = apiFieldErrors(error).map((item) => `• ${RA_FIELD_LABELS[item.name ?? ''] ?? (item.name ?? '').replaceAll('_', ' ')}: ${item.message}`)
+  return [apiErrorMessage(error), ...lines].join('\n')
+}
+
+/** The RA period is the year of the assessment date ("2026-10-28" → 2026). */
+export function raPeriodOf(date: string | null | undefined) {
+  const year = Number(date?.slice(0, 4))
+  return Number.isInteger(year) && year > 0 ? year : null
+}
+
+export function raReasonLabel(value: string | null | undefined) {
+  return RA_REASONS.find((reason) => reason.value === value)?.label ?? null
+}
+
+/** The grey line under a building's name: its ID and, for a branch, its region. */
+export function raLocationLine(location: { code?: string | null, region?: string | null }) {
+  return [location.code, location.region].filter(Boolean).join(' · ')
 }
 
 /** The sign-off waiting time: "Today", "1 working day", "4 working days". */

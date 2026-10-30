@@ -104,7 +104,7 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
 
         <RaMap
           v-model:pin="pin"
-          :editable="can('ra.edit')"
+          :editable="can(ra.perm.edit)"
           :label="`Map of ${location.name}. Click to place the pin.`"
           height-class="h-[28rem]"
         />

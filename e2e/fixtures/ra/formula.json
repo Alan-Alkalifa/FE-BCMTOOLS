@@ -245,162 +245,162 @@
   "guides": {
     "historical": [
       {
-        "guidance": "Lebih dari 15x dalam 10 tahun kebelakang",
+        "guidance": "More than 15 times in the past 10 years",
         "label": null,
         "rating": 5
       },
       {
-        "guidance": "Antara 10x s/d 14x dalam 10 tahun kebelakang",
+        "guidance": "10 to 14 times in the past 10 years",
         "label": null,
         "rating": 4
       },
       {
-        "guidance": "Antara 6x s/d 9x dalam 10 tahun kebelakang.",
+        "guidance": "6 to 9 times in the past 10 years",
         "label": null,
         "rating": 3
       },
       {
-        "guidance": "Antara 2x s/d 5x dalam 10 tahun kebelakang",
+        "guidance": "2 to 5 times in the past 10 years",
         "label": null,
         "rating": 2
       },
       {
-        "guidance": "Terjadi sekali dalam 10 tahun kebelakang",
+        "guidance": "Once in the past 10 years",
         "label": null,
         "rating": 1
       }
     ],
     "human": [
       {
-        "guidance": "Cedera/ luka-luka/ gangguan kesehatan yang signifikan atau kematian terhadap karyawan atau pihak ketiga.",
+        "guidance": "Significant injuries or health problems, or death, of employees or third parties",
         "label": "Critical",
         "rating": 5
       },
       {
-        "guidance": "Cidera/ gangguan kesehatan yang menyebabkan karyawan atau pihak ketiga harus menjalani rawat inap di rumah sakit.",
+        "guidance": "An injury or health problem that needs inpatient treatment at a hospital for employees or third parties",
         "label": "Major",
         "rating": 4
       },
       {
-        "guidance": "Cidera/ gangguan kesehatan yang menyebabkan karyawan atau pihak ketiga harus menjalani rawat jalan di rumah sakit.",
+        "guidance": "An injury or health problem that needs outpatient treatment at a hospital for employees or third parties",
         "label": "Moderate",
         "rating": 3
       },
       {
-        "guidance": "Tidak ada cidera/ gangguan kesehatan atau mengalami luka minor terhadap karyawan atau pihak ketiga.",
+        "guidance": "No injury or health problem, or a minor injury to employees or third parties",
         "label": "Minor",
         "rating": 2
       },
       {
-        "guidance": "Tidak ada dampak keselamatan & kesehatan bagi karyawan",
+        "guidance": "No safety or health impact on employees",
         "label": "Insignificant",
         "rating": 1
       }
     ],
     "infrastructure": [
       {
-        "guidance": "Sistem TI dan Infrastruktur termasuk perangkat jaringan dan juga perlengkapan elektronik serta fasilitas pendukung lainnya menjadi rusak/hilang/tidak tersedia/ terdampak.",
+        "guidance": "IT systems and infrastructure, including network devices, electronic equipment and other supporting facilities, are damaged, lost, unavailable or affected",
         "label": "Critical",
         "rating": 5
       },
       {
-        "guidance": "Sistem TI dan Infrastruktur termasuk perangkat jaringan dan perlengkapan elektronik rusak/hilang/tidak tersedia/ terdampak tetapi fasilitas pendukung lainnya tidak terdampak",
+        "guidance": "IT systems and infrastructure, including network devices and electronic equipment, are damaged, lost, unavailable or affected, but other supporting facilities are not",
         "label": "Major",
         "rating": 4
       },
       {
-        "guidance": "Sistem TI dan Infrastruktur termasuk perangkat jaringan rusak/hilang/tidak tersedia/ terdampak tetapi perlengkapan elektronik dan fasilitas pendukung lainnya tidak terdampak",
+        "guidance": "IT systems and infrastructure, including network devices, are damaged, lost, unavailable or affected, but electronic equipment and other supporting facilities are not",
         "label": "Moderate",
         "rating": 3
       },
       {
-        "guidance": "Sistem TI rusak/hilang/tidak tersedia/ terdampak tetapi Infrastruktur, perangkat jaringan dan perlengkapan elektronik serta fasilitas pendukung lainnya tidak terdampak",
+        "guidance": "IT systems are damaged, lost, unavailable or affected, but infrastructure, network devices, electronic equipment and other supporting facilities are not",
         "label": "Minor",
         "rating": 2
       },
       {
-        "guidance": "Sistem TI dan Infrastruktur termasuk perangkat jaringan dan perlengkapan elektronik dan fasilitas pendukungnya tidak terdampak",
+        "guidance": "IT systems and infrastructure, including network devices, electronic equipment and their supporting facilities, are not affected",
         "label": "Insignificant",
         "rating": 1
       }
     ],
     "monetary": [
       {
-        "guidance": "Kerugian aktual atau potensial ≥ Rp 3.5 milyar",
+        "guidance": "Actual or potential loss of Rp 3.5 billion or more",
         "label": "Critical",
         "rating": 5
       },
       {
-        "guidance": "Kerugian aktual atau potensial yang Rp 1.75 milyar ≤ x <Rp 3.5 Milyar",
+        "guidance": "Actual or potential loss of Rp 1.75 billion ≤ x < Rp 3.5 billion",
         "label": "Major",
         "rating": 4
       },
       {
-        "guidance": "Kerugian aktual atau potensial Rp 350 Juta ≤ x <Rp 1.75 milyar",
+        "guidance": "Actual or potential loss of Rp 350 million ≤ x < Rp 1.75 billion",
         "label": "Moderate",
         "rating": 3
       },
       {
-        "guidance": "Kerugian aktual atau potensial Rp 175 Juta ≤ x < Rp 350 Juta",
+        "guidance": "Actual or potential loss of Rp 175 million ≤ x < Rp 350 million",
         "label": "Minor",
         "rating": 2
       },
       {
-        "guidance": "Kerugian aktual atau potensial <Rp. 175 juta atau tidak ada kerugian",
+        "guidance": "Actual or potential loss below Rp 175 million, or no loss",
         "label": "Insignificant",
         "rating": 1
       }
     ],
     "probability": [
       {
-        "guidance": "Potensi terjadi satu kali dalam 1 bulan kedepan",
+        "guidance": "May happen once in the next month",
         "label": "Almost certain",
         "rating": 5
       },
       {
-        "guidance": "Potensi terjadi satu kali dalam 3 bulan kedepan",
+        "guidance": "May happen once in the next 3 months",
         "label": "Likely",
         "rating": 4
       },
       {
-        "guidance": "Potensi terjadi satu kali dalam 1 tahun kedepan",
+        "guidance": "May happen once in the next year",
         "label": "Possible",
         "rating": 3
       },
       {
-        "guidance": "Potensi terjadi satu kali dalam 3 tahun kedepan",
+        "guidance": "May happen once in the next 3 years",
         "label": "Unlikely",
         "rating": 2
       },
       {
-        "guidance": "Potensi terjadi satu kali dalam 5 tahun kedepan",
+        "guidance": "May happen once in the next 5 years",
         "label": "Rare",
         "rating": 1
       }
     ],
     "reputation": [
       {
-        "guidance": "Adanya atau potensi publikasi negatif pada media secara luas atau berulang pada media nasional di beberapa negara.",
+        "guidance": "Actual or potential wide or repeated negative coverage in national media in several countries",
         "label": "Critical",
         "rating": 5
       },
       {
-        "guidance": "Adanya atau potensi publikasi negatif pada media secara luas atau berulang pada media nasional di suatu negara.",
+        "guidance": "Actual or potential wide or repeated negative coverage in national media in one country",
         "label": "Major",
         "rating": 4
       },
       {
-        "guidance": "Adanya atau potensi publikasi negatif pada media nasional di satu negara.",
+        "guidance": "Actual or potential negative coverage in national media in one country",
         "label": "Moderate",
         "rating": 3
       },
       {
-        "guidance": "Adanya atau potensi publikasi negatif pada media lokal yang berdampak bagi reputasi perusahaan di satu negara.",
+        "guidance": "Actual or potential negative coverage in local media that affects the company's reputation in one country",
         "label": "Minor",
         "rating": 2
       },
       {
-        "guidance": "Publikasi negatif dari media yang berdampak minimal bagi reputasi perusahaan.",
+        "guidance": "Negative media coverage with minimal impact on the company's reputation",
         "label": "Insignificant",
         "rating": 1
       }
@@ -563,27 +563,27 @@
   "mitigation_examples": [
     {
       "area": "KEY PERSONNEL /LOSS OF PEOPLE",
-      "example": "Tersedianya karyawan pengganti yang mungkin memerlukan pelatihan atau kualifikasi khusus.\nInstruksi kerja dan skenario yang terperinci juga diperlukan untuk mendukung rencana tersebut."
+      "example": "Replacement staff are available, who may need training or special qualifications.\nDetailed work instructions and scenarios are also needed to support the plan."
     },
     {
       "area": "ACCESS TO OFFICE PREMISES",
-      "example": "Tersedianya fasilitas alternate site atau, dalam beberapa kasus, kemampuan untuk memperbaiki dengan cepat"
+      "example": "An alternate site is available or, in some cases, the premises can be repaired quickly."
     },
     {
       "area": "INFORMATION & RECORDS",
-      "example": "Upaya untuk memulihkan informasi dengan cara membuat ulang (cth. melakukan end of day ulang) atau mengembalikan (restore) data"
+      "example": "Information can be recovered by recreating it (e.g. running end of day again) or by restoring the data."
     },
     {
       "area": "IT & COMMUNICATION",
-      "example": "Terdapat backup rutin, Workaround proses (metode alternatif apabila terjadi masalah atau keterbatasan pada sistem/ aplikasi), Sistem Backup, Infrastruktur cadangan"
+      "example": "Regular backups, process workarounds (another way to work when a system or application has a problem or limit), backup systems and spare infrastructure are in place."
     },
     {
       "area": "FUNCTIONS",
-      "example": "Menyediakan atau menggunakan peralatan alternatif. Solusi lain yakni menggunakan peralatan dari pihak lain sementara peralatan utama masih diperbaiki"
+      "example": "Alternative equipment is provided or used. Another option is to use equipment from another party while the main equipment is repaired."
     },
     {
       "area": "KEY SUPPLIER/ VENDORS",
-      "example": "Memastikan pasokan material tersedia tepat waktu pada kondisi darurat.Ini mungkin perlu melakukan pemesanan sebelumnya, pemasok alternatif atau daftar keperluan  yang komprehensif.\nRincian pengaturan akan bervariasi sesuai dengan urgensi, volume dan keunikan dari kebutuhan pasokan."
+      "example": "Supplies of material arrive on time in an emergency. This may need advance orders, alternative suppliers or a comprehensive list of needs.\nThe details vary with the urgency, volume and uniqueness of the supply needed."
     }
   ],
   "name": "HO Risk Assessment Location Version 2025 r4",

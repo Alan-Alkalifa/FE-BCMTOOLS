@@ -27,7 +27,7 @@ function version(formula: { kind: string, code: string, name: string }, code: st
     used_by: status === 'active' ? 3 : 0,
     stored_texts: { type_description: null, hazard_intro: null, signoff_statement_en: null, risk_summary_note_en: null },
     default_texts: { hazard_intro: texts.hazard_intro, signoff_statement_en: texts.signoff_statement_en },
-    default_roles: texts.signoff_role_labels,
+    default_steps: texts.signoff_steps,
     problems: [],
     can: status === 'draft' ? { edit: true, request_publish: true, withdraw_request: false, publish: false, discard: true } : NO_ACTIONS,
     ...extra,
@@ -37,11 +37,13 @@ function version(formula: { kind: string, code: string, name: string }, code: st
 /** Administration > RA configuration: RA 2025-r4 active with a 2025-r5 draft; RA Branch active only. */
 async function mockRaConfig(page: Page) {
   await signIn(page)
+  await page.route('**/api/users**', (route) => route.fulfill({ json: { items: [{ id: 9, display_name: 'Dewi Lestari', email: 'dewi@example.co.id', job_title: 'BCM Head', department: 'BCM' }] } }))
   const calls: Call[] = []
   const active = version(FORMULA, FORMULA.code, 'active')
   let draft = version(FORMULA, '2025-r5', 'draft')
   const branch = version(BRANCH_FORMULA, BRANCH_FORMULA.code, 'active')
   const divisions = DIVISIONS.map((row, index) => ({ ...row, used_by: index === 0 ? 4 : 0 }))
+  const signers: Record<string, { id: number, display_name: string, email: string, job_title: string, department: string } | null> = {}
   let settings = {
     reminders_enabled: true, reminder_after_days: 3, reminder_every_days: 2, escalate_after_days: 7,
     extra_escalation_emails: [], renewal_notice_days: [90, 30, 7], overdue_repeat_days: 30,
@@ -70,9 +72,23 @@ async function mockRaConfig(page: Page) {
       draft = { ...draft, categories: draft.categories.map((category, c) => ({ ...category, hazards: category.hazards.map((hazard, h) => ({ ...hazard, short_name: sent.categories[c]!.hazards[h]!.short_name })) })) }
       return route.fulfill({ json: draft })
     }
-    if (path.endsWith('/roles')) {
-      draft = { ...draft, signoff_role_labels: (body as { roles: typeof draft.signoff_role_labels }).roles }
+    if (path.endsWith('/steps')) {
+      const sent = (body as { steps: typeof draft.signoff_steps }).steps
+      draft = { ...draft, signoff_steps: sent.map((row) => ({ ...row, role: row.code })) }
       return route.fulfill({ json: draft })
+    }
+    if (path.endsWith('/signers') && request.method() === 'GET') {
+      const items = draft.signoff_steps
+        .filter((row) => row.signer_mode === 'default' || row.signer_mode === 'fixed')
+        .map((row) => ({ ...row, versions: [{ code: draft.code, status: 'draft' }], signer: signers[row.code] ?? null, problem: null, updated_by: null, updated_at: null }))
+      return route.fulfill({ json: { items } })
+    }
+    if (path.includes('/signers/')) {
+      const code = path.split('/').pop()!
+      const userId = (body as { user_id: number | null }).user_id
+      signers[code] = userId ? { id: userId, display_name: 'Dewi Lestari', email: 'dewi@example.co.id', job_title: 'BCM Head', department: 'BCM' } : null
+      const row = draft.signoff_steps.find((item) => item.code === code)!
+      return route.fulfill({ json: { ...row, versions: [{ code: draft.code, status: 'draft' }], signer: signers[code], problem: null, updated_by: 'Test User', updated_at: '2026-10-29T03:00:00Z' } })
     }
     if (path.endsWith('/texts')) {
       draft = { ...draft, stored_texts: { ...draft.stored_texts, ...(body as object) } }
@@ -131,15 +147,40 @@ test('the draft opens first; editing a hazard and requesting the publish', async
   await expect(page.getByRole('button', { name: 'Publish 2025-r5' })).toHaveCount(0)
 })
 
-test('the sign-off role titles and the statements are edited per version', async ({ page }) => {
+test('the sign-off steps are configured like SCCA, and the statements are edited per version', async ({ page }) => {
   const calls = await mockRaConfig(page)
+  // ?tab=roles, the tab's older name, opens Sign-off steps.
   await page.goto('/admin/ra-config?tab=roles')
+  await expect(page.getByRole('tab', { name: 'Sign-off steps' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
   const title = page.getByRole('textbox', { name: 'Title of step 1' })
-  await expect(title).toHaveValue('Location Incident Coordinator (LIC)', { timeout: 60_000 })
+  await expect(title).toHaveValue('Location Incident Coordinator (LIC)')
+  await expect(page.getByRole('combobox', { name: 'Signer of step 1' })).toContainText('The LIC')
+  await expect(page.getByRole('combobox', { name: 'Report box of step 1' })).toContainText('Box 1')
   await title.fill('Building Incident Coordinator (LIC)')
-  await page.getByRole('button', { name: 'Save roles' }).click()
-  await expect(page.getByText('Sign-off roles saved').first()).toBeVisible()
-  expect((calls.find((call) => call.path.endsWith('/roles'))!.body as { roles: { title: string }[] }).roles[0]!.title).toBe('Building Incident Coordinator (LIC)')
+  // The last step is always required; a new step goes before it.
+  await expect(page.getByRole('switch', { name: 'Required' }).last()).toBeDisabled()
+  await page.getByRole('button', { name: 'Add step' }).click()
+  await page.getByRole('textbox', { name: 'Code of step 4' }).fill('checked_by_risk')
+  await page.getByRole('textbox', { name: 'Label of step 4' }).fill('Checked by')
+  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Operational Risk')
+  await page.getByRole('switch', { name: 'Required' }).nth(3).click()
+  await page.getByRole('button', { name: 'Move step 4 up' }).click()
+  // The BCM head step gets a fixed signer.
+  await page.getByRole('combobox', { name: 'Signer of step 5' }).click()
+  await page.getByRole('option', { name: /^Fixed/ }).click()
+  await expect(page.getByText('Save the steps, then pick the fixed signer here.')).toBeVisible()
+  await page.getByRole('button', { name: 'Save steps' }).click()
+  await expect(page.getByText('Sign-off steps saved').first()).toBeVisible()
+  const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, title: string, mandatory: boolean, signer_mode: string }[] }).steps
+  expect(sent.map((row) => row.code)).toEqual(['prepared_by', 'acknowledged_by_unit', 'checked_by_risk', 'reviewed_by', 'acknowledged_by_bcm'])
+  expect(sent[0]!.title).toBe('Building Incident Coordinator (LIC)')
+  expect(sent[2]).toMatchObject({ mandatory: false, signer_mode: 'chosen' })
+  expect(sent[4]).toMatchObject({ mandatory: true, signer_mode: 'fixed' })
+  await expect(page.getByText('Fixed signer', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Acknowledged by (Business Continuity Management Head) signer' }).click()
+  await page.getByRole('option', { name: /^Dewi Lestari/ }).click()
+  await expect(page.getByText('Acknowledged by (Business Continuity Management Head): Dewi Lestari', { exact: true })).toBeVisible()
+  expect(calls.find((call) => call.method === 'PUT' && call.path.includes('/signers/'))).toMatchObject({ path: '/api/admin/ra-config/signers/acknowledged_by_bcm', body: { user_id: 9 } })
 
   await page.getByRole('tab', { name: 'Statements and notes' }).click()
   const statement = page.getByRole('textbox', { name: 'Sign-off statement' })

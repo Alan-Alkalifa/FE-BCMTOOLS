@@ -5,15 +5,20 @@ import type { RaLocation } from '~/composables/useRa'
 
 /**
  * The Buildings register: head office buildings and branches in one table, filtered by type,
- * province and status (all in the URL), one page at a time. A row opens the building's profile.
+ * province and status and sorted by a column (all in the URL; the newest change first by
+ * default), one page at a time. A row opens the building's profile.
  * A new building, and making one inactive, waits for someone else's approval: the Status
- * Building column shows it, and the status filter lists the ones waiting.
+ * Building column shows it, and the status filter lists the ones waiting. Approving, rejecting
+ * and deleting are done on the building's page, not here.
  */
 const { can } = useAuth()
-const canEdit = computed(() => can('ra.edit'))
-const canDelete = computed(() => can('ra.edit', 'ra.manage'))
-const confirm = useConfirm()
-const toast = useToast()
+/** RA and RA Branch are granted separately: the register lists the sides the user holds. */
+const kinds = useRaKinds()
+const editKinds = useRaKinds('edit')
+const canEdit = computed(() => editKinds.value.length > 0)
+function canEditRow(location: RaLocation) {
+  return can(RA_MODULES[location.kind].perm.edit)
+}
 const route = useRoute()
 const router = useRouter()
 
@@ -35,6 +40,34 @@ const statusFilter = computed<StatusFilter>(() => {
 })
 const province = computed(() => text('province'))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
+
+/** Sortable columns and the direction a first click sorts them in. */
+const SORTS = { name: 'asc', kind: 'asc', province: 'asc', assessments: 'desc', updated_at: 'desc' } as const
+type SortKey = keyof typeof SORTS
+type SortDir = 'asc' | 'desc'
+const DEFAULT_SORT: SortKey = 'updated_at'
+const sortKey = computed<SortKey>(() => {
+  const value = text('sort')
+  return value && value in SORTS ? value as SortKey : DEFAULT_SORT
+})
+const sortDir = computed<SortDir>(() => {
+  const value = text('dir')
+  return value === 'asc' || value === 'desc' ? value : SORTS[sortKey.value]
+})
+function sortedBy(key: SortKey): SortDir | null {
+  return sortKey.value === key ? sortDir.value : null
+}
+function sortBy(key: SortKey) {
+  const dir: SortDir = sortKey.value === key ? (sortDir.value === 'asc' ? 'desc' : 'asc') : SORTS[key]
+  const isDefault = key === DEFAULT_SORT && dir === SORTS[DEFAULT_SORT]
+  const query: LocationQueryRaw = {
+    ...route.query,
+    sort: isDefault ? undefined : key,
+    dir: isDefault ? undefined : dir,
+    page: undefined,
+  }
+  router.replace({ query })
+}
 
 function setQuery(name: string, value: string | undefined) {
   const next = value === undefined || value === 'all' || value === '' ? undefined : value
@@ -61,13 +94,20 @@ const { data, status, error, refresh } = useRaLocationRegister(() => ({
   province: province.value,
   active: statusFilter.value === 'active' || statusFilter.value === 'inactive' ? statusFilter.value === 'active' : undefined,
   approval: statusFilter.value === 'pending' || statusFilter.value === 'rejected' ? statusFilter.value : undefined,
+  sort: sortKey.value,
+  dir: sortDir.value,
   page: page.value,
   per_page: PER_PAGE,
 }))
 const { data: provinceData } = useRaProvinces(type)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-const actionError = ref<string | null>(null)
 const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || province.value || statusFilter.value !== 'all'))
+function clearFilters() {
+  clearTimeout(searchTimer)
+  search.value = ''
+  // Clearing the filters keeps the sort.
+  router.replace({ query: { sort: text('sort'), dir: text('dir') } })
+}
 
 const typeItems = [
   { label: 'All types', value: 'all' as const },
@@ -90,11 +130,14 @@ const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'kind', header: 'Type' },
   { accessorKey: 'province', header: 'Province' },
-  { accessorKey: 'address', header: 'Address' },
+  // The address gives way on narrower screens so Last updated stays in view (it is on the building page).
+  { accessorKey: 'address', header: 'Address', meta: { class: { th: 'hidden 2xl:table-cell', td: 'hidden 2xl:table-cell' } } },
   { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
+  { id: 'latest_assessment', header: 'Latest assessment' },
   { id: 'latest', header: 'Latest residual' },
   { id: 'building_status', header: 'Status Building' },
-  { id: 'assessment_status', header: 'Status Assessment' },
+  { id: 'assessment_status', header: 'Status Assessment', meta: RA_STATUS_COLUMN },
+  { accessorKey: 'updated_at', header: 'Last updated' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
 
@@ -106,47 +149,11 @@ function openRow(_event: Event, row: { original: RaLocation }) {
   navigateTo(locationPath(row.original.id))
 }
 
-const addTo = computed(() => ({
-  path: `${LOCATIONS_PATH}/new`,
-  query: type.value === 'all' ? {} : { type: type.value },
-}))
-
-/** Approve or reject (with a reason) a building waiting for someone else's approval. */
-const dialogs = useRaApprovalDialogs()
-async function decide(location: RaLocation, decision: 'approve' | 'reject') {
-  actionError.value = null
-  const action = location.approval?.action
-  const note = decision === 'approve' ? await dialogs.approve(noun(location), action) : await dialogs.reject(noun(location), action)
-  if (note === false) return
-  try {
-    if (decision === 'approve') await raApi.approveLocation(location.id, note || null)
-    else await raApi.rejectLocation(location.id, note)
-    toast.add({ title: `${location.name} ${decision === 'approve' ? 'approved' : 'rejected'}`, color: 'success', icon: 'i-lucide-circle-check' })
-    await refresh()
-  } catch (err) {
-    actionError.value = apiErrorMessage(err)
-  }
-}
-
-async function remove(location: RaLocation) {
-  actionError.value = null
-  const ok = await confirm({
-    title: `Delete '${location.name}'?`,
-    description: `This permanently removes the ${noun(location)}. Buildings with assessments can only be deactivated.`,
-    confirmLabel: `Delete ${noun(location)}`,
-    destructive: true,
-  })
-  if (!ok) return
-  try {
-    await raApi.removeLocation(location.id)
-    toast.add({ title: `${RA_MODULES[location.kind].location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
-    await refresh()
-  } catch (err) {
-    actionError.value = raIsConflict(err)
-      ? `'${location.name}' has assessments, so it can't be deleted. Open it and clear Active instead.`
-      : apiErrorMessage(err)
-  }
-}
+const addTo = computed(() => {
+  const only = editKinds.value.length === 1 ? editKinds.value[0] : undefined
+  const kind = type.value === 'all' ? only : type.value
+  return { path: `${LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
+})
 </script>
 
 <template>
@@ -175,7 +182,7 @@ async function remove(location: RaLocation) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="9"
+      :columns="11"
       :rows="5"
       label="Loading buildings"
     />
@@ -202,24 +209,30 @@ async function remove(location: RaLocation) {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <UAlert
-        v-if="actionError"
-        class="m-4 mb-0"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-circle-alert"
-        title="That didn't work"
-        :description="actionError"
-      />
-      <div class="flex flex-wrap items-center gap-2 p-4">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Search by name, city, province or address"
-          class="w-full sm:w-64"
-          aria-label="Search by name, city, province or address"
+      <!-- As SCCA: search, then status → type → province (ListFilterBar). -->
+      <ListFilterBar
+        :filtered="hasFilters"
+        @clear="clearFilters"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Name, ID, city, province or address"
+            class="w-full"
+            aria-label="Search by name, ID, city, province or address"
+          />
+        </template>
+        <USelectMenu
+          v-model="statusModel"
+          value-key="value"
+          :items="statusItems"
+          :search-input="false"
+          class="w-44"
+          aria-label="Status"
         />
         <USelectMenu
+          v-if="kinds.length > 1"
           v-model="typeModel"
           value-key="value"
           :items="typeItems"
@@ -234,15 +247,7 @@ async function remove(location: RaLocation) {
           class="w-44"
           aria-label="Province"
         />
-        <USelectMenu
-          v-model="statusModel"
-          value-key="value"
-          :items="statusItems"
-          :search-input="false"
-          class="w-44"
-          aria-label="Status"
-        />
-      </div>
+      </ListFilterBar>
 
       <UTable
         :data="data?.items ?? []"
@@ -252,6 +257,42 @@ async function remove(location: RaLocation) {
         :on-select="openRow"
         :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
       >
+        <template #name-header>
+          <SortHeader
+            label="Name"
+            :direction="sortedBy('name')"
+            @sort="sortBy('name')"
+          />
+        </template>
+        <template #kind-header>
+          <SortHeader
+            label="Type"
+            :direction="sortedBy('kind')"
+            @sort="sortBy('kind')"
+          />
+        </template>
+        <template #province-header>
+          <SortHeader
+            label="Province"
+            :direction="sortedBy('province')"
+            @sort="sortBy('province')"
+          />
+        </template>
+        <template #assessment_count-header>
+          <SortHeader
+            label="Assessments"
+            end
+            :direction="sortedBy('assessments')"
+            @sort="sortBy('assessments')"
+          />
+        </template>
+        <template #updated_at-header>
+          <SortHeader
+            label="Last updated"
+            :direction="sortedBy('updated_at')"
+            @sort="sortBy('updated_at')"
+          />
+        </template>
         <template #name-cell="{ row }">
           <NuxtLink
             :to="locationPath(row.original.id)"
@@ -259,6 +300,12 @@ async function remove(location: RaLocation) {
           >
             {{ row.original.name }}
           </NuxtLink>
+          <p
+            v-if="row.original.code"
+            class="text-xs text-muted"
+          >
+            {{ row.original.code }}
+          </p>
         </template>
         <template #kind-cell="{ row }">
           <StatusBadge
@@ -289,25 +336,27 @@ async function remove(location: RaLocation) {
         <template #assessment_count-cell="{ row }">
           {{ formatNumber(row.original.assessment_count, 0) }}
         </template>
-        <template #latest-cell="{ row }">
-          <div
+        <template #latest_assessment-cell="{ row }">
+          <NuxtLink
             v-if="row.original.latest_assessment"
-            class="flex items-center gap-2"
+            :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
+            class="whitespace-nowrap text-primary hover:underline"
+            @click.stop
           >
-            <NuxtLink
-              :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
-              class="whitespace-nowrap text-primary hover:underline"
-              @click.stop
-            >
-              {{ row.original.latest_assessment.ref_no }}
-            </NuxtLink>
-            <StatusBadge
-              v-if="row.original.latest_assessment.highest_residual_level"
-              :scale="raRiskLevel"
-              :value="row.original.latest_assessment.highest_residual_level"
-              size="sm"
-            />
-          </div>
+            {{ row.original.latest_assessment.ref_no }}
+          </NuxtLink>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #latest-cell="{ row }">
+          <StatusBadge
+            v-if="row.original.latest_assessment?.highest_residual_level"
+            :scale="raRiskLevel"
+            :value="row.original.latest_assessment.highest_residual_level"
+            size="sm"
+          />
           <span
             v-else
             class="text-muted"
@@ -321,10 +370,11 @@ async function remove(location: RaLocation) {
           />
         </template>
         <template #assessment_status-cell="{ row }">
+          <!-- Draft (also when returned), In approval or Approved. -->
           <StatusBadge
             v-if="row.original.latest_assessment"
             :scale="raStatus"
-            :value="raStatusKey(row.original.latest_assessment)"
+            :value="row.original.latest_assessment.status"
             size="sm"
           />
           <span
@@ -332,50 +382,29 @@ async function remove(location: RaLocation) {
             class="text-muted"
           >No RA yet</span>
         </template>
+        <template #updated_at-cell="{ row }">
+          <UTooltip
+            v-if="row.original.updated_at"
+            :text="formatDateTime(row.original.updated_at) ?? ''"
+          >
+            <span class="whitespace-nowrap tabular-nums">{{ formatDate(row.original.updated_at) }}</span>
+          </UTooltip>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center justify-end gap-1">
-            <template v-if="row.original.approval_can?.approve">
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-badge-check"
-                label="Approve"
-                :aria-label="`Approve ${row.original.name}`"
-                @click.stop="decide(row.original, 'approve')"
-              />
-              <UButton
-                color="error"
-                variant="ghost"
-                size="sm"
-                icon="i-lucide-circle-x"
-                label="Reject"
-                :aria-label="`Reject ${row.original.name}`"
-                @click.stop="decide(row.original, 'reject')"
-              />
-            </template>
-            <UTooltip :text="canEdit ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
+            <UTooltip :text="canEditRow(row.original) ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
                 :to="locationPath(row.original.id)"
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                :icon="canEdit ? 'i-lucide-pencil' : 'i-lucide-eye'"
-                :aria-label="`${canEdit ? 'Edit' : 'Open'} ${row.original.name}`"
+                :icon="canEditRow(row.original) ? 'i-lucide-pencil' : 'i-lucide-eye'"
+                :aria-label="`${canEditRow(row.original) ? 'Edit' : 'Open'} ${row.original.name}`"
                 @click.stop
-              />
-            </UTooltip>
-            <UTooltip
-              v-if="canDelete"
-              :text="`Delete ${noun(row.original)}`"
-            >
-              <UButton
-                color="error"
-                variant="ghost"
-                size="sm"
-                icon="i-lucide-trash-2"
-                :aria-label="`Delete ${row.original.name}`"
-                @click.stop="remove(row.original)"
               />
             </UTooltip>
           </div>

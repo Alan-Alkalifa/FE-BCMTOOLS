@@ -75,7 +75,7 @@ async function save() {
           variant="subtle"
           icon="i-lucide-triangle-alert"
           :title="`You approve ${step.step} for ${step.signer ?? 'its signer'}.`"
-          description="Use this only when the signer approved outside BCM Tools. The step shows “by you on their behalf; evidence attached” on the RA and both reports, and the signer is emailed."
+          description="Use this only when the signer approved outside BCM Tools. The step shows “by you on their behalf” and “Evidence attached” on the RA and both reports, and the signer is emailed."
         />
         <UFormField
           label="Reason"

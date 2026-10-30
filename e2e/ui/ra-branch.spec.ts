@@ -8,7 +8,7 @@ const ASSESSMENT = `/ra-branch/manage/${BRANCH_ASSESSMENT_ID}`
 test('the home page links to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'RA Branch' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'RA Branch', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
   await expect(main.getByRole('link', { name: 'Branches' })).toHaveCount(0)
   await main.locator('a[href="/ra-branch/monitoring"]').click()
@@ -86,11 +86,14 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   await expect(page.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
 })
 
-test('a branch has occupants, a recovery team and a call tree, and no Region field', async ({ page }) => {
+test('a branch has occupants, a recovery team and a call tree; without the region list its region is typed', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/locations/${BRANCH_ID}`)
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KCP Bogor Pajajaran', { timeout: 60_000 })
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  // No region directory loaded (it comes from LDAP in production): a free-text Region.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
+  await expect(page.getByText('The region list comes from LDAP.')).toBeVisible()
+  await expect(page.getByLabel('Area')).toHaveCount(0)
   for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(page.getByRole('tab', { name })).toBeVisible()
   }
@@ -129,9 +132,58 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta' })
 })
 
+test('a branch\'s region and area are picked from the region directory, with their heads', async ({ page }) => {
+  const log = await mockRa(page, { regions: true })
+  await page.goto('/locations/new?type=branch')
+  await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Dago', { timeout: 60_000 })
+  await fillAddress(page)
+  const area = page.getByRole('button', { name: 'Area', exact: true })
+  await expect(area).toBeDisabled()
+  await page.getByRole('button', { name: 'Add branch' }).click()
+  await expect(page.getByText('Choose the region.')).toBeVisible()
+  expect(log.created).toHaveLength(0)
+
+  await page.getByRole('button', { name: 'Region', exact: true }).click()
+  await page.getByRole('option', { name: /Network - Jabar & Jateng Region/ }).click()
+  const organisation = page.getByTestId('branch-organisation')
+  await expect(organisation).toContainText('Network & Digital Banking')
+  await expect(organisation).toContainText('Region Head Jabar (KC - Bandung - Asia Afrika - BAA, Bandung)')
+  await page.getByRole('button', { name: 'Add branch' }).click()
+  await expect(page.getByText('Choose the area.')).toBeVisible()
+  await area.click()
+  // Only the areas of the region picked.
+  await expect(page.getByRole('option', { name: /Jakarta Region Area I/ })).toHaveCount(0)
+  await page.getByRole('option', { name: /Jabar Area II/ }).click()
+  await expect(organisation).toContainText('Area Head Jabar II (KC - Bandung - Dago - DGO, Bandung)')
+  // Another region drops an area that isn't its own.
+  await page.getByRole('button', { name: 'Region', exact: true }).click()
+  await page.getByRole('option', { name: /Network - Jakarta Region/ }).click()
+  await expect(area).not.toContainText('Jabar')
+  await area.click()
+  await page.getByRole('option', { name: /Jakarta Region Area I/ }).click()
+  await page.getByRole('button', { name: 'Add branch' }).click()
+  await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
+  expect(log.created[0]).toMatchObject({ kind: 'branch', region: 'Network - Jakarta Region', area: 'Jakarta Region Area I' })
+})
+
 test('a branch assessment opened under RA moves to RA Branch', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/ra/${BRANCH_ASSESSMENT_ID}?tab=summary`)
   await expect(page).toHaveURL(new RegExp(`/ra-branch/manage/${BRANCH_ASSESSMENT_ID}\\?tab=summary$`), { timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'RA Branch' })).toBeVisible()
+})
+
+test('an RA Branch user works on branches only', async ({ page }) => {
+  // RA (head office) and RA Branch are granted separately (ra.* and ra_branch.*).
+  await mockRa(page, { permissions: ['ra_branch.access', 'ra_branch.edit'] })
+  await page.goto('/locations')
+  await expect(page.getByRole('link', { name: 'Input building data' })).toHaveAttribute('href', '/locations/new?type=branch', { timeout: 60_000 })
+  // Only one side: no Type filter.
+  await expect(page.getByLabel('Type', { exact: true })).toHaveCount(0)
+  const sidebar = page.getByRole('navigation', { name: 'Main' })
+  await expect(sidebar.getByRole('link', { name: 'Buildings' })).toBeVisible()
+  await expect(sidebar.locator('a[href="/ra-branch/manage"]')).toHaveCount(1)
+  await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
+  await page.goto('/ra/manage')
+  await expect(page).toHaveURL(/\/forbidden\?from=/, { timeout: 60_000 })
 })

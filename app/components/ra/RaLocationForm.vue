@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type { RaLocationDetail } from '~/composables/useRa'
+import type { RaLocationDetail, RaNetworkHead } from '~/composables/useRa'
 
 /**
  * Building Data Entry: a head office building or a branch. The type is picked in the form
  * (`v-model:kind`, fixed when the link gives it, read-only once saved), with the description
  * RA configuration gives each type. Every field is required.
+ *
+ * A branch also gets its place in the Network organisation: its Region (the Sub Directorate)
+ * and Area (the Group) from the region directory (the DataRegion sheet; LDAP in production),
+ * with their heads shown. While the directory is empty the region is free text.
  */
 const props = withDefaults(defineProps<{
   location?: RaLocationDetail
@@ -44,6 +48,12 @@ const typeModel = computed<RaKind>({
   },
 })
 
+const { data: directory } = useRaRegionDirectory()
+const isBranch = computed(() => ra.value.kind === 'branch')
+const regionList = computed(() => directory.value?.items ?? [])
+/** Pick from the directory once it has regions; type the region while it has none. */
+const fromDirectory = computed(() => regionList.value.length > 0)
+
 const schema = computed(() => z.object({
   name: z.string().trim().min(1, ra.value.kind === 'branch' ? 'Enter the branch name.' : 'Enter the building name.'),
   address: z.string().trim().min(1, 'Enter the address.'),
@@ -52,6 +62,16 @@ const schema = computed(() => z.object({
   district: z.string().trim().min(1, 'Enter the district.'),
   zip_code: z.string().trim().min(1, 'Enter the zip code.').max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.'),
   is_active: z.boolean(),
+  region: z.string(),
+  area: z.string(),
+}).superRefine((value, context) => {
+  if (!isBranch.value || !fromDirectory.value) return
+  const region = regionList.value.find((item) => item.region === value.region)
+  if (!region) {
+    context.addIssue({ code: 'custom', path: ['region'], message: 'Choose the region.' })
+  } else if (region.areas.length && !region.areas.some((item) => item.area === value.area)) {
+    context.addIssue({ code: 'custom', path: ['area'], message: 'Choose the area.' })
+  }
 }))
 type State = z.infer<typeof schema.value>
 
@@ -63,12 +83,48 @@ function fromLocation(location?: RaLocationDetail): State {
     city: location?.city ?? '',
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
+    region: location?.region ?? '',
+    area: location?.area ?? '',
     // Cleared while its deactivation waits for approval; ticking it again withdraws that.
     is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
   }
 }
 
 const state = reactive<State>(fromLocation(props.location))
+
+const regionItems = computed(() => {
+  const items = regionList.value.map((item) => ({
+    label: item.region,
+    value: item.region,
+    description: [item.head, item.city && titleCase(item.city)].filter(Boolean).join(' · ') || undefined,
+  }))
+  // A branch saved before the directory keeps its region until it is changed.
+  if (state.region && !items.some((item) => item.value === state.region)) {
+    items.unshift({ label: state.region, value: state.region, description: 'Not in the region list' })
+  }
+  return items
+})
+const pickedRegion = computed(() => regionList.value.find((item) => item.region === state.region) ?? null)
+const areaItems = computed(() => (pickedRegion.value?.areas ?? []).map((item) => ({
+  label: item.area,
+  value: item.area,
+  description: [item.head, item.city && titleCase(item.city)].filter(Boolean).join(' · ') || undefined,
+})))
+const pickedArea = computed(() => pickedRegion.value?.areas.find((item) => item.area === state.area) ?? null)
+/** A new region keeps the area only if it is one of its own. */
+watch(() => state.region, () => {
+  if (fromDirectory.value && !areaItems.value.some((item) => item.value === state.area)) state.area = ''
+})
+
+/** "KC - Bandung - Asia Afrika - BAA, Bandung": where a head works. */
+function headLine(unit: RaNetworkHead | null) {
+  if (!unit) return null
+  const where = [unit.office, unit.city && titleCase(unit.city)].filter(Boolean).join(', ')
+  return [unit.head ?? 'No head listed', where && `(${where})`].filter(Boolean).join(' ')
+}
+function titleCase(text: string) {
+  return text.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())
+}
 
 function reset(location?: RaLocationDetail) {
   Object.assign(state, fromLocation(location))
@@ -84,7 +140,13 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const body = blankToNull({ ...state, name: state.name.trim() })
+    const { region, area, ...fields } = state
+    const body = blankToNull({
+      ...fields,
+      name: state.name.trim(),
+      // Only a branch has a region and area.
+      ...(isBranch.value ? { region: region.trim(), area: area.trim() } : {}),
+    })
     const saved = props.location
       ? await raApi.updateLocation(props.location.id, body)
       : await raApi.createLocation({ ...body, kind: ra.value.kind })
@@ -93,7 +155,7 @@ async function onSubmit() {
     // A new building, and making one inactive, wait for someone else's approval.
     const asked = saved.approval?.status === 'pending' && saved.approval.action === 'deactivate' && props.location?.approval?.action !== 'deactivate'
     toast.add({
-      title: props.location ? (asked ? `${noun} saved; making it inactive waits for approval` : `${noun} saved`) : `${noun} added; it waits for approval`,
+      title: props.location ? (asked ? `${noun} saved. Making it inactive waits for approval` : `${noun} saved`) : `${noun} added. It waits for approval`,
       color: 'success',
       icon: 'i-lucide-circle-check',
     })
@@ -159,6 +221,78 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
+        <!-- A branch's place in the Network organisation (the region directory; LDAP in
+             production): Region = Sub Directorate, Area = Group. -->
+        <template v-if="isBranch">
+          <div
+            v-if="fromDirectory"
+            class="space-y-4"
+          >
+            <UFormField
+              label="Region"
+              name="region"
+              required
+              help="The Sub Directorate of Network & Digital Banking."
+            >
+              <USelectMenu
+                v-model="state.region"
+                value-key="value"
+                :items="regionItems"
+                placeholder="Choose the region"
+                class="w-full"
+                aria-label="Region"
+              />
+            </UFormField>
+            <UFormField
+              label="Area"
+              name="area"
+              :required="areaItems.length > 0"
+              :help="state.region ? (areaItems.length ? 'The Group within the region.' : 'This region has no areas.') : 'Choose the region first.'"
+            >
+              <USelectMenu
+                v-model="state.area"
+                value-key="value"
+                :items="areaItems"
+                :disabled="!areaItems.length"
+                placeholder="Choose the area"
+                class="w-full"
+                aria-label="Area"
+              />
+            </UFormField>
+            <dl
+              v-if="pickedRegion"
+              class="grid gap-x-4 gap-y-1 rounded-md bg-elevated/50 p-3 text-sm sm:grid-cols-[auto_1fr]"
+              data-testid="branch-organisation"
+            >
+              <dt class="text-muted">
+                Directorate
+              </dt>
+              <dd>{{ pickedRegion.directorate }}</dd>
+              <dt class="text-muted">
+                Region head
+              </dt>
+              <dd>{{ headLine(pickedRegion) ?? '—' }}</dd>
+              <template v-if="pickedArea">
+                <dt class="text-muted">
+                  Area head
+                </dt>
+                <dd>{{ headLine(pickedArea) }}</dd>
+              </template>
+            </dl>
+          </div>
+          <UFormField
+            v-else
+            label="Region"
+            name="region"
+            help="The region list comes from LDAP."
+          >
+            <UInput
+              v-model="state.region"
+              placeholder="e.g. Network - Jabar & Jateng Region"
+              class="w-full"
+            />
+          </UFormField>
+        </template>
         <UFormField
           label="Address"
           name="address"

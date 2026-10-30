@@ -161,7 +161,7 @@ async function onSubmit() {
     :title="editing ? `Update ${crisis!.ref_no}` : 'Declare an incident'"
     :description="editing
       ? 'What changes is added to the incident history.'
-      : 'It shows on the building map as pending until someone else with the approve permission confirms it; then it is open until it is closed. Each affected place gets its instructions.'"
+      : 'It shows on the building map as pending until someone else with the approve permission confirms it. Then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
   >

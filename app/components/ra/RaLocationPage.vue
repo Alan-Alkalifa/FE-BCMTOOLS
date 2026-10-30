@@ -10,7 +10,6 @@ const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
-const toast = useToast()
 
 const id = computed(() => Number(route.params.id))
 const { data: location, status, error, refresh } = useRaLocation(id)
@@ -90,7 +89,7 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'period_year', header: 'Period' },
   { accessorKey: 'due_date', header: 'Renewal due' },
   { accessorKey: 'highest_residual_level', header: 'Highest residual' },
-  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
 
 // Every field is required except the home phone (the API checks the same).
@@ -123,30 +122,7 @@ function saveCallTree(rows: RowValues[]) {
 
 const { can } = useAuth()
 /** Without ra.edit the profile is read-only (the API refuses changes too). */
-const canEdit = computed(() => can('ra.edit'))
-const canDelete = computed(() => Boolean(location.value?.can_delete && !location.value.assessments.length))
-
-async function removeLocation() {
-  if (!location.value) return
-  const ok = await confirm({
-    title: `Delete '${location.value.name}'?`,
-    description: ra.value.hasLcp
-      ? `This permanently removes the ${ra.value.location.lower} with its emergency contacts, divisions, recovery team and call tree.`
-      : 'This permanently removes the branch with its emergency contacts.',
-    confirmLabel: `Delete ${ra.value.location.lower}`,
-    destructive: true,
-  })
-  if (!ok) return
-  try {
-    dirty.value = false
-    await raApi.removeLocation(location.value.id)
-    toast.add({ title: `${ra.value.location.single} deleted`, color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(LOCATIONS_PATH)
-  } catch (err) {
-    toast.add({ title: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
-  }
-}
-
+const canEdit = computed(() => can(ra.value.perm.edit))
 function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   navigateTo(raRecordPath(ra.value.kind, row.original))
 }
@@ -155,6 +131,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
 <template>
   <AppPage
     :title="location?.name ?? ra.location.single"
+    :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
       { label: BUILDINGS_GROUP },
       { label: 'Buildings', to: LOCATIONS_PATH },
@@ -167,14 +144,6 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
         :to="{ path: raPath(ra.kind, 'manage', 'new'), query: { location_id: location.id } }"
         icon="i-lucide-plus"
         label="New assessment"
-      />
-      <UButton
-        v-if="canDelete"
-        color="error"
-        variant="soft"
-        icon="i-lucide-trash-2"
-        :label="`Delete ${ra.location.lower}`"
-        @click="removeLocation"
       />
     </template>
 

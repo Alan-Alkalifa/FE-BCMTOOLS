@@ -4,6 +4,8 @@ import type { RaAssessment } from '~/composables/useRa'
 /** The waiting step an RA action is for, as the BCM board or the Sign-off tab shows it. */
 export interface RaWaitingStep {
   id: number
+  /** RA (head office) or RA Branch: the new signer needs access to that side. */
+  kind: RaKind
   /** Ref. no. (or "#12") and the building, for the dialog's description. */
   ref: string
   location: string
@@ -17,6 +19,7 @@ export interface RaWaitingStep {
 const props = defineProps<{ step: RaWaitingStep }>()
 const emit = defineEmits<{ close: [assessment?: RaAssessment] }>()
 
+const side = computed(() => RA_MODULES[props.step.kind])
 const waited = computed(() => {
   const days = props.step.working_days_waiting
   if (days == null) return ''
@@ -38,7 +41,7 @@ async function save() {
     const result = await raApi.changeSigner(props.step.id, userId.value!, reason.value.trim())
     toast.add({
       title: 'Signer changed',
-      description: result.sent ? 'The new signer has been emailed.' : 'The email could not be sent; please let the new signer know.',
+      description: result.sent ? 'The new signer has been emailed.' : 'The email could not be sent. Please let the new signer know.',
       color: 'success',
       icon: 'i-lucide-circle-check',
     })
@@ -80,12 +83,12 @@ async function save() {
           label="New signer"
           name="user_id"
           required
-          help="An active user with RA access."
+          :help="`An active user with ${side.title} access.`"
           :error="errors.user_id"
         >
           <UserPicker
             v-model="userId"
-            permission="ra.access"
+            :permission="side.perm.access"
             aria-label="New signer"
           />
         </UFormField>
@@ -106,7 +109,7 @@ async function save() {
             :maxlength="TEXT_LIMITS.long"
             :rows="3"
             class="w-full"
-            placeholder="e.g. Kurniawati is on leave until 30 Oct; her deputy signs."
+            placeholder="e.g. Kurniawati is on leave until 30 Oct. Her deputy signs."
           />
         </UFormField>
       </form>

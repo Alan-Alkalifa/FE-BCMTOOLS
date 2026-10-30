@@ -14,6 +14,9 @@ export const ALL_PERMISSIONS = [
   'ra.access',
   'ra.edit',
   'ra.manage',
+  'ra_branch.access',
+  'ra_branch.edit',
+  'ra_branch.manage',
   'ra.crisis.declare',
   'ra.location.approve',
   'ra.config.view',
@@ -56,14 +59,14 @@ const MENUS = [
   { code: 'admin.mail', label: 'Email settings', icon: 'i-lucide-mail', route: '/admin/settings/email', parent: 'admin', permission: 'admin.settings.mail' },
   { code: 'admin.scca_config', label: 'SCCA configuration', icon: 'i-lucide-file-cog', route: '/admin/scca-config', parent: 'admin', permission: 'scca.config.view' },
   { code: 'admin.audit', label: 'Audit log', icon: 'i-lucide-scroll-text', route: '/admin/audit', parent: 'admin', permission: 'admin.audit.view' },
-  { code: 'ra', label: 'RA', icon: 'i-lucide-building-2', route: null, parent: null, permission: null },
+  { code: 'ra', label: 'RA HO', icon: 'i-lucide-building-2', route: null, parent: null, permission: null },
   { code: 'ra.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra/monitoring', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra/manage', parent: 'ra', permission: 'ra.access' },
   { code: 'ra.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra/approval', parent: 'ra', permission: 'ra.access' },
   { code: 'ra_branch', label: 'RA Branch', icon: 'i-lucide-landmark', route: null, parent: null, permission: null },
-  { code: 'ra_branch.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra-branch/monitoring', parent: 'ra_branch', permission: 'ra.access' },
-  { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra.access' },
-  { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra.access' },
+  { code: 'ra_branch.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/ra-branch/monitoring', parent: 'ra_branch', permission: 'ra_branch.access' },
+  { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra_branch.access' },
+  { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
   { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
   { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
@@ -75,7 +78,10 @@ const MENUS = [
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
 export function menuFor(permissions: string[]) {
-  const visible = MENUS.filter((m) => !m.permission || permissions.includes(m.permission))
+  // As the backend: the shared Location menus open with RA or RA Branch access.
+  const shared: Record<string, string> = { 'ra.access': 'ra_branch.access', 'ra.edit': 'ra_branch.edit' }
+  const visible = MENUS.filter((m) => !m.permission || permissions.includes(m.permission)
+    || (m.parent === 'locations' && permissions.includes(shared[m.permission] ?? '')))
   const node = (m: (typeof MENUS)[number], id: number) => ({
     id,
     code: m.code,

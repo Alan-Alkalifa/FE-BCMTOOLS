@@ -48,18 +48,25 @@ export { ASSESSMENT, BRANCH_ASSESSMENT, BRANCH_FORMULA, BRANCH_LOCATION, FORMULA
 export const HAZARD_INTRO = 'Identify all threats relevant to the location. Threats that are not relevant to the workplace do not need to be filled in and may be marked as Not Applicable (NA). Threats classified as "Historical of Occurrence" must be assessed.'
 export const STATEMENT_EN = 'I declare that the Risk Assessment carried out on the business functions is ACCURATE and CORRECT.'
 export const CIM_NOTE_EN = 'All threats with a Residual Risk above "Medium" must be followed up through Control Issue Management (CIM) by the unit concerned.'
-const ROLE_LABELS = {
-  head_office: [
-    { role: 'prepared_by', label: 'Prepared by', title: 'Location Incident Coordinator (LIC)' },
-    { role: 'acknowledged_by_unit', label: 'Acknowledged by', title: 'Unit Critical Business Function' },
-    { role: 'reviewed_by', label: 'Reviewed by', title: 'Alternate Location Incident Commander' },
-    { role: 'acknowledged_by_bcm', label: 'Acknowledged by', title: 'Business Continuity Management Head' },
-  ],
-  branch: [
-    { role: 'prepared_by', label: 'Prepared by', title: 'BOSM' },
-    { role: 'approved_by', label: 'Approved by', title: 'Branch Manager (BM)' },
-    { role: 'reviewed_by', label: 'Reviewed by', title: 'NRSOH' },
-  ],
+type Mode = 'chosen' | 'default' | 'fixed' | 'lic' | 'licom'
+function steps(rows: [string, string, string, Mode][]) {
+  return rows.map(([code, label, title, mode], index) => ({
+    code, role: code, label, title, mandatory: true, signer_mode: mode, signer_roles: [] as string[], report_box: index + 1 as number | null,
+  }))
+}
+/** The workbooks' sign-off steps (the backend's texts.default_steps). */
+export const SIGNOFF_STEPS = {
+  head_office: steps([
+    ['prepared_by', 'Prepared by', 'Location Incident Coordinator (LIC)', 'lic'],
+    ['acknowledged_by_unit', 'Acknowledged by', 'Unit Critical Business Function', 'chosen'],
+    ['reviewed_by', 'Reviewed by', 'Alternate Location Incident Commander', 'licom'],
+    ['acknowledged_by_bcm', 'Acknowledged by', 'Business Continuity Management Head', 'chosen'],
+  ]),
+  branch: steps([
+    ['prepared_by', 'Prepared by', 'BOSM', 'lic'],
+    ['approved_by', 'Approved by', 'Branch Manager (BM)', 'chosen'],
+    ['reviewed_by', 'Reviewed by', 'NRSOH', 'licom'],
+  ]),
 }
 
 export function withTexts<T extends { kind: string }>(formula: T) {
@@ -70,7 +77,7 @@ export function withTexts<T extends { kind: string }>(formula: T) {
     signoff_statement_en: STATEMENT_EN,
     risk_summary_note_en: CIM_NOTE_EN,
     type_description: formula.kind === 'branch' ? 'The branch that is assessed each RA cycle.' : 'The building or work location that is assessed each RA cycle.',
-    signoff_role_labels: ROLE_LABELS[formula.kind as keyof typeof ROLE_LABELS],
+    signoff_steps: SIGNOFF_STEPS[formula.kind as keyof typeof SIGNOFF_STEPS],
   }
 }
 
@@ -87,6 +94,7 @@ export const DIVISIONS = [
 export const LOCATIONS = [
   {
     id: 1,
+    code: 'RA-HQ-0001',
     kind: 'head_office',
     name: 'Griya CIMB Niaga 2',
     region: null,
@@ -101,6 +109,7 @@ export const LOCATIONS = [
   },
   {
     id: 2,
+    code: 'RA-HQ-0002',
     kind: 'head_office',
     name: 'Graha CIMB Niaga',
     region: null,
@@ -136,7 +145,8 @@ export const SUMMARY = {
   period_year: 2025,
   assessment_date: '2025-03-10',
   due_date: '2026-03-10',
-  location: { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
+  reason: 'new_building',
+  location: { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
   rated_count: 32,
   hazard_count: 33,
   highest_gross_level: 'High',
@@ -303,6 +313,33 @@ const NO_APPROVAL_ACTIONS = { approve: false, reject: false, withdraw: false, re
  * Mocks /api/ra/* for RA and RA Branch (`?kind=branch`, branch 11, assessment 12). Saving ratings
  * echoes the assessment back; the log records what was sent.
  */
+/** Two regions of the DataRegion sheet, as GET /api/ra/regions returns them. */
+export const REGION_DIRECTORY = [
+  {
+    region: 'Network - Jabar & Jateng Region',
+    directorate: 'Network & Digital Banking',
+    level: 'D-1',
+    head: 'Region Head Jabar',
+    office: 'KC - Bandung - Asia Afrika - BAA',
+    city: 'BANDUNG',
+    areas: [
+      { area: 'Network - Jabar & Jateng Region - Jabar Area I', level: 'D-2', head: 'Area Head Jabar I', office: 'KC - Bandung - Asia Afrika - BAA', city: 'BANDUNG' },
+      { area: 'Network - Jabar & Jateng Region - Jabar Area II', level: 'D-2', head: 'Area Head Jabar II', office: 'KC - Bandung - Dago - DGO', city: 'BANDUNG' },
+    ],
+  },
+  {
+    region: 'Network - Jakarta Region',
+    directorate: 'Network & Digital Banking',
+    level: 'D-1',
+    head: 'Region Head Jakarta',
+    office: 'KC - Tangerang - Alam Sutera Icon - CAS',
+    city: 'TANGERANG SELATAN',
+    areas: [
+      { area: 'Jakarta Region Area I', level: 'D-2', head: 'Area Head Jakarta I', office: 'KC - Jakarta - Graha CIMB Niaga - NAA', city: 'JAKARTA SELATAN' },
+    ],
+  },
+]
+
 export async function mockRa(
   page: Page,
   options: {
@@ -312,6 +349,12 @@ export async function mockRa(
     pendingLocation?: boolean
     /** Signed in as BCM, not the waiting step's signer: change the signer or approve on behalf. */
     actForSigner?: boolean
+    /** Signed in with only these permissions (default: an Administrator). */
+    permissions?: string[]
+    /** The region directory has regions (the DataRegion sheet, LDAP in production). */
+    regions?: boolean
+    /** The RA version's sign-off steps, as RA configuration sets them (default: the workbook's). */
+    steps?: (typeof SIGNOFF_STEPS)['head_office']
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
@@ -330,7 +373,8 @@ export async function mockRa(
     assessment.can_approve = false
   }
   actForSigner(current)
-  await signIn(page)
+  await signIn(page, options.permissions ? { permissions: options.permissions } : {})
+  await page.route('**/api/ra/regions', (route) => route.fulfill({ json: { items: options.regions ? REGION_DIRECTORY : [] } }))
   await page.route('**/api/users**', (route) => {
     const term = (new URL(route.request().url()).searchParams.get('q') ?? '').toLowerCase()
     return route.fulfill({ json: { items: USERS.filter((user) => user.display_name.toLowerCase().includes(term)) } })
@@ -343,7 +387,9 @@ export async function mockRa(
   await page.route(/\/api\/ra\/formula/, (route) => {
     const params = new URL(route.request().url()).searchParams
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
-    return route.fulfill({ json: withTexts(branch ? BRANCH_FORMULA : FORMULA) })
+    const formula = withTexts(branch ? BRANCH_FORMULA : FORMULA)
+    if (!branch && options.steps) Object.assign(formula, { signoff_steps: options.steps, signoff_roles: options.steps.map((row) => row.code) })
+    return route.fulfill({ json: formula })
   })
   await page.route('**/api/ra/building-types', (route) => route.fulfill({ json: { items: BUILDING_TYPES } }))
   const divisions = structuredClone(DIVISIONS)
@@ -601,11 +647,11 @@ function workflowRef(branch: boolean, status: string, role: string | null = null
 
 function workflowLocations(branch: boolean) {
   const first = branch
-    ? { id: BRANCH_ID, kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
-    : { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
+    ? { id: BRANCH_ID, code: 'RA-BR-0001', kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
+    : { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
   const second = branch
-    ? { id: 31, kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
-    : { id: 2, kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
+    ? { id: 31, code: 'RA-BR-0002', kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
+    : { id: 2, code: 'RA-HQ-0002', kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
   const approved = workflowRef(branch, 'approved')
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
@@ -616,7 +662,7 @@ function workflowLocations(branch: boolean) {
 }
 
 function stepTitle(branch: boolean, role: string) {
-  return ROLE_LABELS[branch ? 'branch' : 'head_office'].find((row) => row.role === role)?.title ?? role
+  return SIGNOFF_STEPS[branch ? 'branch' : 'head_office'].find((row) => row.code === role)?.title ?? role
 }
 
 function waitingRow(branch: boolean, step: string, signerId: number, days: number) {

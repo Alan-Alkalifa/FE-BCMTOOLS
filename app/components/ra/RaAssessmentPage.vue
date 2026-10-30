@@ -285,8 +285,8 @@ async function removeAssessment() {
         variant="subtle"
         :icon="assessment.status === 'approved' ? 'i-lucide-badge-check' : 'i-lucide-lock'"
         :title="assessment.status === 'approved'
-          ? 'Approved: this assessment can no longer be changed'
-          : `In sign-off: waiting for ${assessment.awaiting_signer?.name ?? 'the next signer'}`"
+          ? 'Final: this assessment can no longer be changed'
+          : `In approval: waiting for ${assessment.awaiting_signer?.name ?? 'the next signer'}`"
         :description="assessment.status === 'approved'
           ? undefined
           : 'It can\'t be changed until a signer returns it for changes.'"

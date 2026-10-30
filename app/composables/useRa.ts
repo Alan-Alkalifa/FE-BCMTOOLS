@@ -20,12 +20,18 @@ export interface RaGuide {
   guidance: string
 }
 
-/** A sign-off role as RA configuration names it: "Prepared by" signed by the "Location
- *  Incident Coordinator (LIC)". */
-export interface RaRoleLabel {
-  role: RaSignoffRole
+/** A sign-off step as RA configuration sets it: "Prepared by" signed by the "Location
+ *  Incident Coordinator (LIC)", in approval order. `role` repeats `code`. */
+export interface RaSignoffStep {
+  code: RaSignoffRole
+  role?: RaSignoffRole
   label: string
   title: string
+  mandatory: boolean
+  signer_mode: RaSignerMode
+  signer_roles: string[]
+  /** Its box on the Excel report (1–4, RA Branch 1–3), or null when it is not on the form. */
+  report_box: number | null
 }
 
 export interface RaFormula {
@@ -36,7 +42,7 @@ export interface RaFormula {
   /** The rating inputs of this kind, in questionnaire order. */
   inputs: RaRatingField[]
   signoff_roles: RaSignoffRole[]
-  signoff_role_labels?: RaRoleLabel[]
+  signoff_steps?: RaSignoffStep[]
   levels: RaLevel[]
   signoff_statement_en?: string | null
   risk_summary_note_en?: string | null
@@ -220,9 +226,13 @@ export interface RaCallTreeEntry {
 
 export interface RaLocationRef {
   id: number
+  /** The building's permanent ID: RA-HQ-0001 (head office) or RA-BR-0001 (branch). */
+  code?: string | null
   kind: RaKind
   name: string
   region: string | null
+  /** A branch's area (the Group of its region) in the Network organisation. */
+  area?: string | null
 }
 
 /** A map pin (WGS 84). */
@@ -238,6 +248,8 @@ export interface RaMapMarker extends RaPin {
   level?: RaLevel | 'na' | 'none' | null
   /** A head office building (pin), a branch (square), or an incident point (siren). */
   variant?: 'location' | 'branch' | 'crisis'
+  /** An incident waiting for approval: its point is orange. */
+  pending?: boolean
 }
 
 export interface RaMapCircle extends RaPin {
@@ -246,6 +258,8 @@ export interface RaMapCircle extends RaPin {
   active?: boolean
   /** An incident's affected area (error colour) rather than a distance ring. */
   crisis?: boolean
+  /** An incident waiting for approval: its area is orange and dashed. */
+  pending?: boolean
 }
 
 /** A pinned building or branch on the location map. */
@@ -381,6 +395,8 @@ export interface RaLocation extends RaLocationRef {
   city?: string | null
   district?: string | null
   zip_code?: string | null
+  /** A branch's directorate, from the region directory. */
+  directorate?: string | null
   latitude: number | null
   longitude: number | null
   is_active: boolean
@@ -389,6 +405,8 @@ export interface RaLocation extends RaLocationRef {
   approval_can?: RaApprovalCan
   assessment_count: number
   latest_assessment: RaAssessmentSummary | null
+  /** Its last final RA: Annual review renews it. */
+  final_assessment?: RaAssessmentSummary | null
   updated_at: string
 }
 
@@ -422,6 +440,8 @@ export interface RaAssessmentFields {
   period_year: number
   assessment_date: string
   due_date: string | null
+  /** Why the RA is made (left out on a new RA: Annual review or New building, whichever fits). */
+  reason?: RaReason | null
   lic_phone: string | null
   licom_phone: string | null
 }
@@ -438,6 +458,7 @@ export interface RaAssessmentSummary {
   period_year: number
   assessment_date: string | null
   due_date: string | null
+  reason?: RaReason | null
   location: RaLocationRef
   rated_count: number
   hazard_count: number
@@ -446,7 +467,12 @@ export interface RaAssessmentSummary {
   is_complete: boolean
   status: RaStatus
   current_signoff_role: RaSignoffRole | null
+  /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
+  current_step_title?: string | null
   is_returned: boolean
+  approved_at?: string | null
+  /** An approved RA's renewal date (its due date, or a year after it was assessed). */
+  renewal_date?: string | null
   created_by: string | null
   updated_at: string
 }
@@ -485,6 +511,7 @@ export interface RaListQuery {
   location_id?: number
   year?: number
   level?: RaLevel
+  reason?: RaReason
   status?: RaStatus
   awaiting?: 'me'
   /** Only the assessments the user created (Manage). */
@@ -549,6 +576,13 @@ export function useRaModule() {
       ? RA_MODULES.branch
       : RA_MODULES.head_office
   })
+}
+
+/** The kinds (head office, branch) the user holds `level` on: RA (ra.*) and RA Branch
+ *  (ra_branch.*) are granted separately. */
+export function useRaKinds(level: 'access' | 'edit' | 'manage' = 'access') {
+  const { can } = useAuth()
+  return computed(() => (Object.keys(RA_MODULES) as RaKind[]).filter((kind) => can(RA_MODULES[kind].perm[level])))
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -627,6 +661,9 @@ export interface RaLocationRegisterQuery {
   province?: string
   active?: boolean
   approval?: RaLocationApprovalStatus
+  /** Column to sort by; the newest change first (updated_at desc) by default. */
+  sort?: 'name' | 'kind' | 'province' | 'assessments' | 'updated_at'
+  dir?: 'asc' | 'desc'
   page: number
   per_page: number
 }
@@ -791,6 +828,7 @@ export interface RaAssessmentRef {
   ref_no: string | null
   period_year: number
   assessment_date: string | null
+  reason?: RaReason | null
   status: RaStatus
   current_signoff_role: string | null
   /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
@@ -848,6 +886,8 @@ export interface RaMonitoringFilters {
   region?: string
   level?: RaLevel | 'none'
   state?: 'approved' | 'draft' | 'in_signoff' | 'none'
+  /** The reason of the building's RA in force or the one being worked on. */
+  reason?: RaReason
   // Date range filters (assessment date)
   from?: string
   to?: string
@@ -921,6 +961,32 @@ export function useRaProvinces(kind: MaybeRefOrGetter<RaKind | 'all'>) {
   })
 }
 
+/** One unit of the region directory: a region (Sub Directorate) or an area (Group), with its
+ *  head (D-1 / D-2), the office they work from and its city. */
+export interface RaNetworkHead {
+  level: string | null
+  head: string | null
+  office: string | null
+  city: string | null
+}
+export interface RaNetworkArea extends RaNetworkHead {
+  area: string
+}
+export interface RaNetworkRegion extends RaNetworkHead {
+  region: string
+  directorate: string
+  areas: RaNetworkArea[]
+}
+
+/** The region directory for a branch's Region and Area (the DataRegion sheet; LDAP in
+ *  production). Empty until it is imported: the region is then free text. */
+export function useRaRegionDirectory() {
+  return useFetch<{ items: RaNetworkRegion[] }>('/api/ra/regions', {
+    key: 'ra-region-directory',
+    default: () => ({ items: [] }),
+  })
+}
+
 export function useRaRegions(kind: MaybeRefOrGetter<RaKind>) {
   return useFetch<{ items: string[] }>('/api/ra/monitoring/regions', {
     key: computed(() => `ra-regions-${toValue(kind)}`),
@@ -936,11 +1002,11 @@ export function useRaUpcoming(query: Paged<{ kind: RaKind }>) {
   return useRaList<RaSignoffWaiting>('/api/ra/approvals/upcoming', query)
 }
 
-export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryAction }>) {
+export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryAction, q?: string }>) {
   return useRaList<RaHistoryRow>('/api/ra/approvals/history', query)
 }
 
-export function useRaBoard(query: Paged<{ kind: RaKind, step?: string }>, enabled: MaybeRefOrGetter<boolean>) {
+export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: string }>, enabled: MaybeRefOrGetter<boolean>) {
   return useFetch<RaPage<RaSignoffWaiting>>('/api/ra/approvals/board', {
     key: computed(() => `ra-board-${JSON.stringify(toValue(query))}`),
     query: computed(() => toValue(query)),
@@ -955,13 +1021,16 @@ export function useRaBoard(query: Paged<{ kind: RaKind, step?: string }>, enable
 // }
 
 /** The Excel download of a Monitoring view, with the same filters (all rows). */
-export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters) {
+/** A Monitoring view as Excel, with the same filters; `ids`: only these buildings (the List
+ *  tab's ticked rows), every RA of each. */
+export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters, ids: number[] = []) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
       query.set(key, String(value))
     }
   }
+  if (ids.length) query.set('ids', ids.join(','))
   const text = query.toString()
   return `/api/ra/monitoring/${view}.xlsx${text ? `?${text}` : ''}`
 }
