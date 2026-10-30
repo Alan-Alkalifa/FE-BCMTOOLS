@@ -19,6 +19,7 @@ The backend (Flask API, ID-and-password sign-in, roles and menus, SMTP email, My
 - [SCCA](#scca)
 - [RA](#ra)
 - [Location](#location)
+- [Task Management](#task-management)
 - [Testing](#testing)
 - [Docker images and nginx](#docker-images-and-nginx)
 - [CI/CD](#cicd)
@@ -305,7 +306,7 @@ Hiding UI is for usability only. The backend enforces every permission with `@re
 | `/admin/roles` | `admin.roles.manage` | Roles and the permissions they grant |
 | `/admin/menus` | `admin.menus.manage` | Sidebar items: rename, icon, order, hide, needed permission, add links |
 | `/admin/settings/email` | `admin.settings.mail` | SMTP providers (Gmail, Resend or another server): add or edit them (passwords and API keys stored encrypted), test one, choose the active one |
-| `/admin/audit` | `admin.audit.view` | Tabs: sign-in and admin events; **SCCA activity** (who created, edited, rated, submitted, approved, rejected, commented on or downloaded each SCCA, with what changed; search by ref. no., application or user; `?tab=scca&assessment=ID` shows one assessment, linked from its **Activity** button); email outbox with "Send again" |
+| `/admin/audit` | `admin.audit.view` | Tabs: sign-in and admin events; **SCCA activity** (who created, edited, rated, submitted, approved, rejected, commented on or downloaded each SCCA, with what changed; search by ref. no., application or user; `?tab=scca&assessment=ID` shows one assessment, linked from its **Activity** button); **RA activity** (`?tab=ra`: every `ra.*` event — a building's details, emergency contacts, occupants, recovery team and call tree, its approval; RAs, their ratings and sign-off; incidents; approvals and reminders; RA configuration and the guidebook — with the building and RA or incident ref., a group filter and a search; `?building=ID` shows one building with its RAs and incidents, linked from the building page's **Activity** button); email outbox with "Send again" |
 
 ## SCCA
 
@@ -423,6 +424,10 @@ Permissions are RA's, per side (`ra.*` for head office buildings, `ra_branch.*` 
 **Incidents.** An open incident is a red banner above the map and a red siren marker with its affected area (`.ra-radius-crisis`); one waiting for approval is orange, with a dashed area (`.ra-radius-pending`, `pending` on `RaMapMarker` / `RaMapCircle`). Incidents have no Delete button: one declared by mistake is rejected, a real one is closed (the API's delete is a soft delete). **Declare incident** (`RaCrisisModal.vue`, also used to update one) asks for the hazard (the 33 RA hazards by group), where — always a pin on a map in the dialog: click to drop it, drag it, or pick a building or branch (from the list or its marker) to put the pin on it, with the affected ring and the places inside it shown live — the affected radius in km (with 0,5 / 1 / 5 / 10 / 25 km shortcuts), the start date and time in WIB (`raWibToIso`) and what is happening. The incident page (`pages/crises/[id].vue`) shows the guidebook steps once (with a *Starter steps* warning until BCM reviews them) and an accordion per affected place: its RA rating for the hazard (latest approved, else latest; residual level, existing mitigation, action plan), emergency contacts and call tree with `tel:` links, the recovery team, and the nearest places outside the area with route links. Selecting an affected pin opens its section. The history (declared, updated with what changed, updates, closed, reopened) sits beside it; anyone with `ra.access` can add an update. Statuses use `raCrisisStatus` (Open `error` with a siren, Closed `neutral`).
 
 All maps use `RaMap.vue`, a thin wrapper around [Leaflet](https://leafletjs.com) 1.9 that loads Leaflet only when a map is shown (markers, rings, a measure line, `focus()` and `fit()`). Tiles come from the server set in the backend (`GET /api/ra/map-settings`, `MAP_TILE_URL`; OpenStreetMap by default), so changing provider needs no frontend build; if tiles can't load (e.g. a blocked network) the map says so and pins still work. e2e tests serve a blank tile from a mocked path.
+
+## Task Management
+
+A top-level page of its own (`pages/tasks.vue`, `/tasks`, menu `tasks` after Location), for `ra.location.approve` (and BCM admin, `ra.manage` / `ra_branch.manage`): every **new building or branch**, **building to make inactive** and **declared incident** waiting for someone else's approval (`GET /api/ra/tasks`, `useRaTasks`). Incidents come first, then the longest waiting. KPI cards (Incidents, New buildings and branches, Make inactive) filter the list like Monitoring's cards; the toolbar has a search (name, building ID, incident ref.), a task filter and a module filter (RA HO / RA Branch), all in the URL. Each row shows who asked and when, how long it has waited (hours for an incident, working days for a building), "Escalated to BCM" once it was, and the reminders sent. **Review** (primary, when the user may decide) or **Open** goes to the record's page, where it is approved or rejected (`RaApprovalBanner`); **Remind** emails every approver but who asked at once (`raTaskApi.remind`) and counts as a reminder. The approvers are also emailed when something starts waiting, and reminded by the backend's reminder run; the incident timings are on RA configuration › Reminders and escalation (*Buildings and incidents waiting for approval*).
 
 ## Building pages
 

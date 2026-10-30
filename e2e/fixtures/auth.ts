@@ -74,6 +74,7 @@ const MENUS = [
   { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
+  { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'ra.location.approve' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
@@ -92,8 +93,10 @@ export function menuFor(permissions: string[]) {
       .filter((child) => child.parent === m.code)
       .map((child) => node(child, MENUS.indexOf(child) + 1)),
   })
+  // Administration comes last, as its sort order (90) puts it after Task Management (60).
   return visible
     .filter((m) => m.parent === null)
+    .sort((a, b) => Number(a.code === 'admin') - Number(b.code === 'admin'))
     .map((m) => node(m, MENUS.indexOf(m) + 1))
     .filter((n) => n.route !== null || n.children.length > 0)
 }

@@ -452,3 +452,124 @@ export function adminErrorText(error: unknown): string {
   if (statusCode === 403) return 'You don\'t have permission to do this.'
   return 'Couldn\'t reach the server. Check your connection and try again.'
 }
+
+// --- RA activity (Administration > Audit log > RA activity) -------------------------------
+
+/** Every `ra.*` audit event, as the RA activity tab names it. */
+export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: ActivityTone }> = {
+  building_updated: { label: 'Building details changed', icon: 'i-lucide-pencil', tone: 'neutral' },
+  building_contacts_saved: { label: 'Emergency contacts saved', icon: 'i-lucide-phone', tone: 'neutral' },
+  building_occupants_saved: { label: 'Occupants saved', icon: 'i-lucide-users', tone: 'neutral' },
+  building_recovery_team_saved: { label: 'Recovery team saved', icon: 'i-lucide-life-buoy', tone: 'neutral' },
+  building_call_tree_saved: { label: 'Call tree saved', icon: 'i-lucide-network', tone: 'neutral' },
+  building_approval_requested: { label: 'Building sent for approval', icon: 'i-lucide-send', tone: 'info' },
+  building_approval_withdrawn: { label: 'Building request withdrawn', icon: 'i-lucide-undo-2', tone: 'warning' },
+  building_approved: { label: 'Building approved', icon: 'i-lucide-circle-check', tone: 'success' },
+  building_rejected: { label: 'Building rejected', icon: 'i-lucide-circle-x', tone: 'error' },
+  building_deleted: { label: 'Building deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
+  assessment_created: { label: 'RA created', icon: 'i-lucide-file-plus', tone: 'primary' },
+  assessment_updated: { label: 'RA details changed', icon: 'i-lucide-pencil', tone: 'neutral' },
+  ratings_saved: { label: 'Hazard ratings saved', icon: 'i-lucide-list-checks', tone: 'neutral' },
+  assessment_deleted: { label: 'RA deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
+  assessment_submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', tone: 'info' },
+  step_approved: { label: 'Step approved', icon: 'i-lucide-circle-check', tone: 'success' },
+  assessment_returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', tone: 'warning' },
+  signer_changed: { label: 'Signer changed by BCM', icon: 'i-lucide-user-round-cog', tone: 'warning' },
+  approved_on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', tone: 'warning' },
+  incident_declared: { label: 'Incident declared', icon: 'i-lucide-siren', tone: 'error' },
+  incident_approved: { label: 'Incident approved', icon: 'i-lucide-circle-check', tone: 'success' },
+  incident_rejected: { label: 'Incident rejected', icon: 'i-lucide-circle-x', tone: 'neutral' },
+  incident_updated: { label: 'Incident updated', icon: 'i-lucide-pencil', tone: 'neutral' },
+  incident_note_added: { label: 'Incident update added', icon: 'i-lucide-message-square', tone: 'neutral' },
+  incident_closed: { label: 'Incident closed', icon: 'i-lucide-circle-check-big', tone: 'success' },
+  incident_reopened: { label: 'Incident reopened', icon: 'i-lucide-rotate-ccw', tone: 'warning' },
+  incident_deleted: { label: 'Incident deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
+  approval_notice_sent: { label: 'Approvers told', icon: 'i-lucide-mail', tone: 'neutral' },
+  approval_reminder_sent: { label: 'Approvers reminded', icon: 'i-lucide-bell-ring', tone: 'info' },
+  approval_escalated: { label: 'Approval escalated to BCM', icon: 'i-lucide-siren', tone: 'error' },
+  guidebook_updated: { label: 'Guidebook steps saved', icon: 'i-lucide-book-marked', tone: 'neutral' },
+  config_draft_started: { label: 'Configuration draft started', icon: 'i-lucide-file-plus', tone: 'primary' },
+  config_changed: { label: 'Configuration changed', icon: 'i-lucide-file-cog', tone: 'neutral' },
+  config_publish_requested: { label: 'Configuration publish requested', icon: 'i-lucide-send', tone: 'info' },
+  config_publish_withdrawn: { label: 'Configuration request withdrawn', icon: 'i-lucide-undo-2', tone: 'warning' },
+  config_published: { label: 'Configuration published', icon: 'i-lucide-badge-check', tone: 'success' },
+  config_discarded: { label: 'Configuration draft discarded', icon: 'i-lucide-trash-2', tone: 'warning' },
+  signer_default_changed: { label: 'Default or fixed signer changed', icon: 'i-lucide-user-round-cog', tone: 'neutral' },
+  division_created: { label: 'Division added', icon: 'i-lucide-plus', tone: 'neutral' },
+  division_changed: { label: 'Division changed', icon: 'i-lucide-pencil', tone: 'neutral' },
+  division_deleted: { label: 'Division deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
+  settings_updated: { label: 'Reminder rules changed', icon: 'i-lucide-sliders-horizontal', tone: 'neutral' },
+}
+
+/** The groups the RA activity tab filters by (the API's `group`). */
+export const RA_ACTIVITY_GROUPS = [
+  { label: 'All RA activity', value: 'all' },
+  { label: 'Buildings and their profile', value: 'buildings' },
+  { label: 'RAs', value: 'assessments' },
+  { label: 'Sign-off', value: 'signoff' },
+  { label: 'Incidents', value: 'incidents' },
+  { label: 'Approvals and reminders', value: 'approvals' },
+  { label: 'RA configuration and guidebook', value: 'configuration' },
+]
+
+export function raActivity(event: string) {
+  const action = event.replace(/^ra\./, '')
+  return RA_ACTIVITY[action] ?? { label: action.replaceAll('_', ' '), icon: 'i-lucide-dot', tone: 'neutral' as const }
+}
+
+const RA_FIELD_NAMES: Record<string, string> = {
+  lic_user_id: 'LIC',
+  licom_user_id: 'LICOM',
+  lic_phone: 'LIC phone',
+  licom_phone: 'LICOM phone',
+  zip_code: 'postal code',
+  is_active: 'active',
+}
+
+function raField(name: string) {
+  return RA_FIELD_NAMES[name] ?? name.replaceAll('_', ' ')
+}
+
+/** The record an RA event is about: the building, and the RA or incident reference. */
+export function raActivityRecord(row: AuditEvent): { label: string, ref: string | null, to: string | null } {
+  const detail = (row.detail ?? {}) as Record<string, unknown>
+  const building = typeof detail.building === 'string' ? detail.building : null
+  const ref = typeof detail.ref_no === 'string' ? detail.ref_no : typeof detail.code === 'string' ? detail.code : null
+  if (row.target_type === 'ra_crisis_events' && row.target_id) {
+    return { label: building ?? 'Incident', ref, to: `/crises/${row.target_id}` }
+  }
+  if (row.target_type === 'ra_assessments' && row.target_id) {
+    const kind = detail.kind === 'branch' ? 'ra-branch' : 'ra'
+    return { label: building ?? 'RA', ref, to: row.event === 'ra.assessment_deleted' ? null : `/${kind}/manage/${row.target_id}` }
+  }
+  if (row.target_type === 'ra_locations' && row.target_id) {
+    return { label: building ?? (detail.name as string | undefined) ?? 'Building', ref, to: row.event === 'ra.building_deleted' ? null : `/locations/${row.target_id}` }
+  }
+  if (row.target_type === 'ra_playbooks') return { label: 'Incident guidebook', ref: (detail.hazard as string | undefined) ?? null, to: '/crises/guidebook' }
+  return { label: 'RA configuration', ref: null, to: null }
+}
+
+/** One line on what an RA action did, e.g. "Changed address, postal code" or "4 → 5 rows". */
+export function raActivityDetail(row: AuditEvent): string {
+  const detail = (row.detail ?? {}) as Record<string, unknown>
+  const action = row.event.replace(/^ra\./, '')
+  const parts: string[] = []
+  if (Array.isArray(detail.fields) && detail.fields.length) parts.push(`Changed ${detail.fields.map((field) => raField(String(field))).join(', ')}`)
+  if (Array.isArray(detail.signers) && detail.signers.length) parts.push(`Signers of ${detail.signers.map((step) => String(step).replaceAll('_', ' ')).join(', ')}`)
+  if (typeof detail.rows === 'number') parts.push(`${detail.before ?? 0} → ${detail.rows} ${detail.rows === 1 ? 'row' : 'rows'}`)
+  if (Array.isArray(detail.hazards) && detail.hazards.length) parts.push(`${detail.hazards.length} ${detail.hazards.length === 1 ? 'hazard' : 'hazards'}: ${detail.hazards.join(', ')}`)
+  if (action === 'assessment_created' && detail.reason) parts.push(String(detail.reason).replaceAll('_', ' ').replace(/^\w/, (c) => c.toUpperCase()))
+  if (detail.step) parts.push(`Step ${String(detail.step).replaceAll('_', ' ')}`)
+  if (detail.final) parts.push('Final')
+  if (action === 'signer_changed' && (detail.from || detail.to)) parts.push(`${detail.from ?? '—'} → ${detail.to ?? '—'}`)
+  if (action === 'approved_on_behalf' && detail.signer) parts.push(`for ${detail.signer}`)
+  if (detail.task) parts.push(detail.task === 'deactivate' ? 'Make inactive' : detail.task === 'declare' ? 'Incident' : 'New')
+  if (detail.waited) parts.push(`waited ${detail.waited}`)
+  if (action === 'building_approval_requested' && detail.action) parts.push(detail.action === 'deactivate' ? 'Make inactive' : detail.again ? 'Sent again' : 'New')
+  if (Array.isArray(detail.changes) && detail.changes.length) parts.push(detail.changes.join('. '))
+  for (const key of action === 'assessment_created' ? ['comment', 'note'] : ['comment', 'note', 'reason']) {
+    if (typeof detail[key] === 'string' && detail[key]) parts.push(`“${detail[key]}”`)
+  }
+  if (action === 'settings_updated' && detail.changed && typeof detail.changed === 'object') parts.push(`Changed ${Object.keys(detail.changed).map(raField).join(', ')}`)
+  return parts.join(' · ')
+}

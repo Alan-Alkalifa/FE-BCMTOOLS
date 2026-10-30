@@ -12,7 +12,7 @@ const { can } = useAuth()
 /** Server-paginated, 25 rows a page (docs/design-system.md > Tables). */
 const PER_PAGE = 25
 
-const TABS = ['events', 'scca', 'emails'] as const
+const TABS = ['events', 'scca', 'ra', 'emails'] as const
 type AuditTab = (typeof TABS)[number]
 const tab = computed<AuditTab>({
   get: () => (TABS.includes(route.query.tab as AuditTab) ? route.query.tab as AuditTab : 'events'),
@@ -39,6 +39,25 @@ const sccaQuery = computed(() => ({
 }))
 watch([sccaSearch, sccaAction, sccaAssessment], () => (sccaPage.value = 1))
 
+// RA activity; ?building=ID (from a building's page) shows that building with its RAs and
+// incidents.
+const raSearch = ref('')
+const raGroup = ref('all')
+const raPage = ref(1)
+const raBuilding = computed(() => Number(route.query.building) || undefined)
+const raQuery = computed(() => ({
+  kind: 'ra',
+  q: raSearch.value.trim() || undefined,
+  group: raGroup.value === 'all' ? undefined : raGroup.value,
+  building_id: raBuilding.value,
+  page: raPage.value,
+  per_page: PER_PAGE,
+}))
+watch([raSearch, raGroup, raBuilding], () => (raPage.value = 1))
+function clearBuilding() {
+  router.replace({ query: { ...route.query, building: undefined } })
+}
+
 function clearAssessment() {
   router.replace({ query: { ...route.query, assessment: undefined } })
 }
@@ -59,6 +78,7 @@ watch(emailFilter, () => (emailPage.value = 1))
 
 const events = useFetch<Page<AuditEvent>>('/api/admin/audit/events', { query: eventQuery, key: 'admin-audit-events' })
 const scca = useFetch<Page<AuditEvent>>('/api/admin/audit/events', { query: sccaQuery, key: 'admin-audit-scca' })
+const ra = useFetch<Page<AuditEvent>>('/api/admin/audit/events', { query: raQuery, key: 'admin-audit-ra' })
 const emails = useFetch<Page<OutboxEmail>>('/api/admin/audit/emails', { query: emailQuery, key: 'admin-audit-emails' })
 
 const eventColumns: TableColumn<AuditEvent>[] = [
@@ -74,6 +94,17 @@ const sccaColumns: TableColumn<AuditEvent>[] = [
   { accessorKey: 'event', header: 'Action' },
   { accessorKey: 'actor', header: 'By' },
 ]
+const raColumns: TableColumn<AuditEvent>[] = [
+  { accessorKey: 'created_at', header: 'When' },
+  { id: 'record', header: 'Building or record' },
+  { accessorKey: 'event', header: 'Action' },
+  { accessorKey: 'actor', header: 'By' },
+]
+const filteredBuilding = computed(() => {
+  if (!raBuilding.value) return null
+  const row = ra.data.value?.items.find((item) => item.detail?.building_id === raBuilding.value || (item.target_type === 'ra_locations' && item.target_id === raBuilding.value))
+  return (row?.detail?.building as string | undefined) ?? `Building ${raBuilding.value}`
+})
 const filteredAssessment = computed(() => {
   const first = scca.data.value?.items[0]?.detail as { ref_no?: string, application?: string } | undefined
   return sccaAssessment.value ? (first?.ref_no ?? `Assessment ${sccaAssessment.value}`) : null
@@ -119,6 +150,7 @@ async function retry(row: OutboxEmail) {
 const tabs = [
   { label: 'Sign-in and admin activity', value: 'events', icon: 'i-lucide-scroll-text', slot: 'events' as const },
   { label: 'SCCA activity', value: 'scca', icon: 'i-lucide-shield-check', slot: 'scca' as const },
+  { label: 'RA activity', value: 'ra', icon: 'i-lucide-building-2', slot: 'ra' as const },
   { label: 'Email outbox', value: 'emails', icon: 'i-lucide-mail', slot: 'emails' as const },
 ]
 </script>
@@ -127,7 +159,7 @@ const tabs = [
   <AppPage
     title="Audit log"
     icon="i-lucide-scroll-text"
-    description="Who signed in, what administrators changed, who did what on each SCCA, and every email BCM Tools sent."
+    description="Who signed in, what administrators changed, who did what on each SCCA and in RA (buildings, RAs, incidents), and every email BCM Tools sent."
     :crumbs="[{ label: 'Administration' }, { label: 'Audit log' }]"
   >
     <UTabs
@@ -323,6 +355,110 @@ const tabs = [
             :per-page="PER_PAGE"
             :total="scca.data.value?.total ?? 0"
             label="SCCA activity"
+          />
+        </UCard>
+      </template>
+
+      <template #ra>
+        <UCard
+          class="mt-4"
+          :ui="{ body: 'p-0 sm:p-0' }"
+        >
+          <div class="flex flex-wrap items-center gap-2 border-b border-default p-4">
+            <UInput
+              v-model="raSearch"
+              icon="i-lucide-search"
+              placeholder="Building, building ID, RA or incident ref., or user"
+              aria-label="Search RA activity"
+              class="w-full sm:w-96"
+            />
+            <USelectMenu
+              v-model="raGroup"
+              value-key="value"
+              :items="RA_ACTIVITY_GROUPS"
+              :search-input="false"
+              aria-label="Activity"
+              class="w-64"
+            />
+            <UBadge
+              v-if="filteredBuilding"
+              color="neutral"
+              variant="subtle"
+              size="lg"
+              class="gap-1"
+            >
+              {{ filteredBuilding }}
+              <UButton
+                color="neutral"
+                variant="link"
+                size="xs"
+                icon="i-lucide-x"
+                class="p-0"
+                aria-label="Show every building"
+                @click="clearBuilding"
+              />
+            </UBadge>
+          </div>
+          <UTable
+            :data="ra.data.value?.items ?? []"
+            :columns="raColumns"
+            :loading="ra.status.value === 'pending'"
+            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+          >
+            <template #created_at-cell="{ row }">
+              <span class="whitespace-nowrap">{{ formatDateTime(row.original.created_at) }}</span>
+            </template>
+            <template #record-cell="{ row }">
+              <ULink
+                v-if="raActivityRecord(row.original).to"
+                :to="raActivityRecord(row.original).to!"
+                class="block font-medium text-highlighted hover:text-primary"
+              >
+                {{ raActivityRecord(row.original).label }}
+              </ULink>
+              <span
+                v-else
+                class="block font-medium text-highlighted"
+              >{{ raActivityRecord(row.original).label }}</span>
+              <span
+                v-if="raActivityRecord(row.original).ref"
+                class="font-mono text-xs text-muted"
+              >{{ raActivityRecord(row.original).ref }}</span>
+            </template>
+            <template #event-cell="{ row }">
+              <p class="flex items-center gap-1.5 font-medium text-highlighted">
+                <UIcon
+                  :name="raActivity(row.original.event).icon"
+                  class="size-4 shrink-0"
+                  :class="TONE_CLASS[raActivity(row.original.event).tone]"
+                />
+                {{ raActivity(row.original.event).label }}
+              </p>
+              <p
+                v-if="raActivityDetail(row.original)"
+                class="mt-0.5 max-w-xl text-xs text-muted"
+              >
+                {{ raActivityDetail(row.original) }}
+              </p>
+            </template>
+            <template #actor-cell="{ row }">
+              <span v-if="row.original.actor">{{ row.original.actor }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >{{ row.original.username || 'BCM Tools' }}</span>
+            </template>
+            <template #empty>
+              <p class="py-6 text-center text-sm text-muted">
+                No RA activity{{ raSearch || raGroup !== 'all' || raBuilding ? ' matches the filters' : ' yet' }}.
+              </p>
+            </template>
+          </UTable>
+          <TablePagination
+            v-model:page="raPage"
+            :per-page="PER_PAGE"
+            :total="ra.data.value?.total ?? 0"
+            label="RA activity"
           />
         </UCard>
       </template>

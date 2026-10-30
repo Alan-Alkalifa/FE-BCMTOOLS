@@ -1034,3 +1034,50 @@ export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filte
   const text = query.toString()
   return `/api/ra/monitoring/${view}.xlsx${text ? `?${text}` : ''}`
 }
+
+// --- Task Management ------------------------------------------------------------------------
+
+/** A building (new, or to make inactive) or a declared incident waiting for someone else's
+ *  approval. It is approved or rejected on its own page (`url`). */
+export interface RaTask {
+  type: 'building' | 'incident'
+  id: number
+  action: 'register' | 'deactivate' | 'declare'
+  name: string
+  /** The building ID (RA-HQ-0001) or the incident ref (CR-2026-0001). */
+  ref: string | null
+  kind: RaKind | null
+  hazard: string | null
+  title: string
+  url: string
+  requested_by: string | null
+  requested_at: string | null
+  working_days_waiting: number
+  hours_waiting: number
+  reminders_sent: number
+  last_reminded_at: string | null
+  escalated_at: string | null
+  can_decide: boolean
+  own: boolean
+}
+
+export interface RaTaskCounts {
+  total: number
+  register: number
+  deactivate: number
+  incident: number
+}
+
+export type RaTaskType = 'register' | 'deactivate' | 'incident'
+
+export function useRaTasks(query: MaybeRefOrGetter<{ type?: RaTaskType, kind?: RaKind, q?: string, page: number, per_page?: number }>) {
+  return useFetch<RaPage<RaTask> & { counts: RaTaskCounts }>('/api/ra/tasks', {
+    key: computed(() => `ra-tasks-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query)),
+  })
+}
+
+export const raTaskApi = {
+  remind: (type: RaTask['type'], id: number) =>
+    $fetch<{ task: RaTask, email_sent: boolean }>(`/api/ra/tasks/${type}/${id}/remind`, { method: 'POST' }),
+}

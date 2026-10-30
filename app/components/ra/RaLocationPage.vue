@@ -140,6 +140,14 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
   >
     <template #actions>
       <UButton
+        v-if="location && can('admin.audit.view')"
+        :to="{ path: '/admin/audit', query: { tab: 'ra', building: location.id } }"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-history"
+        label="Activity"
+      />
+      <UButton
         v-if="location?.is_active && canEdit"
         :to="{ path: raPath(ra.kind, 'manage', 'new'), query: { location_id: location.id } }"
         icon="i-lucide-plus"
