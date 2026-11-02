@@ -11,7 +11,7 @@ const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
 
-const PER_PAGE = 25
+const perPage = ref(10)
 const THIS_YEAR = new Date().getFullYear()
 
 function asNumber(value: unknown): number | undefined {
@@ -28,8 +28,12 @@ const query = computed<RaListQuery>(() => ({
   reason: RA_REASONS.some((reason) => reason.value === route.query.reason) ? route.query.reason as RaReason : undefined,
   ...(route.query.mine === '1' ? { mine: '1' as const } : {}),
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
+
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 
 function setQuery(name: string, value: string | number | undefined) {
   const next = value === undefined || value === 'all' ? undefined : String(value)
@@ -269,8 +273,8 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(next) => ({ query: { ...route.query, page: next } })"
         label="Drafts"

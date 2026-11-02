@@ -9,7 +9,7 @@ const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
 
-const PER_PAGE = 25
+const perPage = ref(10)
 
 function asCategory(value: unknown): SccaCategory | undefined {
   return typeof value === 'string' && SCCA_CATEGORIES.includes(value as SccaCategory)
@@ -25,7 +25,7 @@ const query = computed<SccaListQuery>(() => ({
   status: 'draft',
   mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const search = ref(query.value.q ?? '')
@@ -71,6 +71,10 @@ function clearFilters() {
 
 const { data, status, error, refresh } = useSccaAssessments(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 
 const columns: TableColumn<SccaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
@@ -255,8 +259,8 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Drafts"

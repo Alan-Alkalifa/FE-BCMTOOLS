@@ -14,7 +14,7 @@ definePageMeta({ permission: ['scca.access', 'ra.access', 'ra_branch.access'] })
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const PER_PAGE = 25
+const perPage = ref(10)
 
 const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'location']
 const TYPES: TaskType[] = ['signoff', 'renewal', 'building', 'incident']
@@ -30,10 +30,14 @@ const query = computed(() => ({
   level: pick(route.query.level, LEVELS),
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 const { data, status, error, refresh } = useTasks(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 
 const scope = computed<TaskScope>({
   get: () => query.value.scope,
@@ -359,8 +363,8 @@ async function remind(task: Task) {
 
         <TablePagination
           v-if="data"
+          v-model:per-page="perPage"
           :total="data.total"
-          :per-page="PER_PAGE"
           label="Tasks"
           :to="(page) => ({ query: { ...route.query, page } })"
           :page="query.page"

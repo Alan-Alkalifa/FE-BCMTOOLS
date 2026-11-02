@@ -35,8 +35,10 @@ const tab = computed<ApprovalTab>({
 
 // Server-paginated, 25 rows a page; the page (and the filters) are kept in the URL, so the
 // tab's page survives a reload and can be shared. `?coming=` pages the Coming up list.
-const PER_PAGE = 25
-const COMING_PER_PAGE = 10
+const inboxPerPage = ref(10)
+const comingPerPage = ref(10)
+const historyPerPage = ref(10)
+const boardPerPage = ref(10)
 function number(name: string) {
   return Math.max(1, Number(route.query[name]) || 1)
 }
@@ -114,8 +116,10 @@ const pageOf = (name: ApprovalTab) => computed(() => (tab.value === name ? numbe
 
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: PER_PAGE })))
-const upcoming = useSccaUpcoming(computed(() => ({ page: comingPage.value, per_page: COMING_PER_PAGE })))
+const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: inboxPerPage.value })))
+const upcoming = useSccaUpcoming(computed(() => ({ page: comingPage.value, per_page: comingPerPage.value })))
+watch(inboxPerPage, () => setQuery({ page: undefined }))
+watch(comingPerPage, () => setQuery({ coming: undefined }))
 
 const inboxColumns: TableColumn<SccaInboxRow>[] = [
   { accessorKey: 'application_name', header: 'SCCA' },
@@ -150,8 +154,9 @@ const history = useSccaHistory(computed(() => ({
   from: tab.value === 'history' ? text('from') : undefined,
   to: tab.value === 'history' ? text('to') : undefined,
   page: historyPage.value,
-  per_page: PER_PAGE,
+  per_page: historyPerPage.value,
 })))
+watch(historyPerPage, () => setQuery({ page: undefined }))
 const decisionItems = [
   { label: 'All decisions', value: 'all' as const },
   { label: 'Approved', value: 'approved' as const },
@@ -206,9 +211,10 @@ const board = bcm.value
       from: tab.value === 'board' ? text('from') : undefined,
       to: tab.value === 'board' ? text('to') : undefined,
       page: boardPage.value,
-      per_page: PER_PAGE,
+      per_page: boardPerPage.value,
     })))
   : null
+watch(boardPerPage, () => setQuery({ page: undefined }))
 const boardColumns: TableColumn<SccaBottleneckRow>[] = [
   { accessorKey: 'application_name', header: 'SCCA' },
   { accessorKey: 'step', header: 'Current step' },
@@ -348,8 +354,8 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="inboxPerPage"
               :page="inboxPage"
-              :per-page="PER_PAGE"
               :total="inbox.data.value?.total ?? 0"
               :to="pageTo"
               label="My inbox"
@@ -401,8 +407,8 @@ const tabs = computed(() => [
             </ul>
             <TablePagination
               v-if="upcoming.data.value?.total"
+              v-model:per-page="comingPerPage"
               :page="comingPage"
-              :per-page="COMING_PER_PAGE"
               :total="upcoming.data.value.total"
               :to="comingTo"
               label="Coming up"
@@ -533,8 +539,8 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="historyPerPage"
             :page="historyPage"
-            :per-page="PER_PAGE"
             :total="history.data.value?.total ?? 0"
             :to="pageTo"
             label="My history"
@@ -683,8 +689,8 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="boardPerPage"
             :page="boardPage"
-            :per-page="PER_PAGE"
             :total="board.data.value?.total ?? 0"
             :to="pageTo"
             label="BCM board"

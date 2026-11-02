@@ -13,7 +13,9 @@ const router = useRouter()
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
-const PER_PAGE = 25 // docs/design-system.md > Tables
+const renewalsPerPage = ref(10)
+const registerPerPage = ref(10)
+const bottlenecksPerPage = ref(10)
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -40,11 +42,13 @@ const filters = computed<RaMonitoringFilters>(() => ({
   to: text('to'),
 }))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
-const paged = computed(() => ({ ...filters.value, page: page.value, per_page: PER_PAGE }))
 
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
 }
+watch(renewalsPerPage, () => setQuery({}))
+watch(registerPerPage, () => setQuery({}))
+watch(bottlenecksPerPage, () => setQuery({}))
 
 // Today in WIB, so "This year" and "Last 12 months" don't shift a day early in the morning.
 const today = todayIn('Asia/Jakarta')
@@ -147,13 +151,22 @@ const bucket = computed<Exclude<RaRenewalBucket, 'later'> | undefined>(() => {
   const value = text('bucket')
   return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
 })
-const renewals = useRaRenewals(computed(() => ({ ...paged.value, bucket: bucket.value })))
+const renewals = useRaRenewals(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: renewalsPerPage.value,
+  bucket: bucket.value,
+})))
 const renewalCards = [
   { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
   { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
-const register = useRaRegister(paged)
+const register = useRaRegister(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: registerPerPage.value,
+})))
 /** List: buildings whose RAs are shown under their row ("Show in the table" in RA(s)). */
 const expanded = ref<Record<string, boolean>>({})
 function toggleRow(row: RaMonitorLocation, open: boolean) {
@@ -161,7 +174,11 @@ function toggleRow(row: RaMonitorLocation, open: boolean) {
   const others = Object.fromEntries(Object.entries(expanded.value).filter(([key]) => key !== id))
   expanded.value = open ? { ...others, [id]: true } : others
 }
-const bottlenecks = useRaBottlenecks(paged)
+const bottlenecks = useRaBottlenecks(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: bottlenecksPerPage.value,
+})))
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
 const places = computed(() => ra.value.location.lowerPlural)
@@ -582,8 +599,8 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="renewalsPerPage"
             :page="page"
-            :per-page="PER_PAGE"
             :total="renewals.data.value?.total ?? 0"
             :to="pageTo"
             label="Renewals"
@@ -789,8 +806,8 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="registerPerPage"
             :page="page"
-            :per-page="PER_PAGE"
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
             label="List"
@@ -884,8 +901,8 @@ function record(id: number) {
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="bottlenecksPerPage"
               :page="page"
-              :per-page="PER_PAGE"
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"
               label="Approval"

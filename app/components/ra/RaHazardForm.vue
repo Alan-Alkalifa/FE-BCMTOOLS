@@ -96,6 +96,8 @@ const ratedCount = computed(() => [...evaluations.value.values()].filter((item) 
 // --- table -----------------------------------------------------------------------------------
 
 const groupFilter = ref<string>('all')
+const page = ref(1)
+const perPage = ref(10)
 const groupItems = computed(() => [
   { label: 'All hazard groups', value: 'all' },
   ...props.formula.categories.map((category) => ({ label: category.label, value: category.code })),
@@ -117,6 +119,13 @@ const rows = computed<Row[]>(() => props.formula.categories
     groupName: category.name,
     name: hazard.short_name,
   }))))
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * perPage.value
+  return rows.value.slice(start, start + perPage.value)
+})
+watch(groupFilter, () => {
+  page.value = 1
+})
 
 const right = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const wrap = { class: { td: 'whitespace-normal min-w-40' } }
@@ -331,7 +340,7 @@ async function save() {
         />
       </div>
       <UTable
-        :data="rows"
+        :data="pagedRows"
         :columns="columns"
         sticky
         class="max-h-[70vh]"
@@ -412,6 +421,12 @@ async function save() {
           </UTooltip>
         </template>
       </UTable>
+      <TablePagination
+        v-model:page="page"
+        v-model:per-page="perPage"
+        :total="rows.length"
+        label="Hazards"
+      />
     </UCard>
 
     <!-- The page of one hazard -->

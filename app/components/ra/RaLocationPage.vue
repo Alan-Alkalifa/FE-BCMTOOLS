@@ -14,6 +14,7 @@ const confirm = useConfirm()
 const id = computed(() => Number(route.params.id))
 const { data: location, status, error, refresh } = useRaLocation(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !location.value)
+const hasMapPin = computed(() => Boolean(raPin(location.value)))
 
 // One page for buildings and branches: the tabs below follow the location's own kind.
 const kind = computed<RaKind | null>(() => location.value?.kind ?? null)
@@ -232,6 +233,28 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
         :withdraw="() => decide(raApi.withdrawLocationRequest(location!.id))"
         :resubmit="() => decide(raApi.resubmitLocation(location!.id))"
       />
+
+      <UAlert
+        v-if="!hasMapPin"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-map-pin-off"
+        title="Map coordinates required"
+        :description="`This ${ra.location.lower} won't appear on the Building map until its map pin is saved.`"
+      >
+        <template
+          v-if="canEdit"
+          #actions
+        >
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-map-pinned"
+            label="Add map coordinates"
+            @click="selectTab('map')"
+          />
+        </template>
+      </UAlert>
 
       <UAlert
         v-if="!canEdit"

@@ -22,7 +22,7 @@ function canEditRow(location: RaLocation) {
 const route = useRoute()
 const router = useRouter()
 
-const PER_PAGE = 25
+const perPage = ref(10)
 type TypeFilter = RaKind | 'all'
 type StatusFilter = 'all' | 'active' | 'inactive' | 'pending' | 'rejected'
 
@@ -97,10 +97,13 @@ const { data, status, error, refresh } = useRaLocationRegister(() => ({
   sort: sortKey.value,
   dir: sortDir.value,
   page: page.value,
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 const { data: provinceData } = useRaProvinces(type)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 const hasFilters = computed(() => Boolean(text('q') || type.value !== 'all' || province.value || statusFilter.value !== 'all'))
 function clearFilters() {
   clearTimeout(searchTimer)
@@ -418,8 +421,8 @@ const addTo = computed(() => {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(next) => ({ query: { ...route.query, page: next > 1 ? next : undefined } })"
         label="Buildings"

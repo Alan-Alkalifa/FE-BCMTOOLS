@@ -9,9 +9,6 @@ const router = useRouter()
 const toast = useToast()
 const { can } = useAuth()
 
-/** Server-paginated, 25 rows a page (docs/design-system.md > Tables). */
-const PER_PAGE = 25
-
 const TABS = ['events', 'scca', 'ra', 'emails'] as const
 type AuditTab = (typeof TABS)[number]
 const tab = computed<AuditTab>({
@@ -22,12 +19,15 @@ const kind = ref<'all' | 'auth' | 'admin'>('all')
 const emailFilter = ref<'all' | OutboxEmail['status']>('all')
 const search = ref('')
 const eventPage = ref(1)
+const eventPerPage = ref(10)
 const emailPage = ref(1)
+const emailPerPage = ref(10)
 
 // SCCA activity; ?assessment=ID (from an assessment's page) shows one assessment.
 const sccaSearch = ref('')
 const sccaAction = ref('all')
 const sccaPage = ref(1)
+const sccaPerPage = ref(10)
 const sccaAssessment = computed(() => Number(route.query.assessment) || undefined)
 const sccaQuery = computed(() => ({
   kind: 'scca',
@@ -35,15 +35,16 @@ const sccaQuery = computed(() => ({
   event: sccaAction.value === 'all' ? undefined : sccaAction.value,
   assessment_id: sccaAssessment.value,
   page: sccaPage.value,
-  per_page: PER_PAGE,
+  per_page: sccaPerPage.value,
 }))
-watch([sccaSearch, sccaAction, sccaAssessment], () => (sccaPage.value = 1))
+watch([sccaSearch, sccaAction, sccaAssessment, sccaPerPage], () => (sccaPage.value = 1))
 
 // RA activity; ?building=ID (from a building's page) shows that building with its RAs and
 // incidents.
 const raSearch = ref('')
 const raGroup = ref('all')
 const raPage = ref(1)
+const raPerPage = ref(10)
 const raBuilding = computed(() => Number(route.query.building) || undefined)
 const raQuery = computed(() => ({
   kind: 'ra',
@@ -51,9 +52,9 @@ const raQuery = computed(() => ({
   group: raGroup.value === 'all' ? undefined : raGroup.value,
   building_id: raBuilding.value,
   page: raPage.value,
-  per_page: PER_PAGE,
+  per_page: raPerPage.value,
 }))
-watch([raSearch, raGroup, raBuilding], () => (raPage.value = 1))
+watch([raSearch, raGroup, raBuilding, raPerPage], () => (raPage.value = 1))
 function clearBuilding() {
   router.replace({ query: { ...route.query, building: undefined } })
 }
@@ -66,15 +67,15 @@ const eventQuery = computed(() => ({
   kind: kind.value === 'all' ? undefined : kind.value,
   q: search.value.trim() || undefined,
   page: eventPage.value,
-  per_page: PER_PAGE,
+  per_page: eventPerPage.value,
 }))
 const emailQuery = computed(() => ({
   status: emailFilter.value === 'all' ? undefined : emailFilter.value,
   page: emailPage.value,
-  per_page: PER_PAGE,
+  per_page: emailPerPage.value,
 }))
-watch([kind, search], () => (eventPage.value = 1))
-watch(emailFilter, () => (emailPage.value = 1))
+watch([kind, search, eventPerPage], () => (eventPage.value = 1))
+watch([emailFilter, emailPerPage], () => (emailPage.value = 1))
 
 const events = useFetch<Page<AuditEvent>>('/api/admin/audit/events', { query: eventQuery, key: 'admin-audit-events' })
 const scca = useFetch<Page<AuditEvent>>('/api/admin/audit/events', { query: sccaQuery, key: 'admin-audit-scca' })
@@ -239,7 +240,7 @@ const tabs = [
           </UTable>
           <TablePagination
             v-model:page="eventPage"
-            :per-page="PER_PAGE"
+            v-model:per-page="eventPerPage"
             :total="events.data.value?.total ?? 0"
             label="Sign-in and admin activity"
           />
@@ -352,7 +353,7 @@ const tabs = [
           </UTable>
           <TablePagination
             v-model:page="sccaPage"
-            :per-page="PER_PAGE"
+            v-model:per-page="sccaPerPage"
             :total="scca.data.value?.total ?? 0"
             label="SCCA activity"
           />
@@ -456,7 +457,7 @@ const tabs = [
           </UTable>
           <TablePagination
             v-model:page="raPage"
-            :per-page="PER_PAGE"
+            v-model:per-page="raPerPage"
             :total="ra.data.value?.total ?? 0"
             label="RA activity"
           />
@@ -541,7 +542,7 @@ const tabs = [
           </UTable>
           <TablePagination
             v-model:page="emailPage"
-            :per-page="PER_PAGE"
+            v-model:per-page="emailPerPage"
             :total="emails.data.value?.total ?? 0"
             label="Email outbox"
           />

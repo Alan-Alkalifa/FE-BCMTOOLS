@@ -6,7 +6,7 @@ import ApplicationForm from '~/components/admin/ApplicationForm.vue'
 
 definePageMeta({ permission: ['scca.application.view', 'scca.application.manage'] })
 
-const PER_PAGE = 25
+const perPage = ref(10)
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -26,11 +26,15 @@ const query = computed(() => ({
   active: route.query.active === '1' || route.query.active === '0' ? route.query.active : undefined,
   category: typeof route.query.category === 'string' ? route.query.category : undefined,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const { data, status, error, refresh } = useFetch<Page<Application>>('/api/applications', { query, key: 'admin-applications' })
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, (value) => {
@@ -285,8 +289,8 @@ function categoryColor(category: string | null) {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Applications"

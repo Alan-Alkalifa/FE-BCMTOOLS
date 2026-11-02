@@ -6,7 +6,7 @@ import AdminUserForm from '~/components/admin/AdminUserForm.vue'
 
 definePageMeta({ permission: 'admin.users.manage' })
 
-const PER_PAGE = 25
+const perPage = ref(10)
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -25,12 +25,16 @@ const query = computed(() => ({
   status: typeof route.query.status === 'string' ? route.query.status : undefined,
   role_id: Number(route.query.role_id) || undefined,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const { data, status, error, refresh } = useFetch<Page<AdminUser>>('/api/admin/users', { query, key: 'admin-users' })
 const { data: roles } = useAdminRoles()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+
+watch(perPage, () => {
+  router.replace({ query: { ...route.query, page: undefined } })
+})
 
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, (value) => {
@@ -257,8 +261,8 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Users"

@@ -19,7 +19,9 @@ const everyone = computed(() => can('scca.monitor') || can('scca.view_all'))
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
-const PER_PAGE = 25 // docs/design-system.md > Tables
+const renewalsPerPage = ref(10)
+const registerPerPage = ref(10)
+const bottlenecksPerPage = ref(10)
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -43,11 +45,14 @@ const filters = computed<SccaMonitoringFilters>(() => ({
   department: text('department'),
   q: text('q'),
 }))
-const paged = computed(() => ({ ...filters.value, page: Math.max(1, Number(route.query.page) || 1), per_page: PER_PAGE }))
+const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
 }
+watch(renewalsPerPage, () => setQuery({}))
+watch(registerPerPage, () => setQuery({}))
+watch(bottlenecksPerPage, () => setQuery({}))
 
 const today = new Date()
 const iso = (date: Date) => date.toISOString().slice(0, 10)
@@ -138,14 +143,27 @@ const bucket = computed<SccaRenewalBucket | undefined>(() => {
   const value = text('bucket')
   return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
 })
-const renewals = useSccaRenewals(computed(() => ({ ...paged.value, bucket: bucket.value })))
+const renewals = useSccaRenewals(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: renewalsPerPage.value,
+  bucket: bucket.value,
+})))
 const renewalCards = [
   { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
   { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
-const register = useSccaRegister(paged)
-const bottlenecks = useSccaBottlenecks(paged)
+const register = useSccaRegister(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: registerPerPage.value,
+})))
+const bottlenecks = useSccaBottlenecks(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: bottlenecksPerPage.value,
+})))
 
 const cards = computed(() => {
   const value = overview.data.value?.cards
@@ -243,7 +261,6 @@ const tabs = [
   { label: 'Approval', value: 'bottlenecks', icon: 'i-lucide-hourglass', slot: 'bottlenecks' as const },
 ]
 
-const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 function pageTo(next: number) {
   return { query: { ...route.query, page: next > 1 ? next : undefined } }
 }
@@ -474,8 +491,8 @@ function pageTo(next: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="renewalsPerPage"
             :page="page"
-            :per-page="PER_PAGE"
             :total="renewals.data.value?.total ?? 0"
             :to="pageTo"
             label="Renewals"
@@ -622,8 +639,8 @@ function pageTo(next: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="registerPerPage"
             :page="page"
-            :per-page="PER_PAGE"
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
             label="Register"
@@ -720,8 +737,8 @@ function pageTo(next: number) {
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="bottlenecksPerPage"
               :page="page"
-              :per-page="PER_PAGE"
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"
               label="Bottlenecks"
