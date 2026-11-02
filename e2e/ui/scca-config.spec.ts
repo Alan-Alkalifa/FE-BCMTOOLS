@@ -32,7 +32,7 @@ async function mockConfigAdmin(page: Page, draft = version('V4.3', 'draft')) {
   const versions = { active: version('V4.2', 'active', { can: { edit: false, request_publish: false, withdraw_request: false, publish: false, discard: false } }), draft }
   await page.route('**/api/scca/config**', (route) => route.fulfill({ json: sccaConfig() }))
   await page.route('**/api/users**', (route) => route.fulfill({ json: { items: [{ id: 7, display_name: 'Bernard Budidharma', email: 'bernard@example.com', job_title: 'BCM Head', department: 'BCM' }] } }))
-  await page.route(/\/api\/admin\/(scca-config|settings\/scca\/signers)/, async (route) => {
+  await page.route(/\/api\/admin\/(scca-config|settings\/scca\/(signers|step-comments))/, async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
     let body: unknown
@@ -61,6 +61,12 @@ async function mockConfigAdmin(page: Page, draft = version('V4.3', 'draft')) {
     }
     if (path.includes('/settings/scca/signers/')) {
       return route.fulfill({ json: { code: 'bcm_acknowledgement', title: 'Acknowledged by BCM', signer_mode: 'fixed', signer_roles: ['bcm_admin'], versions: [{ code: 'V4.3', status: 'draft' }], signer: { id: 7, display_name: 'Bernard Budidharma', email: 'bernard@example.com', job_title: 'BCM Head', department: 'BCM' }, problem: null, updated_by: 'Test User', updated_at: '2026-10-20T03:00:00Z' } })
+    }
+    if (path.endsWith('/settings/scca/step-comments')) {
+      return route.fulfill({ json: { items: [{ code: 'system_user_lead', title: 'Assessment by System User / User Lead', versions: ['V4.2', 'V4.3'], comments_all_tabs: false }] } })
+    }
+    if (path.includes('/settings/scca/step-comments/')) {
+      return route.fulfill({ json: { code: 'system_user_lead', title: 'Assessment by System User / User Lead', versions: ['V4.2', 'V4.3'], comments_all_tabs: (body as { comments_all_tabs: boolean }).comments_all_tabs } })
     }
     if (path.endsWith('/versions/V4.3')) return route.fulfill({ json: versions.draft })
     return route.fulfill({ status: 404, json: { error: 'not_found' } })
@@ -199,4 +205,14 @@ test('a draft on an older version moves to the active one', async ({ page }) => 
   await expect(page.getByText('Now on V4.3', { exact: true })).toBeVisible()
   await expect(page.getByText('Redo: Rating C1.').first()).toBeVisible()
   await expect(page.getByText('This draft uses V4.2.', { exact: false })).toHaveCount(0)
+})
+
+test('comments on every tab is a live switch per step, saved at once', async ({ page }) => {
+  const calls = await mockConfigAdmin(page)
+  await page.goto('/admin/scca-config?tab=steps')
+  const toggle = page.getByRole('switch', { name: 'Comments on every tab' })
+  await expect(toggle).toHaveCount(1, { timeout: 60_000 })
+  await toggle.click()
+  await expect(page.getByText('Assessment by System User / User Lead: comments on every tab', { exact: true })).toBeVisible()
+  expect(calls.find((call) => call.method === 'PUT')).toMatchObject({ path: '/api/admin/settings/scca/step-comments/system_user_lead', body: { comments_all_tabs: true } })
 })
