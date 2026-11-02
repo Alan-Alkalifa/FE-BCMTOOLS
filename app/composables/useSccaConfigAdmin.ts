@@ -97,6 +97,10 @@ export const sccaConfigApi = {
   withdrawRequest: (code: string) => $fetch<SccaConfigVersion>(`${BASE}/${code}/withdraw-request`, { method: 'POST' }),
   publish: (code: string) => $fetch<SccaConfigVersion>(`${BASE}/${code}/publish`, { method: 'POST' }),
   signers: () => $fetch<{ items: SccaSignerStep[] }>('/api/admin/settings/scca/signers'),
+  /** Live: does the signer at each step comment on every tab (every SCCA in approval)? */
+  stepComments: () => $fetch<{ items: SccaStepComments[] }>('/api/admin/settings/scca/step-comments'),
+  setStepComments: (step: string, value: boolean) =>
+    $fetch<SccaStepComments>(`/api/admin/settings/scca/step-comments/${step}`, { method: 'PUT', body: { comments_all_tabs: value } }),
   setSigner: (step: string, userId: number | null) =>
     $fetch<SccaSignerStep>(`/api/admin/settings/scca/signers/${step}`, { method: 'PUT', body: { user_id: userId } }),
 }
@@ -216,4 +220,11 @@ export const sccaAccessApi = {
   update: (id: number, body: SccaAccessRuleInput) => $fetch<SccaAccessRule>(`${ACCESS}/${id}`, { method: 'PUT', body }),
   remove: (id: number) => $fetch(`${ACCESS}/${id}`, { method: 'DELETE' }),
   check: (userId: number) => $fetch<SccaAccessCheck>(`${ACCESS}/check`, { query: { user_id: userId } }),
+}
+
+export interface SccaStepComments {
+  code: string
+  title: string
+  versions: string[]
+  comments_all_tabs: boolean
 }

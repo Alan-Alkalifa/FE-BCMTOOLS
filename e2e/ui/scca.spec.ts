@@ -68,9 +68,12 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
   await page.getByLabel('Application name').fill('New app')
   await pickDate(page, 'Assessment date', 1)
   await expect(page.getByText('Enter the assessment date.')).toHaveCount(0)
-  await selectUser(page, 'Application owner', 'Cards Owner')
-  await selectUser(page, 'IT support', 'IT Support')
+  // The assessor is the application owner; the contributor is the IT support.
+  await expect(page.getByRole('button', { name: 'Application owner' })).toHaveCount(0)
+  await selectUser(page, 'Contributor (IT support)', 'IT Support')
   await selectUser(page, 'Business stakeholder', 'Retail Lead')
+  await page.getByLabel('Country').fill('Indonesia')
+  await page.getByLabel('Vendor').fill('In-house')
   await page.getByLabel('Deployment model').click()
   await page.getByRole('option', { name: 'On Premises' }).click()
   await page.getByLabel('Customer facing').click()
@@ -86,6 +89,9 @@ test('creating an assessment opens the rating tab', async ({ page }) => {
     application_code: 'NEWAPP',
     application_name: 'New app',
     assessment_reason: 'new_application',
+    contributor_id: 2,
+    country: 'Indonesia',
+    vendor_name: 'In-house',
   })
   await expect(page).toHaveURL(/\/scca\/manage\/1\?tab=rating/)
 })
@@ -364,10 +370,14 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   ]))
 })
 
-test('the matrix highlights this system\'s cell', async ({ page }) => {
+test('the matrix fills every cell with its colour and outlines the result in dark red', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1?tab=result')
-  await expect(page.getByText('This system').filter({ visible: true })).toBeVisible({ timeout: 60_000 })
+  const result = page.locator('td[aria-current="true"]').filter({ visible: true })
+  await expect(result).toHaveCount(1, { timeout: 60_000 })
+  await expect(result).toHaveAttribute('aria-label', /^Result: /)
+  await expect(result).toHaveCSS('box-shadow', /rgb\(192, 0, 0\)/)
+  await expect(page.getByText('This system')).toHaveCount(0)
 })
 
 test('the report page renders the assessment', async ({ page }) => {

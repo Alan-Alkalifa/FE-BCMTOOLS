@@ -13,7 +13,8 @@ async function pickUser(page: Page, field: string, name: string) {
 test('the assessor picks a contributor on the Application tab', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1')
-  await expect(page.getByText('One colleague who can open and edit this SCCA with you.')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/The application's IT support, who edits this SCCA with you/)).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: 'Assessor (application owner)' })).toHaveValue('BCM - Test User')
   await pickUser(page, 'Contributor', 'Retail Lead')
   const request = page.waitForRequest((req) => req.method() === 'PUT' && req.url().endsWith('/api/scca/assessments/1'))
   await page.getByRole('button', { name: 'Save application' }).click()
@@ -27,7 +28,7 @@ test('the contributor picker is read-only for the contributor', async ({ page })
     permissions: { ...EDITOR, can_set_contributor: false },
   }))
   await page.goto('/scca/1')
-  await expect(page.getByText('Set by the assessor.')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/^Set by the assessor\./)).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Contributor' })).toBeDisabled()
 })
 
@@ -124,4 +125,16 @@ test('old "waiting for my approval" links open the Approval inbox', async ({ pag
   await expect(page).toHaveURL(/\/scca\/approval$/)
   await expect(page.getByRole('heading', { name: 'Waiting for my approval' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'CC Omni Channel' })).toHaveAttribute('href', '/scca/approval/1?tab=result')
+})
+
+test('a signer who may comment on Result only is told so on the other tabs', async ({ page }) => {
+  await mockScca(page, assessment({
+    status: 'in_approval',
+    pending_role: 'it_support_pic',
+    my_role: null,
+    signoffs: allSignoffs(),
+    permissions: { ...EDITOR, can_edit: false, can_submit: false, can_decide: true, comment_tabs: ['result'] },
+  }))
+  await page.goto('/scca/approval/1?tab=rating')
+  await expect(page.getByText(/At your step you comment on Result and sign-off\./).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 })
 })

@@ -25,6 +25,28 @@ function categoryAt(cia: number, poloss: number) {
 function isCurrent(cia: number, poloss: number) {
   return props.ciaLevel === cia && props.polossLevel === poloss
 }
+
+/** The workbook's (and the PDF's) category colours: every cell is filled with its category. */
+const FILL: Record<string, { background: string, color: string }> = {
+  'Critical': { background: '#FF0000', color: '#FFFFFF' },
+  'Very Important': { background: '#FFC000', color: '#000000' },
+  'Important': { background: '#FFFF00', color: '#000000' },
+  'Necessary': { background: '#D8E4BC', color: '#000000' },
+  'Other': { background: '#00B050', color: '#000000' },
+}
+
+function cellStyle(cia: number, poloss: number) {
+  const fill = FILL[categoryAt(cia, poloss) ?? ''] ?? { background: 'transparent', color: 'inherit' }
+  return isCurrent(cia, poloss)
+    ? { ...fill, boxShadow: 'inset 0 0 0 3px #C00000', fontWeight: 700 }
+    : fill
+}
+
+function cellLabel(cia: number, poloss: number) {
+  const category = categoryAt(cia, poloss)
+  const name = category ? (sccaCategory[category]?.label ?? category) : '—'
+  return isCurrent(cia, poloss) ? `Result: ${name}, CIA ${cia}, Potential loss ${poloss}` : undefined
+}
 </script>
 
 <template>
@@ -65,20 +87,12 @@ function isCurrent(cia: number, poloss: number) {
           <td
             v-for="cia in ciaLevels"
             :key="`${cia}-${poloss}`"
-            class="border border-default px-2 py-2 text-center"
-            :class="isCurrent(cia, poloss) ? 'ring-2 ring-inset ring-primary bg-elevated' : ''"
+            class="border border-white px-2 py-3 text-center text-xs"
+            :style="cellStyle(cia, poloss)"
+            :aria-label="cellLabel(cia, poloss)"
+            :aria-current="isCurrent(cia, poloss) ? 'true' : undefined"
           >
-            <span class="inline-flex flex-col items-center gap-1">
-              <StatusBadge
-                :scale="sccaCategory"
-                :value="categoryAt(cia, poloss)"
-                size="sm"
-              />
-              <span
-                v-if="isCurrent(cia, poloss)"
-                class="text-[10px] font-medium text-primary"
-              >This system</span>
-            </span>
+            {{ categoryAt(cia, poloss) ? (sccaCategory[categoryAt(cia, poloss)!]?.label ?? categoryAt(cia, poloss)) : '—' }}
           </td>
         </tr>
       </tbody>
