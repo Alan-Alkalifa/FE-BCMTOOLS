@@ -235,14 +235,16 @@ const residualImpactFields = RA_RESIDUAL_FIELDS.slice(1)
 
 const hazardCard = useTemplateRef<{ $el: HTMLElement }>('hazardCard')
 
-/** Back to the top of the page: the panel scrolls, not the window, so every scrolled ancestor. */
+/** Slides back to the top of the page (at once for people who ask for reduced motion). The
+ *  panel scrolls, not the window, so every scrolled ancestor. */
 function scrollToTop() {
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
   let element: HTMLElement | null = hazardCard.value?.$el ?? null
   while (element) {
-    if (element.scrollTop > 0) element.scrollTo({ top: 0 })
+    if (element.scrollTop > 0) element.scrollTo({ top: 0, behavior })
     element = element.parentElement
   }
-  window.scrollTo({ top: 0 })
+  window.scrollTo({ top: 0, behavior })
 }
 
 /** Previous / Next hazard: the next one opens at its top, not where the buttons were. */

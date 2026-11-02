@@ -62,12 +62,24 @@ const title = computed(() =>
   assessment.value ? `${assessment.value.location.name} · ${assessment.value.period_year}` : 'Assessment',
 )
 
-const tabItems = [
+/** Manage, a draft: each tab shows how much is still needed before Submit (as SCCA's). */
+const missing = computed(() =>
+  props.section === 'manage' && assessment.value?.status === 'draft' && assessment.value.can_edit && formula.value
+    ? raMissing(assessment.value, raRoleOptions(formula.value, ra.value.signoffRoles))
+    : null,
+)
+const TAB_ITEMS = [
   { label: 'Details', value: 'details', icon: 'i-lucide-file-text', slot: 'details' },
   { label: 'Hazards', value: 'hazards', icon: 'i-lucide-list-checks', slot: 'hazards' },
   { label: 'Risk Summary', value: 'summary', icon: 'i-lucide-grid-3x3', slot: 'summary' },
   { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' },
-]
+] as const
+const tabItems = computed(() => TAB_ITEMS.map((item) => {
+  const count = missing.value?.[item.value].length ?? 0
+  return count
+    ? { ...item, badge: { label: String(count), color: 'error' as const, variant: 'subtle' as const } }
+    : { ...item }
+}))
 
 async function confirmLeave() {
   return confirm({

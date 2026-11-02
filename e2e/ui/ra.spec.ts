@@ -192,6 +192,25 @@ test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) 
   await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
 })
 
+test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1')
+  const tabs = page.getByRole('tablist')
+  // One hazard is not finished (H09); two steps still need a signer (the LIC and LICOM sign theirs).
+  await expect(tabs.getByRole('tab', { name: 'Hazards 1' })).toBeVisible({ timeout: 60_000 })
+  await expect(tabs.getByRole('tab', { name: 'Sign-off 2' })).toBeVisible()
+  await expect(tabs.getByRole('tab', { name: 'Details', exact: true })).toBeVisible()
+  await expect(tabs.getByRole('tab', { name: 'Risk Summary', exact: true })).toBeVisible()
+})
+
+test('Monitoring shows no counts on the tabs', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/monitoring/1')
+  const tabs = page.getByRole('tablist')
+  await expect(tabs.getByRole('tab', { name: 'Hazards', exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(tabs.getByRole('tab', { name: 'Sign-off', exact: true })).toBeVisible()
+})
+
 test('an approval record opens on the Sign-off tab', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
   await page.goto('/ra/approval/1')
