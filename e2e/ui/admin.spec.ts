@@ -107,7 +107,12 @@ async function mockAdmin(page: Page) {
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method()
-    const raw = request.postDataJSON?.() ?? null
+    let raw: unknown
+    try {
+      raw = request.postDataJSON?.() ?? null
+    } catch {
+      raw = null // a file upload (Import from HR file)
+    }
     // Passwords arrive sealed: open them as the backend would; `raw` is what went on the wire.
     const body = (raw ? unseal(raw) : null) as ReturnType<typeof request.postDataJSON>
     calls.push({ method, url: url.pathname, body, raw })
@@ -121,6 +126,23 @@ async function mockAdmin(page: Page) {
       const created = adminUser(9, body.display_name, { email: body.email, username: body.email, has_password: false, last_login_at: null })
       users.push(created)
       return route.fulfill({ status: 201, json: { user: created, invitation_sent: true } })
+    }
+    if (path === '/api/admin/users/org-values') {
+      return route.fulfill({ json: { directorates: ['Operations, Technology, Analytics & AI'], sub_directorates: [], divisions: ['IT Application'], departments: [], org_levels: ['D-2', 'D-4'] } })
+    }
+    if (path === '/api/admin/users/import') {
+      const dryRun = url.searchParams.get('dry_run') === '1'
+      return route.fulfill({
+        json: {
+          dry_run: dryRun,
+          counts: { create: 1, update: 1, unchanged: 0, skip: 1, error: 0 },
+          rows: [
+            { line: 2, nip: '1001', name: 'Test User', email: 'test@example.com', action: 'update', remark: 'DS email found', user_id: 1, changes: ['directorate', 'org_level'] },
+            { line: 3, nip: '1002', name: 'No Mail', email: null, action: 'skip', remark: 'No email', user_id: null, changes: [] },
+            { line: 4, nip: '2002', name: 'Head Person', email: 'head@example.com', action: 'create', remark: 'No DS', user_id: null, changes: ['display_name'] },
+          ],
+        },
+      })
     }
     const unlock = path.match(/^\/api\/admin\/users\/(\d+)\/unlock$/)
     if (unlock) {
@@ -220,13 +242,27 @@ test('a new user gets roles and an invitation', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email (ID)').fill('dewi@example.com')
   await dialog.getByLabel('Full name').fill('Dewi Lestari')
-  await dialog.getByLabel('Job title').fill('BCM Officer')
+  await dialog.getByLabel('Job Name').fill('BCM Officer')
   await dialog.getByRole('checkbox', { name: 'BCM User' }).click()
   await dialog.getByRole('button', { name: 'Create user' }).click()
   await expect(page.getByText('An invitation to set a password was emailed to dewi@example.com.', { exact: true })).toBeVisible()
   const create = calls.find((call) => call.method === 'POST' && call.url === '/api/admin/users')!
   expect(create.body).toMatchObject({ email: 'dewi@example.com', display_name: 'Dewi Lestari', job_title: 'BCM Officer', role_ids: [3] })
   expect((create.body as Record<string, unknown>).password).toBeUndefined()
+})
+
+test('Import from HR file previews the rows, then applies them', async ({ page }) => {
+  const { calls } = await mockAdmin(page)
+  await page.goto('/admin/users')
+  await page.getByRole('button', { name: 'Import from HR file' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Import from HR file' })
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'hr.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('xlsx') })
+  await dialog.getByRole('button', { name: 'Preview' }).click()
+  await expect(dialog.getByText('Skipped: 1')).toBeVisible()
+  await expect(dialog.getByRole('row', { name: /No Mail.*No email/ })).toBeVisible()
+  expect(calls.some((call) => call.url === '/api/admin/users/import')).toBe(true)
+  await dialog.getByRole('button', { name: 'Apply (2 changes)' }).click()
+  await expect(page.getByText('Imported: 1 new, 1 updated', { exact: true })).toBeVisible()
 })
 
 test('a locked user is unlocked from the row menu', async ({ page }) => {

@@ -6,7 +6,7 @@ import ApplicationForm from '~/components/admin/ApplicationForm.vue'
 
 definePageMeta({ permission: ['scca.application.view', 'scca.application.manage'] })
 
-const PER_PAGE = 25
+const perPage = useRowsPerPage()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -20,13 +20,26 @@ const { data: config } = useSccaConfig()
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const activeFilter = ref<string>(typeof route.query.active === 'string' ? route.query.active : 'all')
 const categoryFilter = ref<string>(typeof route.query.category === 'string' ? route.query.category : 'all')
+// Directorate: one of them, or `none` (no directorate yet: the access scope can't open it).
+const directorateFilter = computed<string>({
+  get: () => (typeof route.query.directorate === 'string' && route.query.directorate ? route.query.directorate : 'all'),
+  set: (value) => router.replace({ query: { ...route.query, directorate: value === 'all' ? undefined : value, page: undefined } }),
+})
+const { data: orgValues } = useFetch<{ directorates: string[] }>('/api/admin/users/org-values', { key: 'applications-org-values' })
+const directorateItems = computed(() => [
+  { label: 'All directorates', value: 'all' },
+  { label: 'No directorate', value: 'none' },
+  ...(orgValues.value?.directorates ?? []).map((name) => ({ label: name, value: name })),
+])
 
 const query = computed(() => ({
   q: typeof route.query.q === 'string' && route.query.q ? route.query.q : undefined,
   active: route.query.active === '1' || route.query.active === '0' ? route.query.active : undefined,
   category: typeof route.query.category === 'string' ? route.query.category : undefined,
+  directorate: directorateFilter.value !== 'all' && directorateFilter.value !== 'none' ? directorateFilter.value : undefined,
+  no_directorate: directorateFilter.value === 'none' ? '1' : undefined,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const { data, status, error, refresh } = useFetch<Page<Application>>('/api/applications', { query, key: 'admin-applications' })
@@ -41,7 +54,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 watch(activeFilter, (value) => router.replace({ query: { ...route.query, active: value === 'all' ? undefined : value, page: undefined } }))
 watch(categoryFilter, (value) => router.replace({ query: { ...route.query, category: value === 'all' ? undefined : value, page: undefined } }))
 
-const filtered = computed(() => !!(query.value.q || query.value.active || query.value.category))
+const filtered = computed(() => !!(query.value.q || query.value.active || query.value.category || directorateFilter.value !== 'all'))
 function clearFilters() {
   search.value = ''
   activeFilter.value = 'all'
@@ -61,6 +74,7 @@ const categoryItems = computed(() => [
 
 const columns: TableColumn<Application>[] = [
   { accessorKey: 'application_code', header: 'Application' },
+  { accessorKey: 'directorate', header: 'Directorate' },
   { accessorKey: 'category', header: 'Category' },
   { accessorKey: 'rto_hours', header: 'RTO (hours)', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'rpo', header: 'RPO' },
@@ -147,7 +161,7 @@ function categoryColor(category: string | null) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="7"
+      :columns="8"
       label="Loading applications"
     />
 
@@ -193,6 +207,13 @@ function categoryColor(category: string | null) {
           aria-label="Filter by category"
           class="w-48"
         />
+        <USelectMenu
+          v-model="directorateFilter"
+          value-key="value"
+          :items="directorateItems"
+          aria-label="Filter by directorate"
+          class="w-56"
+        />
       </ListFilterBar>
 
       <UTable
@@ -216,6 +237,12 @@ function categoryColor(category: string | null) {
               {{ row.original.application_name }}
             </p>
           </div>
+        </template>
+        <template #directorate-cell="{ row }">
+          <span
+            class="block max-w-56 truncate text-sm"
+            :class="row.original.directorate ? '' : 'text-muted'"
+          >{{ row.original.directorate || '—' }}</span>
         </template>
         <template #category-cell="{ row }">
           <UBadge
@@ -285,8 +312,9 @@ function categoryColor(category: string | null) {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
         :page="data.page"
-        :per-page="PER_PAGE"
+        page-sizes
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Applications"

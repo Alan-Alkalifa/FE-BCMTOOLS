@@ -15,7 +15,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'lists', 'questions', 'steps', 'formula', 'notes', 'reminders', 'changes'] as const
+const TABS = ['versions', 'lists', 'questions', 'steps', 'formula', 'notes', 'reminders', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>({
   get: () => {
@@ -25,7 +25,7 @@ const tab = computed<Tab>({
   },
   set: (value) => router.replace({ query: { ...route.query, tab: value === 'versions' ? undefined : value } }),
 })
-// Reminders: the live reminder, escalation and renewal rules (not part of a version).
+// Reminders and Access scope: live settings (not part of a version).
 const tabItems = computed(() => [
   { label: 'Versions', value: 'versions', icon: 'i-lucide-git-branch', slot: 'versions' },
   { label: 'Lists', value: 'lists', icon: 'i-lucide-list', slot: 'lists' },
@@ -36,6 +36,7 @@ const tabItems = computed(() => [
   ...(can('scca.settings.manage')
     ? [{ label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' }]
     : []),
+  { label: 'Access scope', value: 'access', icon: 'i-lucide-shield-user', slot: 'access' },
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare', slot: 'changes' },
 ])
 
@@ -227,7 +228,7 @@ async function discard() {
     </UAlert>
 
     <template v-else-if="version">
-      <template v-if="tab !== 'reminders'">
+      <template v-if="tab !== 'reminders' && tab !== 'access'">
         <UAlert
           v-if="version.status === 'draft' && version.requested_by"
           class="mb-6"
@@ -314,6 +315,9 @@ async function discard() {
         </template>
         <template #reminders>
           <AdminSccaConfigReminders class="mt-4" />
+        </template>
+        <template #access>
+          <AdminSccaConfigAccess class="mt-4" />
         </template>
         <template #changes>
           <AdminSccaConfigChanges

@@ -19,7 +19,15 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string
   placeholder?: string
   disabled?: boolean
+  /** The SCCA's reason: an Annual review or a System change lists only what the user's access
+   * scope opens, and greys out what the reason rules refuse (no final SCCA, an open SCCA, a
+   * System change while the renewal is overdue). */
+  reason?: string | null
+  /** The draft being edited (its own open SCCA doesn't count). */
+  assessmentId?: number | null
 }>(), {
+  reason: null,
+  assessmentId: null,
   selected: null,
   exclude: null,
   taken: () => [],
@@ -39,14 +47,30 @@ interface Item {
 
 const search = ref('')
 const found = ref<SccaApplication[]>([])
+const scopeMessage = ref<string | null>(null)
 const loading = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 
+const RENEWAL: Record<string, string> = {
+  overdue: 'renewal overdue',
+  due_30: 'renewal due in 30 days',
+  due_90: 'renewal due in 31–90 days',
+  active: 'renewal active',
+}
+
 function describe(application: SccaApplication) {
+  if (application.available === false && application.problem) {
+    return `${application.application_name} · ${application.problem}`
+  }
   const last = application.last_assessment
   const parts = [application.application_name]
   if (application.category) parts.push(application.category)
-  parts.push(last ? `last SCCA ${formatDate(last.assessment_date) ?? ''} · ${sccaStatus[last.status].label}`.trim() : 'no SCCA yet')
+  if (application.last_final) {
+    parts.push(`last final ${application.last_final.ref_no ?? ''}`.trim())
+    if (application.renewal_status) parts.push(RENEWAL[application.renewal_status] ?? application.renewal_status)
+  } else {
+    parts.push(last ? `last SCCA ${formatDate(last.assessment_date) ?? ''} · ${sccaStatus[last.status].label}`.trim() : 'no SCCA yet')
+  }
   return parts.join(' · ')
 }
 
@@ -59,7 +83,8 @@ const items = computed<Item[]>(() => {
       description: props.taken.includes(application.application_id) && application.application_id !== model.value
         ? `${describe(application)} · already added`
         : describe(application),
-      disabled: props.taken.includes(application.application_id) && application.application_id !== model.value,
+      disabled: (props.taken.includes(application.application_id) || application.available === false)
+        && application.application_id !== model.value,
       application,
     }))
   if (model.value && !list.some((item) => item.value === model.value)) {
@@ -75,9 +100,12 @@ const items = computed<Item[]>(() => {
 async function load(term: string) {
   loading.value = true
   try {
-    found.value = (await sccaApi.applications(term)).items
+    const data = await sccaApi.applications(term, props.reason, props.assessmentId)
+    found.value = data.items
+    scopeMessage.value = data.scope_message ?? null
   } catch {
     found.value = []
+    scopeMessage.value = null
   } finally {
     loading.value = false
   }
@@ -88,6 +116,7 @@ watch(search, (term) => {
   timer = setTimeout(() => load(term), 300)
 })
 onMounted(() => load(''))
+watch(() => props.reason, () => load(search.value))
 onBeforeUnmount(() => clearTimeout(timer))
 
 function onUpdate(value: number | null | undefined) {
@@ -115,7 +144,14 @@ function onUpdate(value: number | null | undefined) {
     @clear="onUpdate(null)"
   >
     <template #empty>
-      <span class="text-sm text-muted">No active application matches. Ask BCM to add it in Administration &gt; Applications.</span>
+      <span
+        v-if="scopeMessage"
+        class="text-sm text-muted"
+      >{{ scopeMessage }}</span>
+      <span
+        v-else
+        class="text-sm text-muted"
+      >No active application matches. Ask BCM to add it in Administration &gt; Applications.</span>
     </template>
   </USelectMenu>
 </template>

@@ -19,9 +19,23 @@ export interface AdminUser {
   department: string | null
   company_name: string | null
   office_location: string | null
+  /** NIP (unique). */
   employee_id: string | null
   mobile_phone: string | null
   preferred_language: string | null
+  directorate: string | null
+  sub_directorate: string | null
+  org_group: string | null
+  division: string | null
+  /** Organization level, e.g. D-1, D-2, D-4. */
+  org_level: string | null
+  city: string | null
+  province: string | null
+  supervisor_nip: string | null
+  supervisor_name: string | null
+  supervisor_email: string | null
+  /** The direct supervisor's account, linked by NIP. */
+  supervisor: { id: number, name: string } | null
   auth_provider: 'local' | 'ldap'
   is_active: boolean
   is_locked: boolean
@@ -41,6 +55,16 @@ export interface AdminUserInput {
   office_location?: string | null
   employee_id?: string | null
   mobile_phone?: string | null
+  directorate?: string | null
+  sub_directorate?: string | null
+  org_group?: string | null
+  division?: string | null
+  org_level?: string | null
+  city?: string | null
+  province?: string | null
+  supervisor_nip?: string | null
+  supervisor_name?: string | null
+  supervisor_email?: string | null
   is_active?: boolean
   role_ids?: number[]
   password?: string | null
@@ -221,7 +245,40 @@ function withSealedPassword<T>(url: string, method: 'POST' | 'PUT', purpose: Sea
   return sealedFetch<T>(url, purpose, { password }, { method, body: rest })
 }
 
+/** Administration > Users > Import from HR file: what happened (or would happen) row by row. */
+export interface HrImportResult {
+  dry_run: boolean
+  counts: Record<'create' | 'update' | 'unchanged' | 'skip' | 'error', number>
+  rows: {
+    line: number
+    nip: string | null
+    name: string | null
+    email: string | null
+    action: 'create' | 'update' | 'unchanged' | 'skip' | 'error'
+    remark: string
+    user_id: number | null
+    changes: string[]
+  }[]
+}
+
+export interface UserOrgValues {
+  directorates: string[]
+  sub_directorates: string[]
+  divisions: string[]
+  departments: string[]
+  org_levels: string[]
+}
+
+export function useUserOrgValues() {
+  return useFetch<UserOrgValues>(`${BASE}/users/org-values`, { key: 'admin-user-org-values' })
+}
+
 export const adminApi = {
+  importUsers: (file: File, dryRun: boolean) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<HrImportResult>(`${BASE}/users/import`, { method: 'POST', body, query: dryRun ? { dry_run: 1 } : {} })
+  },
   createUser: (body: AdminUserInput) =>
     withSealedPassword<{ user: AdminUser, invitation_sent: boolean }>(`${BASE}/users`, 'POST', 'user_password', body),
   updateUser: (id: number, body: AdminUserInput) =>

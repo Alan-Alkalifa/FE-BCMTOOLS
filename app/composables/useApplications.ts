@@ -17,6 +17,8 @@ export interface Application {
   rto_hours: string | null
   rpo: string | null
   description: string | null
+  /** From the owner's directorate when final; BCM can edit it. The access scope uses it. */
+  directorate: string | null
   is_active: boolean
   final_assessment: { id: number, ref_no: string, finalised_at: string | null } | null
   in_use: boolean
@@ -34,6 +36,7 @@ export interface ApplicationInput {
   rto_hours?: string | null
   rpo?: string | null
   description?: string | null
+  directorate?: string | null
   is_active?: boolean
 }
 

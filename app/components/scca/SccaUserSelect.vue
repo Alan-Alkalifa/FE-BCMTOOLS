@@ -10,6 +10,7 @@ interface DirectoryUser {
   email: string | null
   job_title: string | null
   department: string | null
+  division?: string | null
 }
 
 const search = ref('')
@@ -38,7 +39,7 @@ async function load(term: string) {
       return [{
         label: value,
         value,
-        description: [user.job_title, user.department, user.email].filter(Boolean).join(' · ') || undefined,
+        description: [user.job_title, user.division || user.department, user.email].filter(Boolean).join(' · ') || undefined,
       }]
     }),
   )

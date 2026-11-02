@@ -9,6 +9,9 @@ export interface PickedUser {
   email: string | null
   job_title: string | null
   department: string | null
+  division?: string | null
+  directorate?: string | null
+  org_level?: string | null
 }
 
 const model = defineModel<number | null>()
@@ -20,12 +23,15 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string
   /** Only list users holding this permission (e.g. `scca.access` for SCCA participants). */
   permission?: string
+  /** Another search with the same answer shape (e.g. the Generate annual review contributors). */
+  endpoint?: string
 }>(), {
   selected: null,
   placeholder: 'Search by name or email',
   disabled: false,
   ariaLabel: undefined,
   permission: undefined,
+  endpoint: '/api/users',
 })
 
 const emit = defineEmits<{ pick: [user: PickedUser | null] }>()
@@ -46,13 +52,14 @@ const items = computed(() => {
   return users.map((user) => ({
     label: label(user),
     value: user.id,
-    description: [user.job_title, user.department, user.email].filter(Boolean).join(' · ') || undefined,
+    // Job Name, organization level and Division (or department), as the HR file has them.
+    description: [user.job_title, user.org_level, user.division || user.department, user.email].filter(Boolean).join(' · ') || undefined,
   }))
 })
 
 async function load(term: string) {
   try {
-    const data = await $fetch<{ items: PickedUser[] }>('/api/users', {
+    const data = await $fetch<{ items: PickedUser[] }>(props.endpoint, {
       query: { q: term, ...(props.permission ? { permission: props.permission } : {}) },
     })
     found.value = data.items

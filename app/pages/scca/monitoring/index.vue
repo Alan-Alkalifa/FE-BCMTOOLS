@@ -1,25 +1,32 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import type {
   SccaBottleneckRow,
+  SccaGenerateResult,
   SccaMonitorRef,
   SccaMonitoringFilters,
   SccaRegisterRow,
   SccaRenewalRow,
 } from '~/composables/useSccaWorkflow'
+import SccaGenerateDialog from '~/components/scca/SccaGenerateDialog.vue'
+import SccaHistoryDialog from '~/components/scca/SccaHistoryDialog.vue'
 
 definePageMeta({ permission: 'scca.access' })
 
 const route = useRoute()
 const router = useRouter()
 const { can } = useAuth()
+const toast = useToast()
+const generateDialog = useOverlay().create(SccaGenerateDialog)
+const historyDialog = useOverlay().create(SccaHistoryDialog)
 /** With scca.monitor (BCM, management) every SCCA; otherwise the user's own. */
 const everyone = computed(() => can('scca.monitor') || can('scca.view_all'))
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
-const PER_PAGE = 25 // docs/design-system.md > Tables
+// docs/design-system.md > Tables: 10, 20 (default), 50 or 100 rows, kept in the URL.
+const perPage = useRowsPerPage()
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -41,9 +48,12 @@ const filters = computed<SccaMonitoringFilters>(() => ({
   category: text('category'),
   status: SCCA_STATUSES.includes(text('status') as SccaStatus) ? text('status') as SccaStatus : undefined,
   department: text('department'),
+  directorate: text('directorate'),
+  sub_directorate: text('sub_directorate'),
+  division: text('division'),
   q: text('q'),
 }))
-const paged = computed(() => ({ ...filters.value, page: Math.max(1, Number(route.query.page) || 1), per_page: PER_PAGE }))
+const paged = computed(() => ({ ...filters.value, page: Math.max(1, Number(route.query.page) || 1), per_page: perPage.value }))
 
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
@@ -104,15 +114,26 @@ const statusItems = [
   { label: 'In approval', value: 'in_approval' as const },
 ]
 
-const { data: departmentData } = useSccaDepartments()
-const department = computed<string>({
-  get: () => filters.value.department ?? 'all',
-  set: (value) => setQuery({ department: value === 'all' ? undefined : value }),
-})
-const departmentItems = computed(() => [
-  { label: 'All departments', value: 'all' },
-  ...(departmentData.value?.items ?? []).map((name) => ({ label: name, value: name })),
-])
+// The application owner's Directorate / Sub Directorate / Division / Department (HR fields).
+const { data: orgData } = useSccaOrgValues()
+type OrgField = 'directorate' | 'sub_directorate' | 'division' | 'department'
+function orgFilter(field: OrgField) {
+  return computed<string>({
+    get: () => filters.value[field] ?? 'all',
+    set: (value) => setQuery({ [field]: value === 'all' ? undefined : value }),
+  })
+}
+const directorate = orgFilter('directorate')
+const subDirectorate = orgFilter('sub_directorate')
+const division = orgFilter('division')
+const department = orgFilter('department')
+function orgItems(all: string, values: string[] | undefined) {
+  return [{ label: all, value: 'all' }, ...(values ?? []).map((name) => ({ label: name, value: name }))]
+}
+const directorateItems = computed(() => orgItems('All directorates', orgData.value?.directorates))
+const subDirectorateItems = computed(() => orgItems('All sub directorates', orgData.value?.sub_directorates))
+const divisionItems = computed(() => orgItems('All divisions', orgData.value?.divisions))
+const departmentItems = computed(() => orgItems('All departments', orgData.value?.departments))
 
 const search = ref(filters.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -124,7 +145,10 @@ watch(search, (value) => {
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const filtered = computed(() => Boolean(filters.value.from || filters.value.to || filters.value.category || filters.value.status || filters.value.department || filters.value.q))
+const filtered = computed(() => {
+  const value = filters.value
+  return Boolean(value.from || value.to || value.category || value.status || value.department || value.directorate || value.sub_directorate || value.division || value.q)
+})
 function clearFilters() {
   search.value = ''
   router.replace({ query: { tab: route.query.tab } })
@@ -209,32 +233,124 @@ function daysLeft(row: SccaRenewalRow) {
 }
 
 const renewalColumns: TableColumn<SccaRenewalRow>[] = [
-  { accessorKey: 'application_name', header: 'Application' },
+  { id: 'select', header: '' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'application_code', header: 'Application code' },
   { accessorKey: 'category', header: 'Category' },
   { id: 'last_final', header: 'Last final SCCA' },
-  { accessorKey: 'renewal_date', header: 'Target Renewal date' },
+  { id: 'last_final_date', header: 'Last final SCCA date' },
+  { accessorKey: 'renewal_date', header: 'Renewal date' },
   { accessorKey: 'days_left', header: 'Due' },
-  { accessorKey: 'owner', header: 'Owner / assessor' },
+  { accessorKey: 'owner', header: 'Owner' },
+  { accessorKey: 'assessor', header: 'Assessor' },
+  { accessorKey: 'contributor', header: 'Contributor' },
   { accessorKey: 'renewal_status', header: 'Renewal' },
+  { id: 'actions', header: '' },
 ]
 const registerColumns: TableColumn<SccaRegisterRow>[] = [
-  { accessorKey: 'application_name', header: 'Application' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'application_code', header: 'Application code' },
+  { accessorKey: 'directorate', header: 'Directorate' },
   { accessorKey: 'department', header: 'Department' },
   { accessorKey: 'category', header: 'Category' },
   { id: 'latest_final', header: 'Latest final SCCA' },
+  { id: 'latest_final_date', header: 'Latest final SCCA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open SCCA' },
-  { accessorKey: 'owner', header: 'Owner / assessor' },
+  { accessorKey: 'owner', header: 'Owner' },
+  { accessorKey: 'assessor', header: 'Assessor' },
+  { accessorKey: 'contributor', header: 'Contributor' },
   { accessorKey: 'scca_count', header: 'SCCA(s)' },
 ]
 const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
-  { accessorKey: 'application_name', header: 'SCCA' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'ref_no', header: 'SCCA ref. no.' },
   { accessorKey: 'step_title', header: 'Current step' },
   { accessorKey: 'approver', header: 'Approver' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
+  { accessorKey: 'escalated_at', header: 'Escalated on' },
   { accessorKey: 'working_days_in_approval', header: 'In approval' },
 ]
+
+// --- Renewals: Act menu and Generate annual review (one row or the selected rows) -------------
+
+const selected = ref<Set<string>>(new Set())
+const renewalRows = computed(() => renewals.data.value?.items ?? [])
+const selectable = computed(() => renewalRows.value.filter((row) => row.can_generate))
+const selectedRows = computed(() => selectable.value.filter((row) => selected.value.has(row.key)))
+// A new page or filter starts with nothing selected.
+watch(renewalRows, () => (selected.value = new Set()))
+const allSelected = computed<boolean | 'indeterminate'>({
+  get: () => {
+    if (!selectable.value.length || !selectedRows.value.length) return false
+    return selectedRows.value.length === selectable.value.length ? true : 'indeterminate'
+  },
+  set: (value) => (selected.value = new Set(value ? selectable.value.map((row) => row.key) : [])),
+})
+function toggle(row: SccaRenewalRow, value: boolean | 'indeterminate') {
+  const next = new Set(selected.value)
+  if (value === true) next.add(row.key)
+  else next.delete(row.key)
+  selected.value = next
+}
+
+function plain(count: number, one: string) {
+  return `${count} ${one}${count === 1 ? '' : 's'}`
+}
+
+function announce(result: SccaGenerateResult) {
+  const created = result.created.length
+  const skipped = result.skipped.length + result.refused.length
+  const why = [...result.skipped, ...result.refused].map((row) => `${row.ref_no ?? `#${row.id}`}: ${row.reason}`)
+  toast.add({
+    title: `Created ${created}, skipped ${skipped}`,
+    description: why.length ? why.slice(0, 3).join(' · ') + (why.length > 3 ? ` · and ${why.length - 3} more` : '') : `${plain(created, 'draft')} waiting in Manage, with you as the assessor.`,
+    color: created ? 'success' : 'warning',
+    icon: created ? 'i-lucide-circle-check' : 'i-lucide-circle-alert',
+    actions: created
+      ? [{
+          label: 'Open in Manage',
+          color: 'neutral',
+          variant: 'outline',
+          onClick: () => {
+            navigateTo(created === 1 ? sccaPath('manage', result.created[0]!.id) : '/scca/manage')
+          },
+        }]
+      : undefined,
+  })
+}
+
+async function generate(rows: SccaRenewalRow[]) {
+  if (!rows.length) return
+  const result = await generateDialog.open({ rows, levels: renewals.data.value?.contributor_levels ?? ['D-2'] }).result
+  if (!result) return
+  announce(result)
+  selected.value = new Set()
+  await Promise.all([renewals.refresh(), overview.refresh()])
+}
+
+function renewalActions(row: SccaRenewalRow): DropdownMenuItem[] {
+  return [
+    { label: 'Open last final', icon: 'i-lucide-file-check', to: sccaPath('monitoring', row.last_final.id) },
+    {
+      label: 'Open renewal',
+      icon: 'i-lucide-file-pen',
+      disabled: !row.renewal,
+      to: row.renewal ? sccaPath('monitoring', row.renewal.id) : undefined,
+    },
+    {
+      label: 'Generate annual review',
+      icon: 'i-lucide-file-plus-2',
+      disabled: !row.can_generate,
+      onSelect: () => generate([row]),
+    },
+  ]
+}
+
+function openHistory(row: SccaRegisterRow) {
+  historyDialog.open({ row })
+}
 
 const tabs = [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard', slot: 'overview' as const },
@@ -255,7 +371,7 @@ function pageTo(next: number) {
     icon="i-lucide-chart-column"
     :description="everyone
       ? 'Every application\'s latest SCCA: categories, renewals due and approvals that are stuck. Read-only.'
-      : 'The SCCAs you assess, contribute to or sign: where each one is, renewals due and approvals waiting. Read-only.'"
+      : 'The SCCAs you assess, contribute to or sign, and the renewals your access scope opens: where each one is, renewals due and approvals waiting.'"
     :crumbs="[{ label: 'SCCA' }, { label: 'Monitoring' }]"
   >
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
@@ -290,6 +406,27 @@ function pageTo(next: number) {
           placeholder="All categories"
           class="w-48"
           aria-label="Category"
+        />
+        <USelectMenu
+          v-model="directorate"
+          value-key="value"
+          :items="directorateItems"
+          class="w-56"
+          aria-label="Directorate"
+        />
+        <USelectMenu
+          v-model="subDirectorate"
+          value-key="value"
+          :items="subDirectorateItems"
+          class="w-52"
+          aria-label="Sub Directorate"
+        />
+        <USelectMenu
+          v-model="division"
+          value-key="value"
+          :items="divisionItems"
+          class="w-52"
+          aria-label="Division"
         />
         <USelectMenu
           v-model="department"
@@ -387,22 +524,46 @@ function pageTo(next: number) {
             <p class="text-sm text-muted">
               {{ bucket ? `${sccaRenewalBucket[bucket].label}, soonest first.` : 'Overdue and due within 90 days, soonest first.' }}
             </p>
-            <UButton
-              :to="sccaExportUrl('renewals', filters)"
-              external
-              download
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-file-spreadsheet"
-              label="Export to Excel"
-            />
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-if="selectable.length"
+                icon="i-lucide-file-plus-2"
+                :label="`Generate annual review (${selectedRows.length})`"
+                :disabled="!selectedRows.length"
+                @click="generate(selectedRows)"
+              />
+              <UButton
+                :to="sccaExportUrl('renewals', filters)"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+            </div>
           </div>
           <UTable
-            :data="renewals.data.value?.items ?? []"
+            :data="renewalRows"
             :columns="renewalColumns"
             :loading="renewals.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #select-header>
+              <UCheckbox
+                v-if="selectable.length"
+                v-model="allSelected"
+                aria-label="Select every row you can generate for"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="selected.has(row.original.key)"
+                :disabled="!row.original.can_generate"
+                :aria-label="`Select ${row.original.application_name}`"
+                @update:model-value="toggle(row.original, $event)"
+              />
+            </template>
             <template #application_name-cell="{ row }">
               <NuxtLink
                 :to="sccaPath('monitoring', row.original.last_final.id)"
@@ -410,9 +571,15 @@ function pageTo(next: number) {
               >
                 {{ row.original.application_name }}
               </NuxtLink>
-              <p class="text-xs text-muted">
-                {{ row.original.application_code || '—' }}
+              <p
+                v-if="row.original.directorate"
+                class="text-xs text-muted"
+              >
+                {{ row.original.directorate }}
               </p>
+            </template>
+            <template #application_code-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.application_code || '—' }}</span>
             </template>
             <template #category-cell="{ row }">
               <StatusBadge
@@ -424,9 +591,9 @@ function pageTo(next: number) {
             </template>
             <template #last_final-cell="{ row }">
               <span class="font-mono text-xs">{{ refLabel(row.original.last_final) }}</span>
-              <p class="text-xs text-muted">
-                {{ formatDate(row.original.last_final.assessment_date) }}
-              </p>
+            </template>
+            <template #last_final_date-cell="{ row }">
+              {{ formatDate(row.original.last_final.finalised_at) || '—' }}
             </template>
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) }}
@@ -442,12 +609,30 @@ function pageTo(next: number) {
               </p>
             </template>
             <template #owner-cell="{ row }">
-              <p class="max-w-56 truncate">
+              <p class="max-w-48 truncate">
                 {{ row.original.owner || '—' }}
               </p>
-              <p class="text-xs text-muted">
-                {{ row.original.assessor || '—' }}
-              </p>
+            </template>
+            <template #assessor-cell="{ row }">
+              {{ row.original.assessor || '—' }}
+            </template>
+            <template #contributor-cell="{ row }">
+              {{ row.original.contributor || '—' }}
+            </template>
+            <template #actions-cell="{ row }">
+              <UDropdownMenu
+                :items="renewalActions(row.original)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  label="Act"
+                  :aria-label="`Act on ${row.original.application_name}`"
+                />
+              </UDropdownMenu>
             </template>
             <template #renewal_status-cell="{ row }">
               <NuxtLink
@@ -474,8 +659,9 @@ function pageTo(next: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
             :page="page"
-            :per-page="PER_PAGE"
+            page-sizes
             :total="renewals.data.value?.total ?? 0"
             :to="pageTo"
             label="Renewals"
@@ -506,7 +692,7 @@ function pageTo(next: number) {
             :data="register.data.value?.items ?? []"
             :columns="registerColumns"
             :loading="register.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
             <template #application_name-cell="{ row }">
               <NuxtLink
@@ -515,9 +701,12 @@ function pageTo(next: number) {
               >
                 {{ row.original.application_name }}
               </NuxtLink>
-              <p class="text-xs text-muted">
-                {{ row.original.application_code || '—' }}
-              </p>
+            </template>
+            <template #application_code-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.application_code || '—' }}</span>
+            </template>
+            <template #directorate-cell="{ row }">
+              <span :class="row.original.directorate ? '' : 'text-muted'">{{ row.original.directorate || '—' }}</span>
             </template>
             <template #department-cell="{ row }">
               <span :class="row.original.department ? '' : 'text-muted'">{{ row.original.department || 'Unknown' }}</span>
@@ -535,16 +724,17 @@ function pageTo(next: number) {
               >Not final yet</span>
             </template>
             <template #latest_final-cell="{ row }">
-              <template v-if="row.original.latest_final">
-                <span class="font-mono text-xs">{{ refLabel(row.original.latest_final) }}</span>
-                <p class="text-xs text-muted">
-                  {{ formatDate(row.original.latest_final.finalised_at) }}
-                </p>
-              </template>
+              <span
+                v-if="row.original.latest_final"
+                class="font-mono text-xs"
+              >{{ refLabel(row.original.latest_final) }}</span>
               <span
                 v-else
                 class="text-muted"
               >—</span>
+            </template>
+            <template #latest_final_date-cell="{ row }">
+              {{ formatDate(row.original.latest_final?.finalised_at) || '—' }}
             </template>
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
@@ -573,47 +763,26 @@ function pageTo(next: number) {
               >—</span>
             </template>
             <template #owner-cell="{ row }">
-              <p class="max-w-56 truncate">
+              <p class="max-w-48 truncate">
                 {{ row.original.owner || '—' }}
               </p>
-              <p class="text-xs text-muted">
-                {{ row.original.assessor || '—' }}
-              </p>
+            </template>
+            <template #assessor-cell="{ row }">
+              {{ row.original.assessor || '—' }}
+            </template>
+            <template #contributor-cell="{ row }">
+              {{ row.original.contributor || '—' }}
             </template>
             <template #scca_count-cell="{ row }">
-              <UPopover :content="{ align: 'end' }">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  trailing-icon="i-lucide-chevron-down"
-                  :label="String(row.original.scca_count)"
-                  :aria-label="`SCCA history of ${row.original.application_name}`"
-                />
-                <template #content>
-                  <ul class="w-72 divide-y divide-default text-sm">
-                    <li
-                      v-for="item in row.original.history"
-                      :key="item.id"
-                    >
-                      <NuxtLink
-                        :to="sccaPath('monitoring', item.id)"
-                        class="flex items-center justify-between gap-2 px-3 py-2 hover:bg-elevated/50"
-                      >
-                        <span>
-                          <span class="font-mono text-xs">{{ refLabel(item) }}</span>
-                          <span class="block text-xs text-muted">{{ formatDate(item.assessment_date) || '—' }}</span>
-                        </span>
-                        <StatusBadge
-                          :scale="sccaStatus"
-                          :value="item.status"
-                          size="sm"
-                        />
-                      </NuxtLink>
-                    </li>
-                  </ul>
-                </template>
-              </UPopover>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                trailing-icon="i-lucide-history"
+                :label="String(row.original.scca_count)"
+                :aria-label="`SCCA history of ${row.original.application_name}`"
+                @click="openHistory(row.original)"
+              />
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
@@ -622,8 +791,9 @@ function pageTo(next: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
             :page="page"
-            :per-page="PER_PAGE"
+            page-sizes
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
             label="Register"
@@ -681,9 +851,9 @@ function pageTo(next: number) {
                 >
                   {{ row.original.application_name }}
                 </NuxtLink>
-                <p class="font-mono text-xs text-muted">
-                  {{ row.original.ref_no }}
-                </p>
+              </template>
+              <template #ref_no-cell="{ row }">
+                <span class="font-mono text-xs">{{ row.original.ref_no || '—' }}</span>
               </template>
               <template #step_title-cell="{ row }">
                 {{ signoffRoleLabel(row.original.step, true) }}
@@ -703,12 +873,16 @@ function pageTo(next: number) {
               </template>
               <template #reminders_sent-cell="{ row }">
                 {{ row.original.reminders_sent }}
-                <p
+              </template>
+              <template #escalated_at-cell="{ row }">
+                <span
                   v-if="row.original.escalated_at"
-                  class="text-xs text-error"
-                >
-                  Escalated {{ formatDate(row.original.escalated_at) }}
-                </p>
+                  class="text-error"
+                >{{ formatDate(row.original.escalated_at) }}</span>
+                <span
+                  v-else
+                  class="text-muted"
+                >—</span>
               </template>
               <template #working_days_in_approval-cell="{ row }">
                 {{ workingDays(row.original.working_days_in_approval) }}
@@ -720,8 +894,9 @@ function pageTo(next: number) {
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="perPage"
               :page="page"
-              :per-page="PER_PAGE"
+              page-sizes
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"
               label="Bottlenecks"
