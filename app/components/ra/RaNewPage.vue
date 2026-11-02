@@ -12,6 +12,7 @@ import type { RaAssessmentSummary, RaLocation, RaLocationDetail, RaUserRef } fro
  * SCCA; a building that already has an RA for the period is flagged on the assessment date.
  */
 const ra = useRaModule()
+const { user } = useAuth()
 const route = useRoute()
 const toast = useToast()
 const confirm = useConfirm()
@@ -373,6 +374,19 @@ async function onSubmit() {
           >
             Renewal due {{ formatDate(dueDate) }}, one year after this assessment.
           </p>
+          <!-- As SCCA's Assessor: below the assessment date, the person creating it. -->
+          <UFormField
+            label="Assessor"
+            class="sm:col-start-1"
+            name="assessor"
+            help="Filled with the person who creates the assessment."
+          >
+            <UInput
+              :model-value="user?.name ?? ''"
+              disabled
+              class="w-full"
+            />
+          </UFormField>
         </fieldset>
       </UCard>
 

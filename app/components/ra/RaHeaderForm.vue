@@ -231,6 +231,19 @@ async function onSubmit() {
             >
               Renewal due {{ formatDate(standardDue) }}, one year after this assessment.
             </p>
+            <!-- As SCCA's Assessor: below the assessment date, read-only. -->
+            <UFormField
+              label="Assessor"
+              class="sm:col-start-1"
+              name="assessor"
+              help="Filled with the person who creates the assessment."
+            >
+              <UInput
+                :model-value="assessment.created_by ?? ''"
+                disabled
+                class="w-full"
+              />
+            </UFormField>
             <UFormField
               label="RA ref. no."
               name="ref_no"

@@ -62,9 +62,13 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page).toHaveURL(/state=none/)
   await expect(page.getByText('Graha CIMB Niaga')).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('state=none'))).toBe(true)
+  // Who made the RA, as SCCA's Assessor (not the LIC).
+  await expect(page.getByRole('columnheader', { name: 'Assessor' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'LIC' })).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'Renewals' }).click()
   await expect(page.getByText('Griya CIMB Niaga 2').first()).toBeVisible()
+  await expect(page.getByRole('table').filter({ visible: true }).getByText('Rina Kartika')).toBeVisible()
   await expect(page.getByText('Overdue', { exact: true }).first()).toBeVisible()
 
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
@@ -177,6 +181,17 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
 
+test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/approval?tab=board&q=own')
+  const board = page.getByRole('table').filter({ visible: true })
+  await expect(board.getByText('Your own RA: reminders only')).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: /^Act on/ }).click()
+  await expect(page.getByRole('menuitem', { name: 'Send a reminder now' })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
+})
+
 test('an approval record opens on the Sign-off tab', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
   await page.goto('/ra/approval/1')
@@ -241,6 +256,8 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   const building = page.getByRole('button', { name: /^Building\*?$/ })
   await expect(building).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Assessment date' })).toBeDisabled()
+  // As SCCA's: the person creating it is the assessor.
+  await expect(page.getByLabel('Assessor', { exact: true })).toHaveValue('Test User')
   await expect(page.getByRole('link', { name: 'Add building' })).toHaveAttribute('aria-disabled', 'true')
   await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toBeDisabled()
   await page.getByRole('button', { name: 'Create assessment' }).click()
@@ -656,6 +673,14 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
   await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  // As SCCA's: who made the RA, read-only, under the assessment date.
+  const assessor = page.getByLabel('Assessor', { exact: true })
+  await expect(assessor).toHaveValue('Test User')
+  await expect(assessor).toBeDisabled()
+  const dateBox = (await date.boundingBox())!
+  const assessorBox = (await assessor.boundingBox())!
+  expect(assessorBox.y).toBeGreaterThan(dateBox.y + dateBox.height)
+  expect(Math.abs(assessorBox.x - dateBox.x)).toBeLessThan(2)
   await date.click()
   await page.getByRole('gridcell', { name: /17/ }).first().click()
   await expect(date).toContainText('17 Mar 2025')

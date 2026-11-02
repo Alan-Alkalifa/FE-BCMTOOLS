@@ -236,7 +236,7 @@ const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'approved', header: 'Last final RA' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { accessorKey: 'days_left', header: 'Due' },
-  { id: 'lic', header: 'LIC' },
+  { id: 'assessor', header: 'Assessor' },
   { id: 'renewal', header: 'Renewal' },
 ])
 
@@ -256,7 +256,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open RA', meta: RA_STATUS_COLUMN },
   { id: 'open_step', header: 'Waiting for' },
-  { id: 'lic', header: 'LIC' },
+  { id: 'assessor', header: 'Assessor' },
   { accessorKey: 'assessment_count', header: 'RA(s)' },
 ])
 
@@ -552,9 +552,9 @@ function record(id: number) {
                 {{ daysLeft(row.original) }}
               </p>
             </template>
-            <template #lic-cell="{ row }">
+            <template #assessor-cell="{ row }">
               <p class="max-w-56 truncate">
-                {{ row.original.lic_name || '—' }}
+                {{ row.original.assessor || '—' }}
               </p>
             </template>
             <template #renewal-cell="{ row }">
@@ -777,9 +777,9 @@ function record(id: number) {
                 </template>
               </UPopover>
             </template>
-            <template #lic-cell="{ row }">
+            <template #assessor-cell="{ row }">
               <p class="max-w-56 truncate">
-                {{ row.original.lic_name || '—' }}
+                {{ row.original.assessor || '—' }}
               </p>
             </template>
             <template #empty>

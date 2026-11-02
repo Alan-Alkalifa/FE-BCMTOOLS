@@ -656,8 +656,8 @@ function workflowLocations(branch: boolean) {
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
   return [
-    { location: first, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', lic_name: 'Legiran', history: [open, approved] },
-    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, lic_name: null, history: [] },
+    { location: first, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', history: [open, approved] },
+    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, assessor: null, history: [] },
   ]
 }
 
@@ -677,6 +677,8 @@ function waitingRow(branch: boolean, step: string, signerId: number, days: numbe
     working_days_in_signoff: days + 2,
     submitted_at: '2026-10-08T03:00:00Z',
     submitted_by: 'Rina Kartika',
+    assessor: 'Rina Kartika',
+    can_act: true,
     reminders_sent: 0,
     escalated_at: null,
     level: days >= 7 ? 'escalated' : days >= 3 ? 'reminder' : 'ok',
@@ -723,7 +725,10 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
-      await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
+      // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
+      const own = name === 'approvals/board' && url.searchParams.get('q') === 'own'
+      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: false })) : waiting
+      await route.fulfill({ json: paged(step && step !== roles[2] ? [] : rows) })
     } else if (name === 'approvals/inbox') {
       await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
     } else if (name === 'approvals/upcoming') {

@@ -849,7 +849,8 @@ export interface RaMonitorLocation {
   renewal_date: string | null
   days_left: number | null
   bucket: RaRenewalBucket | null
-  lic_name: string | null
+  /** Who made the RA shown (the one in force, else the open one), as SCCA's Assessor. */
+  assessor: string | null
   history: RaAssessmentRef[]
 }
 
@@ -865,6 +866,10 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   working_days_in_signoff: number
   submitted_at: string | null
   submitted_by: string | null
+  /** Who made the RA (its creator), as SCCA's Assessor. */
+  assessor?: string | null
+  /** BCM board: false on an RA the caller made (reminders only, as SCCA's). */
+  can_act?: boolean
   reminders_sent: number
   escalated_at: string | null
   level: 'ok' | 'reminder' | 'escalated'
