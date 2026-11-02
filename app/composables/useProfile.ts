@@ -15,6 +15,19 @@ export interface Profile {
   mobile_phone: string | null
   business_phones: string[]
   preferred_language: string | null
+  /** HR organization (the HR employee file now, LDAP later). */
+  directorate: string | null
+  sub_directorate: string | null
+  org_group: string | null
+  division: string | null
+  org_level: string | null
+  city: string | null
+  province: string | null
+  /** Direct supervisor (DS) as HR gives it, and their account when a user has the DS NIP. */
+  supervisor_nip: string | null
+  supervisor_name: string | null
+  supervisor_email: string | null
+  supervisor: { id: number, name: string, email: string | null } | null
   auth_provider: 'local' | 'ldap'
   roles: UserRole[]
   permissions: string[]

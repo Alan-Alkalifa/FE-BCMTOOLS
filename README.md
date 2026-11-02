@@ -95,7 +95,7 @@ frontend/
 │   ├── plugins/api.client.ts      # Adds X-CSRF-Token to writes; 401 → sign-in, password_change_required → /account/password
 │   ├── pages/
 │   │   ├── index.vue              # Home: greeting, roles, approvals waiting, modules from the menu
-│   │   ├── profile.vue            # The user's record, roles, photo upload
+│   │   ├── profile.vue            # The user's record (Employee, Organization, Contact, Location, Direct supervisor, Account), roles, photo upload
 │   │   ├── login.vue, forgot-password.vue, reset-password.vue  # Public pages (no layout)
 │   │   ├── account/password.vue   # Change password (forced after a temporary password)
 │   │   ├── forbidden.vue          # Shown when a page's permission is missing
