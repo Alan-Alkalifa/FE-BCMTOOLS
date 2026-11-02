@@ -33,7 +33,6 @@
   "ratings": [
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H01",
       "historical": 1,
       "human": 2,
@@ -61,7 +60,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H02",
       "historical": "N/A",
       "human": "N/A",
@@ -89,7 +87,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H03",
       "historical": 3,
       "human": 4,
@@ -117,7 +114,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H04",
       "historical": "N/A",
       "human": "N/A",
@@ -145,7 +141,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H05",
       "historical": "N/A",
       "human": "N/A",
@@ -173,7 +168,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H06",
       "historical": 2,
       "human": 1,
@@ -201,7 +195,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H07",
       "historical": "N/A",
       "human": 1,
@@ -229,7 +222,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H08",
       "historical": "N/A",
       "human": "N/A",
@@ -257,7 +249,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H09",
       "historical": "N/A",
       "human": "N/A",
@@ -290,7 +281,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H10",
       "historical": 2,
       "human": 3,
@@ -318,7 +308,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H11",
       "historical": 1,
       "human": 3,
@@ -346,7 +335,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H12",
       "historical": "N/A",
       "human": "N/A",
@@ -374,7 +362,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H13",
       "historical": "N/A",
       "human": "N/A",
@@ -402,7 +389,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H14",
       "historical": 1,
       "human": 4,
@@ -430,7 +416,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H15",
       "historical": "N/A",
       "human": "N/A",
@@ -458,7 +443,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H16",
       "historical": "N/A",
       "human": "N/A",
@@ -486,7 +470,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H17",
       "historical": "N/A",
       "human": "N/A",
@@ -514,7 +497,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H18",
       "historical": "N/A",
       "human": "N/A",
@@ -542,7 +524,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H19",
       "historical": 1,
       "human": 3,
@@ -570,7 +551,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H20",
       "historical": "N/A",
       "human": "N/A",
@@ -598,7 +578,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H21",
       "historical": "N/A",
       "human": "N/A",
@@ -626,7 +605,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H22",
       "historical": 4,
       "human": 1,
@@ -654,7 +632,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H23",
       "historical": "N/A",
       "human": "N/A",
@@ -682,7 +659,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H24",
       "historical": "N/A",
       "human": "N/A",
@@ -710,7 +686,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H25",
       "historical": 2,
       "human": 1,
@@ -738,7 +713,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H26",
       "historical": "N/A",
       "human": 3,
@@ -766,7 +740,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H27",
       "historical": 2,
       "human": 1,
@@ -794,7 +767,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H28",
       "historical": 3,
       "human": 1,
@@ -827,7 +799,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H29",
       "historical": 2,
       "human": 1,
@@ -855,7 +826,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H30",
       "historical": "N/A",
       "human": "N/A",
@@ -883,7 +853,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H31",
       "historical": "N/A",
       "human": "N/A",
@@ -911,7 +880,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H32",
       "historical": "N/A",
       "human": "N/A",
@@ -939,7 +907,6 @@
     },
     {
       "action_plan": "terdapat pengajuan barrier gate untuk GN2 dari NMC ke SPAPM (in discussion)",
-      "cim_ref_no": null,
       "code": "H33",
       "historical": 1,
       "human": 2,

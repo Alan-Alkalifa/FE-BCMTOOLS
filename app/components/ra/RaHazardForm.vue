@@ -34,7 +34,6 @@ const inputs = computed(() => props.formula.inputs?.length ? props.formula.input
 interface HazardState extends RaRatingInputs {
   mitigation: string
   action_plan: string
-  cim_ref_no: string
 }
 
 type HazardStatus = 'unrated' | 'in_progress' | 'issues' | 'done'
@@ -50,7 +49,6 @@ function fromAssessment(assessment: RaAssessment): Record<string, HazardState> {
       ...values,
       mitigation: saved?.mitigation ?? '',
       action_plan: saved?.action_plan ?? '',
-      cim_ref_no: saved?.cim_ref_no ?? '',
     }
   }
   return state
@@ -174,7 +172,7 @@ const activeEvaluation = computed(() => (activeCode.value ? evaluations.value.ge
 const activeIndex = computed(() => (activeCode.value ? codes.value.indexOf(activeCode.value) : -1))
 
 function open(code: string | null) {
-  router.replace({ query: { ...route.query, tab: 'hazards', hazard: code ?? undefined } })
+  return router.replace({ query: { ...route.query, tab: 'hazards', hazard: code ?? undefined } })
 }
 
 const groupModel = computed<string>({
@@ -235,9 +233,25 @@ const grossImpactFields = RA_GROSS_FIELDS.slice(2)
 const residualProbabilityField = RA_RESIDUAL_FIELDS[0]
 const residualImpactFields = RA_RESIDUAL_FIELDS.slice(1)
 
-function go(offset: number) {
+const hazardCard = useTemplateRef<{ $el: HTMLElement }>('hazardCard')
+
+/** Back to the top of the page: the panel scrolls, not the window, so every scrolled ancestor. */
+function scrollToTop() {
+  let element: HTMLElement | null = hazardCard.value?.$el ?? null
+  while (element) {
+    if (element.scrollTop > 0) element.scrollTo({ top: 0 })
+    element = element.parentElement
+  }
+  window.scrollTo({ top: 0 })
+}
+
+/** Previous / Next hazard: the next one opens at its top, not where the buttons were. */
+async function go(offset: number) {
   const next = codes.value[activeIndex.value + offset]
-  if (next) open(next)
+  if (!next) return
+  await open(next)
+  await nextTick()
+  scrollToTop()
 }
 
 function markNotApplicable() {
@@ -251,7 +265,7 @@ function payload(code: string): RaRatingUpdate {
   return {
     code,
     ...Object.fromEntries(inputs.value.map((key) => [key, hazard[key]])),
-    ...blankToNull({ mitigation: hazard.mitigation, action_plan: hazard.action_plan, cim_ref_no: hazard.cim_ref_no }),
+    ...blankToNull({ mitigation: hazard.mitigation, action_plan: hazard.action_plan }),
   }
 }
 
@@ -430,7 +444,10 @@ async function save() {
     </UCard>
 
     <!-- The page of one hazard -->
-    <UCard v-else-if="active && activeHazard && activeEvaluation">
+    <UCard
+      v-else-if="active && activeHazard && activeEvaluation"
+      ref="hazardCard"
+    >
       <template #header>
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField label="Hazard group name">
@@ -630,41 +647,25 @@ async function save() {
               />
             </p>
           </div>
-          <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
-            <UFormField
-              label="Action plan"
-              :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
-            >
-              <template #hint>
-                <FieldCount
-                  :value="active.action_plan"
-                  :max="TEXT_LIMITS.hazard"
-                />
-              </template>
-              <UTextarea
-                v-model="active.action_plan"
-                :maxlength="TEXT_LIMITS.hazard"
-                :disabled="locked"
-                :rows="3"
-                autoresize
-                class="w-full"
+          <UFormField
+            label="Action plan"
+            :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
+          >
+            <template #hint>
+              <FieldCount
+                :value="active.action_plan"
+                :max="TEXT_LIMITS.hazard"
               />
-            </UFormField>
-            <UFormField label="CIM ref. no.">
-              <template #hint>
-                <FieldCount
-                  :value="active.cim_ref_no"
-                  :max="TEXT_LIMITS.medium"
-                />
-              </template>
-              <UInput
-                v-model="active.cim_ref_no"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="locked"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
+            </template>
+            <UTextarea
+              v-model="active.action_plan"
+              :maxlength="TEXT_LIMITS.hazard"
+              :disabled="locked"
+              :rows="3"
+              autoresize
+              class="w-full"
+            />
+          </UFormField>
         </section>
 
         <UAlert

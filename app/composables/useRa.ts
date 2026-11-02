@@ -59,7 +59,6 @@ export type RaRatingInputs = Record<RaRatingField, RaRatingValue>
 export interface RaRatingTexts {
   mitigation: string | null
   action_plan: string | null
-  cim_ref_no: string | null
 }
 
 export interface RaRating extends RaRatingInputs, RaRatingTexts {
@@ -345,7 +344,6 @@ export interface RaCrisisPlace {
       residual_level: RaLevel | null
       mitigation: string | null
       action_plan: string | null
-      cim_ref_no: string | null
     } | null
   } | null
   contacts: RaContact[]

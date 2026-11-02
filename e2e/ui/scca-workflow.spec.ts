@@ -223,23 +223,23 @@ test('the BCM board is hidden without its permission', async ({ page }) => {
 const many = <T extends Record<string, unknown>>(row: T, count: number) =>
   Array.from({ length: count }, (_, index) => ({ ...row, id: 100 + index, ref_no: `SCCA-2026-${String(100 + index).padStart(4, '0')}`, application_name: `App ${index + 1}` }))
 
-test('My inbox and Coming up are paged by the server, 25 and 10 a page, with the page in the URL', async ({ page }) => {
+test('My inbox and Coming up are paged by the server, 10 a page, with the page in the URL', async ({ page }) => {
   await mockScca(page)
   await mockSccaWorkflow(page, { inbox: many(INBOX[0]!, 30), upcoming: many(UPCOMING[0]!, 12) })
   const first = page.waitForRequest((req) => req.url().includes('/api/scca/approvals/inbox'))
   await page.goto('/scca/approval')
   const query = new URL((await first).url()).searchParams
-  expect([query.get('page'), query.get('per_page')]).toEqual(['1', '25'])
+  expect([query.get('page'), query.get('per_page')]).toEqual(['1', '10'])
   const inbox = page.getByRole('navigation', { name: 'My inbox pages' })
-  await expect(inbox.getByText('Showing 1–25 of 30')).toBeVisible({ timeout: 60_000 })
+  await expect(inbox.getByText('Showing 1–10 of 30')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('tab', { name: /My inbox/ })).toContainText('30')
 
   const second = page.waitForRequest((req) => req.url().includes('/api/scca/approvals/inbox') && req.url().includes('page=2'))
   await inbox.getByRole('link', { name: 'Page 2' }).click()
   await second
   await expect(page).toHaveURL(/\/scca\/approval\?page=2$/)
-  await expect(inbox.getByText('Showing 26–30 of 30')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'App 26' })).toBeVisible()
+  await expect(inbox.getByText('Showing 11–20 of 30')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'App 11', exact: true })).toBeVisible()
 
   const coming = page.getByRole('navigation', { name: 'Coming up pages' })
   await expect(coming.getByText('Showing 1–10 of 12')).toBeVisible()
@@ -253,22 +253,22 @@ test('My history is paged by the server; a new filter starts again at page 1', a
   await mockSccaWorkflow(page, { history: Array.from({ length: 30 }, (_, index) => ({ ...HISTORY[1]!, id: 200 + index, application_name: `App ${index + 1}` })) })
   await page.goto('/scca/approval?tab=history&page=2')
   const pager = page.getByRole('navigation', { name: 'My history pages' })
-  await expect(pager.getByText('Showing 26–30 of 30')).toBeVisible({ timeout: 60_000 })
+  await expect(pager.getByText('Showing 11–20 of 30')).toBeVisible({ timeout: 60_000 })
   await page.getByLabel('Decision').click()
   await page.getByRole('option', { name: 'Approved on my behalf' }).click()
   await expect(page).toHaveURL(/decision=approved_on_behalf/)
   await expect(page).not.toHaveURL(/page=2/)
-  await expect(pager.getByText('Showing 1–25 of 30')).toBeVisible()
+  await expect(pager.getByText('Showing 1–10 of 30')).toBeVisible()
 })
 
-test('Renewals, Register and Bottlenecks are paged by the server, 25 a page', async ({ page }) => {
+test('Renewals, Register and Bottlenecks are paged by the server, 10 a page', async ({ page }) => {
   await mockScca(page)
   await mockSccaWorkflow(page, { renewals: many(RENEWALS[1]!, 27) })
   const request = page.waitForRequest((req) => req.url().includes('/api/scca/monitoring/renewals'))
   await page.goto('/scca/monitoring?tab=renewals&page=2')
   const query = new URL((await request).url()).searchParams
-  expect([query.get('page'), query.get('per_page')]).toEqual(['2', '25'])
-  await expect(page.getByRole('navigation', { name: 'Renewals pages' }).getByText('Showing 26–27 of 27')).toBeVisible({ timeout: 60_000 })
+  expect([query.get('page'), query.get('per_page')]).toEqual(['2', '10'])
+  await expect(page.getByRole('navigation', { name: 'Renewals pages' }).getByText('Showing 11–20 of 27')).toBeVisible({ timeout: 60_000 })
 
   await page.goto('/scca/monitoring?tab=register')
   await expect(page.getByRole('navigation', { name: 'Register pages' }).getByText('Showing 1–2 of 2')).toBeVisible({ timeout: 60_000 })

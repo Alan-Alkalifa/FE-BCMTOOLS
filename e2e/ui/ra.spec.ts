@@ -638,7 +638,8 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
     await expect(page.getByRole('textbox', { name })).toHaveAttribute('maxlength', '3000')
   }
   await expect(page.getByText(/^\d+\/3,?000$/).first()).toBeVisible()
-  await expect(page.getByRole('textbox', { name: /^CIM ref\. no\./ })).toHaveAttribute('maxlength', '64')
+  // No CIM ref. no. on a hazard.
+  await expect(page.getByRole('textbox', { name: /^CIM ref\. no\./ })).toHaveCount(0)
 
   await group.click()
   await page.getByRole('option', { name: 'Security threats' }).click()
@@ -646,10 +647,20 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
   await type.click()
   await page.getByRole('option', { name: '21 - Terorisme' }).click()
   await expect(page).toHaveURL(/hazard=H21/)
-  // Next hazard crosses into the next group.
-  await page.getByRole('button', { name: 'Next hazard' }).click()
+  // Next hazard crosses into the next group, and opens it at the top of the page.
+  const next = page.getByRole('button', { name: 'Next hazard' })
+  await next.scrollIntoViewIfNeeded()
+  await expect(type).not.toBeInViewport()
+  await next.click()
   await expect(type).toContainText('22 - Gangguan pasokan listrik')
   await expect(group).toContainText('Infrastructure')
+  await expect(type).toBeInViewport()
+  // So does Previous hazard.
+  const previous = page.getByRole('button', { name: 'Previous hazard' })
+  await previous.scrollIntoViewIfNeeded()
+  await previous.click()
+  await expect(type).toContainText('21 - Terorisme')
+  await expect(type).toBeInViewport()
 })
 
 test('the location incident team is required', async ({ page }) => {
@@ -936,6 +947,11 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   const map = page.getByRole('region', { name: /Map of Griya CIMB Niaga 2/ })
   await expect(map).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('No pin yet.')).toBeVisible()
+  // Coordinates are required: a location without a pin is not on the Building map (said on
+  // the page and on the Map tab).
+  await expect(page.getByText('Map coordinates required')).toHaveCount(2)
+  const tabNote = page.getByText('Place a pin and save it for this location to appear on the Building map.')
+  await expect(tabNote).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save pin' })).toBeDisabled()
   await expect(page.getByRole('link', { name: 'Find the address in Google Maps' })).toHaveAttribute('href', /google\.com\/maps\/search/)
 
@@ -951,6 +967,7 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   await page.getByRole('button', { name: 'Save pin' }).click()
   expect((await request).postDataJSON()).toEqual({ latitude: -6.271633, longitude: 106.719358 })
   await expect(page.getByText('Map pin saved').first()).toBeVisible()
+  await expect(tabNote).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Open the pin in Google Maps' })).toHaveAttribute('href', /query=-6\.271633%2C106\.719358/)
 
   // Clicking the map moves the pin; the coordinates follow.
@@ -958,11 +975,11 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25)
   await expect(coordinates).not.toHaveValue('-6.271633, 106.719358')
   await expect(page.getByText('Unsaved changes')).toBeVisible()
-
-  const cleared = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/locations/1'))
-  await page.getByRole('button', { name: 'Remove pin' }).click()
+  // A pin can be moved but not removed.
+  await expect(page.getByRole('button', { name: 'Remove pin' })).toHaveCount(0)
+  const moved = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/locations/1'))
   await page.getByRole('button', { name: 'Save pin' }).click()
-  expect((await cleared).postDataJSON()).toEqual({ latitude: null, longitude: null })
+  expect((await moved).postDataJSON()).not.toEqual({ latitude: -6.271633, longitude: 106.719358 })
   expect(log.lists).toEqual({})
 })
 

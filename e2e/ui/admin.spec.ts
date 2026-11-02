@@ -367,7 +367,7 @@ test('the audit log shows sign-ins and failed emails can be sent again', async (
   expect(calls.some((call) => call.url === '/api/admin/audit/emails/5/retry')).toBe(true)
 })
 
-test('the audit log is paged by the server, 25 a page', async ({ page }) => {
+test('the audit log is paged by the server, 10 a page by default', async ({ page }) => {
   await mockAdmin(page)
   const rows = Array.from({ length: 60 }, (_, index) => ({ ...SCCA_ACTIVITY_ROWS[0]!, id: 1000 + index }))
   const asked: string[] = []
@@ -380,11 +380,16 @@ test('the audit log is paged by the server, 25 a page', async ({ page }) => {
   })
   await page.goto('/admin/audit?tab=scca')
   const pager = page.getByRole('navigation', { name: 'SCCA activity pages' })
-  await expect(pager.getByText('Showing 1–25 of 60')).toBeVisible({ timeout: 60_000 })
+  await expect(pager.getByText('Showing 1–10 of 60')).toBeVisible({ timeout: 60_000 })
   await pager.getByRole('button', { name: 'Page 3' }).click()
-  await expect(pager.getByText('Showing 51–60 of 60')).toBeVisible()
+  await expect(pager.getByText('Showing 21–30 of 60')).toBeVisible()
   expect(asked.at(-1)).toContain('page=3')
-  expect(asked.every((search) => search.includes('per_page=25'))).toBe(true)
+  expect(asked.every((search) => search.includes('per_page=10'))).toBe(true)
+  // A bigger page size starts again at page 1.
+  await pager.getByLabel('SCCA activity per page').click()
+  await page.getByRole('option', { name: '30' }).click()
+  await expect(pager.getByText('Showing 1–30 of 60')).toBeVisible()
+  expect(asked.at(-1)).toContain('per_page=30')
   await expect(page.getByRole('navigation', { name: 'Sign-in and admin activity pages' })).toHaveCount(0)
 })
 

@@ -816,7 +816,6 @@ export const CRISIS = {
           residual_level: 'Low',
           mitigation: 'Pompa Buang (8 sampit) dan genset di GF',
           action_plan: null,
-          cim_ref_no: null,
         },
       },
       contacts: [{ kind: 'fire_brigade', seq: 1, name: 'Damkar Tangerang Selatan', phone: '113', group_name: null, floor: null, address: null }],
