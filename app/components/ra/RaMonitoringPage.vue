@@ -46,8 +46,8 @@ const filters = computed<RaMonitoringFilters>(() => ({
   to: text('to'),
   directorate: text('directorate'),
   sub_directorate: text('sub_directorate'),
+  org_group: text('org_group'),
   division: text('division'),
-  department: text('department'),
 }))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 
@@ -130,9 +130,10 @@ const regionItems = computed(() => [
   ...(regionData.value?.items ?? []).map((name) => ({ label: name, value: name })),
 ])
 
-// The location's Directorate / Sub Directorate / Division / Department, as SCCA's org filters.
+// The location's Directorate / Sub Directorate / Group (a branch's area) / Division, as SCCA's
+// org filters.
 const { data: orgData } = useRaMonitoringOrgValues(filters)
-type OrgField = 'directorate' | 'sub_directorate' | 'division' | 'department'
+type OrgField = 'directorate' | 'sub_directorate' | 'org_group' | 'division'
 function orgFilter(field: OrgField) {
   return computed<string>({
     get: () => filters.value[field] ?? 'all',
@@ -141,15 +142,15 @@ function orgFilter(field: OrgField) {
 }
 const directorate = orgFilter('directorate')
 const subDirectorate = orgFilter('sub_directorate')
+const group = orgFilter('org_group')
 const division = orgFilter('division')
-const department = orgFilter('department')
 function orgItems(all: string, values: string[] | undefined) {
   return [{ label: all, value: 'all' }, ...(values ?? []).map((name) => ({ label: name, value: name }))]
 }
 const directorateItems = computed(() => orgItems('All directorates', orgData.value?.directorates))
 const subDirectorateItems = computed(() => orgItems('All sub directorates', orgData.value?.sub_directorates))
+const groupItems = computed(() => orgItems('All groups / areas', orgData.value?.groups))
 const divisionItems = computed(() => orgItems('All divisions', orgData.value?.divisions))
-const departmentItems = computed(() => orgItems('All departments', orgData.value?.departments))
 
 const search = ref(filters.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -164,7 +165,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
 const filtered = computed(() => {
   const value = filters.value
   return Boolean(value.q || value.region || value.level || value.state || value.reason || value.from || value.to
-    || value.directorate || value.sub_directorate || value.division || value.department)
+    || value.directorate || value.sub_directorate || value.org_group || value.division)
 })
 function clearFilters() {
   search.value = ''
@@ -195,6 +196,11 @@ const register = useRaRegister(computed(() => ({
   page: page.value,
   per_page: perPage.value,
 })))
+/** The List's Group / Area: the location's Group (a branch's area). */
+function groupOf(row: RaMonitorLocation) {
+  return row.location.org_group || row.location.area || null
+}
+
 /** List > RA(s): every RA of the location, as SCCA's SCCA(s). */
 function openHistory(row: RaMonitorLocation) {
   historyDialog.open({ row, kind: ra.value.kind })
@@ -388,7 +394,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
   { id: 'code', header: `${locationColumn.value} ID` },
   { id: 'directorate', header: 'Directorate' },
-  { id: 'department', header: 'Department' },
+  { id: 'group', header: 'Group / Area' },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
   { id: 'approved_date', header: 'Last final RA date' },
@@ -529,18 +535,18 @@ function record(id: number) {
           aria-label="Sub Directorate"
         />
         <USelectMenu
+          v-model="group"
+          value-key="value"
+          :items="groupItems"
+          class="w-52"
+          aria-label="Group / Area"
+        />
+        <USelectMenu
           v-model="division"
           value-key="value"
           :items="divisionItems"
           class="w-52"
           aria-label="Division"
-        />
-        <USelectMenu
-          v-model="department"
-          value-key="value"
-          :items="departmentItems"
-          class="w-52"
-          aria-label="Department"
         />
         <USelectMenu
           v-model="period"
@@ -893,8 +899,9 @@ function record(id: number) {
             <template #directorate-cell="{ row }">
               <span :class="row.original.location.directorate ? '' : 'text-muted'">{{ row.original.location.directorate || '—' }}</span>
             </template>
-            <template #department-cell="{ row }">
-              <span :class="row.original.location.department ? '' : 'text-muted'">{{ row.original.location.department || '—' }}</span>
+            <!-- The location's Group, as the user master names it; a branch's is its area. -->
+            <template #group-cell="{ row }">
+              <span :class="groupOf(row.original) ? '' : 'text-muted'">{{ groupOf(row.original) || '—' }}</span>
             </template>
             <template #approved_date-cell="{ row }">
               {{ formatDate(row.original.approved?.approved_at) || '—' }}

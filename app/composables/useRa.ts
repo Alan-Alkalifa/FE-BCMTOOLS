@@ -236,14 +236,17 @@ export interface RaLocationRef {
    *  owner. A branch's Directorate and Sub Directorate follow its region. */
   directorate?: string | null
   sub_directorate?: string | null
+  /** Its Group (the user master's `org_group`); a branch's is its area. */
+  org_group?: string | null
   division?: string | null
   department?: string | null
 }
 
-/** Directorates, sub directorates, divisions and departments (building form, Monitoring). */
+/** Directorates, sub directorates, groups, divisions and departments (building form, Monitoring). */
 export interface RaOrgValues {
   directorates: string[]
   sub_directorates: string[]
+  groups: string[]
   divisions: string[]
   departments: string[]
 }
@@ -558,6 +561,7 @@ export interface RaLocationInput {
   region?: string | null
   directorate?: string | null
   sub_directorate?: string | null
+  org_group?: string | null
   division?: string | null
   department?: string | null
   latitude?: number | null
@@ -939,6 +943,7 @@ export interface RaMonitoringFilters {
   /** The location's organization, as SCCA's org filters. */
   directorate?: string
   sub_directorate?: string
+  org_group?: string
   division?: string
   department?: string
 }
@@ -1000,7 +1005,7 @@ export function useRaMonitoringOrgValues(filters: MaybeRefOrGetter<RaMonitoringF
   return useFetch<RaOrgValues>('/api/ra/monitoring/org-values', {
     key: computed(() => `ra-monitoring-org-values-${toValue(filters).kind}`),
     query: computed(() => ({ kind: toValue(filters).kind })),
-    default: () => ({ directorates: [], sub_directorates: [], divisions: [], departments: [] }),
+    default: () => ({ directorates: [], sub_directorates: [], groups: [], divisions: [], departments: [] }),
   })
 }
 
@@ -1047,7 +1052,7 @@ export interface RaNetworkRegion extends RaNetworkHead {
 export function useRaOrgValues() {
   return useFetch<RaOrgValues>('/api/ra/org-values', {
     key: 'ra-org-values',
-    default: () => ({ directorates: [], sub_directorates: [], divisions: [], departments: [] }),
+    default: () => ({ directorates: [], sub_directorates: [], groups: [], divisions: [], departments: [] }),
   })
 }
 

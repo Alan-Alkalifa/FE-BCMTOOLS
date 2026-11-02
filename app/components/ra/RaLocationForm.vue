@@ -72,6 +72,7 @@ const schema = computed(() => z.object({
   area: z.string(),
   directorate: z.string(),
   sub_directorate: z.string(),
+  org_group: z.string(),
   division: z.string(),
   department: z.string(),
 }).superRefine((value, context) => {
@@ -97,6 +98,7 @@ function fromLocation(location?: RaLocationDetail): State {
     area: location?.area ?? '',
     directorate: location?.directorate ?? '',
     sub_directorate: location?.sub_directorate ?? '',
+    org_group: location?.org_group ?? '',
     division: location?.division ?? '',
     department: location?.department ?? '',
     // Cleared while its deactivation waits for approval; ticking it again withdraws that.
@@ -108,10 +110,11 @@ const state = reactive<State>(fromLocation(props.location))
 
 // --- Organization ------------------------------------------------------------------------------
 
-type OrgField = 'directorate' | 'sub_directorate' | 'division' | 'department'
+type OrgField = 'directorate' | 'sub_directorate' | 'org_group' | 'division' | 'department'
 const ORG_FIELDS: { key: OrgField, label: string, list: keyof RaOrgValues }[] = [
   { key: 'directorate', label: 'Directorate', list: 'directorates' },
   { key: 'sub_directorate', label: 'Sub Directorate', list: 'sub_directorates' },
+  { key: 'org_group', label: 'Group', list: 'groups' },
   { key: 'division', label: 'Division', list: 'divisions' },
   { key: 'department', label: 'Department', list: 'departments' },
 ]
@@ -124,21 +127,22 @@ function orgItems(field: (typeof ORG_FIELDS)[number]) {
   if (current && !items.includes(current)) items.unshift(current)
   return items
 }
-/** A branch's Directorate (from the region directory) and Sub Directorate (its region) follow
- *  the region; while the directory is empty its Directorate is typed. */
+/** A branch's Directorate (from the region directory), Sub Directorate (its region) and Group
+ *  (its area) follow the region; while the directory is empty its Directorate is typed. */
 function orgLocked(key: OrgField) {
   if (!isBranch.value) return false
-  return key === 'sub_directorate' || (key === 'directorate' && fromDirectory.value)
+  return key === 'sub_directorate' || key === 'org_group' || (key === 'directorate' && fromDirectory.value)
 }
 function orgValue(key: OrgField) {
   if (isBranch.value && key === 'sub_directorate') return state.region
+  if (isBranch.value && key === 'org_group') return state.area
   if (isBranch.value && key === 'directorate' && fromDirectory.value) return pickedRegion.value?.directorate ?? state.directorate
   return state[key]
 }
 /** A new head office building starts with the signed-in user's organization. */
 watch(() => profile.value, (me) => {
   if (props.location || isBranch.value || !me) return
-  for (const key of ['directorate', 'sub_directorate', 'division', 'department'] as const) {
+  for (const key of ['directorate', 'sub_directorate', 'org_group', 'division', 'department'] as const) {
     if (!state[key]) state[key] = me[key] ?? ''
   }
 }, { immediate: true })
@@ -191,13 +195,13 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, directorate, sub_directorate: subDirectorate, ...fields } = state
+    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, ...fields } = state
     const body = blankToNull({
       ...fields,
       name: state.name.trim(),
       // Only a branch has a region and area; its Sub Directorate is the region and, with the
       // region directory, its Directorate comes from there (the backend sets both).
-      ...(isBranch.value ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate }),
+      ...(isBranch.value ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate, org_group: orgGroup }),
       ...(orgLocked('directorate') ? {} : { directorate }),
     })
     const saved = props.location
@@ -438,7 +442,7 @@ async function onSubmit() {
           :key="field.key"
           :label="field.label"
           :name="field.key"
-          :help="orgLocked(field.key) ? (field.key === 'sub_directorate' ? 'The branch\'s region.' : 'From the region directory.') : undefined"
+          :help="orgLocked(field.key) ? (field.key === 'sub_directorate' ? 'The branch\'s region.' : field.key === 'org_group' ? 'The branch\'s area.' : 'From the region directory.') : undefined"
         >
           <UInput
             v-if="orgLocked(field.key)"

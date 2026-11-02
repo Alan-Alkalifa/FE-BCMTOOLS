@@ -116,10 +116,11 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
-  for (const header of ['Building ID', 'Directorate', 'Department', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
+  for (const header of ['Building ID', 'Directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
     await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
   }
-  await expect(table.getByText('Facilities')).toBeVisible()
+  await expect(table.getByText('Building Management')).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Department', exact: true })).toHaveCount(0)
   await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2 for the Excel export' })).toBeVisible()
 
   // The location's organization filters, as SCCA's.
@@ -128,6 +129,11 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await expect(page).toHaveURL(/directorate=OPS/)
   await expect.poll(() => log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('directorate=OPS'))).toBe(true)
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', /directorate=OPS/)
+  // Group / Area takes Department's place.
+  await page.getByLabel('Group / Area', { exact: true }).click()
+  await page.getByRole('option', { name: 'Building Management' }).click()
+  await expect(page).toHaveURL(/org_group=Building(\+|%20)Management/)
+  await expect.poll(() => log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('org_group=Building'))).toBe(true)
 
   // RA(s): every RA of the building, the current one marked.
   await table.getByRole('button', { name: 'RA history of Griya CIMB Niaga 2' }).click()
@@ -658,6 +664,8 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible()
   await page.getByLabel('Directorate', { exact: true }).click()
   await page.getByRole('option', { name: 'OPS' }).click()
+  await page.getByLabel('Group', { exact: true }).click()
+  await page.getByRole('option', { name: 'Building Management' }).click()
   await page.getByLabel('Department', { exact: true }).click()
   await page.getByRole('option', { name: 'Facilities' }).click()
   await page.getByRole('button', { name: 'Add building' }).click()
@@ -679,7 +687,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Save contacts' }).click()
   await expect(page.getByText('Contacts saved').first()).toBeVisible()
   expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi', phone: '(021) 520 0110', address: 'Jl. Setiabudi Raya' })] })
-  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920', directorate: 'OPS', department: 'Facilities' })
+  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920', directorate: 'OPS', org_group: 'Building Management', department: 'Facilities' })
 })
 
 test('the location page lists its assessments and edits its details', async ({ page }) => {

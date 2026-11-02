@@ -12,6 +12,7 @@ export interface Profile {
   /** HR organization (the user master). */
   directorate?: string | null
   sub_directorate?: string | null
+  org_group?: string | null
   division?: string | null
   org_level?: string | null
   company_name: string | null
