@@ -695,6 +695,7 @@ export const ORG_VALUES = {
   directorates: ['FIN', 'OPS'],
   sub_directorates: ['Ops Support'],
   groups: ['Building Management'],
+  levels: ['D-1', 'D-2'],
   divisions: ['General Affairs'],
   departments: ['Facilities'],
 }

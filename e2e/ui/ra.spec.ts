@@ -666,8 +666,11 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('option', { name: 'OPS' }).click()
   await page.getByLabel('Group', { exact: true }).click()
   await page.getByRole('option', { name: 'Building Management' }).click()
-  await page.getByLabel('Department', { exact: true }).click()
-  await page.getByRole('option', { name: 'Facilities' }).click()
+  await page.getByLabel('Organization level', { exact: true }).click()
+  await page.getByRole('option', { name: 'D-2' }).click()
+  // Division and Department are no longer asked.
+  await expect(page.getByLabel('Department', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Division', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
@@ -687,7 +690,8 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Save contacts' }).click()
   await expect(page.getByText('Contacts saved').first()).toBeVisible()
   expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi', phone: '(021) 520 0110', address: 'Jl. Setiabudi Raya' })] })
-  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920', directorate: 'OPS', org_group: 'Building Management', department: 'Facilities' })
+  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920', directorate: 'OPS', org_group: 'Building Management', org_level: 'D-2' })
+  expect(log.created[0]).not.toHaveProperty('department')
 })
 
 test('the location page lists its assessments and edits its details', async ({ page }) => {

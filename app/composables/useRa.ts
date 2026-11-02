@@ -238,15 +238,19 @@ export interface RaLocationRef {
   sub_directorate?: string | null
   /** Its Group (the user master's `org_group`); a branch's is its area. */
   org_group?: string | null
+  /** Its Organization level (the user master's `org_level`). */
+  org_level?: string | null
   division?: string | null
   department?: string | null
 }
 
-/** Directorates, sub directorates, groups, divisions and departments (building form, Monitoring). */
+/** Directorates, sub directorates, groups, divisions and departments (building form, Monitoring);
+ *  the building form also gets the organization levels. */
 export interface RaOrgValues {
   directorates: string[]
   sub_directorates: string[]
   groups: string[]
+  levels?: string[]
   divisions: string[]
   departments: string[]
 }
@@ -562,6 +566,7 @@ export interface RaLocationInput {
   directorate?: string | null
   sub_directorate?: string | null
   org_group?: string | null
+  org_level?: string | null
   division?: string | null
   department?: string | null
   latitude?: number | null
