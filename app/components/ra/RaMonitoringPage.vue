@@ -13,9 +13,7 @@ const router = useRouter()
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
-const renewalsPerPage = ref(10)
-const registerPerPage = ref(10)
-const bottlenecksPerPage = ref(10)
+const perPage = useRowsPerPage()
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -46,9 +44,6 @@ const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
 }
-watch(renewalsPerPage, () => setQuery({}))
-watch(registerPerPage, () => setQuery({}))
-watch(bottlenecksPerPage, () => setQuery({}))
 
 // Today in WIB, so "This year" and "Last 12 months" don't shift a day early in the morning.
 const today = todayIn('Asia/Jakarta')
@@ -154,7 +149,7 @@ const bucket = computed<Exclude<RaRenewalBucket, 'later'> | undefined>(() => {
 const renewals = useRaRenewals(computed(() => ({
   ...filters.value,
   page: page.value,
-  per_page: renewalsPerPage.value,
+  per_page: perPage.value,
   bucket: bucket.value,
 })))
 const renewalCards = [
@@ -165,7 +160,7 @@ const renewalCards = [
 const register = useRaRegister(computed(() => ({
   ...filters.value,
   page: page.value,
-  per_page: registerPerPage.value,
+  per_page: perPage.value,
 })))
 /** List: buildings whose RAs are shown under their row ("Show in the table" in RA(s)). */
 const expanded = ref<Record<string, boolean>>({})
@@ -177,7 +172,7 @@ function toggleRow(row: RaMonitorLocation, open: boolean) {
 const bottlenecks = useRaBottlenecks(computed(() => ({
   ...filters.value,
   page: page.value,
-  per_page: bottlenecksPerPage.value,
+  per_page: perPage.value,
 })))
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
@@ -599,7 +594,8 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
-            v-model:per-page="renewalsPerPage"
+            v-model:per-page="perPage"
+            page-sizes
             :page="page"
             :total="renewals.data.value?.total ?? 0"
             :to="pageTo"
@@ -806,7 +802,8 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
-            v-model:per-page="registerPerPage"
+            v-model:per-page="perPage"
+            page-sizes
             :page="page"
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
@@ -901,7 +898,8 @@ function record(id: number) {
               </template>
             </UTable>
             <TablePagination
-              v-model:per-page="bottlenecksPerPage"
+              v-model:per-page="perPage"
+              page-sizes
               :page="page"
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"

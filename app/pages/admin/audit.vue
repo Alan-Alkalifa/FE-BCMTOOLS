@@ -19,15 +19,15 @@ const kind = ref<'all' | 'auth' | 'admin'>('all')
 const emailFilter = ref<'all' | OutboxEmail['status']>('all')
 const search = ref('')
 const eventPage = ref(1)
-const eventPerPage = ref(10)
+const eventPerPage = ref(ROWS_PER_PAGE)
 const emailPage = ref(1)
-const emailPerPage = ref(10)
+const emailPerPage = ref(ROWS_PER_PAGE)
 
 // SCCA activity; ?assessment=ID (from an assessment's page) shows one assessment.
 const sccaSearch = ref('')
 const sccaAction = ref('all')
 const sccaPage = ref(1)
-const sccaPerPage = ref(10)
+const sccaPerPage = ref(ROWS_PER_PAGE)
 const sccaAssessment = computed(() => Number(route.query.assessment) || undefined)
 const sccaQuery = computed(() => ({
   kind: 'scca',
@@ -44,7 +44,7 @@ watch([sccaSearch, sccaAction, sccaAssessment, sccaPerPage], () => (sccaPage.val
 const raSearch = ref('')
 const raGroup = ref('all')
 const raPage = ref(1)
-const raPerPage = ref(10)
+const raPerPage = ref(ROWS_PER_PAGE)
 const raBuilding = computed(() => Number(route.query.building) || undefined)
 const raQuery = computed(() => ({
   kind: 'ra',
@@ -241,6 +241,7 @@ const tabs = [
           <TablePagination
             v-model:page="eventPage"
             v-model:per-page="eventPerPage"
+            page-sizes
             :total="events.data.value?.total ?? 0"
             label="Sign-in and admin activity"
           />
@@ -354,6 +355,7 @@ const tabs = [
           <TablePagination
             v-model:page="sccaPage"
             v-model:per-page="sccaPerPage"
+            page-sizes
             :total="scca.data.value?.total ?? 0"
             label="SCCA activity"
           />
@@ -458,6 +460,7 @@ const tabs = [
           <TablePagination
             v-model:page="raPage"
             v-model:per-page="raPerPage"
+            page-sizes
             :total="ra.data.value?.total ?? 0"
             label="RA activity"
           />
@@ -543,6 +546,7 @@ const tabs = [
           <TablePagination
             v-model:page="emailPage"
             v-model:per-page="emailPerPage"
+            page-sizes
             :total="emails.data.value?.total ?? 0"
             label="Email outbox"
           />

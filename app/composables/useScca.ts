@@ -119,6 +119,7 @@ export interface SccaRef {
   id: number
   ref_no: string | null
   status: SccaStatus
+  finalised_at?: string | null
 }
 
 export interface SccaComment {
@@ -209,6 +210,12 @@ export interface SccaApplication {
   customer_facing: boolean | null
   business_days: string | null
   business_hours: string | null
+  directorate?: string | null
+  /** With `reason`: whether the reason rules let it be picked, and why not. */
+  available?: boolean
+  problem?: string | null
+  renewal_status?: 'overdue' | 'due_30' | 'due_90' | 'active' | null
+  last_final?: { id: number, ref_no: string | null, finalised_at: string | null, due_date: string | null } | null
   last_assessment: {
     id: number
     ref_no: string | null
@@ -252,6 +259,8 @@ export interface SccaAssessment extends SccaAssessmentFields {
   /** The final SCCA this draft renews, and the renewal started from this one. */
   renewal_of?: SccaRef | null
   renewal?: SccaRef | null
+  /** The application's latest final SCCA other than this one. */
+  previous_final?: SccaRef | null
   renewal_opens_on?: string | null
   can_renew?: boolean
 }
@@ -275,8 +284,11 @@ export interface SccaAssessmentSummary {
   waiting_for_me: boolean
   created_by: string | null
   updated_at: string
-  /** With `mine=1` (Manage). */
-  my_role?: 'assessor' | 'contributor' | null
+  /** The assessor's name. */
+  assessor?: string | null
+  /** With `mine=1` (Manage). `directorate`: a generated annual review of the user's directorate,
+   * read-only (SCCA configuration > Access scope). */
+  my_role?: 'assessor' | 'contributor' | 'directorate' | null
   next_step?: string | null
   renewal_of?: SccaRef | null
 }
@@ -385,8 +397,12 @@ export function useSccaAssessment(id: MaybeRefOrGetter<number>) {
 const BASE = '/api/scca/assessments'
 
 export const sccaApi = {
-  applications: (q: string) =>
-    $fetch<{ items: SccaApplication[] }>('/api/scca/applications', { query: { q } }),
+  /** With `reason`, an Annual review or a System change lists what the access scope opens,
+   * each with `available` and `problem` (the reason rules). */
+  applications: (q: string, reason?: string | null, assessmentId?: number | null) =>
+    $fetch<{ items: SccaApplication[], scope_message?: string | null }>('/api/scca/applications', {
+      query: { q, ...(reason ? { reason } : {}), ...(assessmentId ? { assessment_id: assessmentId } : {}) },
+    }),
   calculate: (ratings: Record<string, number>, version?: string | null) =>
     $fetch<SccaPreview>('/api/scca/calculate', {
       method: 'POST',

@@ -15,7 +15,14 @@ const form = reactive({
   rto_hours: props.application?.rto_hours ?? undefined as string | undefined,
   rpo: props.application?.rpo ?? undefined as string | undefined,
   description: props.application?.description ?? '',
+  directorate: props.application?.directorate ?? '',
   is_active: props.application?.is_active ?? true,
+})
+const { data: orgValues } = useFetch<{ directorates: string[] }>('/api/admin/users/org-values', { key: 'application-form-org-values' })
+const directorateItems = computed(() => {
+  const values = new Set(orgValues.value?.directorates ?? [])
+  if (form.directorate) values.add(form.directorate)
+  return [...values].sort()
 })
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
@@ -35,6 +42,7 @@ async function save() {
     rto_hours: form.rto_hours || null,
     rpo: form.rpo || null,
     description: form.description.trim() || null,
+    directorate: form.directorate.trim() || null,
     is_active: form.is_active,
   }
   try {
@@ -152,6 +160,21 @@ async function save() {
             />
           </UFormField>
         </div>
+        <UFormField
+          label="Directorate"
+          name="directorate"
+          help="Set from the owner's directorate when an SCCA is final. The access scope opens an application to the D-1 and D-2 of its directorate."
+          :error="errors.directorate"
+        >
+          <UInputMenu
+            v-model="form.directorate"
+            :items="directorateItems"
+            create-item
+            placeholder="Not set"
+            class="w-full"
+            @create="(item: string) => (form.directorate = item)"
+          />
+        </UFormField>
         <UFormField
           label="Description"
           name="description"

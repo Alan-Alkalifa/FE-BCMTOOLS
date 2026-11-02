@@ -95,7 +95,7 @@ const ratedCount = computed(() => [...evaluations.value.values()].filter((item) 
 
 const groupFilter = ref<string>('all')
 const page = ref(1)
-const perPage = ref(10)
+const perPage = ref(ROWS_PER_PAGE)
 const groupItems = computed(() => [
   { label: 'All hazard groups', value: 'all' },
   ...props.formula.categories.map((category) => ({ label: category.label, value: category.code })),
@@ -121,7 +121,7 @@ const pagedRows = computed(() => {
   const start = (page.value - 1) * perPage.value
   return rows.value.slice(start, start + perPage.value)
 })
-watch(groupFilter, () => {
+watch([groupFilter, perPage], () => {
   page.value = 1
 })
 
@@ -440,6 +440,7 @@ async function save() {
       <TablePagination
         v-model:page="page"
         v-model:per-page="perPage"
+        page-sizes
         :total="rows.length"
         label="Hazards"
       />

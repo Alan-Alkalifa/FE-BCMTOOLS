@@ -32,10 +32,8 @@ const tab = computed<ApprovalTab>({
   set: (value) => router.replace({ query: { tab: value === 'inbox' ? undefined : value } }),
 })
 
-const inboxPerPage = ref(10)
-const comingPerPage = ref(10)
-const historyPerPage = ref(10)
-const boardPerPage = ref(10)
+const perPage = useRowsPerPage()
+const COMING_PER_PAGE = 10
 function number(name: string) {
   return Math.max(1, Number(route.query[name]) || 1)
 }
@@ -80,10 +78,8 @@ const kind = computed(() => ra.value.kind)
 
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: inboxPerPage.value })))
-const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: comingPerPage.value })))
-watch(inboxPerPage, () => setQuery({ page: undefined }))
-watch(comingPerPage, () => setQuery({ coming: undefined }))
+const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: perPage.value })))
+const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: COMING_PER_PAGE })))
 
 /** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it. */
 function stepLabel(role: string | null, title?: string | null) {
@@ -121,9 +117,8 @@ const history = useRaHistory(computed(() => ({
   action: action.value === 'all' ? undefined : action.value,
   q: tab.value === 'history' ? text('q') : undefined,
   page: historyPage.value,
-  per_page: historyPerPage.value,
+  per_page: perPage.value,
 })))
-watch(historyPerPage, () => setQuery({ page: undefined }))
 const actionItems = [
   { label: 'All actions', value: 'all' as const },
   { label: 'Approved', value: 'approved' as const },
@@ -174,11 +169,10 @@ const board = useRaBoard(
     step: boardStep.value === 'all' ? undefined : boardStep.value,
     q: tab.value === 'board' ? text('q') : undefined,
     page: boardPage.value,
-    per_page: boardPerPage.value,
+    per_page: perPage.value,
   })),
   bcm,
 )
-watch(boardPerPage, () => setQuery({ page: undefined }))
 const stepItems = computed(() => [
   { label: 'Every step', value: 'all' },
   ...steps.value.map((role) => ({ label: role.hint, value: role.value })),
@@ -325,7 +319,8 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
-              v-model:per-page="inboxPerPage"
+              v-model:per-page="perPage"
+              page-sizes
               :page="inboxPage"
               :total="inbox.data.value?.total ?? 0"
               :to="pageTo"
@@ -375,7 +370,7 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
-              v-model:per-page="comingPerPage"
+              :per-page="COMING_PER_PAGE"
               :page="comingPage"
               :total="upcoming.data.value?.total ?? 0"
               :to="comingTo"
@@ -468,7 +463,8 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
-            v-model:per-page="historyPerPage"
+            v-model:per-page="perPage"
+            page-sizes
             :page="historyPage"
             :total="history.data.value?.total ?? 0"
             :to="pageTo"
@@ -590,7 +586,8 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
-            v-model:per-page="boardPerPage"
+            v-model:per-page="perPage"
+            page-sizes
             :page="boardPage"
             :total="board.data.value?.total ?? 0"
             :to="pageTo"

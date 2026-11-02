@@ -9,6 +9,9 @@ export interface SccaMonitoringFilters {
   category?: string
   status?: SccaStatus
   department?: string
+  directorate?: string
+  sub_directorate?: string
+  division?: string
   q?: string
   /** Renewals: only this bucket. */
   bucket?: 'overdue' | 'due_30' | 'due_90'
@@ -48,23 +51,32 @@ export interface SccaRenewalRow {
   key: string
   application_name: string
   application_code: string | null
+  application_id: number | null
   department: string | null
+  directorate: string | null
   category: SccaCategory | null
   last_final: SccaMonitorRef
   renewal_date: string
   days_left: number
   bucket: SccaRenewalBucket
   assessor: string | null
+  contributor: string | null
+  contributor_id: number | null
   owner: string | null
   renewal: SccaMonitorRef | null
   renewal_status: 'not_started' | 'draft' | 'in_approval'
+  /** Generate annual review is allowed on this row (access scope, no open SCCA). */
+  can_generate: boolean
 }
 
 export interface SccaRegisterRow {
   key: string
   application_name: string
   application_code: string | null
+  application_id: number | null
   department: string | null
+  directorate: string | null
+  contributor: string | null
   category: SccaCategory | null
   latest_final: SccaMonitorRef | null
   renewal_date: string | null
@@ -163,6 +175,8 @@ export interface SccaSettings {
   reminder_after_days: number
   reminder_every_days: number
   escalate_after_days: number
+  /** Escalations also email the approver's direct supervisor. */
+  escalate_to_supervisor: boolean
   extra_escalation_emails: string[]
   renewal_notice_days: number[]
   overdue_repeat_days: number
@@ -185,7 +199,7 @@ export function useSccaOverview(filters: MaybeRefOrGetter<SccaMonitoringFilters>
 }
 
 export function useSccaRenewals(filters: MaybeRefOrGetter<SccaMonitoringFilters>) {
-  return useFetch<Paged<SccaRenewalRow> & { counts: Record<SccaRenewalBucket, number> }>(`${MONITOR}/renewals`, {
+  return useFetch<Paged<SccaRenewalRow> & { counts: Record<SccaRenewalBucket, number>, contributor_levels: string[] }>(`${MONITOR}/renewals`, {
     query: computed(() => clean(toValue(filters))),
   })
 }
@@ -200,8 +214,75 @@ export function useSccaBottlenecks(filters: MaybeRefOrGetter<SccaMonitoringFilte
   })
 }
 
-export function useSccaDepartments() {
-  return useFetch<{ items: string[] }>(`${MONITOR}/departments`, { key: 'scca-departments' })
+export interface SccaOrgValues {
+  directorates: string[]
+  sub_directorates: string[]
+  divisions: string[]
+  departments: string[]
+}
+
+/** The directorates, sub directorates, divisions and departments of the SCCAs in view. */
+export function useSccaOrgValues() {
+  return useFetch<SccaOrgValues>(`${MONITOR}/org-values`, { key: 'scca-org-values' })
+}
+
+/** Register > SCCA(s): one application's SCCAs, newest first. */
+export interface SccaHistoryItem extends SccaMonitorRef {
+  application_name: string
+  application_code: string | null
+  reason: string | null
+  assessor: string | null
+  contributor: string | null
+  renews: SccaMonitorRef | null
+  mark: 'current' | 'replaced' | null
+}
+
+export function useSccaApplicationHistory(query: MaybeRefOrGetter<{ key: string, page: number, per_page: number }>) {
+  return useFetch<Paged<SccaHistoryItem>>(`${MONITOR}/application-sccas`, {
+    query: computed(() => toValue(query)),
+    watch: [() => toValue(query)],
+  })
+}
+
+export function sccaApplicationHistoryExportUrl(key: string) {
+  return `${MONITOR}/application-sccas.xlsx?${new URLSearchParams({ key })}`
+}
+
+export interface SccaContributorOption {
+  id: number
+  display_name: string
+  email: string
+  job_title: string | null
+  division: string | null
+  directorate: string | null
+  org_level: string | null
+}
+
+export interface SccaGenerateResult {
+  created: { id: number, ref_no: string, renews: string, application_name: string }[]
+  skipped: { id: number, ref_no: string, open_id: number, open_ref_no: string, reason: string }[]
+  refused: { id: number, ref_no?: string, reason: string }[]
+}
+
+export const sccaRenewalsApi = {
+  contributors: (q: string) =>
+    $fetch<{ levels: string[], items: SccaContributorOption[] }>(`${MONITOR}/renewals/contributors`, { query: { q } }),
+  generate: (assessmentIds: number[], contributorId: number) =>
+    $fetch<SccaGenerateResult>(`${MONITOR}/renewals/generate`, {
+      method: 'POST',
+      body: { assessment_ids: assessmentIds, contributor_id: contributorId },
+    }),
+}
+
+export interface SccaBulkNudgeResult {
+  sent: { id: number, ref_no: string }[]
+  skipped: { id: number, ref_no?: string, reason: string }[]
+  failed: { id: number, ref_no: string }[]
+}
+
+/** BCM board > Send reminder (n). */
+export function sccaNudgeMany(assessmentIds: number[]) {
+  return $fetch<SccaBulkNudgeResult>('/api/scca/approvals/nudge', { method: 'POST', body: { assessment_ids: assessmentIds } })
 }
 
 /** The Excel download of a Monitoring view, with the same filters (all rows). */

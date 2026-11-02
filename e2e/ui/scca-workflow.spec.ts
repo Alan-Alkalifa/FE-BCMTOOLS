@@ -37,8 +37,15 @@ test('the register lists one row per application with its history, and bottlenec
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'HR Portal' })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByText('Not final yet')).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Directorate' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Latest final SCCA date' })).toBeVisible()
   await table.getByRole('button', { name: 'SCCA history of CC Omni Channel' }).click()
-  await expect(page.getByRole('link', { name: /SCCA-2024-0007/ })).toHaveAttribute('href', '/scca/monitoring/7')
+  const history = page.getByRole('dialog', { name: 'SCCAs of CC Omni Channel' })
+  await expect(history.getByRole('link', { name: 'SCCA-2024-0007' })).toHaveAttribute('href', '/scca/monitoring/7')
+  await expect(history.getByRole('row', { name: /SCCA-2024-0007 Current/ })).toBeVisible()
+  await expect(history.getByRole('row', { name: /SCCA-2022-0004 Replaced/ })).toBeVisible()
+  await expect(history.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/scca/monitoring/application-sccas.xlsx?key=CCOMNI')
+  await page.keyboard.press('Escape')
 
   await page.goto('/scca/monitoring?tab=bottlenecks')
   await expect(page.getByRole('img', { name: 'Average working days per sign-off step' })).toBeVisible({ timeout: 60_000 })
@@ -50,6 +57,7 @@ test('the register lists one row per application with its history, and bottlenec
   await expect(waits.first()).toContainText('CC Omni Channel')
   await expect(waits.first()).toContainText('Escalated')
   await expect(waits.first()).toContainText('8 working days')
+  await expect(waits.first()).toContainText('SCCA-2026-0001')
   await expect(waits.nth(1)).toContainText('Teller System')
 })
 
@@ -71,7 +79,7 @@ test('without scca.monitor, Monitoring is in the menu and shows only your own SC
   await expect(nav.getByRole('link', { name: 'Monitoring' })).toBeVisible({ timeout: 60_000 })
   await expect(nav.getByRole('link', { name: 'Manage', exact: true })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'Approval' })).toBeVisible()
-  await expect(page.getByText('The SCCAs you assess, contribute to or sign: where each one is, renewals due and approvals waiting. Read-only.')).toBeVisible()
+  await expect(page.getByText('The SCCAs you assess, contribute to or sign, and the renewals your access scope opens: where each one is, renewals due and approvals waiting.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Act on them in the BCM board' })).toHaveCount(0)
 })
 
@@ -145,7 +153,7 @@ test('a final SCCA is in Monitoring, where Start renewal opens the new draft in 
   await mockScca(page, assessment({ status: 'final', can_renew: true, signoffs: [approved], renewal_of: { id: 7, ref_no: 'SCCA-2024-0007', status: 'final' }, permissions: { ...EDITOR, can_edit: false, can_submit: false } }))
   await page.goto('/scca/1?tab=result')
   await expect(page).toHaveURL(/\/scca\/monitoring\/1\?tab=result$/, { timeout: 60_000 })
-  await expect(page.getByText('This SCCA renews SCCA-2024-0007.')).toBeVisible()
+  await expect(page.getByText('This SCCA replaced SCCA-2024-0007.')).toBeVisible()
   await expect(page.getByText(/on behalf, by Rina Analyst/)).toBeVisible()
   await expect(page.getByRole('link', { name: 'Evidence: approval-email.pdf' })).toHaveAttribute('href', '/api/scca/assessments/1/attachments/3')
   await expect(page.getByRole('button', { name: 'Save result' })).toHaveCount(0)
@@ -223,23 +231,29 @@ test('the BCM board is hidden without its permission', async ({ page }) => {
 const many = <T extends Record<string, unknown>>(row: T, count: number) =>
   Array.from({ length: count }, (_, index) => ({ ...row, id: 100 + index, ref_no: `SCCA-2026-${String(100 + index).padStart(4, '0')}`, application_name: `App ${index + 1}` }))
 
-test('My inbox and Coming up are paged by the server, 10 a page, with the page in the URL', async ({ page }) => {
+test('My inbox and Coming up are paged by the server, 20 and 10 a page, with the page in the URL', async ({ page }) => {
   await mockScca(page)
   await mockSccaWorkflow(page, { inbox: many(INBOX[0]!, 30), upcoming: many(UPCOMING[0]!, 12) })
   const first = page.waitForRequest((req) => req.url().includes('/api/scca/approvals/inbox'))
   await page.goto('/scca/approval')
   const query = new URL((await first).url()).searchParams
-  expect([query.get('page'), query.get('per_page')]).toEqual(['1', '10'])
+  expect([query.get('page'), query.get('per_page')]).toEqual(['1', '20'])
   const inbox = page.getByRole('navigation', { name: 'My inbox pages' })
-  await expect(inbox.getByText('Showing 1–10 of 30')).toBeVisible({ timeout: 60_000 })
+  await expect(inbox.getByText('Showing 1–20 of 30')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('tab', { name: /My inbox/ })).toContainText('30')
 
   const second = page.waitForRequest((req) => req.url().includes('/api/scca/approvals/inbox') && req.url().includes('page=2'))
   await inbox.getByRole('link', { name: 'Page 2' }).click()
   await second
   await expect(page).toHaveURL(/\/scca\/approval\?page=2$/)
-  await expect(inbox.getByText('Showing 11–20 of 30')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'App 11', exact: true })).toBeVisible()
+  await expect(inbox.getByText('Showing 21–30 of 30')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'App 26' })).toBeVisible()
+
+  // Rows per page: 50 shows all 30 and is kept in the URL.
+  await inbox.getByRole('combobox', { name: 'My inbox: rows per page' }).click()
+  await page.getByRole('option', { name: '50' }).click()
+  await expect(page).toHaveURL(/per_page=50/)
+  await expect(inbox.getByText('Showing 1–30 of 30')).toBeVisible()
 
   const coming = page.getByRole('navigation', { name: 'Coming up pages' })
   await expect(coming.getByText('Showing 1–10 of 12')).toBeVisible()
@@ -253,25 +267,69 @@ test('My history is paged by the server; a new filter starts again at page 1', a
   await mockSccaWorkflow(page, { history: Array.from({ length: 30 }, (_, index) => ({ ...HISTORY[1]!, id: 200 + index, application_name: `App ${index + 1}` })) })
   await page.goto('/scca/approval?tab=history&page=2')
   const pager = page.getByRole('navigation', { name: 'My history pages' })
-  await expect(pager.getByText('Showing 11–20 of 30')).toBeVisible({ timeout: 60_000 })
+  await expect(pager.getByText('Showing 21–30 of 30')).toBeVisible({ timeout: 60_000 })
   await page.getByLabel('Decision').click()
   await page.getByRole('option', { name: 'Approved on my behalf' }).click()
   await expect(page).toHaveURL(/decision=approved_on_behalf/)
   await expect(page).not.toHaveURL(/page=2/)
-  await expect(pager.getByText('Showing 1–10 of 30')).toBeVisible()
+  await expect(pager.getByText('Showing 1–20 of 30')).toBeVisible()
 })
 
-test('Renewals, Register and Bottlenecks are paged by the server, 10 a page', async ({ page }) => {
+test('Renewals, Register and Bottlenecks are paged by the server, 20 a page', async ({ page }) => {
   await mockScca(page)
   await mockSccaWorkflow(page, { renewals: many(RENEWALS[1]!, 27) })
   const request = page.waitForRequest((req) => req.url().includes('/api/scca/monitoring/renewals'))
   await page.goto('/scca/monitoring?tab=renewals&page=2')
   const query = new URL((await request).url()).searchParams
-  expect([query.get('page'), query.get('per_page')]).toEqual(['2', '10'])
-  await expect(page.getByRole('navigation', { name: 'Renewals pages' }).getByText('Showing 11–20 of 27')).toBeVisible({ timeout: 60_000 })
+  expect([query.get('page'), query.get('per_page')]).toEqual(['2', '20'])
+  await expect(page.getByRole('navigation', { name: 'Renewals pages' }).getByText('Showing 21–27 of 27')).toBeVisible({ timeout: 60_000 })
 
   await page.goto('/scca/monitoring?tab=register')
   await expect(page.getByRole('navigation', { name: 'Register pages' }).getByText('Showing 1–2 of 2')).toBeVisible({ timeout: 60_000 })
   await page.goto('/scca/monitoring?tab=bottlenecks')
   await expect(page.getByRole('navigation', { name: 'Bottlenecks pages' }).getByText('Showing 1–2 of 2')).toBeVisible({ timeout: 60_000 })
+})
+
+test('Renewals: the Act menu and Generate annual review for the selected rows', async ({ page }) => {
+  const { calls } = await mockScca(page)
+  await page.goto('/scca/monitoring?tab=renewals')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('link', { name: 'Payment Gateway' })).toBeVisible({ timeout: 60_000 })
+  for (const name of ['Application code', 'Last final SCCA date', 'Owner', 'Assessor', 'Contributor']) {
+    await expect(table.getByRole('columnheader', { name, exact: true })).toBeVisible()
+  }
+  // CC Omni Channel already has a renewal in approval: it can't be picked.
+  await expect(table.getByRole('checkbox', { name: 'Select CC Omni Channel' })).toBeDisabled()
+  await table.getByRole('button', { name: 'Act on CC Omni Channel' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Open renewal' })).toHaveAttribute('href', '/scca/monitoring/1')
+  await expect(page.getByRole('menuitem', { name: 'Generate annual review' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+
+  await table.getByRole('checkbox', { name: 'Select Payment Gateway' }).click()
+  await page.getByRole('button', { name: 'Generate annual review (1)' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Generate annual review' })
+  await expect(dialog.getByText('You are the assessor')).toBeVisible()
+  // The last final's contributor is suggested.
+  await expect(dialog.getByRole('button', { name: 'Contributor' })).toContainText('Dewi Head')
+  await dialog.getByRole('button', { name: 'Generate' }).click()
+  await expect(page.getByText('Created 1, skipped 0', { exact: true })).toBeVisible()
+  const sent = calls.find((call) => call.url === '/api/scca/monitoring/renewals/generate')!
+  expect(sent.body).toEqual({ assessment_ids: [5], contributor_id: 6 })
+  await page.getByRole('button', { name: 'Open in Manage' }).click()
+  await expect(page).toHaveURL(/\/scca\/manage\/90$/)
+})
+
+test('the BCM board sends a reminder to the selected SCCAs and says what was skipped', async ({ page }) => {
+  const { calls } = await mockScca(page)
+  await page.goto('/scca/approval?tab=board')
+  const board = page.getByRole('table')
+  await expect(board.getByText('Bima Reviewer')).toBeVisible({ timeout: 60_000 })
+  await expect(board.getByRole('columnheader', { name: 'Escalated on' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send reminder (0)' })).toBeDisabled()
+  await board.getByRole('checkbox', { name: 'Select every SCCA on this page' }).click()
+  await page.getByRole('button', { name: 'Send reminder (2)' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Send reminder (2)' }).click()
+  await expect(page.getByText('Sent 1 · skipped 1 · failed 0', { exact: true })).toBeVisible()
+  const sent = calls.find((call) => call.url === '/api/scca/approvals/nudge')!
+  expect(sent.body).toEqual({ assessment_ids: [1, 3] })
 })

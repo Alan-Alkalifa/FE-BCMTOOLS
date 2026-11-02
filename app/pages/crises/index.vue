@@ -8,7 +8,7 @@ definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
-const perPage = ref(10)
+const perPage = useRowsPerPage()
 
 function asStatus(value: unknown): RaCrisisStatus | undefined {
   return value === 'pending' || value === 'open' || value === 'closed' || value === 'rejected' ? value : undefined
@@ -24,10 +24,6 @@ const { data, status, error, refresh } = useRaCrises(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const { data: map } = useRaMap()
 const crisisModal = useOverlay().create(RaCrisisModal)
-
-watch(perPage, () => {
-  router.replace({ query: { ...route.query, page: undefined } })
-})
 
 const search = ref(query.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -209,6 +205,7 @@ async function declare() {
       <TablePagination
         v-if="data"
         v-model:per-page="perPage"
+        page-sizes
         :total="data.total"
         label="Incidents"
         :to="(page) => ({ query: { ...route.query, page } })"

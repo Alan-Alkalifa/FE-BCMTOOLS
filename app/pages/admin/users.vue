@@ -3,10 +3,11 @@ import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { AdminUser, Page, UserState } from '~/composables/useAdmin'
 import AdminPasswordDialog from '~/components/admin/AdminPasswordDialog.vue'
 import AdminUserForm from '~/components/admin/AdminUserForm.vue'
+import AdminUserImport from '~/components/admin/AdminUserImport.vue'
 
 definePageMeta({ permission: 'admin.users.manage' })
 
-const perPage = ref(10)
+const perPage = useRowsPerPage()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -14,16 +15,42 @@ const confirm = useConfirm()
 const overlay = useOverlay()
 const userForm = overlay.create(AdminUserForm)
 const passwordDialog = overlay.create(AdminPasswordDialog)
+const importDialog = overlay.create(AdminUserImport)
 const { user: me } = useAuth()
 
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const statusFilter = ref<string>(typeof route.query.status === 'string' ? route.query.status : 'all')
 const roleFilter = ref<number | 'all'>(Number(route.query.role_id) || 'all')
 
+// Directorate / Division / Organization level (the HR fields), kept in the URL.
+const { data: orgValues, refresh: refreshOrg } = useUserOrgValues()
+function queryFilter(name: 'directorate' | 'division' | 'org_level') {
+  return computed<string>({
+    get: () => (typeof route.query[name] === 'string' && route.query[name] ? route.query[name] as string : 'all'),
+    set: (value) => router.replace({ query: { ...route.query, [name]: value === 'all' ? undefined : value, page: undefined } }),
+  })
+}
+const directorateFilter = queryFilter('directorate')
+const divisionFilter = queryFilter('division')
+const levelFilter = queryFilter('org_level')
+function valueItems(all: string, values: string[] | undefined) {
+  return [{ label: all, value: 'all' }, ...(values ?? []).map((value) => ({ label: value, value }))]
+}
+const directorateItems = computed(() => valueItems('All directorates', orgValues.value?.directorates))
+const divisionItems = computed(() => valueItems('All divisions', orgValues.value?.divisions))
+const levelItems = computed(() => valueItems('All levels', orgValues.value?.org_levels))
+
+async function openImport() {
+  if (await importDialog.open().result) await Promise.all([refresh(), refreshOrg()])
+}
+
 const query = computed(() => ({
   q: typeof route.query.q === 'string' && route.query.q ? route.query.q : undefined,
   status: typeof route.query.status === 'string' ? route.query.status : undefined,
   role_id: Number(route.query.role_id) || undefined,
+  directorate: directorateFilter.value === 'all' ? undefined : directorateFilter.value,
+  division: divisionFilter.value === 'all' ? undefined : divisionFilter.value,
+  org_level: levelFilter.value === 'all' ? undefined : levelFilter.value,
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: perPage.value,
 }))
@@ -31,10 +58,6 @@ const query = computed(() => ({
 const { data, status, error, refresh } = useFetch<Page<AdminUser>>('/api/admin/users', { query, key: 'admin-users' })
 const { data: roles } = useAdminRoles()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-
-watch(perPage, () => {
-  router.replace({ query: { ...route.query, page: undefined } })
-})
 
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, (value) => {
@@ -58,6 +81,8 @@ const roleItems = computed(() => [
 
 const columns: TableColumn<AdminUser>[] = [
   { accessorKey: 'display_name', header: 'User' },
+  { accessorKey: 'employee_id', header: 'NIP' },
+  { accessorKey: 'directorate', header: 'Directorate / Division' },
   { accessorKey: 'department', header: 'Department' },
   { accessorKey: 'roles', header: 'Roles' },
   { id: 'state', header: 'Status' },
@@ -124,6 +149,13 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
   >
     <template #actions>
       <UButton
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-up"
+        label="Import from HR file"
+        @click="openImport"
+      />
+      <UButton
         icon="i-lucide-user-plus"
         label="New user"
         @click="openForm()"
@@ -133,7 +165,7 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="6"
+      :columns="8"
       label="Loading users"
     />
 
@@ -154,7 +186,7 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          placeholder="Search by name, email or department"
+          placeholder="Search by name, email, NIP or department"
           aria-label="Search users"
           class="w-full sm:w-80"
         />
@@ -173,6 +205,28 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
           :search-input="false"
           aria-label="Filter by role"
           class="w-48"
+        />
+        <USelectMenu
+          v-model="directorateFilter"
+          value-key="value"
+          :items="directorateItems"
+          aria-label="Filter by directorate"
+          class="w-56"
+        />
+        <USelectMenu
+          v-model="divisionFilter"
+          value-key="value"
+          :items="divisionItems"
+          aria-label="Filter by division"
+          class="w-52"
+        />
+        <USelectMenu
+          v-model="levelFilter"
+          value-key="value"
+          :items="levelItems"
+          :search-input="false"
+          aria-label="Filter by organization level"
+          class="w-36"
         />
       </div>
 
@@ -201,6 +255,17 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
               </p>
             </div>
           </div>
+        </template>
+        <template #employee_id-cell="{ row }">
+          <span class="font-mono text-xs">{{ row.original.employee_id || '—' }}</span>
+        </template>
+        <template #directorate-cell="{ row }">
+          <p class="max-w-56 truncate text-sm">
+            {{ row.original.directorate || '—' }}
+          </p>
+          <p class="max-w-56 truncate text-xs text-muted">
+            {{ [row.original.division, row.original.org_level].filter(Boolean).join(' · ') }}
+          </p>
         </template>
         <template #department-cell="{ row }">
           <p class="text-sm">
@@ -262,6 +327,7 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
       <TablePagination
         v-if="data"
         v-model:per-page="perPage"
+        page-sizes
         :page="data.page"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"

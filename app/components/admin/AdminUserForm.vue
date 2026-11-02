@@ -15,6 +15,16 @@ const form = reactive({
   department: props.user?.department ?? '',
   employee_id: props.user?.employee_id ?? '',
   mobile_phone: props.user?.mobile_phone ?? '',
+  directorate: props.user?.directorate ?? '',
+  sub_directorate: props.user?.sub_directorate ?? '',
+  org_group: props.user?.org_group ?? '',
+  division: props.user?.division ?? '',
+  org_level: props.user?.org_level ?? '',
+  city: props.user?.city ?? '',
+  province: props.user?.province ?? '',
+  supervisor_nip: props.user?.supervisor_nip ?? '',
+  supervisor_name: props.user?.supervisor_name ?? '',
+  supervisor_email: props.user?.supervisor_email ?? '',
   is_active: props.user?.is_active ?? true,
   role_ids: props.user?.roles.map((role) => role.id) ?? [] as number[],
   setup: 'invite' as 'invite' | 'password',
@@ -23,6 +33,22 @@ const form = reactive({
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
 const isSelf = computed(() => !!props.user && props.user.id === me.value?.id)
+
+/** HR fields (the HR file and later LDAP fill the same): label, field, help. */
+const HR_FIELDS = [
+  { key: 'directorate', label: 'Directorate', help: 'Decides which applications the access scope opens to them.' },
+  { key: 'sub_directorate', label: 'Sub Directorate', help: 'Shown as the sub-directorate on SCCA sign-offs.' },
+  { key: 'org_group', label: 'Group' },
+  { key: 'division', label: 'Division' },
+  { key: 'org_level', label: 'Organization level', help: 'D-1, D-2, D-3 … The access scope rules use it.' },
+  { key: 'city', label: 'Town or city' },
+  { key: 'province', label: 'Province' },
+] as const
+const SUPERVISOR_FIELDS = [
+  { key: 'supervisor_nip', label: 'DS NIP', help: 'Links the supervisor\'s account when their NIP matches.' },
+  { key: 'supervisor_name', label: 'DS name' },
+  { key: 'supervisor_email', label: 'Email DS', help: 'Escalations can copy the direct supervisor.' },
+] as const
 
 function toggleRole(id: number, on: boolean | 'indeterminate') {
   form.role_ids = on === true ? [...new Set([...form.role_ids, id])] : form.role_ids.filter((value) => value !== id)
@@ -38,6 +64,16 @@ async function save() {
     department: form.department,
     employee_id: form.employee_id,
     mobile_phone: form.mobile_phone,
+    directorate: form.directorate,
+    sub_directorate: form.sub_directorate,
+    org_group: form.org_group,
+    division: form.division,
+    org_level: form.org_level,
+    city: form.city,
+    province: form.province,
+    supervisor_nip: form.supervisor_nip,
+    supervisor_name: form.supervisor_name,
+    supervisor_email: form.supervisor_email,
   })
   body.role_ids = form.role_ids
   try {
@@ -117,7 +153,7 @@ async function save() {
             />
           </UFormField>
           <UFormField
-            label="Job title"
+            label="Job Name"
             name="job_title"
             help="Shown as the designation on SCCA sign-offs."
           >
@@ -129,7 +165,6 @@ async function save() {
           <UFormField
             label="Department"
             name="department"
-            help="Shown as the sub-directorate on SCCA sign-offs."
           >
             <UInput
               v-model="form.department"
@@ -137,8 +172,10 @@ async function save() {
             />
           </UFormField>
           <UFormField
-            label="Employee ID"
+            label="NIP"
             name="employee_id"
+            help="Employee number from HR; unique."
+            :error="errors.employee_id"
           >
             <UInput
               v-model="form.employee_id"
@@ -155,6 +192,51 @@ async function save() {
             />
           </UFormField>
         </div>
+
+        <fieldset class="space-y-3">
+          <legend class="text-sm font-medium text-highlighted">
+            Organization (HR)
+          </legend>
+          <p class="text-xs text-muted">
+            Filled by Import from HR file; edit here when HR has not sent it yet.
+          </p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              v-for="field in HR_FIELDS"
+              :key="field.key"
+              :label="field.label"
+              :name="field.key"
+              :help="'help' in field ? field.help : undefined"
+              :error="errors[field.key]"
+            >
+              <UInput
+                v-model="form[field.key]"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-3">
+            <UFormField
+              v-for="field in SUPERVISOR_FIELDS"
+              :key="field.key"
+              :label="field.label"
+              :name="field.key"
+              :help="'help' in field ? field.help : undefined"
+              :error="errors[field.key]"
+            >
+              <UInput
+                v-model="form[field.key]"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+          <p
+            v-if="user"
+            class="text-xs text-muted"
+          >
+            Direct supervisor's account: {{ user.supervisor?.name ?? 'not linked (no user has that NIP)' }}
+          </p>
+        </fieldset>
 
         <fieldset class="space-y-2">
           <legend class="text-sm font-medium text-highlighted">
