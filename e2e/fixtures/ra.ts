@@ -358,6 +358,8 @@ export async function mockRa(
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
+  // The signed-in user's profile: their mobile number fills the LIC's on New assessment.
+  await page.route('**/api/me/profile', (route) => route.fulfill({ json: { id: 1, display_name: 'Test User', email: 'test@example.com', mobile_phone: '081312262739' } }))
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
   const branchCurrent = structuredClone(BRANCH_ASSESSMENT) as typeof BRANCH_ASSESSMENT & MockAssessment
   for (const assessment of [current, branchCurrent]) {

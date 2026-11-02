@@ -278,7 +278,11 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   // As SCCA's: the person creating it is the assessor.
   await expect(page.getByLabel('Assessor', { exact: true })).toHaveValue('Test User')
   await expect(page.getByRole('link', { name: 'Add building' })).toHaveAttribute('aria-disabled', 'true')
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toBeDisabled()
+  // The LIC is always the assessor: the signed-in user, looked up, not picked.
+  const lic = page.getByLabel('LIC: Location incident coordinator (LIC)')
+  await expect(lic).toBeDisabled()
+  await expect(lic).toHaveValue('Test User')
+  await expect(page.getByText(/Signs as/)).toHaveCount(0)
   await page.getByRole('button', { name: 'Create assessment' }).click()
   await expect(page.getByText('Choose the reason for this assessment.')).toBeVisible()
   await page.getByLabel('Reason for assessment').click()
@@ -296,8 +300,8 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(note).toContainText('This building already has an RA draft')
   await expect(note).toContainText('Copied the assessment details from its last RA (RA-2025-0001, 10 Mar 2025). Approvals start over. Check with its LIC before starting another one.')
   await expect(page.getByRole('checkbox')).toHaveCount(0)
-  // The location incident team of the previous cycle fills the team: users from the directory.
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
+  // The LICOM of the previous cycle comes along; the LIC stays the person making the RA.
+  await expect(lic).toHaveValue('Test User')
   await expect(page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')).toContainText('Budi Hartono')
   // No RA period field: the period is the year of the assessment date.
   await expect(page.getByLabel('RA period')).toHaveCount(0)
@@ -305,7 +309,9 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(page.getByText(`RA period ${year}, the year of this date.`)).toBeVisible()
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'annual_review', period_year: year, copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  const sent = (await request).postDataJSON()
+  expect(sent).toMatchObject({ location_id: 1, reason: 'annual_review', period_year: year, copy_from_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  expect(sent).not.toHaveProperty('lic_user_id')
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -685,7 +691,8 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
 test('the location incident team is required', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran', { timeout: 60_000 })
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toHaveValue('Legiran', { timeout: 60_000 })
+  await expect(page.getByText(/Signs as/)).toHaveCount(0)
   const phone = page.getByRole('textbox', { name: 'LIC mobile number' })
   await expect(phone).toHaveValue('081312262739')
   let saved = false
@@ -746,14 +753,18 @@ test('picking the LICOM from the users makes them the Reviewed by signer', async
   await expect(reviewed.getByRole('textbox', { name: 'Designation' })).toHaveValue('Head of BCM')
 })
 
-test('a new assessment without an earlier cycle asks for the team', async ({ page }) => {
+test('a new assessment without an earlier cycle asks for the LICOM; the LIC is the assessor', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByTestId('building-note')).toContainText('No RA yet for this building')
+  await expect(page.getByTestId('building-note')).toContainText('Pick the LICOM below.')
+  // The LIC is the person making it, with the mobile number from their profile.
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toHaveValue('Test User')
+  await expect(page.getByRole('textbox', { name: 'LIC mobile number' })).toHaveValue('081312262739')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  await expect(page.getByText('Choose the LIC.')).toBeVisible()
+  await expect(page.getByText('Choose the LICOM.')).toBeVisible()
   await expect(page.getByText('Enter the LICOM mobile number.')).toBeVisible()
+  await expect(page.getByText('Choose the LIC.')).toHaveCount(0)
   // As SCCA's banner: each field's message under the summary.
   expect(log.created).toHaveLength(0)
 })
@@ -1138,8 +1149,6 @@ test('an assessment date whose period already has an RA says so on the date', as
     : route.fallback()))
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByLabel('Reason for assessment')).toContainText('New building', { timeout: 60_000 })
-  await page.getByLabel('LIC: Location incident coordinator (LIC)').click()
-  await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByLabel('LICOM: Location incident commander (LICOM) / alternate').click()
   await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()

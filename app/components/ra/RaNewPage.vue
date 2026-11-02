@@ -27,7 +27,8 @@ const schema = computed(() => z.object({
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
   due_date: z.string().nullable(),
-  lic_user_id: z.number('Choose the LIC.'),
+  // The LIC is the assessor: the signed-in user, never picked or sent.
+  lic_user_id: z.number().nullable(),
   lic_phone: required('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: required('Enter the LICOM mobile number.'),
@@ -60,6 +61,8 @@ type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id' 
 }
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
+/** The members picked (and copied from the last RA): the LICOM. */
+const TEAM_PICKED: Member[] = ['licom']
 
 const initialLocation = Number(route.query.location_id) || undefined
 const state = reactive<State>({
@@ -72,8 +75,17 @@ const state = reactive<State>({
   licom_user_id: null,
   licom_phone: '',
 })
-/** The picked users, for the pickers' labels and their mobile numbers. */
+/** The picked users, for the pickers' labels and their mobile numbers. The LIC is the person
+ *  making the RA, with their mobile number from their profile. */
 const users = reactive<Record<Member, RaUserRef | null>>({ lic: null, licom: null })
+const { data: profile } = useProfile()
+watch(() => user.value, (me) => {
+  users.lic = me ? { id: me.id, name: me.name, email: me.email, job_title: me.job_title } : null
+  state.lic_user_id = me?.id ?? null
+}, { immediate: true })
+watch(() => profile.value?.mobile_phone, (mobile) => {
+  if (mobile && !state.lic_phone.trim()) state.lic_phone = mobile
+}, { immediate: true })
 
 const assessmentDate = computed({
   get: () => state.assessment_date ? parseDate(state.assessment_date) : undefined,
@@ -117,7 +129,7 @@ const reasonItems = RA_REASONS.map((reason) => ({ label: reason.label, value: re
 const prefilled = ref<Partial<Record<Member, { user: RaUserRef, phone: string }>>>({})
 
 function clearPrefill() {
-  for (const member of MEMBERS) {
+  for (const member of TEAM_PICKED) {
     const filled = prefilled.value[member]
     if (filled && state[`${member}_user_id`] === filled.user.id) {
       state[`${member}_user_id`] = null
@@ -132,7 +144,11 @@ async function prefillTeam(source: RaAssessmentSummary) {
   const full = await raApi.get(source.id)
   if (previous.value?.id !== source.id) return
   const filled: typeof prefilled.value = {}
-  for (const member of MEMBERS) {
+  // The LIC stays the person making the RA; their own number comes along when they were the LIC.
+  if (full.lic_user?.id === state.lic_user_id && full.lic_phone && !state.lic_phone.trim()) {
+    state.lic_phone = full.lic_phone
+  }
+  for (const member of TEAM_PICKED) {
     const user = full[`${member}_user`]
     if (!user || state[`${member}_user_id`]) continue
     state[`${member}_user_id`] = user.id
@@ -199,7 +215,7 @@ const pickedNote = computed(() => {
     return {
       color: 'info' as const,
       title: `No RA yet for this ${noun}`,
-      description: 'Pick the location incident team below. The hazards are rated from scratch.',
+      description: 'Pick the LICOM below. The hazards are rated from scratch.',
     }
   }
   const ref = [last.ref_no, last.assessment_date ? formatDate(last.assessment_date) : null].filter(Boolean).join(', ')
@@ -246,7 +262,6 @@ async function onSubmit() {
       ...(customDue.value ? { due_date: state.due_date } : {}),
       // As SCCA: always from the building's last RA, when it has one.
       copy_from_id: previous.value?.id ?? null,
-      lic_user_id: state.lic_user_id ?? undefined,
       lic_phone: state.lic_phone.trim(),
       licom_user_id: state.licom_user_id ?? undefined,
       licom_phone: state.licom_phone.trim(),
@@ -397,7 +412,7 @@ async function onSubmit() {
               Location incident team
             </h2>
             <p class="text-sm text-muted">
-              Who leads the response at this {{ ra.location.lower }}, picked from the BCM Tools users. They also sign the RA.
+              Who leads the response at this {{ ra.location.lower }}. You are the LIC, as the assessor. Pick the LICOM from the BCM Tools users.
             </p>
           </template>
           <fieldset
@@ -412,7 +427,10 @@ async function onSubmit() {
             >
               <legend class="text-sm font-medium text-highlighted">
                 {{ ra[member].label }}
-                <span class="block text-xs font-normal text-muted">{{ ra[member].hint }}</span>
+                <span
+                  v-if="ra[member].hint"
+                  class="block text-xs font-normal text-muted"
+                >{{ ra[member].hint }}</span>
               </legend>
               <RaTeamMember
                 v-model:user-id="state[`${member}_user_id`]"
@@ -420,6 +438,7 @@ async function onSubmit() {
                 v-model:phone="state[`${member}_phone`]"
                 :member="member"
                 :label="ra[member].label"
+                :fixed="member === 'lic'"
               />
             </fieldset>
           </fieldset>
