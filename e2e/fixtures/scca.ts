@@ -495,11 +495,13 @@ export const RENEWALS = [
     key: 'CCOMNI', application_name: 'CC Omni Channel', application_code: 'CCOMNI', department: 'DBCC', category: 'Critical',
     last_final: MONITOR_REF(7, 'SCCA-2024-0007', 'final'), renewal_date: '2026-09-16', days_left: -34, bucket: 'overdue',
     assessor: 'Test User', owner: 'Cards Owner', renewal: MONITOR_REF(1, 'SCCA-2026-0001', 'in_approval'), renewal_status: 'in_approval',
+    application_id: 1, directorate: 'Operations, Technology, Analytics & AI', contributor: 'Rina Analyst', contributor_id: 2, can_generate: false,
   },
   {
     key: 'PAY', application_name: 'Payment Gateway', application_code: 'PAY', department: 'Payments', category: 'Very Important',
     last_final: MONITOR_REF(5, 'SCCA-2024-0005', 'final', { category: 'Very Important', due_date: '2026-11-10' }), renewal_date: '2026-11-10', days_left: 21, bucket: 'due_30',
     assessor: 'Rina Analyst', owner: 'Payments Head', renewal: null, renewal_status: 'not_started',
+    application_id: 5, directorate: 'Operations, Technology, Analytics & AI', contributor: 'Dewi Head', contributor_id: 6, can_generate: true,
   },
 ]
 
@@ -509,12 +511,14 @@ export const REGISTER = [
     latest_final: MONITOR_REF(7, 'SCCA-2024-0007', 'final'), renewal_date: '2026-09-16',
     open: MONITOR_REF(1, 'SCCA-2026-0001', 'in_approval', { pending_role: 'bcm_reviewer', pending_step: 'Reviewed by BCM Reviewer' }),
     latest_status: 'in_approval', assessor: 'Test User', owner: 'Cards Owner', it_support: 'IT Support', scca_count: 2,
+    application_id: 1, directorate: 'Operations, Technology, Analytics & AI', contributor: 'Rina Analyst',
     history: [MONITOR_REF(1, 'SCCA-2026-0001', 'in_approval'), MONITOR_REF(7, 'SCCA-2024-0007', 'final')],
   },
   {
     key: 'HR', application_name: 'HR Portal', application_code: 'HR', department: null, category: null,
     latest_final: null, renewal_date: null, open: MONITOR_REF(2, 'SCCA-2026-0002', 'draft'),
     latest_status: 'draft', assessor: 'Test User', owner: 'HR', it_support: 'IT Support', scca_count: 1,
+    application_id: 2, directorate: null, contributor: null,
     history: [MONITOR_REF(2, 'SCCA-2026-0002', 'draft')],
   },
 ]
@@ -571,6 +575,7 @@ export const SCCA_SETTINGS = {
   reminder_after_days: 3,
   reminder_every_days: 2,
   escalate_after_days: 7,
+  escalate_to_supervisor: true,
   extra_escalation_emails: [],
   renewal_notice_days: [90, 30, 7],
   overdue_repeat_days: 30,
@@ -580,8 +585,20 @@ export const SCCA_SETTINGS = {
   updated_by: null,
 }
 
-/** Pages `items` like the server does, from the request's `page` and `per_page` (25 by default). */
-function paged<T>(items: T[], url: URL, perPage = 25) {
+/** Register > SCCA(s) of CC Omni Channel: the open renewal, the current final and an older one. */
+export const APPLICATION_SCCAS = [
+  { ...MONITOR_REF(1, 'SCCA-2026-0001', 'in_approval'), application_name: 'CC Omni Channel', application_code: 'CCOMNI', reason: 'annual_review', assessor: 'Test User', contributor: 'Rina Analyst', renews: MONITOR_REF(7, 'SCCA-2024-0007', 'final'), mark: null },
+  { ...MONITOR_REF(7, 'SCCA-2024-0007', 'final'), application_name: 'CC Omni Channel', application_code: 'CCOMNI', reason: 'annual_review', assessor: 'Test User', contributor: null, renews: MONITOR_REF(4, 'SCCA-2022-0004', 'final'), mark: 'current' },
+  { ...MONITOR_REF(4, 'SCCA-2022-0004', 'final'), application_name: 'CC Omni Channel', application_code: 'CCOMNI', reason: 'new_application', assessor: 'Old Assessor', contributor: null, renews: null, mark: 'replaced' },
+]
+
+export const CONTRIBUTORS = [
+  { id: 6, display_name: 'Dewi Head', email: 'dewi@example.com', job_title: 'Head of IT Application', division: 'IT Application', directorate: 'Operations, Technology, Analytics & AI', org_level: 'D-2' },
+  { id: 8, display_name: 'Candra Head', email: 'candra@example.com', job_title: 'Head of Retail Banking', division: 'Retail Banking', directorate: 'Consumer & Emerging Business Banking', org_level: 'D-2' },
+]
+
+/** Pages `items` like the server does, from the request's `page` and `per_page` (20 by default). */
+function paged<T>(items: T[], url: URL, perPage = 20) {
   const size = Number(url.searchParams.get('per_page')) || perPage
   const number = Math.max(1, Number(url.searchParams.get('page')) || 1)
   const start = (number - 1) * size
@@ -606,7 +623,22 @@ export async function mockSccaWorkflow(page_: Page, rows: { inbox?: unknown[], u
     const path = url.pathname
     if (path.endsWith('/monitoring/overview')) return route.fulfill({ json: OVERVIEW })
     if (path.endsWith('/monitoring/departments')) return route.fulfill({ json: { items: ['Branch', 'DBCC', 'Payments'] } })
-    if (path.endsWith('/monitoring/renewals')) return route.fulfill({ json: { ...paged(rows.renewals ?? RENEWALS, url), counts: { overdue: 1, due_30: 1, due_90: 0 } } })
+    if (path.endsWith('/monitoring/org-values')) {
+      return route.fulfill({ json: { directorates: ['Consumer & Emerging Business Banking', 'Operations, Technology, Analytics & AI'], sub_directorates: ['Information Technology'], divisions: ['IT Application'], departments: ['Branch', 'DBCC', 'Payments'] } })
+    }
+    if (path.endsWith('/monitoring/renewals/contributors')) return route.fulfill({ json: { levels: ['D-2'], items: CONTRIBUTORS } })
+    if (path.endsWith('/monitoring/renewals/generate')) {
+      const ids = (body as { assessment_ids: number[] }).assessment_ids
+      return route.fulfill({ json: { created: ids.map((id, index) => ({ id: 90 + index, ref_no: `SCCA-2026-00${90 + index}`, renews: `#${id}`, application_name: 'Payment Gateway' })), skipped: [], refused: [] } })
+    }
+    if (path.endsWith('/monitoring/application-sccas')) return route.fulfill({ json: paged(APPLICATION_SCCAS, url) })
+    if (path.endsWith('/approvals/nudge')) {
+      const ids = (body as { assessment_ids: number[] }).assessment_ids
+      const sent = board.filter((row) => ids.includes(row.id) && row.reminders_sent < 3)
+      const skipped = board.filter((row) => ids.includes(row.id) && row.reminders_sent >= 3)
+      return route.fulfill({ json: { sent: sent.map((row) => ({ id: row.id, ref_no: row.ref_no })), skipped: skipped.map((row) => ({ id: row.id, ref_no: row.ref_no, reason: 'The approver was already reminded today. Try again tomorrow.' })), failed: [] } })
+    }
+    if (path.endsWith('/monitoring/renewals')) return route.fulfill({ json: { ...paged(rows.renewals ?? RENEWALS, url), counts: { overdue: 1, due_30: 1, due_90: 0 }, contributor_levels: ['D-2'] } })
     if (path.endsWith('/monitoring/register')) {
       const status = url.searchParams.get('status')
       const list = status === 'final' ? REGISTER.filter((row) => row.latest_final) : REGISTER

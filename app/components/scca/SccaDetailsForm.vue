@@ -179,8 +179,11 @@ watch(() => state.assessment_reason, async (reason, previous) => {
   Object.assign(state, { application_id: null, application_code: '', application_name: '' })
 })
 
-/** The picked application's final characteristics (from its latest final SCCA). */
+/** The picked application's final characteristics (from its latest final SCCA). When that is
+ * this SCCA itself (a final annual review), there is nothing previous to show from it. */
 const characteristics = ref<ApplicationCharacteristics | null>(null)
+const isLatestFinal = computed(() => Boolean(props.assessment && characteristics.value?.final?.id === props.assessment.id))
+const previousFinal = computed(() => props.assessment?.previous_final ?? null)
 watch(() => (lookup.value ? state.application_id : null), async (id) => {
   characteristics.value = null
   if (!id) return
@@ -371,11 +374,13 @@ async function onSubmit() {
               label="Application"
               name="application_id"
               required
-              help="Search the application list by code or name. Applications that aren't listed are added in Administration > Applications."
+              help="Search by code or name. An Annual review takes any application with a final SCCA and no open one; a System change also needs its renewal not to be overdue. You see the applications your access scope opens (SCCA configuration > Access scope)."
             >
               <SccaApplicationSearch
                 v-model="state.application_id"
                 :selected="state.application_id ? { code: state.application_code, name: state.application_name } : null"
+                :reason="state.assessment_reason || null"
+                :assessment-id="assessment?.id ?? null"
                 aria-label="Application"
                 @pick="onPickApplication"
               />
@@ -410,7 +415,22 @@ async function onSubmit() {
                 Previous final characteristics
               </p>
               <p
-                v-if="!characteristics?.final"
+                v-if="isLatestFinal"
+                class="mt-1 text-muted"
+              >
+                This SCCA is the application's latest final; its own characteristics are on the Recovery tab.
+                <template v-if="previousFinal">
+                  The final SCCA before it was
+                  <NuxtLink
+                    :to="sccaPath('monitoring', previousFinal.id)"
+                    class="font-mono text-xs text-primary hover:underline"
+                  >{{ previousFinal.ref_no }}</NuxtLink><template v-if="previousFinal.finalised_at">
+                    , final {{ formatDate(previousFinal.finalised_at) }}
+                  </template>.
+                </template>
+              </p>
+              <p
+                v-else-if="!characteristics?.final"
                 class="mt-1 text-muted"
               >
                 No final SCCA yet for this application.

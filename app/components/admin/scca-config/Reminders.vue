@@ -13,6 +13,7 @@ const form = reactive<SccaSettings>({
   reminder_after_days: 3,
   reminder_every_days: 2,
   escalate_after_days: 7,
+  escalate_to_supervisor: true,
   extra_escalation_emails: [],
   renewal_notice_days: [90, 30, 7],
   overdue_repeat_days: 30,
@@ -166,6 +167,11 @@ async function save() {
             <p class="text-sm">
               {{ example }}
             </p>
+            <USwitch
+              v-model="form.escalate_to_supervisor"
+              label="Also email the approver's direct supervisor"
+              description="The supervisor comes from the user master (DS NIP / Email DS, filled by Import from HR file)."
+            />
             <UFormField
               label="Also send escalations to"
               name="extra_escalation_emails"

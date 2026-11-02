@@ -158,3 +158,62 @@ export function useConfigPart<T>(
   }
   return { draft, error, busy, dirty, submit, reset }
 }
+
+// --- SCCA configuration > Access scope (live rules, not part of a version) -----------------
+
+export type SccaRenewalStatus = 'overdue' | 'due_30' | 'due_90' | 'active'
+
+export interface SccaAccessRuleInput {
+  name: string
+  /** Organization levels the rule covers (or name `user_ids`). */
+  levels: string[]
+  /** Empty: the user's own directorate. */
+  directorates: string[]
+  reasons: string[]
+  /** Empty: every category. */
+  categories: string[]
+  /** Annual review only; empty: every status. */
+  renewal_statuses: SccaRenewalStatus[]
+  can_generate: boolean
+  contributor_levels: string[]
+  user_ids: number[]
+  valid_from: string | null
+  valid_until: string | null
+  is_active: boolean
+}
+
+export interface SccaAccessRule extends SccaAccessRuleInput {
+  id: number
+  users: { id: number, name: string }[]
+  sort_order: number
+  updated_by: string | null
+  updated_at: string | null
+}
+
+export interface SccaAccessOptions {
+  levels: string[]
+  directorates: string[]
+  reasons: { code: string, label: string }[]
+  categories: string[]
+  renewal_statuses: { code: SccaRenewalStatus, label: string }[]
+}
+
+export interface SccaAccessCheck {
+  user: { id: number, name: string, directorate: string | null, org_level: string | null }
+  rules: { id: number, name: string }[]
+  can_generate: boolean
+  reasons: string[]
+  applications: Record<string, number>
+  annual_reason: string | null
+  can_be_contributor: boolean
+}
+
+const ACCESS = '/api/admin/settings/scca/access-rules'
+
+export const sccaAccessApi = {
+  list: () => $fetch<{ items: SccaAccessRule[], options: SccaAccessOptions }>(ACCESS),
+  create: (body: SccaAccessRuleInput) => $fetch<SccaAccessRule>(ACCESS, { method: 'POST', body }),
+  update: (id: number, body: SccaAccessRuleInput) => $fetch<SccaAccessRule>(`${ACCESS}/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => $fetch(`${ACCESS}/${id}`, { method: 'DELETE' }),
+  check: (userId: number) => $fetch<SccaAccessCheck>(`${ACCESS}/check`, { query: { user_id: userId } }),
+}

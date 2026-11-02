@@ -160,6 +160,31 @@ const lockMessage = computed(() => {
   return { title: 'Draft, read only', description: 'Only the assessor and the contributor can edit a draft.' }
 })
 
+/** The renewal alerts, worded by where each SCCA is now. */
+const renewalOfNote = computed(() => {
+  const value = assessment.value
+  const source = value?.renewal_of
+  if (!value || !source) return null
+  if (value.status === 'draft') {
+    return { title: `This SCCA renews ${source.ref_no}.`, description: 'It started as a copy of that final SCCA. Review every tab, update what changed, then submit.' }
+  }
+  if (value.status === 'in_approval') {
+    return { title: `This SCCA renews ${source.ref_no}.`, description: `It is in approval. When it is final, it replaces ${source.ref_no} and sets a new renewal date.` }
+  }
+  return { title: `This SCCA replaced ${source.ref_no}.`, description: 'It is the final SCCA that renewed it; its renewal date counts from this one.' }
+})
+const renewalNote = computed(() => {
+  const renewal = assessment.value?.renewal
+  if (!renewal) return null
+  if (renewal.status === 'final') {
+    return { title: `Replaced by ${renewal.ref_no}.`, description: `${renewal.ref_no} is final: it is the application's current SCCA and set a new renewal date.` }
+  }
+  if (renewal.status === 'in_approval') {
+    return { title: `Its renewal ${renewal.ref_no} is in approval.`, description: 'When the renewal is final, it replaces this SCCA in Monitoring and sets a new renewal date.' }
+  }
+  return { title: `Its renewal ${renewal.ref_no} is a draft.`, description: 'The assessor is updating it in Manage. When it is final, it replaces this SCCA and sets a new renewal date.' }
+})
+
 const toast = useToast()
 const renewing = ref(false)
 
@@ -376,40 +401,40 @@ function onSaved(saved: SccaAssessment) {
         </template>
       </UAlert>
       <UAlert
-        v-if="assessment.renewal_of"
+        v-if="renewalOfNote"
         class="mb-6"
         color="neutral"
         variant="subtle"
         icon="i-lucide-refresh-cw"
-        :title="`This SCCA renews ${assessment.renewal_of.ref_no}.`"
-        description="It started as a copy of that final SCCA. Review every tab, update what changed, then submit."
+        :title="renewalOfNote.title"
+        :description="renewalOfNote.description"
       >
         <template #actions>
           <UButton
-            :to="`/scca/${assessment.renewal_of.id}`"
+            :to="sccaPath(section, assessment.renewal_of!.id)"
             color="neutral"
             variant="outline"
             size="sm"
-            :label="`Open ${assessment.renewal_of.ref_no}`"
+            :label="`Open ${assessment.renewal_of!.ref_no}`"
           />
         </template>
       </UAlert>
       <UAlert
-        v-if="assessment.renewal"
+        v-if="renewalNote"
         class="mb-6"
         color="neutral"
         variant="subtle"
         icon="i-lucide-refresh-cw"
-        :title="`Its renewal is ${assessment.renewal.ref_no} (${sccaStatus[assessment.renewal.status].label.toLowerCase()}).`"
-        description="When the renewal is final, it replaces this SCCA in Monitoring and resets the renewal date."
+        :title="renewalNote.title"
+        :description="renewalNote.description"
       >
         <template #actions>
           <UButton
-            :to="`/scca/${assessment.renewal.id}`"
+            :to="sccaPath(section, assessment.renewal!.id)"
             color="neutral"
             variant="outline"
             size="sm"
-            :label="`Open ${assessment.renewal.ref_no}`"
+            :label="`Open ${assessment.renewal!.ref_no}`"
           />
         </template>
       </UAlert>

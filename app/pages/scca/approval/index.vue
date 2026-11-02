@@ -33,9 +33,10 @@ const tab = computed<ApprovalTab>({
   set: (value) => router.replace({ query: { tab: value === 'inbox' ? undefined : value } }),
 })
 
-// Server-paginated, 25 rows a page; the page (and the filters) are kept in the URL, so the
-// tab's page survives a reload and can be shared. `?coming=` pages the Coming up list.
-const PER_PAGE = 25
+// Server-paginated, 20 rows a page by default (10, 20, 50 or 100); the page, its size and the
+// filters are kept in the URL, so the tab's page survives a reload and can be shared.
+// `?coming=` pages the Coming up list.
+const perPage = useRowsPerPage()
 const COMING_PER_PAGE = 10
 function number(name: string) {
   return Math.max(1, Number(route.query[name]) || 1)
@@ -114,7 +115,7 @@ const pageOf = (name: ApprovalTab) => computed(() => (tab.value === name ? numbe
 
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: PER_PAGE })))
+const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: perPage.value })))
 const upcoming = useSccaUpcoming(computed(() => ({ page: comingPage.value, per_page: COMING_PER_PAGE })))
 
 const inboxColumns: TableColumn<SccaInboxRow>[] = [
@@ -150,7 +151,7 @@ const history = useSccaHistory(computed(() => ({
   from: tab.value === 'history' ? text('from') : undefined,
   to: tab.value === 'history' ? text('to') : undefined,
   page: historyPage.value,
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 })))
 const decisionItems = [
   { label: 'All decisions', value: 'all' as const },
@@ -206,17 +207,69 @@ const board = bcm.value
       from: tab.value === 'board' ? text('from') : undefined,
       to: tab.value === 'board' ? text('to') : undefined,
       page: boardPage.value,
-      per_page: PER_PAGE,
+      per_page: perPage.value,
     })))
   : null
 const boardColumns: TableColumn<SccaBottleneckRow>[] = [
-  { accessorKey: 'application_name', header: 'SCCA' },
+  { id: 'select', header: '' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'ref_no', header: 'SCCA ref. no.' },
   { accessorKey: 'step', header: 'Current step' },
   { accessorKey: 'approver', header: 'Approver' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
+  { accessorKey: 'escalated_at', header: 'Escalated on' },
   { id: 'actions', header: '' },
 ]
+
+// Send reminder (n): the board's selected rows, with the same rules as one reminder.
+const boardRows = computed(() => board?.data.value?.items ?? [])
+const picked = ref<Set<number>>(new Set())
+watch(boardRows, () => (picked.value = new Set()))
+const pickedRows = computed(() => boardRows.value.filter((row) => picked.value.has(row.id)))
+const allPicked = computed<boolean | 'indeterminate'>({
+  get: () => {
+    if (!boardRows.value.length || !pickedRows.value.length) return false
+    return pickedRows.value.length === boardRows.value.length ? true : 'indeterminate'
+  },
+  set: (value) => (picked.value = new Set(value ? boardRows.value.map((row) => row.id) : [])),
+})
+function pick(row: SccaBottleneckRow, value: boolean | 'indeterminate') {
+  const next = new Set(picked.value)
+  if (value === true) next.add(row.id)
+  else next.delete(row.id)
+  picked.value = next
+}
+
+async function nudgeMany() {
+  const rows = pickedRows.value
+  if (!rows.length) return
+  const ok = await confirm({
+    title: `Send a reminder to ${rows.length} approver${rows.length === 1 ? '' : 's'}?`,
+    description: 'Each current approver gets an email asking them to review the SCCA. Approvers already reminded today are skipped. Each counts as a reminder.',
+    confirmLabel: `Send reminder (${rows.length})`,
+  })
+  if (!ok) return
+  try {
+    const result = await sccaNudgeMany(rows.map((row) => row.id))
+    const sent = result.sent.length
+    const skipped = result.skipped.length
+    const failed = result.failed.length
+    toast.add({
+      title: `Sent ${sent} · skipped ${skipped} · failed ${failed}`,
+      description: [
+        ...result.skipped.map((row) => `${row.ref_no ?? `#${row.id}`}: ${row.reason}`),
+        ...(failed ? ['Failed emails are in Audit log > Email outbox.'] : []),
+      ].slice(0, 4).join(' · ') || undefined,
+      color: failed ? 'warning' : sent ? 'success' : 'neutral',
+      icon: failed ? 'i-lucide-mail-x' : 'i-lucide-mail-check',
+    })
+    picked.value = new Set()
+    await refreshAll()
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+}
 
 async function refreshAll() {
   await Promise.all([inbox.refresh(), upcoming.refresh(), board?.refresh()])
@@ -348,8 +401,9 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="perPage"
               :page="inboxPage"
-              :per-page="PER_PAGE"
+              page-sizes
               :total="inbox.data.value?.total ?? 0"
               :to="pageTo"
               label="My inbox"
@@ -533,8 +587,9 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
             :page="historyPage"
-            :per-page="PER_PAGE"
+            page-sizes
             :total="history.data.value?.total ?? 0"
             :to="pageTo"
             label="My history"
@@ -603,7 +658,7 @@ const tabs = computed(() => [
               class="w-56"
             />
           </ListFilterBar>
-          <div class="border-b border-default px-4 py-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
             <p class="text-sm text-muted">
               Reminders and escalation follow
               <NuxtLink
@@ -612,13 +667,33 @@ const tabs = computed(() => [
                 class="text-primary hover:underline"
               >SCCA configuration > Reminders and escalation</NuxtLink><span v-else>the SCCA reminder rules</span>.
             </p>
+            <UButton
+              icon="i-lucide-bell-ring"
+              :label="`Send reminder (${pickedRows.length})`"
+              :disabled="!pickedRows.length"
+              @click="nudgeMany"
+            />
           </div>
           <UTable
-            :data="board.data.value?.items ?? []"
+            :data="boardRows"
             :columns="boardColumns"
             :loading="board.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #select-header>
+              <UCheckbox
+                v-if="boardRows.length"
+                v-model="allPicked"
+                aria-label="Select every SCCA on this page"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="picked.has(row.original.id)"
+                :aria-label="`Select ${row.original.ref_no}`"
+                @update:model-value="pick(row.original, $event)"
+              />
+            </template>
             <template #application_name-cell="{ row }">
               <NuxtLink
                 :to="{ path: sccaPath('approval', row.original.id), query: { tab: 'result' } }"
@@ -626,9 +701,9 @@ const tabs = computed(() => [
               >
                 {{ row.original.application_name }}
               </NuxtLink>
-              <p class="font-mono text-xs text-muted">
-                {{ row.original.ref_no }}
-              </p>
+            </template>
+            <template #ref_no-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.ref_no || '—' }}</span>
             </template>
             <template #step-cell="{ row }">
               {{ signoffRoleLabel(row.original.step, true) }}
@@ -654,12 +729,16 @@ const tabs = computed(() => [
             </template>
             <template #reminders_sent-cell="{ row }">
               {{ row.original.reminders_sent }}
-              <p
+            </template>
+            <template #escalated_at-cell="{ row }">
+              <span
                 v-if="row.original.escalated_at"
-                class="text-xs text-error"
-              >
-                Escalated {{ formatDate(row.original.escalated_at) }}
-              </p>
+                class="text-error"
+              >{{ formatDate(row.original.escalated_at) }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #actions-cell="{ row }">
               <UDropdownMenu
@@ -683,8 +762,9 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
             :page="boardPage"
-            :per-page="PER_PAGE"
+            page-sizes
             :total="board.data.value?.total ?? 0"
             :to="pageTo"
             label="BCM board"

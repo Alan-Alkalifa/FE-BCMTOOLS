@@ -9,7 +9,7 @@ const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
 
-const PER_PAGE = 25
+const perPage = useRowsPerPage()
 
 function asCategory(value: unknown): SccaCategory | undefined {
   return typeof value === 'string' && SCCA_CATEGORIES.includes(value as SccaCategory)
@@ -25,7 +25,7 @@ const query = computed<SccaListQuery>(() => ({
   status: 'draft',
   mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const search = ref(query.value.q ?? '')
@@ -73,14 +73,20 @@ const { data, status, error, refresh } = useSccaAssessments(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 
 const columns: TableColumn<SccaAssessmentSummary>[] = [
-  { accessorKey: 'ref_no', header: 'Ref. no.' },
-  { accessorKey: 'application_name', header: 'Application' },
+  { accessorKey: 'ref_no', header: 'Ref no' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'application_code', header: 'Application code' },
+  { accessorKey: 'assessment_reason', header: 'Reason' },
+  { id: 'renews', header: 'Renews' },
   { accessorKey: 'my_role', header: 'My role' },
-  { accessorKey: 'computed_category', header: 'Rating' },
+  { accessorKey: 'assessor', header: 'Assessor' },
+  { accessorKey: 'computed_category', header: 'Category so far' },
+  { accessorKey: 'due_date', header: 'Renewal date' },
   { accessorKey: 'next_step', header: 'Next step' },
   { accessorKey: 'updated_at', header: 'Last saved' },
   { id: 'actions', header: '' },
 ]
+const ROLE_LABEL = { assessor: 'Assessor', contributor: 'Contributor', directorate: 'Directorate (view)' } as const
 
 function rowActions(row: SccaAssessmentSummary): DropdownMenuItem[] {
   return [
@@ -118,7 +124,7 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="7"
+      :columns="12"
       label="Loading assessments"
     />
 
@@ -180,7 +186,7 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
         :columns="columns"
         :loading="status === 'pending'"
         class="cursor-pointer"
-        :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
+        :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4' }"
         :on-select="openRow"
       >
         <template #ref_no-cell="{ row }">
@@ -193,12 +199,43 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
           >
             {{ row.original.application_name }}
           </NuxtLink>
-          <p class="text-xs text-muted">
-            {{ row.original.application_code || '—' }} · {{ reasonLabel(row.original.assessment_reason) || '—' }}<span v-if="row.original.renewal_of"> · renews {{ row.original.renewal_of.ref_no }}</span>
-          </p>
+        </template>
+        <template #application_code-cell="{ row }">
+          <span class="font-mono text-xs">{{ row.original.application_code || '—' }}</span>
+        </template>
+        <template #assessment_reason-cell="{ row }">
+          {{ reasonLabel(row.original.assessment_reason) || '—' }}
+        </template>
+        <template #renews-cell="{ row }">
+          <NuxtLink
+            v-if="row.original.renewal_of"
+            :to="sccaPath('monitoring', row.original.renewal_of.id)"
+            class="font-mono text-xs text-primary hover:underline"
+            @click.stop
+          >
+            {{ row.original.renewal_of.ref_no }}
+          </NuxtLink>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
         </template>
         <template #my_role-cell="{ row }">
-          {{ row.original.my_role === 'contributor' ? 'Contributor' : 'Assessor' }}
+          <UBadge
+            v-if="row.original.my_role === 'directorate'"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+            icon="i-lucide-eye"
+            :label="ROLE_LABEL.directorate"
+          />
+          <span v-else>{{ ROLE_LABEL[row.original.my_role ?? 'assessor'] }}</span>
+        </template>
+        <template #assessor-cell="{ row }">
+          {{ row.original.assessor || row.original.created_by || '—' }}
+        </template>
+        <template #due_date-cell="{ row }">
+          {{ formatDate(row.original.due_date) || '—' }}
         </template>
         <template #next_step-cell="{ row }">
           <span
@@ -255,8 +292,9 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
+        page-sizes
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Drafts"
