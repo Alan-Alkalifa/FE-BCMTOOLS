@@ -74,15 +74,18 @@ const MENUS = [
   { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
-  { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'ra.location.approve' },
+  { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'scca.access' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
 export function menuFor(permissions: string[]) {
   // As the backend: the shared Location menus open with RA or RA Branch access.
   const shared: Record<string, string> = { 'ra.access': 'ra_branch.access', 'ra.edit': 'ra_branch.edit' }
+  // Task Management spans every module: any module's access opens it.
+  const anyModule = ['scca.access', 'ra.access', 'ra_branch.access'].some((code) => permissions.includes(code))
   const visible = MENUS.filter((m) => !m.permission || permissions.includes(m.permission)
-    || (m.parent === 'locations' && permissions.includes(shared[m.permission] ?? '')))
+    || (m.parent === 'locations' && permissions.includes(shared[m.permission] ?? ''))
+    || (m.code === 'tasks' && anyModule))
   const node = (m: (typeof MENUS)[number], id: number) => ({
     id,
     code: m.code,

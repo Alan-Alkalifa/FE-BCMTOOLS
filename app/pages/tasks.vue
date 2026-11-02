@@ -1,34 +1,48 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaTask, RaTaskType } from '~/composables/useRa'
+import type { Task, TaskLevelFilter, TaskModule, TaskScope, TaskType } from '~/composables/useTasks'
 
 /**
- * Task Management: the buildings and branches (new, or to make inactive) and the declared
- * incidents waiting for someone else's approval, incidents first, then the longest waiting.
- * They are approved or rejected on their own page; here the approver sees what waits, how long
- * and how often the approvers were reminded, and can remind them now.
+ * Task Management: what waits for someone, across SCCA, RA HO, RA Branch and Location.
+ * **My tasks** (everyone): the approvals and sign-off steps waiting for me, the buildings and
+ * incidents I may approve, and the renewals of what I am responsible for. **Everything** (BCM):
+ * every sign-off in approval, stuck step, renewal and waiting building or incident of the
+ * modules they oversee. Each task is done on its own page; here BCM can remind whoever must act.
  */
-definePageMeta({ permission: ['ra.location.approve', 'ra.manage', 'ra_branch.manage'] })
+definePageMeta({ permission: ['scca.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const PER_PAGE = 25
 
-const TYPES: RaTaskType[] = ['register', 'deactivate', 'incident']
-function asType(value: unknown): RaTaskType | undefined {
-  return TYPES.includes(value as RaTaskType) ? value as RaTaskType : undefined
+const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'location']
+const TYPES: TaskType[] = ['signoff', 'renewal', 'building', 'incident']
+const LEVELS: TaskLevelFilter[] = ['stuck', 'overdue', 'due']
+function pick<T extends string>(value: unknown, options: T[]): T | undefined {
+  return options.includes(value as T) ? value as T : undefined
 }
 
 const query = computed(() => ({
-  type: asType(route.query.type),
-  kind: route.query.kind === 'head_office' || route.query.kind === 'branch' ? route.query.kind as RaKind : undefined,
+  scope: (route.query.scope === 'all' ? 'all' : 'mine') as TaskScope,
+  module: pick(route.query.module, MODULES),
+  type: pick(route.query.type, TYPES),
+  level: pick(route.query.level, LEVELS),
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: PER_PAGE,
 }))
-const { data, status, error, refresh } = useRaTasks(query)
+const { data, status, error, refresh } = useTasks(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+
+const scope = computed<TaskScope>({
+  get: () => query.value.scope,
+  set: (value) => router.replace({ query: { scope: value === 'all' ? 'all' : undefined } }),
+})
+const scopeItems = computed(() => [
+  { label: 'My tasks', value: 'mine', icon: 'i-lucide-user-check' },
+  ...(data.value?.can_see_all ? [{ label: 'Everything', value: 'all', icon: 'i-lucide-layers' }] : []),
+])
 
 const search = ref(query.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -37,97 +51,107 @@ watch(search, (value) => {
   searchTimer = setTimeout(() => {
     const next = value.trim()
     if (next === (query.value.q ?? '')) return
-    router.replace({ query: { ...route.query, q: next || undefined, page: undefined } })
+    setQuery({ q: next || undefined })
   }, 300)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
-const filtered = computed(() => Boolean(route.query.q || route.query.type || route.query.kind))
+const filtered = computed(() => Boolean(query.value.q || query.value.module || query.value.type || query.value.level))
 function clearFilters() {
   clearTimeout(searchTimer)
   search.value = ''
-  router.replace({ query: {} })
+  router.replace({ query: { scope: query.value.scope === 'all' ? 'all' : undefined } })
 }
-
 function setQuery(values: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...values, page: undefined } })
 }
+
+const moduleFilter = computed({
+  get: () => query.value.module ?? 'all',
+  set: (value: TaskModule | 'all') => setQuery({ module: value === 'all' ? undefined : value }),
+})
+const moduleItems = computed(() => [
+  { label: 'Every module', value: 'all' },
+  ...MODULES
+    .filter((module) => query.value.scope === 'mine' || data.value?.modules.includes(module))
+    .map((module) => ({ label: TASK_MODULES[module], value: module })),
+])
 const typeFilter = computed({
   get: () => query.value.type ?? 'all',
-  set: (value: RaTaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, kind: value === 'incident' ? undefined : route.query.kind as string | undefined }),
+  set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, level: undefined }),
 })
 const typeItems = [
   { label: 'Every task', value: 'all' },
-  { label: 'New buildings and branches', value: 'register' },
-  { label: 'Make inactive', value: 'deactivate' },
+  { label: 'Sign-offs', value: 'signoff' },
+  { label: 'Renewals', value: 'renewal' },
+  { label: 'Buildings', value: 'building' },
   { label: 'Incidents', value: 'incident' },
 ]
-const kindFilter = computed({
-  get: () => query.value.kind ?? 'all',
-  set: (value: RaKind | 'all') => setQuery({ kind: value === 'all' ? undefined : value, type: query.value.type === 'incident' ? undefined : query.value.type }),
-})
-const kindItems = [
-  { label: 'Every module', value: 'all' },
-  { label: 'RA HO', value: 'head_office' },
-  { label: 'RA Branch', value: 'branch' },
-]
 
-const cards = computed(() => [
-  { type: 'incident' as const, label: 'Incidents', icon: 'i-lucide-siren', tone: 'error' as const, hint: 'Declared, not yet confirmed. They stay off the map until approved.' },
-  { type: 'register' as const, label: 'New buildings and branches', icon: 'i-lucide-building', tone: 'warning' as const, hint: 'Their RAs can be submitted once approved.' },
-  { type: 'deactivate' as const, label: 'Make inactive', icon: 'i-lucide-archive', tone: 'warning' as const, hint: 'Buildings and branches to take out of use.' },
-])
-function cardLink(type: RaTaskType) {
-  return { query: { ...route.query, type: query.value.type === type ? undefined : type, kind: type === 'incident' ? undefined : route.query.kind, page: undefined } }
+/** The cards filter the list, like Monitoring's; clicking the active one shows all again. */
+const cards = computed(() => {
+  const counts = data.value?.counts
+  return [
+    { label: 'Sign-offs', type: 'signoff' as const, icon: 'i-lucide-badge-check', tone: 'info' as const, value: counts?.signoff, hint: query.value.scope === 'mine' ? 'SCCA approvals and RA steps waiting for you.' : 'Every SCCA and RA in approval.' },
+    { label: 'Renewals', type: 'renewal' as const, icon: 'i-lucide-calendar-clock', tone: 'warning' as const, value: counts?.renewal, hint: 'Overdue or due within 90 days.' },
+    { label: 'Buildings', type: 'building' as const, icon: 'i-lucide-building', tone: 'warning' as const, value: counts?.building, hint: 'New, or to make inactive, waiting for approval.' },
+    { label: 'Incidents', type: 'incident' as const, icon: 'i-lucide-siren', tone: 'error' as const, value: counts?.incident, hint: 'Declared, waiting for approval.' },
+  ]
+})
+function cardLink(type: TaskType) {
+  return { query: { ...route.query, type: query.value.type === type ? undefined : type, level: undefined, page: undefined } }
 }
 
-const TASK_LABELS: Record<RaTask['action'], string> = {
-  register: 'New',
-  deactivate: 'Make inactive',
-  declare: 'Incident',
-}
-const raTaskType = defineStatusScale({
-  register: { label: 'New', color: 'warning', icon: 'i-lucide-plus' },
-  deactivate: { label: 'Make inactive', color: 'neutral', icon: 'i-lucide-archive' },
-  declare: { label: 'Incident', color: 'error', icon: 'i-lucide-siren' },
-})
+const LEVEL_LABELS: Record<TaskLevelFilter, string> = { stuck: 'Stuck sign-offs', overdue: 'Overdue renewals', due: 'Renewals due' }
 
-function waited(task: RaTask) {
+function waited(task: Task) {
+  if (task.type === 'renewal') {
+    const days = task.days_left ?? 0
+    if (days < 0) return `${-days} ${days === -1 ? 'day' : 'days'} overdue`
+    return days === 0 ? 'Due today' : `Due in ${days} ${days === 1 ? 'day' : 'days'}`
+  }
   if (task.type === 'incident') {
-    const hours = Math.floor(task.hours_waiting)
+    const hours = Math.floor(task.hours_waiting ?? 0)
     return hours < 1 ? 'Under an hour' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`
   }
-  const days = task.working_days_waiting
+  const days = task.working_days_waiting ?? 0
   return days === 0 ? 'Today' : `${days} working ${days === 1 ? 'day' : 'days'}`
 }
-
-function moduleLabel(task: RaTask) {
-  if (task.type === 'incident') return task.kind ? RA_MODULES[task.kind].title : 'Map point'
-  return task.kind ? RA_MODULES[task.kind].title : '—'
+function urgent(task: Task) {
+  return task.level === 'escalated' || task.level === 'overdue'
+}
+function urgentLabel(task: Task) {
+  return task.type === 'signoff' ? 'Stuck' : 'Escalated to BCM'
+}
+function moduleLabel(task: Task) {
+  if (task.module === 'location') return task.kind ? `Location · ${task.kind === 'branch' ? 'Branch' : 'Head office'}` : 'Location'
+  return TASK_MODULES[task.module]
+}
+function openLabel(task: Task) {
+  if (!task.mine) return 'Open'
+  return task.type === 'renewal' ? 'Renew' : 'Review'
 }
 
-const columns: TableColumn<RaTask>[] = [
-  { accessorKey: 'action', header: 'Task' },
-  { id: 'record', header: 'Waiting for approval' },
-  { id: 'module', header: 'Module' },
-  { accessorKey: 'requested_by', header: 'Asked by' },
-  { id: 'waiting', header: 'Waiting' },
-  { id: 'reminders', header: 'Reminders', meta: { class: { th: 'text-right', td: 'text-right' } } },
+const columns: TableColumn<Task>[] = [
+  { accessorKey: 'type', header: 'Task' },
+  { id: 'record', header: 'What' },
+  { accessorKey: 'module', header: 'Module' },
+  { accessorKey: 'assignee', header: 'Who acts' },
+  { id: 'waiting', header: 'Waiting or due' },
   { id: 'actions', header: '', meta: { class: { td: 'text-right' } } },
 ]
 
 const reminding = ref<string | null>(null)
-async function remind(task: RaTask) {
-  const key = `${task.type}-${task.id}`
-  reminding.value = key
+async function remind(task: Task) {
+  reminding.value = task.key
   try {
-    const result = await raTaskApi.remind(task.type, task.id)
+    const result = await taskApi.remind(task)
     toast.add({
-      title: result.email_sent ? 'Approvers reminded' : 'Reminder recorded',
-      description: result.email_sent
-        ? `${task.title}. Every approver but who asked got an email.`
+      title: result.sent ? 'Reminder sent' : 'Reminder recorded',
+      description: result.sent
+        ? `${task.title}: ${task.type === 'signoff' ? 'the signer' : 'every approver but who asked'} got an email.`
         : 'No email went out. Check the email settings in Administration.',
-      color: result.email_sent ? 'success' : 'warning',
-      icon: result.email_sent ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert',
+      color: result.sent ? 'success' : 'warning',
+      icon: result.sent ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert',
     })
     await refresh()
   } catch (failure) {
@@ -141,30 +165,22 @@ async function remind(task: RaTask) {
 <template>
   <AppPage
     title="Task Management"
-    description="Buildings, branches and incidents waiting for someone else's approval. Open one to approve or reject it on its page. The approvers are emailed when it starts waiting and reminded until it is decided."
+    icon="i-lucide-list-todo"
+    description="What waits for someone, across SCCA, RA HO, RA Branch and Location. Each task is done on its own page."
     :crumbs="[{ label: 'Task Management' }]"
   >
-    <template #actions>
-      <UButton
-        to="/crises?status=pending"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-siren"
-        label="Incidents"
-      />
-      <UButton
-        to="/locations?status=pending"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-building"
-        label="Buildings"
-      />
-    </template>
+    <UTabs
+      v-if="scopeItems.length > 1"
+      v-model="scope"
+      :items="scopeItems"
+      :content="false"
+      class="w-full"
+    />
 
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="7"
+      :columns="6"
       :rows="5"
       label="Loading the tasks"
     />
@@ -191,13 +207,13 @@ async function remind(task: RaTask) {
       v-else
       class="space-y-6"
     >
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           v-for="card in cards"
           :key="card.type"
           :to="cardLink(card.type)"
           :label="card.label"
-          :value="data?.counts[card.type] ?? null"
+          :value="card.value ?? null"
           :hint="query.type === card.type ? 'Showing only these. Click again to show all.' : card.hint"
           :icon="card.icon"
           :tone="card.tone"
@@ -214,7 +230,7 @@ async function remind(task: RaTask) {
             <UInput
               v-model="search"
               icon="i-lucide-search"
-              placeholder="Name, building ID or incident reference"
+              placeholder="Name, reference, step or person"
               aria-label="Search the tasks"
               class="w-full"
             />
@@ -222,26 +238,45 @@ async function remind(task: RaTask) {
           <USelect
             v-model="typeFilter"
             :items="typeItems"
-            class="w-52"
+            class="w-40"
             aria-label="Filter by task"
           />
           <USelect
-            v-model="kindFilter"
-            :items="kindItems"
+            v-model="moduleFilter"
+            :items="moduleItems"
             class="w-40"
             aria-label="Filter by module"
           />
+          <UBadge
+            v-if="query.level"
+            color="neutral"
+            variant="subtle"
+            size="lg"
+            class="gap-1"
+          >
+            {{ LEVEL_LABELS[query.level] }}
+            <UButton
+              color="neutral"
+              variant="link"
+              size="xs"
+              icon="i-lucide-x"
+              class="p-0"
+              :aria-label="`Show more than ${LEVEL_LABELS[query.level].toLowerCase()}`"
+              @click="setQuery({ level: undefined })"
+            />
+          </UBadge>
         </ListFilterBar>
 
         <UTable
           :data="data?.items ?? []"
           :columns="columns"
           :loading="status === 'pending'"
+          :ui="{ td: 'align-top' }"
         >
-          <template #action-cell="{ row }">
+          <template #type-cell="{ row }">
             <StatusBadge
-              :scale="raTaskType"
-              :value="row.original.action"
+              :scale="taskType"
+              :value="row.original.type"
               size="sm"
             />
           </template>
@@ -250,61 +285,62 @@ async function remind(task: RaTask) {
               :to="row.original.url"
               class="font-medium text-primary hover:underline"
             >
-              {{ row.original.name }}
+              {{ row.original.title }}
             </NuxtLink>
             <p class="text-xs text-muted">
-              {{ [row.original.ref, row.original.hazard].filter(Boolean).join(' · ') || TASK_LABELS[row.original.action] }}
+              {{ [row.original.ref, row.original.detail].filter(Boolean).join(' · ') }}
             </p>
           </template>
           <template #module-cell="{ row }">
-            {{ moduleLabel(row.original) }}
+            <span class="whitespace-nowrap">{{ moduleLabel(row.original) }}</span>
           </template>
-          <template #requested_by-cell="{ row }">
-            <span>{{ row.original.requested_by ?? '—' }}</span>
-            <p class="text-xs text-muted whitespace-nowrap">
-              {{ formatDateTime(row.original.requested_at) }}
+          <template #assignee-cell="{ row }">
+            <span>{{ row.original.mine && row.original.type === 'signoff' ? 'You' : (row.original.assignee ?? '—') }}</span>
+            <p
+              v-if="row.original.requested_by"
+              class="text-xs text-muted"
+            >
+              Asked by {{ row.original.requested_by }}
             </p>
           </template>
           <template #waiting-cell="{ row }">
             <span
               class="whitespace-nowrap"
-              :class="{ 'font-medium text-error': row.original.escalated_at }"
+              :class="{ 'font-medium text-error': urgent(row.original) }"
             >{{ waited(row.original) }}</span>
             <p
-              v-if="row.original.escalated_at"
+              v-if="urgent(row.original) && row.original.type !== 'renewal'"
               class="text-xs text-error"
             >
-              Escalated to BCM
+              {{ urgentLabel(row.original) }}
             </p>
-          </template>
-          <template #reminders-cell="{ row }">
-            <span class="tabular-nums">{{ formatNumber(row.original.reminders_sent, 0) }}</span>
             <p
-              v-if="row.original.last_reminded_at"
-              class="text-xs text-muted whitespace-nowrap"
+              v-if="row.original.reminders_sent"
+              class="text-xs text-muted"
             >
-              Last {{ formatDateTime(row.original.last_reminded_at) }}
+              {{ row.original.reminders_sent }} {{ row.original.reminders_sent === 1 ? 'reminder' : 'reminders' }}
             </p>
           </template>
           <template #actions-cell="{ row }">
             <div class="flex justify-end gap-2">
               <UButton
+                v-if="row.original.can_remind"
                 color="neutral"
                 variant="outline"
                 size="sm"
                 icon="i-lucide-bell-ring"
                 label="Remind"
-                :aria-label="`Remind the approvers: ${row.original.title}`"
-                :loading="reminding === `${row.original.type}-${row.original.id}`"
+                :aria-label="`Remind: ${row.original.title}`"
+                :loading="reminding === row.original.key"
                 @click="remind(row.original)"
               />
               <UButton
                 :to="row.original.url"
                 size="sm"
-                :color="row.original.can_decide ? 'primary' : 'neutral'"
-                :variant="row.original.can_decide ? 'solid' : 'outline'"
-                :label="row.original.can_decide ? 'Review' : 'Open'"
-                :aria-label="`${row.original.can_decide ? 'Review' : 'Open'}: ${row.original.title}`"
+                :color="row.original.mine ? 'primary' : 'neutral'"
+                :variant="row.original.mine ? 'solid' : 'outline'"
+                :label="openLabel(row.original)"
+                :aria-label="`${openLabel(row.original)}: ${row.original.title}`"
               />
             </div>
             <p
@@ -316,7 +352,7 @@ async function remind(task: RaTask) {
           </template>
           <template #empty>
             <p class="py-10 text-center text-sm text-muted">
-              {{ filtered ? 'Nothing waiting matches these filters.' : 'Nothing is waiting for approval.' }}
+              {{ filtered ? 'No task matches these filters.' : query.scope === 'mine' ? 'Nothing waits for you.' : 'Nothing is waiting.' }}
             </p>
           </template>
         </UTable>

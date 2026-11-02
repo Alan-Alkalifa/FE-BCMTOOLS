@@ -1026,27 +1026,6 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(details).toHaveCount(0)
 })
 
-test('Home shows RA and RA Branch at a glance, like SCCA', async ({ page }) => {
-  await mockRa(page)
-  await page.goto('/')
-  const ra = page.getByRole('region', { name: 'RA HO at a glance' })
-  await expect(ra).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('region', { name: 'RA Branch at a glance' })).toBeVisible()
-  await expect(ra.getByRole('link', { name: /Overdue renewals\s*1/ })).toHaveAttribute('href', '/ra/monitoring?tab=renewals')
-  // BCM opens stuck sign-offs on the BCM board.
-  await expect(ra.getByRole('link', { name: /Stuck sign-offs/ })).toHaveAttribute('href', '/ra/approval?tab=board')
-  await expect(page.getByRole('link', { name: /1 RA is waiting for your sign-off/ })).toHaveAttribute('href', '/ra/approval')
-})
-
-test('Home shows only the side the user holds', async ({ page }) => {
-  await mockRa(page, { permissions: ['ra.access', 'ra.edit'] })
-  await page.goto('/')
-  await expect(page.getByRole('region', { name: 'RA HO at a glance' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('region', { name: 'RA Branch at a glance' })).toHaveCount(0)
-  // Without ra.manage, stuck sign-offs open Monitoring > Bottlenecks.
-  await expect(page.getByRole('link', { name: /Stuck sign-offs/ })).toHaveAttribute('href', '/ra/monitoring?tab=bottlenecks')
-})
-
 test('a structural change picks its renewal date, like SCCA\'s System change', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/new?location_id=1')
