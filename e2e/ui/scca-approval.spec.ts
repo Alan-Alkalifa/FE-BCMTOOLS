@@ -138,3 +138,25 @@ test('a signer who may comment on Result only is told so on the other tabs', asy
   await page.goto('/scca/approval/1?tab=rating')
   await expect(page.getByText(/At your step you comment on Result and sign-off\./).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 })
 })
+
+for (const section of ['approval', 'monitoring']) {
+  test(`in ${section} the C, I, A and PO-LOS tabs open while the ratings stay locked`, async ({ page }) => {
+    await mockScca(page, assessment({
+      status: 'in_approval',
+      pending_role: 'it_support_pic',
+      my_role: null,
+      signoffs: allSignoffs(),
+      permissions: { ...EDITOR, can_edit: false, can_submit: false, can_decide: section === 'approval', comment_tabs: ['result'] },
+    }))
+    await page.goto(`/scca/${section}/1?tab=rating`)
+    const tabs = page.getByRole('tablist').filter({ has: page.getByRole('tab', { name: 'PO-LOS' }) })
+    await expect(tabs.getByRole('tab', { name: 'C', exact: true })).toBeEnabled({ timeout: 60_000 })
+    for (const name of ['I', 'A', 'PO-LOS']) {
+      await tabs.getByRole('tab', { name, exact: true }).click()
+      await expect(tabs.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true')
+    }
+    await expect(page.getByText('P1 ·', { exact: false }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Critical' }).first()).toBeDisabled()
+    await expect(page.getByLabel('Justification').first()).toBeDisabled()
+  })
+}

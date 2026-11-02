@@ -4,6 +4,9 @@ import type { SccaAssessment, SccaFormula } from '~/composables/useScca'
 const props = defineProps<{
   assessment: SccaAssessment
   formula: SccaFormula
+  /** Read-only (Approval, Monitoring, or a draft the user can't edit): the ratings and
+   * justifications are locked, but C / I / A / PO-LOS still switch. */
+  locked?: boolean
 }>()
 const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
 
@@ -123,7 +126,7 @@ const noteWarnings = computed(() => {
 
 function choose(code: string, rating: number) {
   const answer = state.answers[code]
-  if (!answer) return
+  if (!answer || props.locked) return
   answer.rating = rating
   activeCode.value = code
 }
@@ -231,7 +234,10 @@ async function onSubmit() {
           {{ formatNumber(justifiedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} justified.
         </p>
 
-        <div class="space-y-8">
+        <fieldset
+          :disabled="locked"
+          class="min-w-0 space-y-8"
+        >
           <h2 class="text-lg font-semibold">
             {{ dimensionLabel }}
           </h2>
@@ -289,7 +295,7 @@ async function onSubmit() {
               :name="`justification.${question.code}`"
               label="Justification"
               required
-              :error="state.answers[question.code]!.rating != null && !state.answers[question.code]!.justification.trim() ? 'Explain why this rating (needed to submit).' : undefined"
+              :error="!locked && state.answers[question.code]!.rating != null && !state.answers[question.code]!.justification.trim() ? 'Explain why this rating (needed to submit).' : undefined"
             >
               <template #hint>
                 <FieldCount
@@ -305,7 +311,7 @@ async function onSubmit() {
               />
             </UFormField>
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <div class="space-y-6 lg:sticky lg:top-6">
