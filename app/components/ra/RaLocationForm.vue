@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type { RaLocationDetail, RaNetworkHead } from '~/composables/useRa'
+import type { RaLocationDetail, RaNetworkHead, RaOrgValues } from '~/composables/useRa'
 
 /**
  * Building Data Entry: a head office building or a branch. The type is picked in the form
@@ -10,6 +10,12 @@ import type { RaLocationDetail, RaNetworkHead } from '~/composables/useRa'
  * A branch also gets its place in the Network organisation: its Region (the Sub Directorate)
  * and Area (the Group) from the region directory (the DataRegion sheet; LDAP in production),
  * with their heads shown. While the directory is empty the region is free text.
+ *
+ * Its organization, as SCCA's application owner: Directorate, Sub Directorate, Division and
+ * Department, picked from the user master's values (a new one can be typed). A new head office
+ * building starts with the signed-in user's own; a branch's Directorate and Sub Directorate
+ * follow its region. Monitoring filters by them and the access scope opens a location to the
+ * users of its directorate.
  */
 const props = withDefaults(defineProps<{
   location?: RaLocationDetail
@@ -64,6 +70,10 @@ const schema = computed(() => z.object({
   is_active: z.boolean(),
   region: z.string(),
   area: z.string(),
+  directorate: z.string(),
+  sub_directorate: z.string(),
+  division: z.string(),
+  department: z.string(),
 }).superRefine((value, context) => {
   if (!isBranch.value || !fromDirectory.value) return
   const region = regionList.value.find((item) => item.region === value.region)
@@ -85,12 +95,53 @@ function fromLocation(location?: RaLocationDetail): State {
     zip_code: location?.zip_code ?? '',
     region: location?.region ?? '',
     area: location?.area ?? '',
+    directorate: location?.directorate ?? '',
+    sub_directorate: location?.sub_directorate ?? '',
+    division: location?.division ?? '',
+    department: location?.department ?? '',
     // Cleared while its deactivation waits for approval; ticking it again withdraws that.
     is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
   }
 }
 
 const state = reactive<State>(fromLocation(props.location))
+
+// --- Organization ------------------------------------------------------------------------------
+
+type OrgField = 'directorate' | 'sub_directorate' | 'division' | 'department'
+const ORG_FIELDS: { key: OrgField, label: string, list: keyof RaOrgValues }[] = [
+  { key: 'directorate', label: 'Directorate', list: 'directorates' },
+  { key: 'sub_directorate', label: 'Sub Directorate', list: 'sub_directorates' },
+  { key: 'division', label: 'Division', list: 'divisions' },
+  { key: 'department', label: 'Department', list: 'departments' },
+]
+const { data: orgValues } = useRaOrgValues()
+const { data: profile } = useProfile()
+/** The values to pick from, with the one saved even if it is no longer in the user master. */
+function orgItems(field: (typeof ORG_FIELDS)[number]) {
+  const items = [...(orgValues.value?.[field.list] ?? [])]
+  const current = state[field.key]
+  if (current && !items.includes(current)) items.unshift(current)
+  return items
+}
+/** A branch's Directorate (from the region directory) and Sub Directorate (its region) follow
+ *  the region; while the directory is empty its Directorate is typed. */
+function orgLocked(key: OrgField) {
+  if (!isBranch.value) return false
+  return key === 'sub_directorate' || (key === 'directorate' && fromDirectory.value)
+}
+function orgValue(key: OrgField) {
+  if (isBranch.value && key === 'sub_directorate') return state.region
+  if (isBranch.value && key === 'directorate' && fromDirectory.value) return pickedRegion.value?.directorate ?? state.directorate
+  return state[key]
+}
+/** A new head office building starts with the signed-in user's organization. */
+watch(() => profile.value, (me) => {
+  if (props.location || isBranch.value || !me) return
+  for (const key of ['directorate', 'sub_directorate', 'division', 'department'] as const) {
+    if (!state[key]) state[key] = me[key] ?? ''
+  }
+}, { immediate: true })
 
 const regionItems = computed(() => {
   const items = regionList.value.map((item) => ({
@@ -140,12 +191,14 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, ...fields } = state
+    const { region, area, directorate, sub_directorate: subDirectorate, ...fields } = state
     const body = blankToNull({
       ...fields,
       name: state.name.trim(),
-      // Only a branch has a region and area.
-      ...(isBranch.value ? { region: region.trim(), area: area.trim() } : {}),
+      // Only a branch has a region and area; its Sub Directorate is the region and, with the
+      // region directory, its Directorate comes from there (the backend sets both).
+      ...(isBranch.value ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate }),
+      ...(orgLocked('directorate') ? {} : { directorate }),
     })
     const saved = props.location
       ? await raApi.updateLocation(props.location.id, body)
@@ -365,6 +418,44 @@ async function onSubmit() {
           <UCheckbox
             v-model="state.is_active"
             label="Active"
+          />
+        </UFormField>
+      </div>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Organization
+        </h2>
+        <p class="text-sm text-muted">
+          Who the {{ ra.location.lower }} belongs to, as the user master names it. Monitoring filters by it, and the access scope opens the {{ ra.location.lower }} to the users of its directorate.
+        </p>
+      </template>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <UFormField
+          v-for="field in ORG_FIELDS"
+          :key="field.key"
+          :label="field.label"
+          :name="field.key"
+          :help="orgLocked(field.key) ? (field.key === 'sub_directorate' ? 'The branch\'s region.' : 'From the region directory.') : undefined"
+        >
+          <UInput
+            v-if="orgLocked(field.key)"
+            :model-value="orgValue(field.key)"
+            disabled
+            class="w-full"
+            :aria-label="field.label"
+          />
+          <USelectMenu
+            v-else
+            v-model="state[field.key]"
+            :items="orgItems(field)"
+            create-item
+            :placeholder="`Choose the ${field.label.toLowerCase()}`"
+            class="w-full"
+            :aria-label="field.label"
+            @create="(item: string) => (state[field.key] = item)"
           />
         </UFormField>
       </div>

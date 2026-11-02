@@ -232,6 +232,20 @@ export interface RaLocationRef {
   region: string | null
   /** A branch's area (the Group of its region) in the Network organisation. */
   area?: string | null
+  /** The organization it belongs to (the user master's HR fields), as SCCA's application
+   *  owner. A branch's Directorate and Sub Directorate follow its region. */
+  directorate?: string | null
+  sub_directorate?: string | null
+  division?: string | null
+  department?: string | null
+}
+
+/** Directorates, sub directorates, divisions and departments (building form, Monitoring). */
+export interface RaOrgValues {
+  directorates: string[]
+  sub_directorates: string[]
+  divisions: string[]
+  departments: string[]
 }
 
 /** A map pin (WGS 84). */
@@ -393,8 +407,6 @@ export interface RaLocation extends RaLocationRef {
   city?: string | null
   district?: string | null
   zip_code?: string | null
-  /** A branch's directorate, from the region directory. */
-  directorate?: string | null
   latitude: number | null
   longitude: number | null
   is_active: boolean
@@ -544,6 +556,10 @@ export interface RaLocationInput {
   district?: string | null
   zip_code?: string | null
   region?: string | null
+  directorate?: string | null
+  sub_directorate?: string | null
+  division?: string | null
+  department?: string | null
   latitude?: number | null
   longitude?: number | null
   is_active?: boolean
@@ -759,6 +775,12 @@ export const raCrisisApi = {
 
 export const raApi = {
   createLocation: (body: RaLocationInput) => $fetch<RaLocationDetail>(LOCATIONS, { method: 'POST', body }),
+  /** Renewals > Generate annual review for the last final RAs. */
+  generateRenewals: (assessmentIds: number[]) =>
+    $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds } }),
+  /** New assessment: the locations the access scope opens for a reason (`all` for BCM). */
+  locationScope: (kind: RaKind, reason: string) =>
+    $fetch<{ all: boolean, ids: number[] }>(`${LOCATIONS}/scope`, { query: { kind, reason } }),
   updateLocation: (id: number, body: RaLocationInput) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`, { method: 'PUT', body }),
   getLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`),
@@ -849,7 +871,27 @@ export interface RaMonitorLocation {
   bucket: RaRenewalBucket | null
   /** Who made the RA shown (the one in force, else the open one), as SCCA's Assessor. */
   assessor: string | null
+  /** That RA's LICOM. */
+  licom?: string | null
   history: RaAssessmentRef[]
+  /** Renewals only: the open RA's status, or `not_started`. */
+  renewal_status?: RaStatus | 'not_started'
+  /** Renewals only: this user may generate its annual review (as SCCA's). */
+  can_generate?: boolean
+}
+
+/** List > RA(s): one RA of a location, `current` (the latest final) or `replaced`. */
+export interface RaLocationHistoryRow extends RaAssessmentRef {
+  assessor: string | null
+  licom: string | null
+  mark: 'current' | 'replaced' | null
+}
+
+/** Renewals > Generate annual review: what was created, skipped (an RA is open) and refused. */
+export interface RaGenerateResult {
+  created: { id: number, ref_no: string | null, renews: string | null, location: string }[]
+  skipped: { id: number, ref_no: string | null, location: string, open_id: number, open_ref_no: string | null, reason: string }[]
+  refused: { id: number, ref_no?: string | null, location?: string, reason: string }[]
 }
 
 /** An RA in sign-off and whose step it is. */
@@ -894,7 +936,11 @@ export interface RaMonitoringFilters {
   // Date range filters (assessment date)
   from?: string
   to?: string
-  // department?: string  // RA uses region instead of department
+  /** The location's organization, as SCCA's org filters. */
+  directorate?: string
+  sub_directorate?: string
+  division?: string
+  department?: string
 }
 
 export interface RaOverview {
@@ -944,6 +990,20 @@ export function useRaRegister(query: Paged<RaMonitoringFilters>) {
   return useRaList<RaMonitorLocation>('/api/ra/monitoring/register', query)
 }
 
+/** List > RA(s): every RA of one location, newest first. */
+export function useRaLocationHistory(query: MaybeRefOrGetter<Paged<{ kind: RaKind, location_id: number }>>) {
+  return useRaList<RaLocationHistoryRow>('/api/ra/monitoring/location-ras', query)
+}
+
+/** The org filter values of the locations in the user's scope. */
+export function useRaMonitoringOrgValues(filters: MaybeRefOrGetter<RaMonitoringFilters>) {
+  return useFetch<RaOrgValues>('/api/ra/monitoring/org-values', {
+    key: computed(() => `ra-monitoring-org-values-${toValue(filters).kind}`),
+    query: computed(() => ({ kind: toValue(filters).kind })),
+    default: () => ({ directorates: [], sub_directorates: [], divisions: [], departments: [] }),
+  })
+}
+
 export function useRaBottlenecks(query: Paged<RaMonitoringFilters & { step?: string }>) {
   return useRaList<RaSignoffWaiting>('/api/ra/monitoring/bottlenecks', query)
 }
@@ -983,6 +1043,14 @@ export interface RaNetworkRegion extends RaNetworkHead {
 
 /** The region directory for a branch's Region and Area (the DataRegion sheet; LDAP in
  *  production). Empty until it is imported: the region is then free text. */
+/** The building form's organization lists: the user master's values and the locations'. */
+export function useRaOrgValues() {
+  return useFetch<RaOrgValues>('/api/ra/org-values', {
+    key: 'ra-org-values',
+    default: () => ({ directorates: [], sub_directorates: [], divisions: [], departments: [] }),
+  })
+}
+
 export function useRaRegionDirectory() {
   return useFetch<{ items: RaNetworkRegion[] }>('/api/ra/regions', {
     key: 'ra-region-directory',
@@ -1018,15 +1086,10 @@ export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: strin
   })
 }
 
-// TODO: Add useRaDepartments when backend supports it
-// export function useRaDepartments() {
-//   return useFetch<{ items: string[] }>('/api/ra/monitoring/departments', { key: 'ra-departments' })
-// }
-
 /** The Excel download of a Monitoring view, with the same filters (all rows). */
 /** A Monitoring view as Excel, with the same filters; `ids`: only these buildings (the List
  *  tab's ticked rows), every RA of each. */
-export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks', filters: RaMonitoringFilters, ids: number[] = []) {
+export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks' | 'location-ras', filters: RaMonitoringFilters & { location_id?: number }, ids: number[] = []) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {

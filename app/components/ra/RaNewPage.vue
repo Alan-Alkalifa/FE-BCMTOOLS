@@ -102,10 +102,26 @@ function fits(reason: RaReason | undefined, location: RaLocation | undefined) {
   return true
 }
 const chosen = computed(() => locations.value?.items.find((item) => item.id === state.location_id))
+/** As SCCA's access scope: outside BCM, an Annual review or a Structural change picks only the
+ *  buildings an access rule opens (RA configuration > Access scope). Null: every building. */
+const scopedIds = ref<Set<number> | null>(null)
+watch(() => [state.reason, ra.value.kind] as const, async ([reason, kind]) => {
+  scopedIds.value = null
+  if (reason !== 'annual_review' && reason !== 'structural_change') return
+  try {
+    const scope = await raApi.locationScope(kind, reason)
+    if (state.reason === reason) scopedIds.value = scope.all ? null : new Set(scope.ids)
+  } catch {
+    scopedIds.value = null
+  }
+}, { immediate: true })
+function inScope(location: RaLocation) {
+  return !scopedIds.value || scopedIds.value.has(location.id)
+}
 /** As SCCA's application lookup: only the buildings the reason fits (and the one picked). */
 const locationItems = computed(() =>
   (locations.value?.items ?? [])
-    .filter((location) => location.id === state.location_id || fits(state.reason, location))
+    .filter((location) => location.id === state.location_id || (fits(state.reason, location) && inScope(location)))
     .map((location) => ({
       label: location.name,
       value: location.id,
@@ -115,8 +131,9 @@ const locationItems = computed(() =>
 const locationHelp = computed(() => {
   const { lower, lowerPlural } = ra.value.location
   if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet. Not listed? Use Add ${lower}.`
-  if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew.`
-  if (state.reason === 'structural_change') return `The ${lower} that changed. It can follow a final RA in the same period.`
+  const scoped = scopedIds.value ? ` Only the ${lowerPlural} your access scope opens.` : ''
+  if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew.${scoped}`
+  if (state.reason === 'structural_change') return `The ${lower} that changed. It can follow a final RA in the same period.${scoped}`
   return `The ${lower} to assess. One assessment per ${lower} per period.`
 })
 

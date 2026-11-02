@@ -171,3 +171,60 @@ export function useRaConfigPart<T>(
   }
   return { draft, error, busy, dirty, submit, reset }
 }
+
+// --- RA configuration > Access scope (live rules, not part of a version), as SCCA's ---------
+
+export type RaRenewalStatus = 'overdue' | 'due_30' | 'due_90' | 'active'
+export type RaScopedReason = 'annual_review' | 'structural_change'
+
+export interface RaAccessRuleInput {
+  name: string
+  /** Organization levels the rule covers (or name `user_ids`). */
+  levels: string[]
+  /** Empty: the user's own directorate. */
+  directorates: string[]
+  /** head_office, branch; empty: both. */
+  kinds: RaKind[]
+  reasons: RaScopedReason[]
+  /** Annual review only; empty: every status. */
+  renewal_statuses: RaRenewalStatus[]
+  can_generate: boolean
+  user_ids: number[]
+  valid_from: string | null
+  valid_until: string | null
+  is_active: boolean
+}
+
+export interface RaAccessRule extends RaAccessRuleInput {
+  id: number
+  users: { id: number, name: string }[]
+  sort_order: number
+  updated_by: string | null
+  updated_at: string | null
+}
+
+export interface RaAccessOptions {
+  levels: string[]
+  directorates: string[]
+  kinds: { code: RaKind, label: string }[]
+  reasons: { code: RaScopedReason, label: string }[]
+  renewal_statuses: { code: RaRenewalStatus, label: string }[]
+}
+
+export interface RaAccessCheck {
+  user: { id: number, name: string, directorate: string | null, org_level: string | null }
+  rules: { id: number, name: string }[]
+  can_generate: boolean
+  reasons: RaScopedReason[]
+  locations: Partial<Record<RaScopedReason, number>>
+}
+
+const ACCESS = `${BASE}/access-rules`
+
+export const raAccessApi = {
+  list: () => $fetch<{ items: RaAccessRule[], options: RaAccessOptions }>(ACCESS),
+  create: (body: RaAccessRuleInput) => $fetch<RaAccessRule>(ACCESS, { method: 'POST', body }),
+  update: (id: number, body: RaAccessRuleInput) => $fetch<RaAccessRule>(`${ACCESS}/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => $fetch(`${ACCESS}/${id}`, { method: 'DELETE' }),
+  check: (userId: number) => $fetch<RaAccessCheck>(`${ACCESS}/check`, { query: { user_id: userId } }),
+}

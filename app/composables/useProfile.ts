@@ -9,6 +9,11 @@ export interface Profile {
   email: string | null
   job_title: string | null
   department: string | null
+  /** HR organization (the user master). */
+  directorate?: string | null
+  sub_directorate?: string | null
+  division?: string | null
+  org_level?: string | null
   company_name: string | null
   office_location: string | null
   employee_id: string | null
