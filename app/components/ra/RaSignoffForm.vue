@@ -466,7 +466,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
           Signers
         </h2>
         <p class="text-sm text-muted">
-          They approve in this order. Only BCM Tools users can sign. Ask a signer to sign in once if you can't find them.
+          Approval follows the specified sequence, and only BCM Tools users are authorized to sign.
         </p>
       </div>
       <ol
