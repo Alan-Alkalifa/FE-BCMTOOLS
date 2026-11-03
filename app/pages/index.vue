@@ -35,7 +35,8 @@ const { data: waiting } = useFetch<{ total: number }>('/api/scca/assessments', {
 
 const { data: monitor } = useFetch<{ cards: { overdue_renewals: number, due_in_90_days: number, stuck_approvals: number, in_approval: number } }>('/api/scca/monitoring/overview', {
   key: 'home-monitor',
-  immediate: can('scca.monitor'),
+  // Every SCCA user: the overview counts only the SCCAs they can see (all of them with scca.monitor).
+  immediate: can('scca.access'),
 })
 
 const monitorCards = computed(() => {
@@ -45,7 +46,8 @@ const monitorCards = computed(() => {
     { label: 'Overdue renewals', value: cards.overdue_renewals, icon: 'i-lucide-circle-alert', to: '/scca/monitoring?tab=renewals', alert: cards.overdue_renewals > 0 },
     { label: 'Renewals due in 90 days', value: cards.due_in_90_days, icon: 'i-lucide-calendar-clock', to: '/scca/monitoring?tab=renewals', alert: false },
     { label: 'In approval', value: cards.in_approval, icon: 'i-lucide-hourglass', to: '/scca/monitoring?tab=bottlenecks', alert: false },
-    { label: 'Stuck approvals', value: cards.stuck_approvals, icon: 'i-lucide-siren', to: '/scca/approval?tab=board', alert: cards.stuck_approvals > 0 },
+    // BCM (scca.approval.manage) acts on stuck approvals from the BCM board; others see them in Monitoring.
+    { label: 'Stuck approvals', value: cards.stuck_approvals, icon: 'i-lucide-siren', to: can('scca.approval.manage') ? '/scca/approval?tab=board' : '/scca/monitoring?tab=bottlenecks', alert: cards.stuck_approvals > 0 },
   ]
 })
 
