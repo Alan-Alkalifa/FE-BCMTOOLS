@@ -23,6 +23,8 @@ const router = useRouter()
 /** In sign-off or approved: the ratings are shown, not edited. */
 const locked = computed(() => !props.assessment.can_edit)
 const dirty = useRaDirty()
+/** The record page's Save (top bar) submits this form and shows it saving. */
+const saving = useRaSaving()
 const formError = ref<string | null>(null)
 const { hazards, matrix } = useRaFormulaIndex(() => props.formula)
 
@@ -275,6 +277,7 @@ async function save() {
   formError.value = null
   const changed = changedCodes.value
   if (!changed.length) return
+  if (saving) saving.value = true
   try {
     const saved = await raApi.setRatings(props.assessment.id, changed.map(payload))
     reset(saved)
@@ -286,12 +289,20 @@ async function save() {
     emit('saved', saved)
   } catch (error) {
     formError.value = apiErrorMessage(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- A form so that the record page's Save ratings (top bar) submits it. -->
+  <form
+    id="ra-form-hazards"
+    class="space-y-6"
+    novalidate
+    @submit.prevent="save"
+  >
     <UAlert
       color="neutral"
       variant="subtle"
@@ -331,14 +342,6 @@ async function save() {
           @click="open(null)"
         />
         <RaGuideModal :formula="formula" />
-        <UButton
-          v-if="!locked"
-          icon="i-lucide-save"
-          label="Save ratings"
-          :disabled="!changedCodes.length"
-          loading-auto
-          @click="save"
-        />
       </div>
     </div>
 
@@ -721,5 +724,5 @@ async function save() {
         </div>
       </template>
     </UCard>
-  </div>
+  </form>
 </template>

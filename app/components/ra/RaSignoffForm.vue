@@ -10,6 +10,9 @@ import type { RaAssessment, RaFormula, RaSignoff, RaSignoffEvent, RaSignoffInput
  * for changes. BCM (ra.manage) can return it too, change the signer of the waiting step, or
  * approve it on the signer's behalf with the evidence. Rules live in the API; the buttons follow
  * its can_* flags.
+ *
+ * In Manage the record page's Save signers (top bar) submits this form. A changed signer must be
+ * saved before the RA can be submitted.
  */
 const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
@@ -20,6 +23,7 @@ const ra = useRaModule()
 const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
 const toast = useToast()
 const dirty = useRaDirty()
+const saving = useRaSaving()
 const returnModal = useOverlay().create(RaReturnModal)
 const changeSignerModal = useOverlay().create(RaChangeSignerModal)
 const onBehalfModal = useOverlay().create(RaOnBehalfModal)
@@ -66,7 +70,7 @@ const editing = computed(() => props.assessment.can_edit)
 const missingSigners = computed(() => roles.value.filter((role) => role.mandatory !== false && role.mode !== 'fixed' && !state[role.value]?.signer_id))
 /** A building waiting for approval (or rejected) can't have its RA submitted yet. */
 const locationApproved = computed(() => props.assessment.location_approved !== false)
-const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && locationApproved.value && !missingSigners.value.length)
+const canSubmit = computed(() => props.assessment.can_submit && props.assessment.is_complete && locationApproved.value && !missingSigners.value.length && !changed.value)
 
 /** The designation is the picked signer's job title in the user directory. */
 function onPicked(role: string, picked: RaUserRef | null) {
@@ -111,6 +115,8 @@ function fail(error: unknown, fallback: string) {
 
 async function saveSigners() {
   formError.value = null
+  if (!editing.value || !changed.value) return
+  if (saving) saving.value = true
   try {
     const saved = await raApi.update(props.assessment.id, { signoffs: payload() })
     reset(saved)
@@ -118,13 +124,16 @@ async function saveSigners() {
     emit('saved', saved)
   } catch (error) {
     fail(error, apiErrorMessage(error))
+  } finally {
+    if (saving) saving.value = false
   }
 }
 
 async function submit() {
   formError.value = null
+  // Changed signers are saved first (Save signers, top bar): Submit sends what is saved.
+  if (changed.value) return
   try {
-    if (changed.value) reset(await raApi.update(props.assessment.id, { signoffs: payload() }))
     const saved = await raApi.submit(props.assessment.id)
     reset(saved)
     toast.add({ title: 'Submitted for sign-off', color: 'success', icon: 'i-lucide-circle-check' })
@@ -248,7 +257,13 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- A form so that the record page's Save signers (top bar) submits it. -->
+  <form
+    id="ra-form-signoff"
+    class="space-y-6"
+    novalidate
+    @submit.prevent="saveSigners"
+  >
     <UAlert
       v-if="formError"
       color="error"
@@ -656,19 +671,18 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       class="flex flex-wrap items-center justify-end gap-3"
     >
       <p
-        v-if="missingSigners.length"
+        v-if="changed"
+        class="text-sm text-warning"
+        data-testid="ra-save-signers-first"
+      >
+        Save the signers before you submit.
+      </p>
+      <p
+        v-else-if="missingSigners.length"
         class="text-sm text-muted"
       >
         {{ missingSigners.length === 1 ? '1 step still needs a signer.' : `${missingSigners.length} steps still need a signer.` }}
       </p>
-      <UButton
-        color="neutral"
-        variant="outline"
-        label="Save signers"
-        :disabled="!changed"
-        loading-auto
-        @click="saveSigners"
-      />
       <UButton
         icon="i-lucide-send"
         label="Submit for approval"
@@ -689,5 +703,5 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
         @click="sendBack"
       />
     </div>
-  </div>
+  </form>
 </template>

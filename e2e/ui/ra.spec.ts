@@ -538,13 +538,72 @@ test('buildings have no Delete button: a building is made inactive instead', asy
   expect(log.deletedLocations).toEqual([])
 })
 
-test('deleting an assessment returns to the list', async ({ page }) => {
+test('as SCCA, Save is in the top bar for the open tab, beside View report; no Delete', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
   await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Delete assessment' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete assessment' }).click()
-  await expect(page).toHaveURL(/\/ra\/manage$/)
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', '/ra/manage/1/report')
+  // One Save per tab, in the top bar: enabled once something changed.
+  const save = page.getByRole('button', { name: 'Save assessment' })
+  await expect(save).toBeDisabled()
+  await page.getByRole('textbox', { name: 'LIC mobile number' }).fill('0812-0000-1111')
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  const sent = page.waitForRequest((request) => request.method() === 'PUT' && /\/api\/ra\/assessments\/1$/.test(request.url()))
+  await save.click()
+  expect((await sent).postDataJSON()).toMatchObject({ lic_phone: '0812-0000-1111' })
+  await expect(page.getByText('Assessment saved').first()).toBeVisible()
+  await page.getByRole('tab', { name: 'Hazards' }).click()
+  await expect(page.getByRole('button', { name: 'Save ratings', exact: true })).toBeDisabled()
+  await page.getByRole('tab', { name: 'Risk Summary' }).click()
+  await expect(page.getByRole('button', { name: /^Save/ })).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Sign-off' }).click()
+  await expect(page.getByRole('button', { name: 'Save signers' })).toBeDisabled()
+})
+
+test('changed signers are saved before the RA can be submitted', async ({ page }) => {
+  const log = await mockRa(page, { ready: true })
+  await page.goto('/ra/manage/1?tab=signoff')
+  const submit = page.getByRole('button', { name: 'Submit for approval' })
+  await expect(submit).toBeEnabled({ timeout: 60_000 })
+  const step = page.getByRole('listitem').filter({ hasText: 'Step 2 of 4' })
+  await step.getByRole('combobox').or(step.getByRole('button').first()).first().click()
+  await page.getByRole('option', { name: /Budi Hartono/ }).click()
+  await expect(submit).toBeDisabled()
+  await expect(page.getByTestId('ra-save-signers-first')).toHaveText('Save the signers before you submit.')
+  await page.getByRole('button', { name: 'Save signers' }).click()
+  await expect(page.getByText('Signers saved').first()).toBeVisible()
+  await expect(page.getByTestId('ra-save-signers-first')).toHaveCount(0)
+  await expect(submit).toBeEnabled()
+  await submit.click()
+  await expect(page.getByText('Submitted for sign-off').first()).toBeVisible()
+  expect(log.signoff.map((row) => row[0])).toEqual(['signers', 'submit'])
+})
+
+test('View report shows the RA like SCCA\'s report, and prints it', async ({ page }) => {
+  await mockRa(page)
+  await page.addInitScript(() => {
+    const counter = window as unknown as { printed?: number }
+    window.print = () => {
+      counter.printed = (counter.printed ?? 0) + 1
+    }
+  })
+  await page.goto('/ra/monitoring/1')
+  await page.getByRole('link', { name: 'View report' }).click({ timeout: 60_000 })
+  await expect(page).toHaveURL(/\/ra\/monitoring\/1\/report$/)
+  for (const name of ['Details', 'Hazards', 'Risk Summary', 'Sign-off']) {
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  }
+  await expect(page.getByTestId('ra-report-hazards')).toContainText('Banjir/ Banjir Bandang')
+  await expect(page.getByTestId('ra-report-signoff')).toContainText('Prepared by')
+  await expect(page.getByTestId('ra-report-signoff')).toContainText('Legiran')
+  // A draft has no downloads yet; Print is the page's main action.
+  await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Print' }).click()
+  expect(await page.evaluate(() => (window as unknown as { printed?: number }).printed)).toBe(1)
+  // The crumbs lead back to the RA.
+  await page.getByRole('link', { name: 'RA-2025-0001' }).click()
+  await expect(page).toHaveURL(/\/ra\/monitoring\/1$/)
 })
 
 test('the occupants tab lists the divisions with their totals and both views', async ({ page }) => {
@@ -1116,8 +1175,12 @@ test('the location register links to the location map instead of its own map', a
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 
-test('downloads are offered only once the RA is approved', async ({ page }) => {
+test('downloads are offered only once the RA is approved, on its report', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
+  await page.goto('/ra/monitoring/1/report')
+  await expect(page.getByRole('button', { name: 'Print' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
+  // As SCCA's: the record itself has no downloads.
   await page.goto('/ra/monitoring/1')
   await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
@@ -1135,7 +1198,7 @@ test('an approved assessment downloads as PDF or as the filled workbook', async 
       headers: { 'Content-Disposition': `attachment; filename=RA_RA-2025-0001_Griya-CIMB-Niaga-2.${format}` },
     })
   })
-  await page.goto('/ra/monitoring/1')
+  await page.goto('/ra/monitoring/1/report')
   await page.getByRole('button', { name: 'Download' }).click({ timeout: 60_000 })
   const pdf = page.waitForEvent('download')
   await page.getByRole('menuitem', { name: /PDF report/ }).click()

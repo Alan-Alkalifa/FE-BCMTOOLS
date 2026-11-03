@@ -578,9 +578,15 @@ const BASE = '/api/ra/assessments'
 const LOCATIONS = '/api/ra/locations'
 
 export const raDirtyKey: InjectionKey<Ref<boolean>> = Symbol('ra-dirty')
+/** True while the open tab's form saves; the record page's Save button (top bar) shows it. */
+export const raSavingKey: InjectionKey<Ref<boolean>> = Symbol('ra-saving')
 
 export function useRaDirty() {
   return inject(raDirtyKey, undefined)
+}
+
+export function useRaSaving() {
+  return inject(raSavingKey, undefined)
 }
 
 /** The kind a page works on when the route doesn't say it: a location's own kind on its

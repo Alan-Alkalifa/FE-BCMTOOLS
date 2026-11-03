@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
-import type { RaReportFormat } from '~/composables/useRa'
-
 const TABS = ['details', 'hazards', 'summary', 'signoff'] as const
 type Tab = (typeof TABS)[number]
 
@@ -9,6 +6,9 @@ type Tab = (typeof TABS)[number]
  * One RA cycle, opened from a section: Manage edits a draft, Monitoring reads any assessment,
  * Approval opens on the Sign-off tab for the signer. Locking and permissions still come from the
  * assessment itself (`can_edit`, `can_approve`, ...); Monitoring is read-only on top of that.
+ *
+ * As SCCA's record: Manage has the open tab's Save in the top bar, next to View report (the
+ * printable report, where the PDF and Excel downloads are). An RA can't be deleted here.
  */
 const props = withDefaults(defineProps<{ section?: RaSection }>(), { section: 'manage' })
 
@@ -16,7 +16,6 @@ const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
-const toast = useToast()
 
 const id = computed(() => Number(route.params.id))
 const { data: assessment, status, error, refresh } = useRaAssessment(id)
@@ -40,8 +39,10 @@ const showSkeleton = useDelayedLoading(() =>
 )
 
 const dirty = ref(false)
+const saving = ref(false)
 const formKey = ref(0)
 provide(raDirtyKey, dirty)
+provide(raSavingKey, saving)
 
 const tab = computed<Tab>(() => {
   const value = route.query.tab
@@ -55,6 +56,17 @@ const view = computed(() => {
   if (!value || props.section !== 'monitoring') return value
   return { ...value, can_edit: false, can_submit: false, can_approve: false, can_return: false, can_delete: false }
 })
+
+/** Manage: the open tab's Save is in the top bar (Risk Summary has nothing to save). It submits
+ *  that tab's form by id. */
+const SAVE_LABELS: Partial<Record<Tab, string>> = {
+  details: 'Save assessment',
+  hazards: 'Save ratings',
+  signoff: 'Save signers',
+}
+const saveLabel = computed(() =>
+  props.section === 'manage' && assessment.value?.can_edit ? SAVE_LABELS[tab.value] : undefined,
+)
 const section = computed(() => RA_SECTIONS[props.section])
 const hazardParam = computed(() => typeof route.query.hazard === 'string' ? route.query.hazard : undefined)
 
@@ -124,46 +136,6 @@ function onSaved(saved: RaAssessment) {
   assessment.value = saved
   dirty.value = false
 }
-
-const downloading = ref<RaReportFormat | null>(null)
-async function download(format: RaReportFormat) {
-  if (!assessment.value || downloading.value) return
-  downloading.value = format
-  try {
-    await downloadRaReport(assessment.value.id, format)
-  } catch (err) {
-    toast.add({ title: 'Could not download the report', description: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
-  } finally {
-    downloading.value = null
-  }
-}
-/** Reports are for approved RAs only (the API refuses the others with 409). */
-const canDownload = computed(() => assessment.value?.status === 'approved')
-const downloadItems = computed<DropdownMenuItem[][]>(() => [
-  [
-    { label: 'PDF report', description: 'Printable, laid out like the workbook', icon: 'i-lucide-file-text', onSelect: () => download('pdf') },
-    { label: 'Excel workbook', description: `The official ${ra.value.kind === 'branch' ? 'Cabang' : 'HO'} RA workbook, filled in`, icon: 'i-lucide-file-spreadsheet', onSelect: () => download('xlsx') },
-  ],
-])
-
-async function removeAssessment() {
-  if (!assessment.value) return
-  const ok = await confirm({
-    title: `Delete '${assessment.value.ref_no ?? title.value}'?`,
-    description: `This permanently removes the ${assessment.value.period_year} assessment of ${assessment.value.location.name}, with all of its ratings and sign-offs.`,
-    confirmLabel: 'Delete assessment',
-    destructive: true,
-  })
-  if (!ok) return
-  try {
-    dirty.value = false
-    await raApi.remove(assessment.value.id)
-    toast.add({ title: 'Assessment deleted', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(raPath(ra.value.kind, 'manage'))
-  } catch (err) {
-    toast.add({ title: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
-  }
-}
 </script>
 
 <template>
@@ -192,27 +164,30 @@ async function removeAssessment() {
         icon="i-lucide-badge-check"
         label="Open in Approval"
       />
-      <UDropdownMenu
-        v-if="canDownload"
-        :items="downloadItems"
-        :content="{ align: 'end' }"
-      >
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-download"
-          trailing-icon="i-lucide-chevron-down"
-          label="Download"
-          :loading="downloading !== null"
-        />
-      </UDropdownMenu>
       <UButton
-        v-if="view?.can_delete"
-        color="error"
-        variant="soft"
-        icon="i-lucide-trash-2"
-        label="Delete assessment"
-        @click="removeAssessment"
+        v-if="assessment"
+        :to="raReportPath(ra.kind, props.section, assessment.id)"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-text"
+        label="View report"
+      />
+      <!-- Manage: one Save in the top bar for the open tab. -->
+      <UBadge
+        v-if="saveLabel && dirty"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-circle-dot"
+        label="Unsaved changes"
+      />
+      <UButton
+        v-if="saveLabel"
+        type="submit"
+        :form="`ra-form-${tab}`"
+        icon="i-lucide-save"
+        :label="saveLabel"
+        :disabled="!dirty"
+        :loading="saving"
       />
     </template>
 

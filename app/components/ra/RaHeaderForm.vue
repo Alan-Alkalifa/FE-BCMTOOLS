@@ -14,6 +14,8 @@ const locationPin = computed(() => raPin(props.assessment.location))
 const toast = useToast()
 const form = useTemplateRef('form')
 const dirty = useRaDirty()
+/** The record page's Save (top bar) submits this form and shows it saving. */
+const saving = useRaSaving()
 const formError = ref<string | null>(null)
 const snapshot = ref('')
 
@@ -129,6 +131,7 @@ watch(state, () => {
 
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   try {
     const { lic_user_id: _lic, licom_user_id, reason, due_date, period_year, ...fields } = state
     // The RA period is the year of the assessment date: it follows a changed date. An RA whose
@@ -148,12 +151,15 @@ async function onSubmit() {
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
     formError.value = raErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
   <UForm
+    id="ra-form-details"
     ref="form"
     :schema="schema"
     :state="state"
@@ -359,17 +365,6 @@ async function onSubmit() {
           />
         </template>
       </UCard>
-    </div>
-
-    <div
-      v-if="!locked"
-      class="flex justify-end"
-    >
-      <UButton
-        type="submit"
-        label="Save assessment"
-        loading-auto
-      />
     </div>
   </UForm>
 </template>

@@ -541,6 +541,11 @@ export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
   return `${RA_MODULES[kind].base}/${section}${id === undefined ? '' : `/${id}`}`
 }
 
+/** The print-friendly report of an assessment, inside its section (as SCCA's View report). */
+export function raReportPath(kind: RaKind, section: RaSection, id: number) {
+  return `${raPath(kind, section, id)}/report`
+}
+
 /** Where an assessment opens from elsewhere (a location, the map, an incident): a draft in Manage
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
