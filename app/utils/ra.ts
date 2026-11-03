@@ -387,6 +387,31 @@ export const RA_CALL_TREE_LEVELS = [
 ] as const
 export type RaCallTreeLevel = (typeof RA_CALL_TREE_LEVELS)[number]['value']
 
+/**
+ * The team charts beside the recovery team and call tree: the HO workbook's pictures until BCM
+ * uploads others in Administration > RA configuration > Team diagrams (per kind).
+ */
+export const RA_DIAGRAMS = {
+  recovery_team: {
+    label: 'Recovery team structure',
+    button: 'View structure chart',
+    description: 'How the corporate, location and business recovery teams are organized.',
+  },
+  call_tree: {
+    label: 'Location call tree',
+    button: 'View call tree chart',
+    description: 'Who calls whom at levels one to three when an incident happens.',
+  },
+} as const
+export type RaDiagram = keyof typeof RA_DIAGRAMS
+
+/** The chart image; `version` (from RA configuration) skips a cached copy after a change. */
+export function raDiagramUrl(kind: RaKind, diagram: RaDiagram, version?: string) {
+  const query = new URLSearchParams({ kind })
+  if (version) query.set('v', version)
+  return `/api/ra/diagrams/${diagram}?${query}`
+}
+
 export const raYesNo = defineStatusScale({
   yes: { label: 'Yes', color: 'success', icon: 'i-lucide-circle-check' },
   no: { label: 'No', color: 'neutral', icon: 'i-lucide-circle-x' },

@@ -556,6 +556,8 @@ export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: Ac
   division_changed: { label: 'Division changed', icon: 'i-lucide-pencil', tone: 'neutral' },
   division_deleted: { label: 'Division deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
   settings_updated: { label: 'Reminder rules changed', icon: 'i-lucide-sliders-horizontal', tone: 'neutral' },
+  config_diagram_updated: { label: 'Team diagram replaced', icon: 'i-lucide-network', tone: 'neutral' },
+  config_diagram_reset: { label: 'Team diagram back to the workbook picture', icon: 'i-lucide-rotate-ccw', tone: 'neutral' },
 }
 
 /** The groups the RA activity tab filters by (the API's `group`). */
@@ -603,6 +605,10 @@ export function raActivityRecord(row: AuditEvent): { label: string, ref: string 
     return { label: building ?? (detail.name as string | undefined) ?? 'Building', ref, to: row.event === 'ra.building_deleted' ? null : `/locations/${row.target_id}` }
   }
   if (row.target_type === 'ra_playbooks') return { label: 'Incident guidebook', ref: (detail.hazard as string | undefined) ?? null, to: '/crises/guidebook' }
+  if (row.target_type === 'ra_diagrams') {
+    const kind = detail.kind === 'branch' ? 'branch' : undefined
+    return { label: 'RA configuration', ref: null, to: `/admin/ra-config?tab=diagrams${kind ? `&kind=${kind}` : ''}` }
+  }
   return { label: 'RA configuration', ref: null, to: null }
 }
 
@@ -628,5 +634,9 @@ export function raActivityDetail(row: AuditEvent): string {
     if (typeof detail[key] === 'string' && detail[key]) parts.push(`“${detail[key]}”`)
   }
   if (action === 'settings_updated' && detail.changed && typeof detail.changed === 'object') parts.push(`Changed ${Object.keys(detail.changed).map(raField).join(', ')}`)
+  if (action.startsWith('config_diagram_') && typeof detail.diagram === 'string' && detail.diagram in RA_DIAGRAMS) {
+    parts.push(`${RA_MODULES[detail.kind === 'branch' ? 'branch' : 'head_office'].title}: ${RA_DIAGRAMS[detail.diagram as RaDiagram].label}`)
+    if (action === 'config_diagram_updated' && typeof detail.filename === 'string') parts.push(detail.filename)
+  }
   return parts.join(' · ')
 }

@@ -390,6 +390,15 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           v-if="ra.hasLcp"
           #team
         >
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-muted">
+              Who is in each team. The chart shows how the teams are organized.
+            </p>
+            <RaDiagramButton
+              :kind="ra.kind"
+              diagram="recovery_team"
+            />
+          </div>
           <fieldset
             :disabled="!canEdit"
             class="min-w-0"
@@ -413,6 +422,15 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           v-if="ra.hasLcp"
           #calltree
         >
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-muted">
+              Who calls whom at each level. The chart shows the whole call tree.
+            </p>
+            <RaDiagramButton
+              :kind="ra.kind"
+              diagram="call_tree"
+            />
+          </div>
           <fieldset
             :disabled="!canEdit"
             class="min-w-0"

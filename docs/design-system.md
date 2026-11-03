@@ -504,7 +504,7 @@ Rules:
 - **Menu icons** come from the database, so they must be in `utils/menu-icons.ts` (bundled at build time); the Menus admin page only offers those.
 - **Page actions** go in the `actions` slot (primary on the right).
 - **Breadcrumbs** (`AppPage` `crumbs`) on module pages, starting from Home: `Home / SCCA` on the module list, `Home / SCCA / New assessment` (or the record name) one level down. Not on Home itself. The last crumb is the current page and is not a link.
-- **Tabs** (`UTabs`) to switch between views of the same record. Don't use tabs for steps in a process (use a stepper, `UStepper`).
+- **Tabs** (`UTabs`) to switch between views of the same record. Don't use tabs for steps in a process (use a stepper, `UStepper`). When a page has more tabs than fit (RA configuration has nine), keep the full labels and let the strip scroll sideways (`:ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"`) rather than cut the labels short.
 - **Public pages** (sign-in, forgot and reset password, a forced password change) opt out of the shell with `definePageMeta({ layout: false })` and use `AuthShell`: the brand panel on the left, one card on `bg-muted` on the right.
 - **Data tables** sit edge to edge in a card (`:ui="{ body: 'p-0 sm:p-0' }"`): filters in a toolbar above the table (`border-b p-4`), "Showing x–y of z" and pagination in a footer (`border-t p-4`). Row actions go in a `⋮` menu in the last column.
 
@@ -571,6 +571,7 @@ SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), V
 | DAT / ERT | Damage Assessment Team / Emergency Response Team |
 | IMT / RTF | Incident Management Team / Recovery Task Force of a critical business function |
 | LCP | Location Continuity Plan: the building's occupants, continuity strategy, recovery team and call tree (RA only) |
+| Team diagrams | The recovery team structure and location call tree charts (the HO workbook's LCP pictures by default), per kind, set in RA configuration › Team diagrams. A location's Recovery team and Call tree tabs open them with **View structure chart** / **View call tree chart** (`RaDiagramButton`, neutral outline; `compact` is a small link for lists such as an incident's affected places), and the downloads print them |
 | BOSM / BM / NRSOH | Branch roles in RA Branch: the BOSM is the LIC and prepares the RA, the branch manager (BM) approves it, the NRSOH is the LICOM and reviews it |
 | Incident | One of the 33 RA hazards happening now at a point, with an affected radius; open until closed, with a history |
 | Guidebook | The incident guidebook: BCM's standard steps per hazard (right away, within the first hours, recovery), shown with every incident of that hazard |

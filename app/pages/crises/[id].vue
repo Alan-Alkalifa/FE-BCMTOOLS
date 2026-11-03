@@ -591,9 +591,16 @@ const historyIcon: Record<string, string> = {
                   </section>
 
                   <section>
-                    <h3 class="font-medium text-highlighted">
-                      Call tree
-                    </h3>
+                    <div class="flex flex-wrap items-center justify-between gap-x-3">
+                      <h3 class="font-medium text-highlighted">
+                        Call tree
+                      </h3>
+                      <RaDiagramButton
+                        :kind="item.row.location.kind"
+                        diagram="call_tree"
+                        compact
+                      />
+                    </div>
                     <ol
                       v-if="item.row.call_tree.length"
                       class="mt-2 space-y-1 text-sm"
@@ -624,9 +631,16 @@ const historyIcon: Record<string, string> = {
                     </p>
 
                     <template v-if="item.row.recovery_team.length">
-                      <h3 class="mt-4 font-medium text-highlighted">
-                        Recovery team
-                      </h3>
+                      <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3">
+                        <h3 class="font-medium text-highlighted">
+                          Recovery team
+                        </h3>
+                        <RaDiagramButton
+                          :kind="item.row.location.kind"
+                          diagram="recovery_team"
+                          compact
+                        />
+                      </div>
                       <ul class="mt-2 space-y-1 text-sm">
                         <li
                           v-for="member in item.row.recovery_team"

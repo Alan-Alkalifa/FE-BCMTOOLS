@@ -707,6 +707,27 @@ test('the call tree saves each contact with its level', async ({ page }) => {
   expect(entries.filter((entry) => entry.level === 3)).toHaveLength(17)
 })
 
+test('the recovery team and call tree tabs open their charts, also without edit rights', async ({ page }) => {
+  await mockRa(page, { permissions: ['location.access', 'ra.access'] })
+  await page.goto('/locations/1?tab=team')
+  await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Save recovery team' })).toBeDisabled()
+  await page.getByRole('button', { name: 'View structure chart' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Recovery team structure (RA HO)' })
+  const chart = dialog.getByRole('img', { name: /^Recovery team structure:/ })
+  await expect(chart).toBeVisible()
+  await expect(chart).toHaveAttribute('src', '/api/ra/diagrams/recovery_team?kind=head_office')
+  await expect(dialog.getByRole('link', { name: 'Open full size' })).toHaveAttribute('href', '/api/ra/diagrams/recovery_team?kind=head_office')
+  await expect(dialog.getByText('Set by BCM in Administration > RA configuration > Team diagrams.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Call tree' }).click()
+  await page.getByRole('button', { name: 'View call tree chart' }).click()
+  await expect(page.getByRole('dialog', { name: 'Location call tree (RA HO)' }).getByRole('img', { name: /^Location call tree:/ }))
+    .toHaveAttribute('src', '/api/ra/diagrams/call_tree?kind=head_office')
+})
+
 test('adding a location opens its profile, starting with the emergency contacts', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations')

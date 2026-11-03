@@ -392,6 +392,8 @@ export async function mockRa(
     route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
+  // RA configuration > Team diagrams: the chart images (a blank PNG here).
+  await page.route(/\/api\/ra\/diagrams\//, (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => {
     const params = new URL(route.request().url()).searchParams
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
@@ -925,6 +927,8 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
+  // RA configuration > Team diagrams: the chart images (a blank PNG here).
+  await page.route(/\/api\/ra\/diagrams\//, (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: withTexts(FORMULA) }))
   const crisis = structuredClone({
     ...CRISIS,
