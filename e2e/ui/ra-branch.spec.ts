@@ -183,16 +183,27 @@ test('a branch assessment opened under RA moves to RA Branch', async ({ page }) 
 })
 
 test('an RA Branch user works on branches only', async ({ page }) => {
-  // RA (head office) and RA Branch are granted separately (ra.* and ra_branch.*).
-  await mockRa(page, { permissions: ['ra_branch.access', 'ra_branch.edit'] })
+  // RA (head office) and RA Branch are granted separately (ra.* and ra_branch.*); the Location
+  // module has its own permission, which the default RA Branch User role holds.
+  await mockRa(page, { permissions: ['location.access', 'ra_branch.access', 'ra_branch.edit'] })
   await page.goto('/locations')
   await expect(page.getByRole('link', { name: 'Input building data' })).toHaveAttribute('href', '/locations/new?type=branch', { timeout: 60_000 })
-  // Only one side: no Type filter.
-  await expect(page.getByLabel('Type', { exact: true })).toHaveCount(0)
+  // The Location module shows every building and branch: the Type filter is there.
+  await expect(page.getByLabel('Type', { exact: true })).toBeVisible()
   const sidebar = page.getByRole('navigation', { name: 'Main' })
   await expect(sidebar.getByRole('link', { name: 'Buildings' })).toBeVisible()
   await expect(sidebar.locator('a[href="/ra-branch/manage"]')).toHaveCount(1)
   await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
   await page.goto('/ra/manage')
   await expect(page).toHaveURL(/\/forbidden\?from=/, { timeout: 60_000 })
+})
+
+test('without the Location permission, RA Branch access opens only its branches and no Location menu', async ({ page }) => {
+  await mockRa(page, { permissions: ['ra_branch.access', 'ra_branch.edit'] })
+  await page.goto('/locations')
+  await expect(page.getByRole('link', { name: 'Input building data' })).toHaveAttribute('href', '/locations/new?type=branch', { timeout: 60_000 })
+  // Only one side: no Type filter, and no Location menu in the sidebar.
+  await expect(page.getByLabel('Type', { exact: true })).toHaveCount(0)
+  const sidebar = page.getByRole('navigation', { name: 'Main' })
+  await expect(sidebar.getByRole('link', { name: 'Buildings' })).toHaveCount(0)
 })

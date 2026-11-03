@@ -8,7 +8,7 @@ import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
  * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
  */
-definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
@@ -83,6 +83,8 @@ function teamLabel(team: string) {
 function assessmentUrl(row: RaCrisisPlace) {
   return raRecordPath(row.assessment!.kind, row.assessment!)
 }
+/** Without RA access the RA is named, not linked. */
+const canOpenRa = useCanOpenRa()
 
 function locationUrl(location: { id: number, kind: string }) {
   return locationPath(location.id)
@@ -421,11 +423,13 @@ const historyIcon: Record<string, string> = {
                     <template v-if="item.row.assessment">
                       <p class="mt-1 text-sm text-muted">
                         <NuxtLink
+                          v-if="canOpenRa(item.row.assessment.kind)"
                           :to="assessmentUrl(item.row)"
                           class="text-primary hover:underline"
                         >
                           {{ item.row.assessment.ref_no ?? item.row.assessment.period_year }}
                         </NuxtLink>
+                        <span v-else>{{ item.row.assessment.ref_no ?? item.row.assessment.period_year }}</span>
                         · <StatusBadge
                           :scale="raStatus"
                           :value="item.row.assessment.status"

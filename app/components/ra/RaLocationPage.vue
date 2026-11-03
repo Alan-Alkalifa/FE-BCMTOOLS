@@ -124,8 +124,10 @@ function saveCallTree(rows: RowValues[]) {
 const { can } = useAuth()
 /** Without ra.edit the profile is read-only (the API refuses changes too). */
 const canEdit = computed(() => can(ra.value.perm.edit))
+/** Seen through the Location module without RA access, its RAs are listed, not opened. */
+const canOpenRa = useCanOpenRa()
 function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
-  navigateTo(raRecordPath(ra.value.kind, row.original))
+  if (canOpenRa(ra.value.kind)) navigateTo(raRecordPath(ra.value.kind, row.original))
 }
 </script>
 
@@ -297,16 +299,21 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
                   v-if="location.assessments.length"
                   :data="location.assessments"
                   :columns="assessmentColumns"
-                  class="cursor-pointer"
+                  :class="{ 'cursor-pointer': canOpenRa(ra.kind) }"
                   :on-select="openAssessment"
                 >
                   <template #ref_no-cell="{ row }">
                     <NuxtLink
+                      v-if="canOpenRa(ra.kind)"
                       :to="raRecordPath(ra.kind, row.original)"
                       class="font-medium whitespace-nowrap text-primary hover:underline"
                     >
                       {{ row.original.ref_no || 'Assessment' }}
                     </NuxtLink>
+                    <span
+                      v-else
+                      class="font-medium whitespace-nowrap"
+                    >{{ row.original.ref_no || 'Assessment' }}</span>
                   </template>
                   <template #due_date-cell="{ row }">
                     {{ formatDate(row.original.due_date) || '—' }}

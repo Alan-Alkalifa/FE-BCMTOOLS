@@ -614,6 +614,21 @@ export function useRaKinds(level: 'access' | 'edit' | 'manage' = 'access') {
   return computed(() => (Object.keys(RA_MODULES) as RaKind[]).filter((kind) => can(RA_MODULES[kind].perm[level])))
 }
 
+/** The kinds the Location module shows the user: every kind with its own permission
+ *  (`location.access`), otherwise the RA sides they hold (`useRaKinds`). */
+export function useLocationKinds() {
+  const { can } = useAuth()
+  const raKinds = useRaKinds()
+  return computed(() => can('location.access') ? (Object.keys(RA_MODULES) as RaKind[]) : raKinds.value)
+}
+
+/** Whether the user may open the RAs of a kind: the Location module shows RA references to
+ *  people without RA access, as plain text. */
+export function useCanOpenRa() {
+  const { can } = useAuth()
+  return (kind: RaKind | string) => can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access')
+}
+
 /** Tile server for the maps, set per environment on the backend. */
 export function useRaMapSettings() {
   return useFetch<RaMapSettings>('/api/ra/map-settings', {
