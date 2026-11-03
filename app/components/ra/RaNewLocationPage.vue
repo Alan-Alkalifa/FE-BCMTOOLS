@@ -43,7 +43,7 @@ function onSaved(location: RaLocationDetail) {
       { label: 'Building Data Entry' },
     ]"
   >
-    <div class="max-w-2xl space-y-6">
+    <div class="max-w-5xl space-y-6">
       <p class="text-sm text-muted">
         After saving you can add its emergency contacts, divisions, recovery team and call tree. Every RA cycle of this building uses them.
       </p>

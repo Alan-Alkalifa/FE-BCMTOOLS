@@ -66,6 +66,13 @@ const scca = (id: number, event: string, actor: string | null, detail: Record<st
   ip: '10.0.0.5',
   created_at: `2026-10-20T0${Math.min(id, 9)}:00:00Z`,
 })
+const RA_ACTIVITY_ROWS = [
+  { id: 41, event: 'ra.building_call_tree_saved', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', rows: 5, before: 4 }, ip: null, created_at: '2026-10-30T03:00:00Z' },
+  { id: 40, event: 'ra.building_updated', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', fields: ['address', 'zip_code'] }, ip: null, created_at: '2026-10-30T02:30:00Z' },
+  { id: 39, event: 'ra.ratings_saved', username: 'rina@example.com', actor: 'Rina Kartika', target_type: 'ra_assessments', target_id: 9, detail: { ref_no: 'RA-2026-0009', building: 'Menara Sentraya', building_id: 3, kind: 'head_office', hazards: ['H01', 'H03'] }, ip: null, created_at: '2026-10-30T02:00:00Z' },
+  { id: 38, event: 'ra.approval_reminder_sent', username: null, actor: null, target_type: 'ra_locations', target_id: 3, detail: { building: 'Menara Sentraya', building_id: 3, code: 'RA-HQ-0003', kind: 'head_office', task: 'deactivate', waited: '3 working days' }, ip: null, created_at: '2026-10-30T01:00:00Z' },
+]
+
 const SCCA_ACTIVITY_ROWS = [
   scca(6, 'report_downloaded', 'Test User', { format: 'xlsx' }),
   scca(5, 'finalised', null, {}),
@@ -191,6 +198,14 @@ async function mockAdmin(page: Page) {
         Object.assign(found, { ...body, password: undefined, password_set: found.password_set || !!body.password })
         return route.fulfill({ json: found })
       }
+    }
+    if (path === '/api/admin/audit/events' && url.searchParams.get('kind') === 'ra') {
+      const group = url.searchParams.get('group')
+      const building = Number(url.searchParams.get('building_id')) || null
+      const items = RA_ACTIVITY_ROWS
+        .filter((row) => !group || (group === 'buildings' ? row.event.startsWith('ra.building_') : !row.event.startsWith('ra.building_')))
+        .filter((row) => !building || row.detail.building_id === building)
+      return route.fulfill({ json: { items, page: 1, per_page: 25, total: items.length, pages: 1 } })
     }
     if (path === '/api/admin/audit/events' && url.searchParams.get('kind') === 'scca') {
       const event = url.searchParams.get('event')
@@ -388,7 +403,7 @@ test('the audit log shows sign-ins and failed emails can be sent again', async (
   expect(calls.some((call) => call.url === '/api/admin/audit/emails/5/retry')).toBe(true)
 })
 
-test('the audit log is paged by the server, 25 a page', async ({ page }) => {
+test('the audit log is paged by the server, 20 a page by default', async ({ page }) => {
   await mockAdmin(page)
   const rows = Array.from({ length: 60 }, (_, index) => ({ ...SCCA_ACTIVITY_ROWS[0]!, id: 1000 + index }))
   const asked: string[] = []
@@ -401,11 +416,16 @@ test('the audit log is paged by the server, 25 a page', async ({ page }) => {
   })
   await page.goto('/admin/audit?tab=scca')
   const pager = page.getByRole('navigation', { name: 'SCCA activity pages' })
-  await expect(pager.getByText('Showing 1–25 of 60')).toBeVisible({ timeout: 60_000 })
+  await expect(pager.getByText('Showing 1–20 of 60')).toBeVisible({ timeout: 60_000 })
   await pager.getByRole('button', { name: 'Page 3' }).click()
-  await expect(pager.getByText('Showing 51–60 of 60')).toBeVisible()
+  await expect(pager.getByText('Showing 41–60 of 60')).toBeVisible()
   expect(asked.at(-1)).toContain('page=3')
-  expect(asked.every((search) => search.includes('per_page=25'))).toBe(true)
+  expect(asked.every((search) => search.includes('per_page=20'))).toBe(true)
+  // Rows per page, as SCCA's: a bigger page starts again at page 1.
+  await pager.getByRole('combobox', { name: 'SCCA activity: rows per page' }).click()
+  await page.getByRole('option', { name: '50' }).click()
+  await expect(pager.getByText('Showing 1–50 of 60')).toBeVisible()
+  expect(asked.at(-1)).toContain('per_page=50')
   await expect(page.getByRole('navigation', { name: 'Sign-in and admin activity pages' })).toHaveCount(0)
 })
 
@@ -428,6 +448,33 @@ test('administrators see who did what on each SCCA', async ({ page }) => {
   await page.getByRole('option', { name: 'Rejected' }).click()
   await expect(table.getByText('Report downloaded')).toHaveCount(0)
   await expect(table.getByText('Rejected', { exact: true })).toBeVisible()
+})
+
+test('RA activity shows every edit of a building, its profile, its RAs and incidents', async ({ page }) => {
+  const { calls } = await mockAdmin(page)
+  await page.goto('/admin/audit?tab=ra')
+  const table = page.getByRole('table')
+  await expect(table.getByText('Call tree saved')).toBeVisible({ timeout: 30_000 })
+  await expect(table.getByText('4 → 5 rows')).toBeVisible()
+  await expect(table.getByText('Changed address, postal code')).toBeVisible()
+  await expect(table.getByText('Hazard ratings saved')).toBeVisible()
+  await expect(table.getByText('2 hazards: H01, H03')).toBeVisible()
+  await expect(table.getByText('Approvers reminded')).toBeVisible()
+  await expect(table.getByText('BCM Tools', { exact: true })).toBeVisible()
+  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toHaveAttribute('href', '/locations/1')
+  await expect(table.getByRole('row', { name: /Hazard ratings saved/ }).getByRole('link', { name: 'Menara Sentraya' })).toHaveAttribute('href', '/ra/manage/9')
+
+  await page.getByLabel('Activity', { exact: true }).click()
+  await page.getByRole('option', { name: 'Buildings and their profile' }).click()
+  await expect(table.getByText('Hazard ratings saved')).toHaveCount(0)
+  expect(calls.some((call) => call.url === '/api/admin/audit/events')).toBe(true)
+
+  // From a building's page: that building only.
+  await page.goto('/admin/audit?tab=ra&building=1')
+  await expect(page.getByRole('table').getByText('Call tree saved')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('table').getByText('Hazard ratings saved')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show every building' }).click()
+  await expect(page).not.toHaveURL(/building=/)
 })
 
 test('an assessment\'s activity opens filtered to it', async ({ page }) => {

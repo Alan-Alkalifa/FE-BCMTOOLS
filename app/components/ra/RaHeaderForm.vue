@@ -14,6 +14,8 @@ const locationPin = computed(() => raPin(props.assessment.location))
 const toast = useToast()
 const form = useTemplateRef('form')
 const dirty = useRaDirty()
+/** The record page's Save (top bar) submits this form and shows it saving. */
+const saving = useRaSaving()
 const formError = ref<string | null>(null)
 const snapshot = ref('')
 
@@ -22,7 +24,8 @@ const schema = z.object({
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   due_date: z.string().nullable(),
   reason: z.string('Choose the reason for this assessment.').nullable(),
-  lic_user_id: z.number('Choose the LIC.'),
+  // The LIC is the assessor (who made the RA): shown, never picked or sent.
+  lic_user_id: z.number().nullable(),
   lic_phone: z.string().trim().min(1, 'Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: z.string().trim().min(1, 'Enter the LICOM mobile number.'),
@@ -128,8 +131,9 @@ watch(state, () => {
 
 async function onSubmit() {
   formError.value = null
+  if (saving) saving.value = true
   try {
-    const { lic_user_id, licom_user_id, reason, due_date, period_year, ...fields } = state
+    const { lic_user_id: _lic, licom_user_id, reason, due_date, period_year, ...fields } = state
     // The RA period is the year of the assessment date: it follows a changed date. An RA whose
     // date was not changed keeps its period.
     const dateChanged = state.assessment_date !== (props.assessment.assessment_date ?? '')
@@ -139,7 +143,6 @@ async function onSubmit() {
       period_year: dateChanged ? raPeriodOf(state.assessment_date) ?? period_year : period_year,
       ...(reason ? { reason: reason as RaReason } : {}),
       ...(reason === RA_CUSTOM_DUE_REASON ? { due_date } : {}),
-      ...(lic_user_id ? { lic_user_id } : {}),
       ...(licom_user_id ? { licom_user_id } : {}),
     })
     reset(saved)
@@ -148,12 +151,15 @@ async function onSubmit() {
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
     formError.value = raErrorText(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
   <UForm
+    id="ra-form-details"
     ref="form"
     :schema="schema"
     :state="state"
@@ -231,6 +237,19 @@ async function onSubmit() {
             >
               Renewal due {{ formatDate(standardDue) }}, one year after this assessment.
             </p>
+            <!-- As SCCA's Assessor: below the assessment date, read-only. -->
+            <UFormField
+              label="Assessor"
+              class="sm:col-start-1"
+              name="assessor"
+              help="Filled with the person who creates the assessment."
+            >
+              <UInput
+                :model-value="assessment.created_by ?? ''"
+                disabled
+                class="w-full"
+              />
+            </UFormField>
             <UFormField
               label="RA ref. no."
               name="ref_no"
@@ -266,6 +285,7 @@ async function onSubmit() {
               :legacy-name="assessment[`${member}_name`]"
               :name-label="ra[member].label"
               :phone-label="`${member.toUpperCase()} mobile number`"
+              :fixed="member === 'lic'"
               :disabled="locked"
             />
           </div>
@@ -345,17 +365,6 @@ async function onSubmit() {
           />
         </template>
       </UCard>
-    </div>
-
-    <div
-      v-if="!locked"
-      class="flex justify-end"
-    >
-      <UButton
-        type="submit"
-        label="Save assessment"
-        loading-auto
-      />
     </div>
   </UForm>
 </template>

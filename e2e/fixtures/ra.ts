@@ -281,6 +281,8 @@ export interface RaMockLog {
   deletedLocations: number[]
   /** Paths and queries of GET /api/ra/monitoring/* and /api/ra/approvals/*. */
   workflow: string[]
+  /** Bodies of POST /api/ra/monitoring/renewals/generate. */
+  generated: unknown[]
   /** Query strings of GET /api/ra/locations (the register and the pickers). */
   locationQueries: string[]
   /** Approval calls on a building: [action, body]; approve, reject, withdraw or resubmit. */
@@ -355,9 +357,13 @@ export async function mockRa(
     regions?: boolean
     /** The RA version's sign-off steps, as RA configuration sets them (default: the workbook's). */
     steps?: (typeof SIGNOFF_STEPS)['head_office']
+    /** Outside BCM: the access scope opens only these location ids for an Annual review. */
+    scopeIds?: number[]
   } = {},
 ) {
-  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], locationQueries: [], approvals: [] }
+  const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], generated: [], locationQueries: [], approvals: [] }
+  // The signed-in user's profile: their mobile number fills the LIC's on New assessment.
+  await page.route('**/api/me/profile', (route) => route.fulfill({ json: { id: 1, display_name: 'Test User', email: 'test@example.com', mobile_phone: '081312262739' } }))
   const current = structuredClone(ASSESSMENT) as typeof ASSESSMENT & MockAssessment
   const branchCurrent = structuredClone(BRANCH_ASSESSMENT) as typeof BRANCH_ASSESSMENT & MockAssessment
   for (const assessment of [current, branchCurrent]) {
@@ -375,6 +381,8 @@ export async function mockRa(
   actForSigner(current)
   await signIn(page, options.permissions ? { permissions: options.permissions } : {})
   await page.route('**/api/ra/regions', (route) => route.fulfill({ json: { items: options.regions ? REGION_DIRECTORY : [] } }))
+  // The building form's organization lists (the user master's values).
+  await page.route('**/api/ra/org-values', (route) => route.fulfill({ json: ORG_VALUES }))
   await page.route('**/api/users**', (route) => {
     const term = (new URL(route.request().url()).searchParams.get('q') ?? '').toLowerCase()
     return route.fulfill({ json: { items: USERS.filter((user) => user.display_name.toLowerCase().includes(term)) } })
@@ -428,6 +436,11 @@ export async function mockRa(
   await page.route(/\/api\/ra\/locations/, async (route) => {
     const url = new URL(route.request().url())
     const method = route.request().method()
+    if (url.pathname.endsWith('/locations/scope')) {
+      const scoped = options.scopeIds && ['annual_review', 'structural_change'].includes(url.searchParams.get('reason') ?? '')
+      await route.fulfill({ json: scoped ? { all: false, ids: options.scopeIds } : { all: true, ids: [] } })
+      return
+    }
     const list = url.pathname.match(/\/(contacts|occupants|recovery-team|call-tree)$/)?.[1]
     if (list) {
       log.lists[list] = [...(log.lists[list] ?? []), route.request().postDataJSON()]
@@ -656,9 +669,35 @@ function workflowLocations(branch: boolean) {
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
   return [
-    { location: first, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', lic_name: 'Legiran', history: [open, approved] },
-    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, lic_name: null, history: [] },
+    { location: { ...first, directorate: 'OPS', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
+    { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, assessor: null, licom: null, history: [] },
   ]
+}
+
+/** A renewal due in 20 days with nothing started yet: it can be generated. */
+function renewable(branch: boolean) {
+  const approved = { ...workflowRef(branch, 'approved'), id: 3, ref_no: branch ? 'RAB-2025-0003' : 'RA-2025-0003', approved_at: '2025-11-20T03:00:00Z' }
+  return {
+    location: { id: 3, code: branch ? 'RA-BR-0003' : 'RA-HQ-0003', kind: branch ? 'branch' : 'head_office', name: 'Menara Sentraya', region: null, directorate: 'FIN' },
+    approved,
+    open: null,
+    assessment_count: 1,
+    renewal_date: '2026-11-22',
+    days_left: 20,
+    bucket: 'due_30',
+    assessor: 'Test User',
+    licom: 'Sari Dewi',
+    history: [approved],
+  }
+}
+
+export const ORG_VALUES = {
+  directorates: ['FIN', 'OPS'],
+  sub_directorates: ['Ops Support'],
+  groups: ['Building Management'],
+  levels: ['D-1', 'D-2'],
+  divisions: ['General Affairs'],
+  departments: ['Facilities'],
 }
 
 function stepTitle(branch: boolean, role: string) {
@@ -677,6 +716,8 @@ function waitingRow(branch: boolean, step: string, signerId: number, days: numbe
     working_days_in_signoff: days + 2,
     submitted_at: '2026-10-08T03:00:00Z',
     submitted_by: 'Rina Kartika',
+    assessor: 'Rina Kartika',
+    can_act: true,
     reminders_sent: 0,
     escalated_at: null,
     level: days >= 7 ? 'escalated' : days >= 3 ? 'reminder' : 'ok',
@@ -710,7 +751,24 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         },
       })
     } else if (name === 'monitoring/renewals') {
-      await route.fulfill({ json: paged([locations[0]], { counts: { overdue: 1, due_30: 0, due_90: 0, later: 0 } }) })
+      // Griya's renewal is a draft already; Menara's can be generated.
+      const rows = [
+        { ...locations[0], renewal_status: 'draft', can_generate: false },
+        { ...renewable(branch), renewal_status: 'not_started', can_generate: true },
+      ]
+      await route.fulfill({ json: paged(rows, { counts: { overdue: 1, due_30: 1, due_90: 0, later: 0 } }) })
+    } else if (name === 'renewals/generate') {
+      const body = route.request().postDataJSON() as { assessment_ids: number[] }
+      log.generated.push(body)
+      await route.fulfill({ json: { created: [{ id: 120, ref_no: 'RA-2026-0120', renews: 'RA-2025-0003', location: 'Menara Sentraya' }], skipped: [], refused: [] } })
+    } else if (name === 'monitoring/org-values') {
+      await route.fulfill({ json: ORG_VALUES })
+    } else if (name === 'monitoring/location-ras') {
+      const [first] = locations
+      await route.fulfill({ json: paged([
+        { ...first!.open, assessor: 'Test User', licom: 'Budi Hartono', mark: null },
+        { ...first!.approved, assessor: 'Rina Kartika', licom: 'Budi Hartono', mark: 'current' },
+      ]) })
     } else if (name === 'monitoring/register') {
       const state = url.searchParams.get('state')
       const rows = state === 'none' ? [locations[1]] : state === 'approved' ? [locations[0]] : state ? [] : locations
@@ -723,7 +781,10 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
-      await route.fulfill({ json: paged(step && step !== roles[2] ? [] : waiting) })
+      // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
+      const own = name === 'approvals/board' && url.searchParams.get('q') === 'own'
+      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: false })) : waiting
+      await route.fulfill({ json: paged(step && step !== roles[2] ? [] : rows) })
     } else if (name === 'approvals/inbox') {
       await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
     } else if (name === 'approvals/upcoming') {
@@ -811,7 +872,6 @@ export const CRISIS = {
           residual_level: 'Low',
           mitigation: 'Pompa Buang (8 sampit) dan genset di GF',
           action_plan: null,
-          cim_ref_no: null,
         },
       },
       contacts: [{ kind: 'fire_brigade', seq: 1, name: 'Damkar Tangerang Selatan', phone: '113', group_name: null, floor: null, address: null }],

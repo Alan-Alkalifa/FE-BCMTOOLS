@@ -72,11 +72,6 @@ async function save(next: RaPin | null) {
   }
 }
 
-function removePin() {
-  pin.value = null
-  coordinates.value = ''
-}
-
 const searchQuery = computed(() => [props.location.name, props.location.address].filter(Boolean).join(', '))
 </script>
 
@@ -102,6 +97,15 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
           :description="formError"
         />
 
+        <UAlert
+          v-if="!saved"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-map-pin-off"
+          title="Map coordinates required"
+          description="Place a pin and save it for this location to appear on the Building map."
+        />
+
         <RaMap
           v-model:pin="pin"
           :editable="can(ra.perm.edit)"
@@ -111,6 +115,7 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
 
         <UFormField
           label="Coordinates"
+          required
           help="Latitude, longitude. Paste them from Google Maps (right-click the spot, then click the numbers to copy them)."
           :error="coordinatesError ?? undefined"
         >
@@ -148,16 +153,8 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
             Unsaved changes
           </p>
           <UButton
-            v-if="pin"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-map-pin-off"
-            label="Remove pin"
-            @click="removePin"
-          />
-          <UButton
             label="Save pin"
-            :disabled="!changed"
+            :disabled="!pin || !changed"
             loading-auto
             @click="save(pin)"
           />

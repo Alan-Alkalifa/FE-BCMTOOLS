@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
-import type { RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting } from '~/composables/useRa'
+import type { RaGenerateResult, RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting } from '~/composables/useRa'
+import RaHistoryDialog from '~/components/ra/RaHistoryDialog.vue'
 /**
- * RA (or RA Branch) Monitoring, as SCCA Monitoring: KPI cards and charts, renewals due, the
- * register of every location with its RA in force, and RAs waiting in sign-off. Read-only;
- * a row opens the assessment in Monitoring.
+ * RA (or RA Branch) Monitoring, as SCCA Monitoring: KPI cards and charts, renewals due (with
+ * Generate annual review for the selected rows), the list of every location with its RA in
+ * force (RA(s) opens its history; the checkboxes pick buildings for the Excel export), and RAs
+ * waiting in sign-off. Outside BCM it shows the RAs the user takes part in, and Renewals also
+ * what their access scope opens. Filters include the location's organization, as SCCA's.
  */
 const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
+const confirm = useConfirm()
+const historyDialog = useOverlay().create(RaHistoryDialog)
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
-const PER_PAGE = 25 // docs/design-system.md > Tables
+const perPage = useRowsPerPage()
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -38,9 +44,12 @@ const filters = computed<RaMonitoringFilters>(() => ({
   reason: RA_REASONS.some((reason) => reason.value === text('reason')) ? text('reason') as RaReason : undefined,
   from: text('from'),
   to: text('to'),
+  directorate: text('directorate'),
+  sub_directorate: text('sub_directorate'),
+  org_group: text('org_group'),
+  division: text('division'),
 }))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
-const paged = computed(() => ({ ...filters.value, page: page.value, per_page: PER_PAGE }))
 
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
@@ -121,7 +130,27 @@ const regionItems = computed(() => [
   ...(regionData.value?.items ?? []).map((name) => ({ label: name, value: name })),
 ])
 
-// RA uses region filter instead of department filter
+// The location's Directorate / Sub Directorate / Group (a branch's area) / Division, as SCCA's
+// org filters.
+const { data: orgData } = useRaMonitoringOrgValues(filters)
+type OrgField = 'directorate' | 'sub_directorate' | 'org_group' | 'division'
+function orgFilter(field: OrgField) {
+  return computed<string>({
+    get: () => filters.value[field] ?? 'all',
+    set: (value) => setQuery({ [field]: value === 'all' ? undefined : value }),
+  })
+}
+const directorate = orgFilter('directorate')
+const subDirectorate = orgFilter('sub_directorate')
+const group = orgFilter('org_group')
+const division = orgFilter('division')
+function orgItems(all: string, values: string[] | undefined) {
+  return [{ label: all, value: 'all' }, ...(values ?? []).map((name) => ({ label: name, value: name }))]
+}
+const directorateItems = computed(() => orgItems('All directorates', orgData.value?.directorates))
+const subDirectorateItems = computed(() => orgItems('All sub directorates', orgData.value?.sub_directorates))
+const groupItems = computed(() => orgItems('All groups / areas', orgData.value?.groups))
+const divisionItems = computed(() => orgItems('All divisions', orgData.value?.divisions))
 
 const search = ref(filters.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -133,7 +162,11 @@ watch(search, (value) => {
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const filtered = computed(() => Boolean(filters.value.q || filters.value.region || filters.value.level || filters.value.state || filters.value.reason || filters.value.from || filters.value.to))
+const filtered = computed(() => {
+  const value = filters.value
+  return Boolean(value.q || value.region || value.level || value.state || value.reason || value.from || value.to
+    || value.directorate || value.sub_directorate || value.org_group || value.division)
+})
 function clearFilters() {
   search.value = ''
   router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined } })
@@ -147,21 +180,36 @@ const bucket = computed<Exclude<RaRenewalBucket, 'later'> | undefined>(() => {
   const value = text('bucket')
   return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
 })
-const renewals = useRaRenewals(computed(() => ({ ...paged.value, bucket: bucket.value })))
+const renewals = useRaRenewals(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: perPage.value,
+  bucket: bucket.value,
+})))
 const renewalCards = [
   { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
   { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
-const register = useRaRegister(paged)
-/** List: buildings whose RAs are shown under their row ("Show in the table" in RA(s)). */
-const expanded = ref<Record<string, boolean>>({})
-function toggleRow(row: RaMonitorLocation, open: boolean) {
-  const id = String(row.location.id)
-  const others = Object.fromEntries(Object.entries(expanded.value).filter(([key]) => key !== id))
-  expanded.value = open ? { ...others, [id]: true } : others
+const register = useRaRegister(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: perPage.value,
+})))
+/** The List's Group / Area: the location's Group (a branch's area). */
+function groupOf(row: RaMonitorLocation) {
+  return row.location.org_group || row.location.area || null
 }
-const bottlenecks = useRaBottlenecks(paged)
+
+/** List > RA(s): every RA of the location, as SCCA's SCCA(s). */
+function openHistory(row: RaMonitorLocation) {
+  historyDialog.open({ row, kind: ra.value.kind })
+}
+const bottlenecks = useRaBottlenecks(computed(() => ({
+  ...filters.value,
+  page: page.value,
+  per_page: perPage.value,
+})))
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
 const places = computed(() => ra.value.location.lowerPlural)
@@ -230,15 +278,107 @@ function daysLeft(row: RaMonitorLocation) {
   return `${row.days_left} days left`
 }
 
+/** As SCCA's Renewals: the row picks for Generate annual review, then the columns, then Act. */
 const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
+  { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'location', header: locationColumn.value },
+  { id: 'code', header: `${locationColumn.value} ID` },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
+  { id: 'approved_date', header: 'Last final RA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { accessorKey: 'days_left', header: 'Due' },
-  { id: 'lic', header: 'LIC' },
+  { id: 'assessor', header: 'Assessor' },
+  { id: 'licom', header: 'LICOM' },
   { id: 'renewal', header: 'Renewal' },
+  { id: 'actions', header: '' },
 ])
+
+// --- Renewals: Act menu and Generate annual review (one row or the selected rows) ------------
+
+const selected = ref<Set<number>>(new Set())
+const renewalRows = computed(() => renewals.data.value?.items ?? [])
+const selectable = computed(() => renewalRows.value.filter((row) => row.can_generate))
+const selectedRows = computed(() => selectable.value.filter((row) => selected.value.has(row.location.id)))
+// A new page or filter starts with nothing selected.
+watch(renewalRows, () => (selected.value = new Set()))
+const allSelected = computed<boolean | 'indeterminate'>({
+  get: () => {
+    if (!selectable.value.length || !selectedRows.value.length) return false
+    return selectedRows.value.length === selectable.value.length ? true : 'indeterminate'
+  },
+  set: (value) => (selected.value = new Set(value ? selectable.value.map((row) => row.location.id) : [])),
+})
+function toggle(row: RaMonitorLocation, value: boolean | 'indeterminate') {
+  const next = new Set(selected.value)
+  if (value === true) next.add(row.location.id)
+  else next.delete(row.location.id)
+  selected.value = next
+}
+
+function announce(result: RaGenerateResult) {
+  const created = result.created.length
+  const skipped = result.skipped.length + result.refused.length
+  const why = [...result.skipped, ...result.refused].map((row) => `${row.location ?? row.ref_no ?? `#${row.id}`}: ${row.reason}`)
+  toast.add({
+    title: `Created ${created}, skipped ${skipped}`,
+    description: why.length
+      ? why.slice(0, 3).join(' · ') + (why.length > 3 ? ` · and ${why.length - 3} more` : '')
+      : `${plural(created, 'draft')} waiting in Manage, with you as the assessor and LIC.`,
+    color: created ? 'success' : 'warning',
+    icon: created ? 'i-lucide-circle-check' : 'i-lucide-circle-alert',
+    actions: created
+      ? [{
+          label: 'Open in Manage',
+          color: 'neutral',
+          variant: 'outline',
+          onClick: () => {
+            navigateTo(created === 1 ? raPath(ra.value.kind, 'manage', result.created[0]!.id) : raPath(ra.value.kind, 'manage'))
+          },
+        }]
+      : undefined,
+  })
+}
+
+/** One draft per location, copying its last final RA; the user becomes assessor and LIC. */
+async function generate(rows: RaMonitorLocation[]) {
+  if (!rows.length) return
+  const first = rows[0]!
+  const ok = await confirm({
+    title: rows.length === 1 ? 'Generate annual review' : `Generate ${rows.length} annual reviews`,
+    description: rows.length === 1
+      ? `${first.location.name}, from ${refLabel(first.approved)}. You become its assessor and LIC. The LICOM, ratings and signers are copied, dated today.`
+      : `One draft per ${ra.value.location.lower}, from its last final RA. You become the assessor and LIC of each. The LICOM, ratings and signers are copied, dated today.`,
+    confirmLabel: rows.length === 1 ? 'Generate' : `Generate ${rows.length}`,
+  })
+  if (!ok) return
+  try {
+    announce(await raApi.generateRenewals(rows.map((row) => row.approved!.id)))
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+    return
+  }
+  selected.value = new Set()
+  await Promise.all([renewals.refresh(), overview.refresh()])
+}
+
+function renewalActions(row: RaMonitorLocation): DropdownMenuItem[] {
+  return [
+    { label: 'Open last final', icon: 'i-lucide-file-check', to: record(row.approved!.id) },
+    {
+      label: 'Open renewal',
+      icon: 'i-lucide-file-pen',
+      disabled: !row.open,
+      to: row.open ? record(row.open.id) : undefined,
+    },
+    {
+      label: 'Generate annual review',
+      icon: 'i-lucide-file-plus-2',
+      disabled: !row.can_generate,
+      onSelect: () => generate([row]),
+    },
+  ]
+}
 
 /** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it; the rows
  *  carry the title from their own configuration version. */
@@ -247,16 +387,22 @@ function stepLabel(role: string, title?: string | null) {
 }
 
 const locationColumn = computed(() => ra.value.location.single)
-/** Like SCCA's Register: one row per building, judged by its last final (approved) RA. */
+/** Like SCCA's List: one row per building, judged by its last final (approved) RA, with its
+ *  organization; the checkboxes pick buildings for the Excel export. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'location', header: locationColumn.value },
+  { id: 'code', header: `${locationColumn.value} ID` },
+  { id: 'directorate', header: 'Directorate' },
+  { id: 'group', header: 'Group / Area' },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
+  { id: 'approved_date', header: 'Last final RA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open RA', meta: RA_STATUS_COLUMN },
   { id: 'open_step', header: 'Waiting for' },
-  { id: 'lic', header: 'LIC' },
+  { id: 'assessor', header: 'Assessor' },
+  { id: 'licom', header: 'LICOM' },
   { accessorKey: 'assessment_count', header: 'RA(s)' },
 ])
 
@@ -291,13 +437,15 @@ function clearPicked() {
 function registerRecord(row: RaMonitorLocation) {
   return row.approved ?? row.open ?? row.history?.[0] ?? null
 }
+/** As SCCA's Approval tab. */
 const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: 'RA' },
+  { id: 'assessment', header: locationColumn.value },
+  { accessorKey: 'ref_no', header: 'RA ref. no.' },
   { accessorKey: 'step', header: 'Current step' },
   { id: 'signer', header: 'Signer' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated' },
+  { accessorKey: 'escalated_at', header: 'Escalated on' },
   { accessorKey: 'working_days_in_signoff', header: 'In approval' },
 ])
 
@@ -321,7 +469,7 @@ function record(id: number) {
   <AppPage
     :title="`${ra.title} monitoring`"
     icon="i-lucide-chart-column"
-    :description="`Every ${ra.location.lower}'s residual risk, renewals due and sign-offs that are waiting. Read-only.`"
+    :description="`Every ${ra.location.lower}'s residual risk, renewals due and sign-offs that are waiting.`"
     :crumbs="[{ label: ra.title }, { label: 'Monitoring' }]"
   >
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
@@ -371,6 +519,34 @@ function record(id: number) {
           :items="regionItems"
           class="w-48"
           aria-label="Region"
+        />
+        <USelectMenu
+          v-model="directorate"
+          value-key="value"
+          :items="directorateItems"
+          class="w-56"
+          aria-label="Directorate"
+        />
+        <USelectMenu
+          v-model="subDirectorate"
+          value-key="value"
+          :items="subDirectorateItems"
+          class="w-52"
+          aria-label="Sub Directorate"
+        />
+        <USelectMenu
+          v-model="group"
+          value-key="value"
+          :items="groupItems"
+          class="w-52"
+          aria-label="Group / Area"
+        />
+        <USelectMenu
+          v-model="division"
+          value-key="value"
+          :items="divisionItems"
+          class="w-52"
+          aria-label="Division"
         />
         <USelectMenu
           v-model="period"
@@ -496,22 +672,46 @@ function record(id: number) {
             <p class="text-sm text-muted">
               {{ bucket ? `${raRenewalBucket[bucket].label}, soonest first.` : 'Overdue and due within 90 days, soonest first.' }}
             </p>
-            <UButton
-              :to="raExportUrl('renewals', filters)"
-              external
-              download
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-file-spreadsheet"
-              label="Export to Excel"
-            />
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-if="selectable.length"
+                icon="i-lucide-file-plus-2"
+                :label="`Generate annual review (${selectedRows.length})`"
+                :disabled="!selectedRows.length"
+                @click="generate(selectedRows)"
+              />
+              <UButton
+                :to="raExportUrl('renewals', filters)"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+            </div>
           </div>
           <UTable
-            :data="renewals.data.value?.items ?? []"
+            :data="renewalRows"
             :columns="renewalColumns"
             :loading="renewals.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #select-header>
+              <UCheckbox
+                v-if="selectable.length"
+                v-model="allSelected"
+                aria-label="Select every row you can generate for"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="selected.has(row.original.location.id)"
+                :disabled="!row.original.can_generate"
+                :aria-label="`Select ${row.original.location.name}`"
+                @update:model-value="toggle(row.original, $event)"
+              />
+            </template>
             <template #location-cell="{ row }">
               <NuxtLink
                 :to="record(row.original.approved!.id)"
@@ -520,11 +720,40 @@ function record(id: number) {
                 {{ row.original.location.name }}
               </NuxtLink>
               <p
-                v-if="raLocationLine(row.original.location)"
+                v-if="row.original.location.directorate"
                 class="text-xs text-muted"
               >
-                {{ raLocationLine(row.original.location) }}
+                {{ row.original.location.directorate }}
               </p>
+            </template>
+            <template #code-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.location.code || '—' }}</span>
+            </template>
+            <template #approved-cell="{ row }">
+              <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
+            </template>
+            <template #approved_date-cell="{ row }">
+              {{ formatDate(row.original.approved?.approved_at) || '—' }}
+            </template>
+            <template #licom-cell="{ row }">
+              <p class="max-w-56 truncate">
+                {{ row.original.licom || '—' }}
+              </p>
+            </template>
+            <template #actions-cell="{ row }">
+              <UDropdownMenu
+                :items="renewalActions(row.original)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  label="Act"
+                  :aria-label="`Act on ${row.original.location.name}`"
+                />
+              </UDropdownMenu>
             </template>
             <template #level-cell="{ row }">
               <StatusBadge
@@ -552,9 +781,9 @@ function record(id: number) {
                 {{ daysLeft(row.original) }}
               </p>
             </template>
-            <template #lic-cell="{ row }">
+            <template #assessor-cell="{ row }">
               <p class="max-w-56 truncate">
-                {{ row.original.lic_name || '—' }}
+                {{ row.original.assessor || '—' }}
               </p>
             </template>
             <template #renewal-cell="{ row }">
@@ -582,8 +811,9 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
+            page-sizes
             :page="page"
-            :per-page="PER_PAGE"
             :total="renewals.data.value?.total ?? 0"
             :to="pageTo"
             label="Renewals"
@@ -624,19 +854,12 @@ function record(id: number) {
             </div>
           </div>
           <UTable
-            v-model:expanded="expanded"
             :data="register.data.value?.items ?? []"
             :columns="registerColumns"
             :get-row-id="(row: RaMonitorLocation) => String(row.location.id)"
             :loading="register.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
-            <template #expanded="{ row }">
-              <RaLocationAssessments
-                :location="row.original.location"
-                @hide="toggleRow(row.original, false)"
-              />
-            </template>
             <template #select-header>
               <UCheckbox
                 :model-value="pageState"
@@ -663,8 +886,29 @@ function record(id: number) {
                 v-else
                 class="font-medium text-highlighted"
               >{{ row.original.location.name }}</span>
-              <p class="text-xs text-muted">
-                {{ raLocationLine(row.original.location) || '—' }}
+              <p
+                v-if="row.original.location.region"
+                class="text-xs text-muted"
+              >
+                {{ row.original.location.region }}
+              </p>
+            </template>
+            <template #code-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.location.code || '—' }}</span>
+            </template>
+            <template #directorate-cell="{ row }">
+              <span :class="row.original.location.directorate ? '' : 'text-muted'">{{ row.original.location.directorate || '—' }}</span>
+            </template>
+            <!-- The location's Group, as the user master names it; a branch's is its area. -->
+            <template #group-cell="{ row }">
+              <span :class="groupOf(row.original) ? '' : 'text-muted'">{{ groupOf(row.original) || '—' }}</span>
+            </template>
+            <template #approved_date-cell="{ row }">
+              {{ formatDate(row.original.approved?.approved_at) || '—' }}
+            </template>
+            <template #licom-cell="{ row }">
+              <p class="max-w-56 truncate">
+                {{ row.original.licom || '—' }}
               </p>
             </template>
             <template #level-cell="{ row }">
@@ -682,9 +926,6 @@ function record(id: number) {
             <template #approved-cell="{ row }">
               <template v-if="row.original.approved">
                 <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
-                <p class="text-xs text-muted">
-                  {{ formatDate(row.original.approved.approved_at) || formatDate(row.original.approved.assessment_date) || '—' }}
-                </p>
                 <p
                   v-if="row.original.approved.reason"
                   class="text-xs text-muted"
@@ -732,54 +973,20 @@ function record(id: number) {
               >—</span>
             </template>
             <template #assessment_count-cell="{ row }">
-              <UPopover :content="{ align: 'end' }">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  trailing-icon="i-lucide-chevron-down"
-                  :label="String(row.original.assessment_count)"
-                  :aria-label="`RA history of ${row.original.location.name}`"
-                />
-                <template #content>
-                  <div class="border-b border-default p-2">
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      block
-                      :icon="expanded[String(row.original.location.id)] ? 'i-lucide-chevron-up' : 'i-lucide-table-properties'"
-                      :label="expanded[String(row.original.location.id)] ? 'Hide from the table' : 'Show in the table'"
-                      @click="toggleRow(row.original, !expanded[String(row.original.location.id)])"
-                    />
-                  </div>
-                  <ul class="w-72 divide-y divide-default text-sm">
-                    <li
-                      v-for="item in row.original.history"
-                      :key="item.id"
-                    >
-                      <NuxtLink
-                        :to="record(item.id)"
-                        class="flex items-center justify-between gap-2 px-3 py-2 hover:bg-elevated/50"
-                      >
-                        <span>
-                          <span class="font-mono text-xs">{{ refLabel(item) }}</span>
-                          <span class="block text-xs text-muted">{{ formatDate(item.assessment_date) || '—' }}</span>
-                        </span>
-                        <StatusBadge
-                          :scale="raStatus"
-                          :value="raStatusKey(item)"
-                          size="sm"
-                        />
-                      </NuxtLink>
-                    </li>
-                  </ul>
-                </template>
-              </UPopover>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                trailing-icon="i-lucide-history"
+                :label="String(row.original.assessment_count)"
+                :disabled="!row.original.assessment_count"
+                :aria-label="`RA history of ${row.original.location.name}`"
+                @click="openHistory(row.original)"
+              />
             </template>
-            <template #lic-cell="{ row }">
+            <template #assessor-cell="{ row }">
               <p class="max-w-56 truncate">
-                {{ row.original.lic_name || '—' }}
+                {{ row.original.assessor || '—' }}
               </p>
             </template>
             <template #empty>
@@ -789,8 +996,9 @@ function record(id: number) {
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
+            page-sizes
             :page="page"
-            :per-page="PER_PAGE"
             :total="register.data.value?.total ?? 0"
             :to="pageTo"
             label="List"
@@ -838,9 +1046,9 @@ function record(id: number) {
                 >
                   {{ row.original.location.name }}
                 </NuxtLink>
-                <p class="font-mono text-xs text-muted">
-                  {{ refLabel(row.original) }}
-                </p>
+              </template>
+              <template #ref_no-cell="{ row }">
+                <span class="font-mono text-xs">{{ refLabel(row.original) }}</span>
               </template>
               <template #step-cell="{ row }">
                 {{ stepLabel(row.original.step, row.original.step_title) }}
@@ -858,21 +1066,20 @@ function record(id: number) {
                 <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ raWaiting(row.original.working_days_waiting) }}</span>
               </template>
               <template #reminders_sent-cell="{ row }">
-                {{ row.original.reminders_sent }}
-                <p
-                  v-if="row.original.escalated_at"
-                  class="text-xs text-error"
-                >
-                  Escalated {{ formatDate(row.original.escalated_at) }}
-                </p>
+                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #escalated_at-cell="{ row }">
+                <span v-if="row.original.escalated_at">{{ formatDate(row.original.escalated_at) }}</span>
                 <StatusBadge
-                  v-if="row.original.level !== 'ok'"
+                  v-else-if="row.original.level !== 'ok'"
                   :scale="raWaitLevel"
                   :value="row.original.level"
                   size="sm"
                 />
+                <span
+                  v-else
+                  class="text-muted"
+                >—</span>
               </template>
               <template #working_days_in_signoff-cell="{ row }">
                 {{ raWaiting(row.original.working_days_in_signoff) }}
@@ -884,8 +1091,9 @@ function record(id: number) {
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="perPage"
+              page-sizes
               :page="page"
-              :per-page="PER_PAGE"
               :total="bottlenecks.data.value?.total ?? 0"
               :to="pageTo"
               label="Approval"

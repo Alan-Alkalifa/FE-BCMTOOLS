@@ -44,6 +44,13 @@ async function mockRaConfig(page: Page) {
   const branch = version(BRANCH_FORMULA, BRANCH_FORMULA.code, 'active')
   const divisions = DIVISIONS.map((row, index) => ({ ...row, used_by: index === 0 ? 4 : 0 }))
   const signers: Record<string, { id: number, display_name: string, email: string, job_title: string, department: string } | null> = {}
+  // RA configuration > Access scope: the default rule, as migration e4b9c2a7f1d3 seeds it.
+  const accessRules = [{
+    id: 1, name: 'Directorate heads', levels: ['D-1', 'D-2'], directorates: [] as string[], kinds: [] as string[],
+    reasons: ['annual_review', 'structural_change'], renewal_statuses: [] as string[], can_generate: true,
+    user_ids: [] as number[], users: [] as { id: number, name: string }[], valid_from: null as string | null,
+    valid_until: null as string | null, is_active: true, sort_order: 0, updated_by: null as string | null, updated_at: null as string | null,
+  }]
   let settings = {
     reminders_enabled: true, reminder_after_days: 3, reminder_every_days: 2, escalate_after_days: 7,
     extra_escalation_emails: [], renewal_notice_days: [90, 30, 7], overdue_repeat_days: 30,
@@ -113,6 +120,26 @@ async function mockRaConfig(page: Page) {
       return route.fulfill({ json: settings })
     }
     if (path.endsWith('/settings')) return route.fulfill({ json: settings })
+    if (path.endsWith('/access-rules/check')) {
+      return route.fulfill({ json: { user: { id: 9, name: 'Dewi Lestari', directorate: 'OPS', org_level: 'D-2' }, rules: [{ id: 1, name: 'Directorate heads' }], can_generate: true, reasons: ['annual_review', 'structural_change'], locations: { annual_review: 4, structural_change: 4 } } })
+    }
+    if (path.endsWith('/access-rules') && request.method() === 'POST') {
+      const row = { id: 2, users: [], sort_order: 2, updated_by: 'Test User', updated_at: '2026-11-02T03:00:00Z', ...(body as object) } as typeof accessRules[number]
+      accessRules.push(row)
+      return route.fulfill({ status: 201, json: row })
+    }
+    if (path.endsWith('/access-rules')) {
+      return route.fulfill({ json: {
+        items: accessRules,
+        options: {
+          levels: ['D-1', 'D-2', 'D-3'],
+          directorates: ['FIN', 'OPS'],
+          kinds: [{ code: 'head_office', label: 'Head office buildings' }, { code: 'branch', label: 'Branches' }],
+          reasons: [{ code: 'annual_review', label: 'Annual review' }, { code: 'structural_change', label: 'Structural change' }],
+          renewal_statuses: [{ code: 'overdue', label: 'Overdue' }, { code: 'due_30', label: 'Due in 30 days' }, { code: 'due_90', label: 'Due in 31–90 days' }, { code: 'active', label: 'Active' }],
+        },
+      } })
+    }
     return route.fulfill({ status: 404, json: { error: 'not_found' } })
   })
   return calls
@@ -154,8 +181,8 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await expect(page.getByRole('tab', { name: 'Sign-off steps' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
   const title = page.getByRole('textbox', { name: 'Title of step 1' })
   await expect(title).toHaveValue('Location Incident Coordinator (LIC)')
-  await expect(page.getByRole('combobox', { name: 'Signer of step 1' })).toContainText('The LIC')
-  await expect(page.getByRole('combobox', { name: 'Report box of step 1' })).toContainText('Box 1')
+  await expect(page.getByLabel('Signer of step 1', { exact: true })).toContainText('The LIC')
+  await expect(page.getByLabel('Report box of step 1', { exact: true })).toContainText('Box 1')
   await title.fill('Building Incident Coordinator (LIC)')
   // The last step is always required; a new step goes before it.
   await expect(page.getByRole('switch', { name: 'Required' }).last()).toBeDisabled()
@@ -166,7 +193,7 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await page.getByRole('switch', { name: 'Required' }).nth(3).click()
   await page.getByRole('button', { name: 'Move step 4 up' }).click()
   // The BCM head step gets a fixed signer.
-  await page.getByRole('combobox', { name: 'Signer of step 5' }).click()
+  await page.getByLabel('Signer of step 5', { exact: true }).click()
   await page.getByRole('option', { name: /^Fixed/ }).click()
   await expect(page.getByText('Save the steps, then pick the fixed signer here.')).toBeVisible()
   await page.getByRole('button', { name: 'Save steps' }).click()
@@ -210,9 +237,9 @@ test('divisions are kept with their MTD and critical rating', async ({ page }) =
   await expect(table.getByRole('button', { name: 'Delete Cash & Payment Operations' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add division' }).first().click()
   await page.getByRole('textbox', { name: 'Division name' }).fill('Treasury')
-  await page.getByRole('combobox', { name: 'Critical rating' }).click()
+  await page.getByLabel('Critical rating', { exact: true }).click()
   await page.getByRole('option', { name: 'Very Important' }).click()
-  await expect(page.getByRole('combobox', { name: 'MTD' })).toContainText('4-12 hours')
+  await expect(page.getByLabel('MTD', { exact: true })).toContainText('4-12 hours')
   await page.getByRole('button', { name: 'Add division' }).last().click()
   await expect(page.getByText('Division added').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'POST' && call.path.endsWith('/divisions'))!.body).toEqual({ name: 'Treasury', mtd: '4-12 hours', critical_rating: 'Very Important' })
@@ -240,4 +267,46 @@ test('the draft\'s code is changed on the Versions tab', async ({ page }) => {
   expect(patch.path).toMatch(/\/versions\/2025-r5$/)
   expect(patch.body).toMatchObject({ code: 'V.05' })
   await expect(page).toHaveURL(/version=V\.05/)
+})
+
+test('the access scope says who works on which locations, as SCCA\'s', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  await page.goto('/admin/ra-config?tab=access')
+  const table = page.getByRole('table')
+  await expect(table.getByText('Directorate heads')).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByText('D-1, D-2')).toBeVisible()
+  await expect(table.getByText('Own directorate')).toBeVisible()
+  await expect(table.getByText('Buildings and branches')).toBeVisible()
+  await expect(table.getByText('Annual review, Structural change')).toBeVisible()
+  // The only active rule can't be deleted.
+  await page.getByRole('button', { name: 'Actions for Directorate heads' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Delete (the only active rule)' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+
+  // A new rule: D-3 of FIN, branches only, Annual review.
+  await page.getByRole('button', { name: 'New rule' }).click()
+  const dialog = page.getByRole('dialog', { name: 'New access rule' })
+  await dialog.getByRole('textbox', { name: 'Name' }).fill('Branch D-3 of FIN')
+  await dialog.getByRole('button', { name: 'Organization levels', exact: true }).click()
+  await page.getByRole('option', { name: 'D-3' }).click()
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('switch', { name: 'The user\'s own directorate' }).click()
+  await dialog.getByRole('button', { name: 'Directorates', exact: true }).click()
+  await page.getByRole('option', { name: 'FIN' }).click()
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Locations', exact: true }).click()
+  await page.getByRole('option', { name: 'Branches' }).click()
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Add rule' }).click()
+  await expect(page.getByText('Rule added').first()).toBeVisible()
+  expect(calls.find((call) => call.method === 'POST' && call.path.endsWith('/access-rules'))!.body).toMatchObject({
+    name: 'Branch D-3 of FIN', levels: ['D-3'], directorates: ['FIN'], kinds: ['branch'], reasons: ['annual_review', 'structural_change'], user_ids: [],
+  })
+
+  // Check a user.
+  await page.getByLabel('User to check', { exact: true }).click()
+  await page.keyboard.type('Dewi')
+  await page.getByRole('option', { name: /Dewi Lestari/ }).click()
+  await expect(page.getByText('OPS · D-2')).toBeVisible()
+  await expect(page.getByText('Annual review: 4 · Structural change: 4')).toBeVisible()
 })
