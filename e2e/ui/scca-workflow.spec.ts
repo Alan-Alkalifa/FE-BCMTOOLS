@@ -77,7 +77,7 @@ test('without scca.monitor, Monitoring is in the menu and shows only your own SC
   await page.goto('/scca/monitoring?tab=bottlenecks')
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Monitoring' })).toBeVisible({ timeout: 60_000 })
-  await expect(nav.getByRole('link', { name: 'Manage' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Manage', exact: true })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'Approval' })).toBeVisible()
   await expect(page.getByText('The SCCAs you assess, contribute to or sign, and the renewals your access scope opens: where each one is, renewals due and approvals waiting.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Act on them in the BCM board' })).toHaveCount(0)

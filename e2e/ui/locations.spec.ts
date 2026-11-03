@@ -72,12 +72,14 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   // What was typed is kept when the type changes.
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
-  // A branch has a Region: typed (optional) while the region list isn't loaded.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
+  // Without the region list a branch has no Region field: its Sub Directorate and Group (its
+  // region and area) are picked in Organization.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  await expect(page.getByText('The branch\'s area.')).toBeVisible()
   await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920', region: null, area: null })
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920', sub_directorate: null, org_group: null })
 })
 
 test('adding a building from New assessment returns to the new assessment', async ({ page }) => {

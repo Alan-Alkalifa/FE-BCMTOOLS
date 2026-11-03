@@ -36,6 +36,7 @@ export const MENU_ICONS = [
   'i-lucide-book',
   'i-lucide-graduation-cap',
   'i-lucide-bell',
+  'i-lucide-list-todo',
   'i-lucide-flag',
   'i-lucide-map',
   'i-lucide-map-pinned',

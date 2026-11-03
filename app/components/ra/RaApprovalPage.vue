@@ -32,7 +32,7 @@ const tab = computed<ApprovalTab>({
   set: (value) => router.replace({ query: { tab: value === 'inbox' ? undefined : value } }),
 })
 
-const PER_PAGE = 25
+const perPage = useRowsPerPage()
 const COMING_PER_PAGE = 10
 function number(name: string) {
   return Math.max(1, Number(route.query[name]) || 1)
@@ -78,7 +78,7 @@ const kind = computed(() => ra.value.kind)
 
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: PER_PAGE })))
+const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: perPage.value })))
 const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: COMING_PER_PAGE })))
 
 /** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it. */
@@ -117,7 +117,7 @@ const history = useRaHistory(computed(() => ({
   action: action.value === 'all' ? undefined : action.value,
   q: tab.value === 'history' ? text('q') : undefined,
   page: historyPage.value,
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 })))
 const actionItems = [
   { label: 'All actions', value: 'all' as const },
@@ -169,7 +169,7 @@ const board = useRaBoard(
     step: boardStep.value === 'all' ? undefined : boardStep.value,
     q: tab.value === 'board' ? text('q') : undefined,
     page: boardPage.value,
-    per_page: PER_PAGE,
+    per_page: perPage.value,
   })),
   bcm,
 )
@@ -229,8 +229,9 @@ function boardActions(row: RaSignoffWaiting): DropdownMenuItem[] {
   return [
     { label: 'Open sign-off', icon: 'i-lucide-folder-open', to: raPath(ra.value.kind, 'approval', row.id) },
     { label: 'Send a reminder now', icon: 'i-lucide-bell-ring', disabled: !row.signer, onSelect: () => nudge(row) },
-    { label: 'Change the signer', icon: 'i-lucide-user-round-cog', onSelect: () => changeSigner(row) },
-    { label: 'Approve on behalf', icon: 'i-lucide-badge-check', onSelect: () => onBehalf(row) },
+    // As SCCA's: nobody acts for the signer of an RA they made (reminders only).
+    { label: 'Change the signer', icon: 'i-lucide-user-round-cog', disabled: row.can_act === false, onSelect: () => changeSigner(row) },
+    { label: 'Approve on behalf', icon: 'i-lucide-badge-check', disabled: row.can_act === false, onSelect: () => onBehalf(row) },
   ]
 }
 
@@ -318,8 +319,9 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
+              v-model:per-page="perPage"
+              page-sizes
               :page="inboxPage"
-              :per-page="PER_PAGE"
               :total="inbox.data.value?.total ?? 0"
               :to="pageTo"
               label="Inbox"
@@ -368,8 +370,8 @@ const tabs = computed(() => [
               </template>
             </UTable>
             <TablePagination
-              :page="comingPage"
               :per-page="COMING_PER_PAGE"
+              :page="comingPage"
               :total="upcoming.data.value?.total ?? 0"
               :to="comingTo"
               label="Coming up"
@@ -461,8 +463,9 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
+            page-sizes
             :page="historyPage"
-            :per-page="PER_PAGE"
             :total="history.data.value?.total ?? 0"
             :to="pageTo"
             label="History"
@@ -535,6 +538,12 @@ const tabs = computed(() => [
             </template>
             <template #signer-cell="{ row }">
               {{ row.original.signer?.name ?? '—' }}
+              <p
+                v-if="row.original.can_act === false"
+                class="text-xs text-muted"
+              >
+                Your own RA: reminders only
+              </p>
             </template>
             <template #working_days_waiting-cell="{ row }">
               <StatusBadge
@@ -577,8 +586,9 @@ const tabs = computed(() => [
             </template>
           </UTable>
           <TablePagination
+            v-model:per-page="perPage"
+            page-sizes
             :page="boardPage"
-            :per-page="PER_PAGE"
             :total="board.data.value?.total ?? 0"
             :to="pageTo"
             label="Board"

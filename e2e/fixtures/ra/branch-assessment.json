@@ -33,7 +33,6 @@
   "ratings": [
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H01",
       "historical": 1,
       "issues": [],
@@ -56,7 +55,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H02",
       "historical": "N/A",
       "issues": [],
@@ -79,7 +77,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H03",
       "historical": 3,
       "issues": [],
@@ -102,7 +99,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H04",
       "historical": "N/A",
       "issues": [],
@@ -125,7 +121,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H05",
       "historical": "N/A",
       "issues": [],
@@ -148,7 +143,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H06",
       "historical": 2,
       "issues": [],
@@ -171,7 +165,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H07",
       "historical": "N/A",
       "issues": [],
@@ -194,7 +187,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H08",
       "historical": "N/A",
       "issues": [],
@@ -217,7 +209,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H09",
       "historical": "N/A",
       "issues": [],
@@ -240,7 +231,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H10",
       "historical": 2,
       "issues": [],
@@ -263,7 +253,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H11",
       "historical": 1,
       "issues": [],
@@ -286,7 +275,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H12",
       "historical": "N/A",
       "issues": [],
@@ -309,7 +297,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H13",
       "historical": "N/A",
       "issues": [],
@@ -332,7 +319,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H14",
       "historical": 1,
       "issues": [],
@@ -355,7 +341,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H15",
       "historical": "N/A",
       "issues": [],
@@ -378,7 +363,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H16",
       "historical": "N/A",
       "issues": [],
@@ -401,7 +385,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H17",
       "historical": "N/A",
       "issues": [],
@@ -424,7 +407,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H18",
       "historical": "N/A",
       "issues": [],
@@ -447,7 +429,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H19",
       "historical": 1,
       "issues": [],
@@ -470,7 +451,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H20",
       "historical": "N/A",
       "issues": [],
@@ -493,7 +473,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H21",
       "historical": "N/A",
       "issues": [],
@@ -516,7 +495,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H22",
       "historical": 4,
       "issues": [],
@@ -539,7 +517,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H23",
       "historical": "N/A",
       "issues": [],
@@ -562,7 +539,6 @@
     },
     {
       "action_plan": null,
-      "cim_ref_no": null,
       "code": "H24",
       "historical": "N/A",
       "issues": [],
@@ -585,7 +561,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H25",
       "historical": 2,
       "issues": [],
@@ -608,7 +583,6 @@
     },
     {
       "action_plan": "N/A",
-      "cim_ref_no": null,
       "code": "H26",
       "historical": "N/A",
       "issues": [],

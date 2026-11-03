@@ -62,15 +62,19 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page).toHaveURL(/state=none/)
   await expect(page.getByText('Graha CIMB Niaga')).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('state=none'))).toBe(true)
+  // Who made the RA, as SCCA's Assessor (not the LIC).
+  await expect(page.getByRole('columnheader', { name: 'Assessor' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'LIC', exact: true })).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'Renewals' }).click()
   await expect(page.getByText('Griya CIMB Niaga 2').first()).toBeVisible()
+  await expect(page.getByRole('table').filter({ visible: true }).getByText('Rina Kartika')).toBeVisible()
   await expect(page.getByText('Overdue', { exact: true }).first()).toBeVisible()
 
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
 
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
-  await expect(page.getByText('Budi Hartono')).toBeVisible()
+  await expect(page.getByRole('table').filter({ visible: true }).getByText('Budi Hartono')).toBeVisible()
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
@@ -78,6 +82,84 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   // The step is named by who signs it, like SCCA: the role title, not "Reviewed by".
   await expect(page.getByRole('table').getByText('Alternate Location Incident Commander')).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
+})
+
+test('Monitoring Renewals generates annual reviews from the ticked rows, as SCCA', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/monitoring?tab=renewals')
+  const table = page.getByRole('table').filter({ visible: true })
+  await expect(table.getByText('Menara Sentraya')).toBeVisible({ timeout: 60_000 })
+  for (const header of ['Building ID', 'Last final RA date', 'Assessor', 'LICOM', 'Renewal']) {
+    await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
+  // Griya's renewal is already a draft: it can't be generated.
+  await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Act on Griya CIMB Niaga 2' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Generate annual review' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Open renewal' })).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  const generate = page.getByRole('button', { name: /^Generate annual review \(/ })
+  await expect(generate).toHaveText('Generate annual review (0)')
+  await expect(generate).toBeDisabled()
+  await table.getByRole('checkbox', { name: 'Select Menara Sentraya' }).click()
+  await generate.click()
+  const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'))
+  await expect(dialog.getByText('You become its assessor and LIC.', { exact: false })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Generate' }).click()
+  await expect(page.getByText('Created 1, skipped 0').first()).toBeVisible()
+  expect(log.generated).toEqual([{ assessment_ids: [3] }])
+})
+
+test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export checkboxes stay', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/monitoring?tab=register')
+  const table = page.getByRole('table').filter({ visible: true })
+  await expect(table.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
+  for (const header of ['Building ID', 'Directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
+    await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
+  await expect(table.getByText('Building Management')).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Department', exact: true })).toHaveCount(0)
+  await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2 for the Excel export' })).toBeVisible()
+
+  // The location's organization filters, as SCCA's.
+  await page.getByLabel('Directorate', { exact: true }).click()
+  await page.getByRole('option', { name: 'OPS' }).click()
+  await expect(page).toHaveURL(/directorate=OPS/)
+  await expect.poll(() => log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('directorate=OPS'))).toBe(true)
+  await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', /directorate=OPS/)
+  // Group / Area takes Department's place.
+  await page.getByLabel('Group / Area', { exact: true }).click()
+  await page.getByRole('option', { name: 'Building Management' }).click()
+  await expect(page).toHaveURL(/org_group=Building(\+|%20)Management/)
+  await expect.poll(() => log.workflow.some((path) => path.startsWith('/api/ra/monitoring/register') && path.includes('org_group=Building'))).toBe(true)
+
+  // RA(s): every RA of the building, the current one marked.
+  await table.getByRole('button', { name: 'RA history of Griya CIMB Niaga 2' }).click()
+  const dialog = page.getByRole('dialog', { name: 'RAs of Griya CIMB Niaga 2' })
+  await expect(dialog.getByText('Current')).toBeVisible()
+  await expect(dialog.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/location-ras.xlsx?kind=head_office&location_id=1')
+
+  // The Approval tab reads as SCCA's.
+  await page.keyboard.press('Escape')
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
+  const approval = page.getByRole('table').filter({ visible: true })
+  for (const header of ['RA ref. no.', 'Current step', 'Signer', 'Escalated on', 'In approval']) {
+    await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
+})
+
+test('New assessment offers only the buildings the access scope opens for an Annual review', async ({ page }) => {
+  await mockRa(page, { scopeIds: [2] })
+  await griyaHasAFinalRa(page)
+  await page.goto('/ra/manage/new')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  await expect(page.getByText('Only buildings with a final RA to renew. Only the buildings your access scope opens.')).toBeVisible()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  // Griya has a final RA but is outside the scope.
+  await expect(page.getByRole('option', { name: /Griya CIMB Niaga 2/ })).toHaveCount(0)
 })
 
 test('Monitoring filters by the assessment date period', async ({ page }) => {
@@ -177,6 +259,36 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
 
+test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/approval?tab=board&q=own')
+  const board = page.getByRole('table').filter({ visible: true })
+  await expect(board.getByText('Your own RA: reminders only')).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: /^Act on/ }).click()
+  await expect(page.getByRole('menuitem', { name: 'Send a reminder now' })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
+})
+
+test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1')
+  const tabs = page.getByRole('tablist')
+  // One hazard is not finished (H09); two steps still need a signer (the LIC and LICOM sign theirs).
+  await expect(tabs.getByRole('tab', { name: 'Hazards 1' })).toBeVisible({ timeout: 60_000 })
+  await expect(tabs.getByRole('tab', { name: 'Sign-off 2' })).toBeVisible()
+  await expect(tabs.getByRole('tab', { name: 'Details', exact: true })).toBeVisible()
+  await expect(tabs.getByRole('tab', { name: 'Risk Summary', exact: true })).toBeVisible()
+})
+
+test('Monitoring shows no counts on the tabs', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/monitoring/1')
+  const tabs = page.getByRole('tablist')
+  await expect(tabs.getByRole('tab', { name: 'Hazards', exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(tabs.getByRole('tab', { name: 'Sign-off', exact: true })).toBeVisible()
+})
+
 test('an approval record opens on the Sign-off tab', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
   await page.goto('/ra/approval/1')
@@ -241,8 +353,14 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   const building = page.getByRole('button', { name: /^Building\*?$/ })
   await expect(building).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Assessment date' })).toBeDisabled()
+  // As SCCA's: the person creating it is the assessor.
+  await expect(page.getByLabel('Assessor', { exact: true })).toHaveValue('Test User')
   await expect(page.getByRole('link', { name: 'Add building' })).toHaveAttribute('aria-disabled', 'true')
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toBeDisabled()
+  // The LIC is always the assessor: the signed-in user, looked up, not picked.
+  const lic = page.getByLabel('LIC: Location incident coordinator (LIC)')
+  await expect(lic).toBeDisabled()
+  await expect(lic).toHaveValue('Test User')
+  await expect(page.getByText(/Signs as/)).toHaveCount(0)
   await page.getByRole('button', { name: 'Create assessment' }).click()
   await expect(page.getByText('Choose the reason for this assessment.')).toBeVisible()
   await page.getByLabel('Reason for assessment').click()
@@ -260,8 +378,8 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(note).toContainText('This building already has an RA draft')
   await expect(note).toContainText('Copied the assessment details from its last RA (RA-2025-0001, 10 Mar 2025). Approvals start over. Check with its LIC before starting another one.')
   await expect(page.getByRole('checkbox')).toHaveCount(0)
-  // The location incident team of the previous cycle fills the team: users from the directory.
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran')
+  // The LICOM of the previous cycle comes along; the LIC stays the person making the RA.
+  await expect(lic).toHaveValue('Test User')
   await expect(page.getByLabel('LICOM: Location incident commander (LICOM) / alternate')).toContainText('Budi Hartono')
   // No RA period field: the period is the year of the assessment date.
   await expect(page.getByLabel('RA period')).toHaveCount(0)
@@ -269,7 +387,9 @@ test('creating an assessment can start from the previous cycle', async ({ page }
   await expect(page.getByText(`RA period ${year}, the year of this date.`)).toBeVisible()
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/assessments') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ location_id: 1, reason: 'annual_review', period_year: year, copy_from_id: 1, lic_user_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  const sent = (await request).postDataJSON()
+  expect(sent).toMatchObject({ location_id: 1, reason: 'annual_review', period_year: year, copy_from_id: 1, licom_user_id: 3, lic_phone: '081312262739' })
+  expect(sent).not.toHaveProperty('lic_user_id')
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -418,13 +538,72 @@ test('buildings have no Delete button: a building is made inactive instead', asy
   expect(log.deletedLocations).toEqual([])
 })
 
-test('deleting an assessment returns to the list', async ({ page }) => {
+test('as SCCA, Save is in the top bar for the open tab, beside View report; no Delete', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
   await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Delete assessment' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete assessment' }).click()
-  await expect(page).toHaveURL(/\/ra\/manage$/)
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', '/ra/manage/1/report')
+  // One Save per tab, in the top bar: enabled once something changed.
+  const save = page.getByRole('button', { name: 'Save assessment' })
+  await expect(save).toBeDisabled()
+  await page.getByRole('textbox', { name: 'LIC mobile number' }).fill('0812-0000-1111')
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  const sent = page.waitForRequest((request) => request.method() === 'PUT' && /\/api\/ra\/assessments\/1$/.test(request.url()))
+  await save.click()
+  expect((await sent).postDataJSON()).toMatchObject({ lic_phone: '0812-0000-1111' })
+  await expect(page.getByText('Assessment saved').first()).toBeVisible()
+  await page.getByRole('tab', { name: 'Hazards' }).click()
+  await expect(page.getByRole('button', { name: 'Save ratings', exact: true })).toBeDisabled()
+  await page.getByRole('tab', { name: 'Risk Summary' }).click()
+  await expect(page.getByRole('button', { name: /^Save/ })).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Sign-off' }).click()
+  await expect(page.getByRole('button', { name: 'Save signers' })).toBeDisabled()
+})
+
+test('changed signers are saved before the RA can be submitted', async ({ page }) => {
+  const log = await mockRa(page, { ready: true })
+  await page.goto('/ra/manage/1?tab=signoff')
+  const submit = page.getByRole('button', { name: 'Submit for approval' })
+  await expect(submit).toBeEnabled({ timeout: 60_000 })
+  const step = page.getByRole('listitem').filter({ hasText: 'Step 2 of 4' })
+  await step.getByRole('combobox').or(step.getByRole('button').first()).first().click()
+  await page.getByRole('option', { name: /Budi Hartono/ }).click()
+  await expect(submit).toBeDisabled()
+  await expect(page.getByTestId('ra-save-signers-first')).toHaveText('Save the signers before you submit.')
+  await page.getByRole('button', { name: 'Save signers' }).click()
+  await expect(page.getByText('Signers saved').first()).toBeVisible()
+  await expect(page.getByTestId('ra-save-signers-first')).toHaveCount(0)
+  await expect(submit).toBeEnabled()
+  await submit.click()
+  await expect(page.getByText('Submitted for sign-off').first()).toBeVisible()
+  expect(log.signoff.map((row) => row[0])).toEqual(['signers', 'submit'])
+})
+
+test('View report shows the RA like SCCA\'s report, and prints it', async ({ page }) => {
+  await mockRa(page)
+  await page.addInitScript(() => {
+    const counter = window as unknown as { printed?: number }
+    window.print = () => {
+      counter.printed = (counter.printed ?? 0) + 1
+    }
+  })
+  await page.goto('/ra/monitoring/1')
+  await page.getByRole('link', { name: 'View report' }).click({ timeout: 60_000 })
+  await expect(page).toHaveURL(/\/ra\/monitoring\/1\/report$/)
+  for (const name of ['Details', 'Hazards', 'Risk Summary', 'Sign-off']) {
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  }
+  await expect(page.getByTestId('ra-report-hazards')).toContainText('Banjir/ Banjir Bandang')
+  await expect(page.getByTestId('ra-report-signoff')).toContainText('Prepared by')
+  await expect(page.getByTestId('ra-report-signoff')).toContainText('Legiran')
+  // A draft has no downloads yet; Print is the page's main action.
+  await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Print' }).click()
+  expect(await page.evaluate(() => (window as unknown as { printed?: number }).printed)).toBe(1)
+  // The crumbs lead back to the RA.
+  await page.getByRole('link', { name: 'RA-2025-0001' }).click()
+  await expect(page).toHaveURL(/\/ra\/monitoring\/1$/)
 })
 
 test('the occupants tab lists the divisions with their totals and both views', async ({ page }) => {
@@ -460,7 +639,7 @@ test('adding a division takes its MTD and critical rating from the division list
   await expect(dialog.getByRole('textbox', { name: 'Critical rating' })).toHaveValue('Necessary')
   // Radio buttons became dropdowns.
   await expect(dialog.getByRole('radio')).toHaveCount(0)
-  await dialog.getByRole('combobox', { name: 'Has a BCP' }).click()
+  await dialog.getByLabel('Has a BCP', { exact: true }).click()
   await page.getByRole('option', { name: 'Yes' }).click()
   await dialog.getByRole('spinbutton', { name: 'Employees', exact: true }).fill('12')
   await dialog.getByRole('spinbutton', { name: 'Pregnant employees' }).fill('20')
@@ -486,10 +665,10 @@ test('a division that is not listed yet is added with its MTD and rating', async
   await page.getByRole('option', { name: /Treasury Operations/ }).click()
   await dialog.getByRole('button', { name: 'Add division' }).click()
   await expect(dialog.getByText('Choose its critical rating.')).toBeVisible()
-  await dialog.getByRole('combobox', { name: 'Critical rating' }).click()
+  await dialog.getByLabel('Critical rating', { exact: true }).click()
   await page.getByRole('option', { name: 'Important', exact: true }).click()
   // The MTD band of the rating is suggested.
-  await expect(dialog.getByRole('combobox', { name: 'MTD' })).toContainText('12-24 hours')
+  await expect(dialog.getByLabel('MTD', { exact: true })).toContainText('12-24 hours')
   await dialog.getByRole('button', { name: 'Add division' }).click()
   await expect(page.getByText('Division added').first()).toBeVisible()
   expect(log.created.at(-1)).toEqual({ division: { name: 'Treasury Operations', mtd: '12-24 hours', critical_rating: 'Important' } })
@@ -540,6 +719,17 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
   await fillAddress(page)
+  // Its organization, as SCCA's application owner: picked from the user master's values.
+  await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible()
+  await page.getByLabel('Directorate', { exact: true }).click()
+  await page.getByRole('option', { name: 'OPS' }).click()
+  await page.getByLabel('Group', { exact: true }).click()
+  await page.getByRole('option', { name: 'Building Management' }).click()
+  await page.getByLabel('Organization level', { exact: true }).click()
+  await page.getByRole('option', { name: 'D-2' }).click()
+  // Division and Department are no longer asked.
+  await expect(page.getByLabel('Department', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Division', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
 
@@ -559,7 +749,8 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Save contacts' }).click()
   await expect(page.getByText('Contacts saved').first()).toBeVisible()
   expect(log.lists.contacts?.[0]).toEqual({ contacts: [expect.objectContaining({ kind: 'police', name: 'Polsek Setiabudi', phone: '(021) 520 0110', address: 'Jl. Setiabudi Raya' })] })
-  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920' })
+  expect(log.created[0]).toMatchObject({ kind: 'head_office', province: 'DKI Jakarta', city: 'Jakarta Selatan', district: 'Setiabudi', zip_code: '12920', directorate: 'OPS', org_group: 'Building Management', org_level: 'D-2' })
+  expect(log.created[0]).not.toHaveProperty('department')
 })
 
 test('the location page lists its assessments and edits its details', async ({ page }) => {
@@ -570,7 +761,7 @@ test('the location page lists its assessments and edits its details', async ({ p
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new?location_id=1')
   const request = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
   await page.getByRole('textbox', { name: /^Address/ }).fill('Jl. Wahid Hasyim, Bintaro')
-  await expect(page.getByRole('combobox', { name: 'Type of building' })).toBeDisabled()
+  await expect(page.getByLabel('Type of building', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Save building' }).click()
   expect((await request).postDataJSON()).toMatchObject({ address: 'Jl. Wahid Hasyim, Bintaro', is_active: true })
 })
@@ -614,14 +805,15 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   const type = page.getByRole('button', { name: 'Type of Hazard' })
   await expect(type).toContainText('3 - Gempa Bumi', { timeout: 60_000 })
-  const group = page.getByRole('combobox', { name: 'Hazard group name' })
+  const group = page.getByLabel('Hazard group name', { exact: true })
   await expect(group).toContainText('Natural disasters')
   // The free text boxes take up to 3,000 characters, with a counter.
   for (const name of [/^Existing mitigation measures/, /^Action plan/]) {
     await expect(page.getByRole('textbox', { name })).toHaveAttribute('maxlength', '3000')
   }
   await expect(page.getByText(/^\d+\/3,?000$/).first()).toBeVisible()
-  await expect(page.getByRole('textbox', { name: /^CIM ref\. no\./ })).toHaveAttribute('maxlength', '64')
+  // No CIM ref. no. on a hazard.
+  await expect(page.getByRole('textbox', { name: /^CIM ref\. no\./ })).toHaveCount(0)
 
   await group.click()
   await page.getByRole('option', { name: 'Security threats' }).click()
@@ -629,16 +821,27 @@ test('on the hazard page, the group and type of hazard are picked from dropdowns
   await type.click()
   await page.getByRole('option', { name: '21 - Terorisme' }).click()
   await expect(page).toHaveURL(/hazard=H21/)
-  // Next hazard crosses into the next group.
-  await page.getByRole('button', { name: 'Next hazard' }).click()
+  // Next hazard crosses into the next group, and opens it at the top of the page.
+  const next = page.getByRole('button', { name: 'Next hazard' })
+  await next.scrollIntoViewIfNeeded()
+  await expect(type).not.toBeInViewport()
+  await next.click()
   await expect(type).toContainText('22 - Gangguan pasokan listrik')
   await expect(group).toContainText('Infrastructure')
+  await expect(type).toBeInViewport()
+  // So does Previous hazard.
+  const previous = page.getByRole('button', { name: 'Previous hazard' })
+  await previous.scrollIntoViewIfNeeded()
+  await previous.click()
+  await expect(type).toContainText('21 - Terorisme')
+  await expect(type).toBeInViewport()
 })
 
 test('the location incident team is required', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toContainText('Legiran', { timeout: 60_000 })
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toHaveValue('Legiran', { timeout: 60_000 })
+  await expect(page.getByText(/Signs as/)).toHaveCount(0)
   const phone = page.getByRole('textbox', { name: 'LIC mobile number' })
   await expect(phone).toHaveValue('081312262739')
   let saved = false
@@ -656,6 +859,14 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
   await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  // As SCCA's: who made the RA, read-only, under the assessment date.
+  const assessor = page.getByLabel('Assessor', { exact: true })
+  await expect(assessor).toHaveValue('Test User')
+  await expect(assessor).toBeDisabled()
+  const dateBox = (await date.boundingBox())!
+  const assessorBox = (await assessor.boundingBox())!
+  expect(assessorBox.y).toBeGreaterThan(dateBox.y + dateBox.height)
+  expect(Math.abs(assessorBox.x - dateBox.x)).toBeLessThan(2)
   await date.click()
   await page.getByRole('gridcell', { name: /17/ }).first().click()
   await expect(date).toContainText('17 Mar 2025')
@@ -691,14 +902,18 @@ test('picking the LICOM from the users makes them the Reviewed by signer', async
   await expect(reviewed.getByRole('textbox', { name: 'Designation' })).toHaveValue('Head of BCM')
 })
 
-test('a new assessment without an earlier cycle asks for the team', async ({ page }) => {
+test('a new assessment without an earlier cycle asks for the LICOM; the LIC is the assessor', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByTestId('building-note')).toContainText('No RA yet for this building')
+  await expect(page.getByTestId('building-note')).toContainText('Pick the LICOM below.')
+  // The LIC is the person making it, with the mobile number from their profile.
+  await expect(page.getByLabel('LIC: Location incident coordinator (LIC)')).toHaveValue('Test User')
+  await expect(page.getByRole('textbox', { name: 'LIC mobile number' })).toHaveValue('081312262739')
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  await expect(page.getByText('Choose the LIC.')).toBeVisible()
+  await expect(page.getByText('Choose the LICOM.')).toBeVisible()
   await expect(page.getByText('Enter the LICOM mobile number.')).toBeVisible()
+  await expect(page.getByText('Choose the LIC.')).toHaveCount(0)
   // As SCCA's banner: each field's message under the summary.
   expect(log.created).toHaveLength(0)
 })
@@ -911,6 +1126,11 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   const map = page.getByRole('region', { name: /Map of Griya CIMB Niaga 2/ })
   await expect(map).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('No pin yet.')).toBeVisible()
+  // Coordinates are required: a location without a pin is not on the Building map (said on
+  // the page and on the Map tab).
+  await expect(page.getByText('Map coordinates required')).toHaveCount(2)
+  const tabNote = page.getByText('Place a pin and save it for this location to appear on the Building map.')
+  await expect(tabNote).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save pin' })).toBeDisabled()
   await expect(page.getByRole('link', { name: 'Find the address in Google Maps' })).toHaveAttribute('href', /google\.com\/maps\/search/)
 
@@ -926,6 +1146,7 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   await page.getByRole('button', { name: 'Save pin' }).click()
   expect((await request).postDataJSON()).toEqual({ latitude: -6.271633, longitude: 106.719358 })
   await expect(page.getByText('Map pin saved').first()).toBeVisible()
+  await expect(tabNote).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Open the pin in Google Maps' })).toHaveAttribute('href', /query=-6\.271633%2C106\.719358/)
 
   // Clicking the map moves the pin; the coordinates follow.
@@ -933,11 +1154,11 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
   await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25)
   await expect(coordinates).not.toHaveValue('-6.271633, 106.719358')
   await expect(page.getByText('Unsaved changes')).toBeVisible()
-
-  const cleared = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/locations/1'))
-  await page.getByRole('button', { name: 'Remove pin' }).click()
+  // A pin can be moved but not removed.
+  await expect(page.getByRole('button', { name: 'Remove pin' })).toHaveCount(0)
+  const moved = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/locations/1'))
   await page.getByRole('button', { name: 'Save pin' }).click()
-  expect((await cleared).postDataJSON()).toEqual({ latitude: null, longitude: null })
+  expect((await moved).postDataJSON()).not.toEqual({ latitude: -6.271633, longitude: 106.719358 })
   expect(log.lists).toEqual({})
 })
 
@@ -954,8 +1175,12 @@ test('the location register links to the location map instead of its own map', a
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 
-test('downloads are offered only once the RA is approved', async ({ page }) => {
+test('downloads are offered only once the RA is approved, on its report', async ({ page }) => {
   await mockRa(page, { status: 'in_signoff' })
+  await page.goto('/ra/monitoring/1/report')
+  await expect(page.getByRole('button', { name: 'Print' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
+  // As SCCA's: the record itself has no downloads.
   await page.goto('/ra/monitoring/1')
   await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
@@ -973,7 +1198,7 @@ test('an approved assessment downloads as PDF or as the filled workbook', async 
       headers: { 'Content-Disposition': `attachment; filename=RA_RA-2025-0001_Griya-CIMB-Niaga-2.${format}` },
     })
   })
-  await page.goto('/ra/monitoring/1')
+  await page.goto('/ra/monitoring/1/report')
   await page.getByRole('button', { name: 'Download' }).click({ timeout: 60_000 })
   const pdf = page.waitForEvent('download')
   await page.getByRole('menuitem', { name: /PDF report/ }).click()
@@ -989,7 +1214,7 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table')
-  await expect(table.getByRole('columnheader', { name: 'Last final RA' })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Last final RA', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('columnheader', { name: 'Open RA' })).toBeVisible()
   const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim())
   expect(headers.at(-1)).toBe('RA(s)')
@@ -1004,47 +1229,16 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   const row = table.getByRole('row', { name: /Griya CIMB Niaga 2/ })
   await expect(row.getByRole('link', { name: /: Draft$/ })).toHaveAttribute('href', '/ra/monitoring/99')
   await expect(row).not.toContainText('Returned')
-  // The building's ID in grey under its name.
+  // The building's ID in its own column, as SCCA's Application code.
   await expect(row.getByText('RA-HQ-0001', { exact: true })).toBeVisible()
   // A building without an RA: plain name, not final yet.
   await expect(table.getByRole('row', { name: /Graha CIMB Niaga/ })).toContainText('Not final yet')
-  // RAs: the count opens the building's RAs, newest first.
+  // RA(s): the count opens every RA of the building, newest first, as SCCA's SCCA(s).
   await row.getByRole('button', { name: 'RA history of Griya CIMB Niaga 2' }).click()
-  const history = page.getByRole('dialog')
-  await expect(history.getByRole('link')).toHaveCount(2)
-  await expect(history.getByRole('link').first()).toHaveAttribute('href', '/ra/monitoring/99')
-  await expect(history.getByRole('link').first()).toContainText('Draft')
-  // "Show in the table": every RA of the building, under its row.
-  const assessments = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.url().includes('location_id=1'))
-  await history.getByRole('button', { name: 'Show in the table' }).click()
-  await assessments
-  await page.keyboard.press('Escape')
-  const details = page.getByRole('region', { name: 'RAs of Griya CIMB Niaga 2' })
-  await expect(details.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible()
-  await expect(details.getByText('New building')).toBeVisible()
-  await details.getByRole('button', { name: 'Hide' }).click()
-  await expect(details).toHaveCount(0)
-})
-
-test('Home shows RA and RA Branch at a glance, like SCCA', async ({ page }) => {
-  await mockRa(page)
-  await page.goto('/')
-  const ra = page.getByRole('region', { name: 'RA HO at a glance' })
-  await expect(ra).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('region', { name: 'RA Branch at a glance' })).toBeVisible()
-  await expect(ra.getByRole('link', { name: /Overdue renewals\s*1/ })).toHaveAttribute('href', '/ra/monitoring?tab=renewals')
-  // BCM opens stuck sign-offs on the BCM board.
-  await expect(ra.getByRole('link', { name: /Stuck sign-offs/ })).toHaveAttribute('href', '/ra/approval?tab=board')
-  await expect(page.getByRole('link', { name: /1 RA is waiting for your sign-off/ })).toHaveAttribute('href', '/ra/approval')
-})
-
-test('Home shows only the side the user holds', async ({ page }) => {
-  await mockRa(page, { permissions: ['ra.access', 'ra.edit'] })
-  await page.goto('/')
-  await expect(page.getByRole('region', { name: 'RA HO at a glance' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('region', { name: 'RA Branch at a glance' })).toHaveCount(0)
-  // Without ra.manage, stuck sign-offs open Monitoring > Bottlenecks.
-  await expect(page.getByRole('link', { name: /Stuck sign-offs/ })).toHaveAttribute('href', '/ra/monitoring?tab=bottlenecks')
+  const history = page.getByRole('dialog', { name: 'RAs of Griya CIMB Niaga 2' })
+  await expect(history.getByRole('link', { name: 'RA-2026-0002' })).toHaveAttribute('href', '/ra/monitoring/99')
+  await expect(history.getByRole('link', { name: 'RA-2025-0001' })).toHaveAttribute('href', '/ra/monitoring/1')
+  await expect(history.getByText('Current', { exact: true })).toBeVisible()
 })
 
 test('a structural change picks its renewal date, like SCCA\'s System change', async ({ page }) => {
@@ -1098,8 +1292,6 @@ test('an assessment date whose period already has an RA says so on the date', as
     : route.fallback()))
   await page.goto('/ra/manage/new?location_id=2')
   await expect(page.getByLabel('Reason for assessment')).toContainText('New building', { timeout: 60_000 })
-  await page.getByLabel('LIC: Location incident coordinator (LIC)').click()
-  await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByLabel('LICOM: Location incident commander (LICOM) / alternate').click()
   await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()

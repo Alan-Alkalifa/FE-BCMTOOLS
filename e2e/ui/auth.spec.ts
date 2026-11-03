@@ -150,8 +150,10 @@ test('the sidebar shows only the menus the role allows', async ({ page }) => {
   await signIn(page, { roles: [{ code: 'viewer', name: 'Viewer' }], permissions: ['scca.access'] })
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link', { name: 'Manage' })).toBeVisible({ timeout: 30_000 })
+  await expect(nav.getByRole('link', { name: 'Manage', exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(nav.getByRole('link', { name: 'Approval' })).toBeVisible()
+  // Task Management spans every module, so SCCA access opens it.
+  await expect(nav.getByRole('link', { name: 'Task Management' })).toBeVisible()
   // Monitoring is open to every SCCA user (their own SCCAs); Administration is not.
   await expect(nav.getByRole('link', { name: 'Monitoring' })).toBeVisible()
   await expect(nav.getByText('Administration')).toHaveCount(0)
