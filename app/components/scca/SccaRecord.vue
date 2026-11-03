@@ -481,17 +481,13 @@ function onSaved(saved: SccaAssessment) {
               :readonly="readonlyComments"
               @saved="onSaved"
             />
-            <fieldset
-              :disabled="locked"
-              class="min-w-0"
-            >
-              <SccaRatingForm
-                :key="`rating-${formKey}`"
-                :assessment="assessment"
-                :formula="formula"
-                @saved="onSaved"
-              />
-            </fieldset>
+            <SccaRatingForm
+              :key="`rating-${formKey}`"
+              :assessment="assessment"
+              :formula="formula"
+              :locked="locked"
+              @saved="onSaved"
+            />
           </div>
         </template>
         <template #interdependencies>

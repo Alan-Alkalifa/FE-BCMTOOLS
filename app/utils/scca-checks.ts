@@ -22,8 +22,10 @@ const HEADER_FIELDS: [keyof SccaAssessment, string][] = [
   ['assessment_reason', 'Reason for assessment'],
   ['assessment_date', 'Assessment date'],
   ['application_owner', 'Application owner'],
-  ['it_support', 'IT support'],
+  ['contributor_id', 'Contributor (IT support)'],
   ['business_stakeholders', 'Business stakeholder'],
+  ['country', 'Country'],
+  ['vendor_name', 'Vendor'],
   ['deployment_model', 'Deployment model'],
   ['customer_facing', 'Customer facing'],
   ['business_days', 'Business days'],
@@ -56,6 +58,8 @@ export function sccaMissing(assessment: SccaAssessment, config?: SccaConfig | nu
 
   const unrated = assessment.missing_answers.length
   if (unrated) missing.rating.push(`${unrated} question${unrated === 1 ? '' : 's'} not rated`)
+  const unjustified = assessment.answers.filter((row) => row.rating != null && empty(row.justification)).map((row) => row.code)
+  if (unjustified.length) missing.rating.push(`Justification missing: ${unjustified.join(', ')}`)
 
   for (const direction of ['upstream', 'downstream'] as const) {
     assessment.interdependencies

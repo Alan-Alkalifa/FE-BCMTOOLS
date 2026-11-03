@@ -4,6 +4,9 @@ import type { SccaAssessment, SccaFormula } from '~/composables/useScca'
 const props = defineProps<{
   assessment: SccaAssessment
   formula: SccaFormula
+  /** Read-only (Approval, Monitoring, or a draft the user can't edit): the ratings and
+   * justifications are locked, but C / I / A / PO-LOS still switch. */
+  locked?: boolean
 }>()
 const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
 
@@ -61,6 +64,32 @@ const activeOption = computed(() => {
   return question.options.find((option) => option.rating === rating) ?? null
 })
 
+/** Every question shows the five levels; a level its configuration does not allow is shown
+ * disabled, so a missing button never reads as a missing level. */
+const LEVELS = [
+  { rating: 5, name: 'Critical' },
+  { rating: 4, name: 'High' },
+  { rating: 3, name: 'Medium' },
+  { rating: 2, name: 'Low' },
+  { rating: 1, name: 'Insignificant' },
+] as const
+
+function levelsOf(question: { code: string, options: { rating: number, label: string }[] }) {
+  return LEVELS.map((level) => {
+    const option = question.options.find((item) => item.rating === level.rating)
+    return {
+      rating: level.rating,
+      label: option ? ratingName(option.label) : level.name,
+      allowed: Boolean(option),
+      tooltip: option ? undefined : `Not a choice for ${question.code} in ${props.assessment.formula_version}`,
+    }
+  })
+}
+
+const justifiedCount = computed(() =>
+  Object.values(state.answers).filter((answer) => answer.justification.trim() !== '').length,
+)
+
 function ratingName(label: string) {
   return label.replace(/^\d+\./, '')
 }
@@ -97,7 +126,7 @@ const noteWarnings = computed(() => {
 
 function choose(code: string, rating: number) {
   const answer = state.answers[code]
-  if (!answer) return
+  if (!answer || props.locked) return
   answer.rating = rating
   activeCode.value = code
 }
@@ -201,10 +230,14 @@ async function onSubmit() {
         />
 
         <p class="text-sm text-muted">
-          {{ formatNumber(ratedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} rated.
+          {{ formatNumber(ratedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} rated ·
+          {{ formatNumber(justifiedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} justified.
         </p>
 
-        <div class="space-y-8">
+        <fieldset
+          :disabled="locked"
+          class="min-w-0 space-y-8"
+        >
           <h2 class="text-lg font-semibold">
             {{ dimensionLabel }}
           </h2>
@@ -228,16 +261,23 @@ async function onSubmit() {
               :label="`Rating for ${question.code}`"
             >
               <div class="flex flex-wrap gap-2">
-                <UButton
-                  v-for="option in question.options"
-                  :key="option.rating"
-                  type="button"
-                  :label="ratingName(option.label)"
-                  :color="state.answers[question.code]!.rating === option.rating ? 'primary' : 'neutral'"
-                  :variant="state.answers[question.code]!.rating === option.rating ? 'solid' : 'outline'"
-                  :aria-pressed="state.answers[question.code]!.rating === option.rating"
-                  @click="choose(question.code, option.rating)"
-                />
+                <UTooltip
+                  v-for="level in levelsOf(question)"
+                  :key="level.rating"
+                  :text="level.tooltip"
+                  :disabled="level.allowed"
+                >
+                  <UButton
+                    type="button"
+                    :label="level.label"
+                    :disabled="!level.allowed"
+                    :color="state.answers[question.code]!.rating === level.rating ? 'primary' : 'neutral'"
+                    :variant="state.answers[question.code]!.rating === level.rating ? 'solid' : 'outline'"
+                    :aria-pressed="state.answers[question.code]!.rating === level.rating"
+                    :class="level.allowed ? '' : 'line-through decoration-1'"
+                    @click="choose(question.code, level.rating)"
+                  />
+                </UTooltip>
               </div>
               <p
                 v-for="message in noteWarnings[question.code] ?? []"
@@ -254,6 +294,8 @@ async function onSubmit() {
             <UFormField
               :name="`justification.${question.code}`"
               label="Justification"
+              required
+              :error="!locked && state.answers[question.code]!.rating != null && !state.answers[question.code]!.justification.trim() ? 'Explain why this rating (needed to submit).' : undefined"
             >
               <template #hint>
                 <FieldCount
@@ -269,7 +311,7 @@ async function onSubmit() {
               />
             </UFormField>
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <div class="space-y-6 lg:sticky lg:top-6">

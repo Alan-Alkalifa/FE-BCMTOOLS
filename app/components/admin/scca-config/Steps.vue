@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SccaConfigVersion, SccaSignerStep } from '~/composables/useSccaConfigAdmin'
+import type { SccaConfigVersion, SccaSignerStep, SccaStepComments } from '~/composables/useSccaConfigAdmin'
 
 /**
  * The sign-off steps in approval order: required or optional (the last is always required),
@@ -72,6 +72,35 @@ function savedMode(code: string) {
 
 function signerOf(code: string) {
   return signers.data.value?.items.find((row) => row.code === code)
+}
+
+// Comments on every tab: live by step code, so it reaches every SCCA in approval at once.
+const commentSteps = useAsyncData('scca-step-comments', () => (canPick.value ? sccaConfigApi.stepComments() : Promise.resolve({ items: [] as SccaStepComments[] })))
+const togglingComments = ref<string | null>(null)
+
+function commentsOf(code: string) {
+  return commentSteps.data.value?.items.find((row) => row.code === code)
+}
+
+async function setComments(code: string, value: boolean) {
+  togglingComments.value = code
+  try {
+    const saved = await sccaConfigApi.setStepComments(code, value)
+    if (commentSteps.data.value) {
+      commentSteps.data.value.items = commentSteps.data.value.items.map((row) => (row.code === code ? saved : row))
+    }
+    toast.add({
+      title: `${saved.title}: ${value ? 'comments on every tab' : 'comments on Result and sign-off only'}`,
+      description: 'Applies now to every SCCA in approval.',
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    })
+  } catch (failure) {
+    toast.add({ title: configErrorText(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+    await commentSteps.refresh()
+  } finally {
+    togglingComments.value = null
+  }
 }
 
 async function pickSigner(code: string, userId: number | null | undefined) {
@@ -250,11 +279,6 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                   :disabled="index === draft.length - 1"
                   :description="index === draft.length - 1 ? 'The last step is always required.' : undefined"
                 />
-                <UCheckbox
-                  v-model="step.comments_all_tabs"
-                  label="Comments on every tab"
-                  description="At this step its signer comments on Application, Rating, Interdependencies and Recovery too."
-                />
                 <span class="grow" />
                 <UButton
                   v-if="version.can.edit"
@@ -268,6 +292,18 @@ async function pickSigner(code: string, userId: number | null | undefined) {
               </div>
             </div>
           </fieldset>
+          <div
+            v-if="step.code && commentsOf(step.code)"
+            class="mt-4 border-t border-default pt-4 lg:ms-12"
+          >
+            <USwitch
+              :model-value="commentsOf(step.code)!.comments_all_tabs"
+              :disabled="!canPick || togglingComments === step.code"
+              label="Comments on every tab"
+              description="The signer at this step also comments on Application, Rating, Interdependencies and Recovery. Saved at once and applies to every SCCA in approval, on any version."
+              @update:model-value="(value) => setComments(step.code, Boolean(value))"
+            />
+          </div>
           <div
             v-if="step.signer_mode !== 'chosen' && step.code"
             class="mt-4 border-t border-default pt-4 lg:ms-12"

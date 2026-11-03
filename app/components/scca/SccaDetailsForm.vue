@@ -40,6 +40,8 @@ function looksUp(reason: string | null | undefined) {
 }
 
 const assessorName = computed(() => props.assessment?.assessor || user.value?.name || '')
+/** How the owner prints: "<Sub Directorate> - <name>" of the assessor, as saved. */
+const ownerLabel = computed(() => props.assessment?.application_owner || assessorName.value)
 /** Only the assessor (or a BCM admin) picks the contributor; a new assessment's creator is the assessor. */
 const canSetContributor = computed(() => !props.assessment || props.assessment.permissions.can_set_contributor)
 
@@ -52,11 +54,12 @@ const schema = z.object({
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   due_date: z.string().nullable().optional(),
   contributor_id: z.number().nullable().optional(),
-  application_owner: z.string().min(1, 'Select the application owner.'),
-  it_support: z.string().min(1, 'Select IT support.'),
+  // Both follow the people (the server fills them): owner = assessor, IT support = contributor.
+  application_owner: z.string().optional(),
+  it_support: z.string().optional(),
   business_stakeholders: z.string().min(1, 'Select the business stakeholder.'),
-  country: z.string().optional(),
-  vendor_name: z.string().optional(),
+  country: z.string().trim().min(1, 'Enter the country.'),
+  vendor_name: z.string().trim().min(1, 'Enter the vendor ("In-house" when built internally).'),
   deployment_model: z.string('Select a deployment model.').min(1, 'Select a deployment model.'),
   customer_facing: z.enum(['yes', 'no'], 'Select whether the application is customer facing.'),
   business_days: z.string('Select the business days.').min(1, 'Select the business days.'),
@@ -566,44 +569,32 @@ async function onSubmit() {
             />
           </UFormField>
           <UFormField
-            label="Assessor"
+            label="Assessor (application owner)"
             name="assessor"
-            help="Filled with the person who creates the assessment."
+            help="The person who creates the assessment is the application owner. Printed as “Sub Directorate - name” from the HR profile."
           >
             <UInput
-              :model-value="assessorName"
+              :model-value="ownerLabel"
               disabled
               class="w-full"
+              aria-label="Assessor (application owner)"
             />
           </UFormField>
           <UFormField
-            label="Contributor"
+            label="Contributor (IT support)"
             name="contributor_id"
+            required
             :help="canSetContributor
-              ? 'One colleague who can open and edit this SCCA with you.'
-              : 'Set by the assessor.'"
+              ? `The application's IT support, who edits this SCCA with you. Needed to submit.${assessment?.it_support ? ` Printed as IT support: ${assessment.it_support}.` : ''}`
+              : `Set by the assessor.${assessment?.it_support ? ` Printed as IT support: ${assessment.it_support}.` : ''}`"
           >
             <UserPicker
               v-model="state.contributor_id"
               :selected="assessment?.contributor ?? null"
               :disabled="!canSetContributor || noReason"
-              aria-label="Contributor"
+              aria-label="Contributor (IT support)"
               permission="scca.access"
             />
-          </UFormField>
-          <UFormField
-            label="Application owner"
-            name="application_owner"
-            required
-          >
-            <SccaUserSelect v-model="state.application_owner" />
-          </UFormField>
-          <UFormField
-            label="IT support"
-            name="it_support"
-            required
-          >
-            <SccaUserSelect v-model="state.it_support" />
           </UFormField>
           <UFormField
             label="Business stakeholder"
@@ -615,6 +606,7 @@ async function onSubmit() {
           <UFormField
             label="Country"
             name="country"
+            required
           >
             <template #hint>
               <FieldCount
@@ -631,6 +623,8 @@ async function onSubmit() {
           <UFormField
             label="Vendor"
             name="vendor_name"
+            required
+            help="“In-house” when the bank builds it."
           >
             <template #hint>
               <FieldCount

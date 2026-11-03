@@ -16,6 +16,17 @@ const PROFILE = {
   mobile_phone: null,
   business_phones: ['+62 21 000'],
   preferred_language: 'en-US',
+  directorate: null,
+  sub_directorate: null,
+  org_group: null,
+  division: null,
+  org_level: null,
+  city: null,
+  province: null,
+  supervisor_nip: null,
+  supervisor_name: null,
+  supervisor_email: null,
+  supervisor: null,
   auth_provider: 'local',
   roles: [{ code: 'administrator', name: 'Administrator' }],
   permissions: USER.permissions,
@@ -63,7 +74,7 @@ test('profile page shows the account', async ({ page }) => {
   await expect(page.getByText('+62 21 000')).toBeVisible()
   await expect(page.getByText('BCM Tools password')).toBeVisible()
   await expect(page.getByRole('main').getByText('Administrator', { exact: true })).toBeVisible()
-  await expect(page.getByText('Job title', { exact: true })).toHaveCount(1)
+  await expect(page.getByText('Job Name', { exact: true })).toHaveCount(1)
   expect(iconRequests, 'icons must come from the client bundle').toEqual([])
 })
 
@@ -130,4 +141,41 @@ test('fast loads never flash a skeleton', async ({ page }) => {
   await page.goto('/profile')
   await expect(page.getByRole('heading', { name: 'Test User' })).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { sawSkeleton?: boolean }).sawSkeleton)).toBeFalsy()
+})
+
+test('profile page shows the HR details and the direct supervisor', async ({ page }) => {
+  await withProfile(page, { json: {
+    ...PROFILE,
+    employee_id: 'N0001',
+    job_title: 'IT Officer',
+    org_level: 'D-3',
+    directorate: 'Operation, Technology, Analytics and AI',
+    sub_directorate: 'Information Technology',
+    org_group: 'IT Operations',
+    division: 'Infrastructure',
+    department: 'IT Application',
+    mobile_phone: '+62 812 0000 0001',
+    office_location: 'Graha Niaga',
+    city: 'Jakarta',
+    province: 'DKI Jakarta',
+    supervisor_nip: 'N0002',
+    supervisor_name: 'Rina Head',
+    supervisor_email: 'rina@example.com',
+    supervisor: { id: 2, name: 'Rina Head', email: 'rina@example.com' },
+  } })
+  await page.goto('/profile')
+  const main = page.getByRole('main')
+  await expect(main.getByText('IT Officer · Information Technology · NIP N0001')).toBeVisible({ timeout: 30_000 })
+  for (const heading of ['Employee', 'Organization', 'Contact', 'Location', 'Direct supervisor', 'Account']) {
+    await expect(main.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+  }
+  for (const value of ['N0001', 'D-3', 'Operation, Technology, Analytics and AI', 'IT Operations', 'Infrastructure', 'IT Application', '+62 812 0000 0001', 'Graha Niaga', 'Jakarta', 'DKI Jakarta', 'N0002', 'Rina Head', 'rina@example.com', 'Rina Head · rina@example.com']) {
+    await expect(main.getByText(value, { exact: true }).first()).toBeVisible()
+  }
+})
+
+test('a DS NIP that matches no user says the account is not linked', async ({ page }) => {
+  await withProfile(page, { json: { ...PROFILE, supervisor_nip: 'N9999', supervisor_name: 'Someone' } })
+  await page.goto('/profile')
+  await expect(page.getByText('Not linked (no user has that NIP)')).toBeVisible({ timeout: 30_000 })
 })

@@ -14,27 +14,61 @@ const photoUrl = computed(() =>
   profile.value?.has_photo ? `${PROFILE_PHOTO_URL}?v=${photoVersion.value}` : undefined,
 )
 
+/** The HR fields, labelled as in Administration > Users and the HR employee file. */
 function sections(p: Profile): { title: string, icon: string, fields: ProfileField[] }[] {
+  const linked = p.supervisor
+    ? [p.supervisor.name, p.supervisor.email].filter(Boolean).join(' · ')
+    : p.supervisor_nip ? 'Not linked (no user has that NIP)' : null
   return [
     {
-      title: 'Work',
-      icon: 'i-lucide-briefcase',
+      title: 'Employee',
+      icon: 'i-lucide-id-card',
       fields: [
-        { label: 'Job title', value: p.job_title },
-        { label: 'Department', value: p.department },
+        { label: 'Full name', value: p.display_name },
+        { label: 'NIP', value: p.employee_id },
+        { label: 'Job Name', value: p.job_title },
+        { label: 'Organization level', value: p.org_level },
         { label: 'Company', value: p.company_name },
-        { label: 'Office', value: p.office_location },
-        { label: 'Employee ID', value: p.employee_id },
+      ],
+    },
+    {
+      title: 'Organization',
+      icon: 'i-lucide-network',
+      fields: [
+        { label: 'Directorate', value: p.directorate },
+        { label: 'Sub Directorate', value: p.sub_directorate },
+        { label: 'Group', value: p.org_group },
+        { label: 'Division', value: p.division },
+        { label: 'Department', value: p.department },
       ],
     },
     {
       title: 'Contact',
       icon: 'i-lucide-mail',
       fields: [
-        { label: 'Email', value: p.email },
+        { label: 'Email (ID)', value: p.email },
         { label: 'Mobile phone', value: p.mobile_phone },
         { label: 'Business phones', value: p.business_phones.join(', ') },
         { label: 'Preferred language', value: p.preferred_language },
+      ],
+    },
+    {
+      title: 'Location',
+      icon: 'i-lucide-map-pin',
+      fields: [
+        { label: 'Office', value: p.office_location },
+        { label: 'Town or city', value: p.city },
+        { label: 'Province', value: p.province },
+      ],
+    },
+    {
+      title: 'Direct supervisor',
+      icon: 'i-lucide-user-check',
+      fields: [
+        { label: 'DS NIP', value: p.supervisor_nip },
+        { label: 'DS name', value: p.supervisor_name },
+        { label: 'Email DS', value: p.supervisor_email },
+        { label: 'Account', value: linked },
       ],
     },
   ]
@@ -97,7 +131,7 @@ async function removePhoto() {
       </div>
       <div class="grid gap-6 md:grid-cols-2">
         <SkeletonCard
-          v-for="n in 3"
+          v-for="n in 6"
           :key="n"
           fields
           :lines="4"
@@ -127,7 +161,7 @@ async function removePhoto() {
               {{ profile.display_name }}
             </h2>
             <p class="text-sm text-muted">
-              {{ [profile.job_title, profile.department].filter(Boolean).join(' · ') || profile.email }}
+              {{ [profile.job_title, profile.sub_directorate || profile.department, profile.employee_id && `NIP ${profile.employee_id}`].filter(Boolean).join(' · ') || profile.email }}
             </p>
             <div class="mt-2 flex flex-wrap gap-1.5">
               <UBadge
@@ -214,7 +248,7 @@ async function removePhoto() {
       </div>
 
       <p class="text-xs text-muted">
-        Work and contact details are kept by your BCM Tools administrator. Ask them if something is out of date.
+        Your employee, organization, location and supervisor details come from the HR employee file and are kept by your BCM Tools administrator. Ask them if something is out of date.
       </p>
     </template>
   </AppPage>

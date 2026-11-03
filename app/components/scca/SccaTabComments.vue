@@ -16,6 +16,13 @@ const busy = ref(false)
 
 const comments = computed(() => props.assessment.comments.filter((row) => row.tab === props.tab))
 const canComment = computed(() => !props.readonly && props.assessment.permissions.comment_tabs.includes(props.tab))
+/** A signer who may comment, but not on this tab, is told why instead of seeing nothing. */
+const signerNote = computed(() => {
+  const tabs = props.assessment.permissions.comment_tabs
+  if (props.readonly || props.assessment.status !== 'in_approval' || !tabs.length || tabs.includes(props.tab)) return null
+  const where = tabs.map((value) => SCCA_TABS.find((item) => item.value === value)?.label ?? value).join(', ')
+  return `At your step you comment on ${where}. BCM turns on comments on every tab for a step in SCCA configuration > Sign-off steps.`
+})
 const readerNote = computed(() =>
   props.assessment.status === 'in_approval' && props.assessment.my_role
     ? 'You assess or contribute to this SCCA, so you can read the approvers\' comments but not add any. If it needs changes, an approver rejects it back to draft.'
@@ -41,7 +48,7 @@ async function add() {
 </script>
 
 <template>
-  <UCard v-if="comments.length || canComment">
+  <UCard v-if="comments.length || canComment || signerNote">
     <template #header>
       <h2 class="flex items-center gap-2 text-lg font-semibold">
         <UIcon
@@ -76,6 +83,12 @@ async function add() {
         class="text-sm text-muted"
       >
         No comments on this tab yet.
+      </p>
+      <p
+        v-if="signerNote"
+        class="text-xs text-muted"
+      >
+        {{ signerNote }}
       </p>
       <p
         v-if="readerNote && comments.length"
