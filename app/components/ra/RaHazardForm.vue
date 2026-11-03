@@ -23,6 +23,8 @@ const router = useRouter()
 /** In sign-off or approved: the ratings are shown, not edited. */
 const locked = computed(() => !props.assessment.can_edit)
 const dirty = useRaDirty()
+/** The record page's Save (top bar) submits this form and shows it saving. */
+const saving = useRaSaving()
 const formError = ref<string | null>(null)
 const { hazards, matrix } = useRaFormulaIndex(() => props.formula)
 
@@ -34,7 +36,6 @@ const inputs = computed(() => props.formula.inputs?.length ? props.formula.input
 interface HazardState extends RaRatingInputs {
   mitigation: string
   action_plan: string
-  cim_ref_no: string
 }
 
 type HazardStatus = 'unrated' | 'in_progress' | 'issues' | 'done'
@@ -50,7 +51,6 @@ function fromAssessment(assessment: RaAssessment): Record<string, HazardState> {
       ...values,
       mitigation: saved?.mitigation ?? '',
       action_plan: saved?.action_plan ?? '',
-      cim_ref_no: saved?.cim_ref_no ?? '',
     }
   }
   return state
@@ -96,6 +96,8 @@ const ratedCount = computed(() => [...evaluations.value.values()].filter((item) 
 // --- table -----------------------------------------------------------------------------------
 
 const groupFilter = ref<string>('all')
+const page = ref(1)
+const perPage = ref(ROWS_PER_PAGE)
 const groupItems = computed(() => [
   { label: 'All hazard groups', value: 'all' },
   ...props.formula.categories.map((category) => ({ label: category.label, value: category.code })),
@@ -117,6 +119,13 @@ const rows = computed<Row[]>(() => props.formula.categories
     groupName: category.name,
     name: hazard.short_name,
   }))))
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * perPage.value
+  return rows.value.slice(start, start + perPage.value)
+})
+watch([groupFilter, perPage], () => {
+  page.value = 1
+})
 
 const right = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const wrap = { class: { td: 'whitespace-normal min-w-40' } }
@@ -165,7 +174,7 @@ const activeEvaluation = computed(() => (activeCode.value ? evaluations.value.ge
 const activeIndex = computed(() => (activeCode.value ? codes.value.indexOf(activeCode.value) : -1))
 
 function open(code: string | null) {
-  router.replace({ query: { ...route.query, tab: 'hazards', hazard: code ?? undefined } })
+  return router.replace({ query: { ...route.query, tab: 'hazards', hazard: code ?? undefined } })
 }
 
 const groupModel = computed<string>({
@@ -226,9 +235,27 @@ const grossImpactFields = RA_GROSS_FIELDS.slice(2)
 const residualProbabilityField = RA_RESIDUAL_FIELDS[0]
 const residualImpactFields = RA_RESIDUAL_FIELDS.slice(1)
 
-function go(offset: number) {
+const hazardCard = useTemplateRef<{ $el: HTMLElement }>('hazardCard')
+
+/** Slides back to the top of the page (at once for people who ask for reduced motion). The
+ *  panel scrolls, not the window, so every scrolled ancestor. */
+function scrollToTop() {
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  let element: HTMLElement | null = hazardCard.value?.$el ?? null
+  while (element) {
+    if (element.scrollTop > 0) element.scrollTo({ top: 0, behavior })
+    element = element.parentElement
+  }
+  window.scrollTo({ top: 0, behavior })
+}
+
+/** Previous / Next hazard: the next one opens at its top, not where the buttons were. */
+async function go(offset: number) {
   const next = codes.value[activeIndex.value + offset]
-  if (next) open(next)
+  if (!next) return
+  await open(next)
+  await nextTick()
+  scrollToTop()
 }
 
 function markNotApplicable() {
@@ -242,7 +269,7 @@ function payload(code: string): RaRatingUpdate {
   return {
     code,
     ...Object.fromEntries(inputs.value.map((key) => [key, hazard[key]])),
-    ...blankToNull({ mitigation: hazard.mitigation, action_plan: hazard.action_plan, cim_ref_no: hazard.cim_ref_no }),
+    ...blankToNull({ mitigation: hazard.mitigation, action_plan: hazard.action_plan }),
   }
 }
 
@@ -250,6 +277,7 @@ async function save() {
   formError.value = null
   const changed = changedCodes.value
   if (!changed.length) return
+  if (saving) saving.value = true
   try {
     const saved = await raApi.setRatings(props.assessment.id, changed.map(payload))
     reset(saved)
@@ -261,12 +289,20 @@ async function save() {
     emit('saved', saved)
   } catch (error) {
     formError.value = apiErrorMessage(error)
+  } finally {
+    if (saving) saving.value = false
   }
 }
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- A form so that the record page's Save ratings (top bar) submits it. -->
+  <form
+    id="ra-form-hazards"
+    class="space-y-6"
+    novalidate
+    @submit.prevent="save"
+  >
     <UAlert
       color="neutral"
       variant="subtle"
@@ -306,14 +342,6 @@ async function save() {
           @click="open(null)"
         />
         <RaGuideModal :formula="formula" />
-        <UButton
-          v-if="!locked"
-          icon="i-lucide-save"
-          label="Save ratings"
-          :disabled="!changedCodes.length"
-          loading-auto
-          @click="save"
-        />
       </div>
     </div>
 
@@ -331,7 +359,7 @@ async function save() {
         />
       </div>
       <UTable
-        :data="rows"
+        :data="pagedRows"
         :columns="columns"
         sticky
         class="max-h-[70vh]"
@@ -412,10 +440,20 @@ async function save() {
           </UTooltip>
         </template>
       </UTable>
+      <TablePagination
+        v-model:page="page"
+        v-model:per-page="perPage"
+        page-sizes
+        :total="rows.length"
+        label="Hazards"
+      />
     </UCard>
 
     <!-- The page of one hazard -->
-    <UCard v-else-if="active && activeHazard && activeEvaluation">
+    <UCard
+      v-else-if="active && activeHazard && activeEvaluation"
+      ref="hazardCard"
+    >
       <template #header>
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField label="Hazard group name">
@@ -615,41 +653,25 @@ async function save() {
               />
             </p>
           </div>
-          <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
-            <UFormField
-              label="Action plan"
-              :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
-            >
-              <template #hint>
-                <FieldCount
-                  :value="active.action_plan"
-                  :max="TEXT_LIMITS.hazard"
-                />
-              </template>
-              <UTextarea
-                v-model="active.action_plan"
-                :maxlength="TEXT_LIMITS.hazard"
-                :disabled="locked"
-                :rows="3"
-                autoresize
-                class="w-full"
+          <UFormField
+            label="Action plan"
+            :help="highResidual ? 'Optional. A high residual risk is followed up through CIM.' : 'Optional.'"
+          >
+            <template #hint>
+              <FieldCount
+                :value="active.action_plan"
+                :max="TEXT_LIMITS.hazard"
               />
-            </UFormField>
-            <UFormField label="CIM ref. no.">
-              <template #hint>
-                <FieldCount
-                  :value="active.cim_ref_no"
-                  :max="TEXT_LIMITS.medium"
-                />
-              </template>
-              <UInput
-                v-model="active.cim_ref_no"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="locked"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
+            </template>
+            <UTextarea
+              v-model="active.action_plan"
+              :maxlength="TEXT_LIMITS.hazard"
+              :disabled="locked"
+              :rows="3"
+              autoresize
+              class="w-full"
+            />
+          </UFormField>
         </section>
 
         <UAlert
@@ -702,5 +724,5 @@ async function save() {
         </div>
       </template>
     </UCard>
-  </div>
+  </form>
 </template>

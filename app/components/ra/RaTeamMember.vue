@@ -5,7 +5,8 @@ import type { RaUserRef } from '~/composables/useRa'
  * One member of the location incident team (the LIC or the LICOM): a BCM Tools user picked from
  * the directory, and their mobile number. Picking someone else puts in the mobile number from
  * their profile (empty when it has none, so it is asked for); the number can still be edited.
- * The form fields are `<member>_user_id` and `<member>_phone`.
+ * The form fields are `<member>_user_id` and `<member>_phone`. The LIC is `fixed`: always the
+ * assessor, looked up from the directory, so it shows their name without a picker.
  */
 const props = withDefaults(defineProps<{
   member: 'lic' | 'licom'
@@ -17,12 +18,15 @@ const props = withDefaults(defineProps<{
   /** Field labels: "Name" under a legend, or "<label>" with "<short> mobile number". */
   nameLabel?: string
   phoneLabel?: string
+  /** No picker: the member is looked up (the LIC is the assessor). */
+  fixed?: boolean
 }>(), {
   hint: undefined,
   legacyName: null,
   disabled: false,
   nameLabel: 'Name',
   phoneLabel: 'Mobile number',
+  fixed: false,
 })
 
 const userId = defineModel<number | null>('userId', { required: true })
@@ -31,9 +35,9 @@ const phone = defineModel<string>('phone', { required: true })
 
 const short = computed(() => props.member.toUpperCase())
 const help = computed(() =>
-  !userId.value && props.legacyName
+  !props.fixed && !userId.value && props.legacyName
     ? `Typed as “${props.legacyName}” before: pick them from the user directory.`
-    : props.hint,
+    : props.hint || undefined,
 )
 
 function onPicked(picked: RaUserRef | null) {
@@ -52,7 +56,15 @@ function onPicked(picked: RaUserRef | null) {
       required
       eager-validation
     >
+      <UInput
+        v-if="fixed"
+        :model-value="user?.name ?? legacyName ?? ''"
+        disabled
+        :aria-label="`${short}: ${label}`"
+        class="w-full"
+      />
       <RaSignerSelect
+        v-else
         v-model="userId"
         :current="user"
         :disabled="disabled"

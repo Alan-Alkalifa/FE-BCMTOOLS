@@ -7,7 +7,7 @@ import AdminUserImport from '~/components/admin/AdminUserImport.vue'
 
 definePageMeta({ permission: 'admin.users.manage' })
 
-const PER_PAGE = 25
+const perPage = useRowsPerPage()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -52,7 +52,7 @@ const query = computed(() => ({
   division: divisionFilter.value === 'all' ? undefined : divisionFilter.value,
   org_level: levelFilter.value === 'all' ? undefined : levelFilter.value,
   page: Math.max(1, Number(route.query.page) || 1),
-  per_page: PER_PAGE,
+  per_page: perPage.value,
 }))
 
 const { data, status, error, refresh } = useFetch<Page<AdminUser>>('/api/admin/users', { query, key: 'admin-users' })
@@ -326,8 +326,9 @@ function actions(user: AdminUser): DropdownMenuItem[][] {
 
       <TablePagination
         v-if="data"
+        v-model:per-page="perPage"
+        page-sizes
         :page="data.page"
-        :per-page="PER_PAGE"
         :total="data.total"
         :to="(page) => ({ query: { ...route.query, page } })"
         label="Users"

@@ -86,14 +86,16 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   await expect(page.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
 })
 
-test('a branch has occupants, a recovery team and a call tree; without the region list its region is typed', async ({ page }) => {
+test('a branch has occupants, a recovery team and a call tree; without the region list its Sub Directorate and Group are picked', async ({ page }) => {
   await mockRa(page)
   await page.goto(`/locations/${BRANCH_ID}`)
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KCP Bogor Pajajaran', { timeout: 60_000 })
-  // No region directory loaded (it comes from LDAP in production): a free-text Region.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toBeVisible()
-  await expect(page.getByText('The region list comes from LDAP.')).toBeVisible()
+  // No region directory loaded (it comes from LDAP in production): no Region field; the
+  // branch's Sub Directorate (its region) and Group (its area) are picked in Organization.
+  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
   await expect(page.getByLabel('Area')).toHaveCount(0)
+  await expect(page.getByText('The branch\'s region.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Group', exact: true })).toBeEnabled()
   for (const name of ['Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(page.getByRole('tab', { name })).toBeVisible()
   }
@@ -127,9 +129,16 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   expect(log.created).toHaveLength(0)
   await fillAddress(page)
   await expect(page.getByText('Enter the address.')).toHaveCount(0)
+  // Without the region directory there is no Region field: the branch's Sub Directorate (its
+  // region) and Group (its area) are picked in Organization.
+  await expect(page.getByRole('textbox', { name: 'Region' })).toHaveCount(0)
+  await expect(page.getByText('The region list comes from LDAP.')).toHaveCount(0)
+  await page.getByLabel('Group', { exact: true }).click()
+  await page.getByRole('option', { name: 'Building Management' }).click()
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta' })
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta', org_group: 'Building Management' })
+  expect(log.created[0]).not.toHaveProperty('region')
 })
 
 test('a branch\'s region and area are picked from the region directory, with their heads', async ({ page }) => {

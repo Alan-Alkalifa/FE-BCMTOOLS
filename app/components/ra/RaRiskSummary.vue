@@ -7,7 +7,9 @@ import type { RaAssessment, RaFormula, RaRating } from '~/composables/useRa'
  * mitigation measures, and the Risk Matrix as two tables, gross and residual side by side (RA Branch
  * rates one residual risk, so it has only that one). Text is left-aligned, numbers right.
  */
-const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
+/** `report` (the printable report): each level is its count and every hazard's name, with no
+ *  Risk Matrix. The report's Hazards table already shows the ratings and mitigation. */
+const props = defineProps<{ assessment: RaAssessment, formula: RaFormula, report?: boolean }>()
 const emit = defineEmits<{ select: [code: string] }>()
 
 const { hazards } = useRaFormulaIndex(() => props.formula)
@@ -32,7 +34,9 @@ const groups = computed(() => LEVELS.map((level) => ({
 })))
 const unrated = computed(() => props.assessment.summary.total - rated.value.length)
 
-const open = ref<Record<string, boolean>>({ High: true, Medium: true, Low: false, na: false })
+const open = ref<Record<string, boolean>>(props.report
+  ? { High: false, Medium: false, Low: false, na: false }
+  : { High: true, Medium: true, Low: false, na: false })
 function toggle(key: string) {
   open.value = { ...open.value, [key]: !open.value[key] }
 }
@@ -195,7 +199,12 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
                 class="px-4 py-2 text-muted"
               >
                 <template v-if="!open[level.key] && level.rows.length">
-                  {{ level.rows.slice(0, 3).map((row) => name(row.code)).join(', ') }}{{ level.rows.length > 3 ? ', …' : '' }}
+                  <template v-if="report">
+                    {{ level.rows.map((row) => name(row.code)).join(', ') }}
+                  </template>
+                  <template v-else>
+                    {{ level.rows.slice(0, 3).map((row) => name(row.code)).join(', ') }}{{ level.rows.length > 3 ? ', …' : '' }}
+                  </template>
                 </template>
               </td>
             </tr>
@@ -242,6 +251,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
     </UCard>
 
     <section
+      v-if="!report"
       aria-labelledby="ra-heat-map-matrix"
       class="space-y-3"
     >

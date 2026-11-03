@@ -3,8 +3,9 @@ import type { RaSettings } from '~/composables/useRaConfigAdmin'
 
 /**
  * RA configuration > Reminders and escalation, like SCCA's: when BCM Tools reminds the signer
- * whose step waits, escalates to BCM and warns about renewals. These rules are live for every
- * RA and RA Branch assessment, whatever its configuration version.
+ * whose step waits, escalates to BCM and warns about renewals, and reminds the approvers of
+ * buildings and incidents waiting on Task Management. These rules are live for every RA and RA
+ * Branch assessment, whatever its configuration version.
  */
 const toast = useToast()
 const { can } = useAuth()
@@ -21,6 +22,8 @@ const form = reactive<RaSettings>({
   overdue_repeat_days: 30,
   window_start_hour: 8,
   window_end_hour: 17,
+  incident_reminder_hours: 1,
+  incident_escalate_hours: 4,
 })
 const emails = ref('')
 const noticeDays = ref('')
@@ -185,6 +188,48 @@ async function save() {
                 placeholder="bcm.team@cimbniaga.co.id"
               />
             </UFormField>
+          </div>
+        </UCard>
+
+        <UCard>
+          <template #header>
+            <h2 class="font-semibold text-highlighted">
+              Buildings and incidents waiting for approval
+            </h2>
+          </template>
+          <div class="space-y-4">
+            <p class="text-sm text-muted">
+              The approvers (everyone who may approve buildings and incidents, but not who asked) are emailed when something starts waiting on Task Management. A new or deactivated building is then reminded and escalated like a sign-off step above. An incident can't wait for office hours: it is reminded at any hour.
+            </p>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField
+                label="Remind about an incident every"
+                name="incident_reminder_hours"
+                hint="hours"
+                :error="errors.incident_reminder_hours"
+              >
+                <UInputNumber
+                  v-model="form.incident_reminder_hours"
+                  :min="1"
+                  :max="24"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Escalate an incident to BCM after"
+                name="incident_escalate_hours"
+                hint="hours"
+                help="Also to the addresses above."
+                :error="errors.incident_escalate_hours"
+              >
+                <UInputNumber
+                  v-model="form.incident_escalate_hours"
+                  :min="1"
+                  :max="72"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
           </div>
         </UCard>
 

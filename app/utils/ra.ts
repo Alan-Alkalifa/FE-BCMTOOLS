@@ -168,8 +168,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: false,
     hasLcp: true,
     hasRegion: false,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'Signs as Prepared by.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'Signs as Reviewed by.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'The assessor: whoever makes the RA.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: '' },
     signoffRoles: RA_SIGNOFF_ROLES,
     perm: { access: 'ra.access', edit: 'ra.edit', manage: 'ra.manage' },
   },
@@ -183,8 +183,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: true,
     hasLcp: true,
     hasRegion: true,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'The BOSM, with a WhatsApp number. Signs as Prepared by.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number. Signs as Reviewed by.' },
+    lic: { label: 'Location incident coordinator (LIC)', hint: 'The assessor (the BOSM), with a WhatsApp number.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
     perm: { access: 'ra_branch.access', edit: 'ra_branch.edit', manage: 'ra_branch.manage' },
   },
@@ -539,6 +539,11 @@ export const RA_SECTIONS: Record<RaSection, { label: string, icon: string }> = {
 /** `/ra/manage/12`, `/ra-branch/monitoring`, `/ra/manage/new`. */
 export function raPath(kind: RaKind, section: RaSection, id?: number | 'new') {
   return `${RA_MODULES[kind].base}/${section}${id === undefined ? '' : `/${id}`}`
+}
+
+/** The print-friendly report of an assessment, inside its section (as SCCA's View report). */
+export function raReportPath(kind: RaKind, section: RaSection, id: number) {
+  return `${raPath(kind, section, id)}/report`
 }
 
 /** Where an assessment opens from elsewhere (a location, the map, an incident): a draft in Manage
