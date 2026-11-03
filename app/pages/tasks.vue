@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { Task, TaskLevelFilter, TaskModule, TaskScope, TaskType } from '~/composables/useTasks'
+import type { Task, TaskLevelFilter, TaskModule, TaskType } from '~/composables/useTasks'
 
 /**
- * Task Management: what waits for someone, across SCCA, RA HO, RA Branch and Location.
- * **My tasks** (everyone): the approvals and sign-off steps waiting for me, the buildings and
- * incidents I may approve, and the renewals of what I am responsible for. **Everything** (BCM):
- * every sign-off in approval, stuck step, renewal and waiting building or incident of the
- * modules they oversee. Each task is done on its own page; here BCM can remind whoever must act.
+ * Task Management: one tab per module the user's roles open — SCCA, RA HO, RA Branch, and
+ * Location (buildings and incidents waiting for approval, for their approvers). In a tab the
+ * module's BCM sees every task; everyone else what waits for them: the approvals and sign-off
+ * steps they sign and the renewals of what they look after. Each task is done on its own page.
+ * Nothing is reminded from here.
  */
 definePageMeta({ permission: ['scca.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
 const perPage = useRowsPerPage()
 
 const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'location']
@@ -24,7 +23,6 @@ function pick<T extends string>(value: unknown, options: T[]): T | undefined {
 }
 
 const query = computed(() => ({
-  scope: (route.query.scope === 'all' ? 'all' : 'mine') as TaskScope,
   module: pick(route.query.module, MODULES),
   type: pick(route.query.type, TYPES),
   level: pick(route.query.level, LEVELS),
@@ -34,15 +32,6 @@ const query = computed(() => ({
 }))
 const { data, status, error, refresh } = useTasks(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-
-const scope = computed<TaskScope>({
-  get: () => query.value.scope,
-  set: (value) => router.replace({ query: { scope: value === 'all' ? 'all' : undefined } }),
-})
-const scopeItems = computed(() => [
-  { label: 'My tasks', value: 'mine', icon: 'i-lucide-user-check' },
-  ...(data.value?.can_see_all ? [{ label: 'Everything', value: 'all', icon: 'i-lucide-layers' }] : []),
-])
 
 const search = ref(query.value.q ?? '')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -55,47 +44,67 @@ watch(search, (value) => {
   }, 300)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
-const filtered = computed(() => Boolean(query.value.q || query.value.module || query.value.type || query.value.level))
+
+/** The tab: the module shown (the API falls back to the first the user may open). */
+const module = computed<TaskModule | null>(() => {
+  const asked = query.value.module
+  if (asked && data.value?.tabs.some((item) => item.module === asked)) return asked
+  return data.value?.module ?? null
+})
+const tab = computed<TaskModule | undefined>({
+  get: () => module.value ?? undefined,
+  set: (value) => {
+    clearTimeout(searchTimer)
+    search.value = ''
+    router.replace({ query: { module: value } })
+  },
+})
+const tabItems = computed(() => (data.value?.tabs ?? []).map((item) => ({
+  label: TASK_MODULES[item.module],
+  value: item.module,
+  icon: TASK_MODULE_ICONS[item.module],
+  badge: item.total ? { label: String(item.total), color: 'neutral' as const, variant: 'subtle' as const } : undefined,
+})))
+const filtered = computed(() => Boolean(query.value.q || query.value.type || query.value.level))
 function clearFilters() {
   clearTimeout(searchTimer)
   search.value = ''
-  router.replace({ query: { scope: query.value.scope === 'all' ? 'all' : undefined } })
+  router.replace({ query: { module: query.value.module } })
 }
 function setQuery(values: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...values, page: undefined } })
 }
 
-const moduleFilter = computed({
-  get: () => query.value.module ?? 'all',
-  set: (value: TaskModule | 'all') => setQuery({ module: value === 'all' ? undefined : value }),
-})
-const moduleItems = computed(() => [
-  { label: 'Every module', value: 'all' },
-  ...MODULES
-    .filter((module) => query.value.scope === 'mine' || data.value?.modules.includes(module))
-    .map((module) => ({ label: TASK_MODULES[module], value: module })),
-])
 const typeFilter = computed({
   get: () => query.value.type ?? 'all',
   set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, level: undefined }),
 })
-const typeItems = [
+const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', incident: 'Incidents' }
+const moduleTypes = computed(() => module.value ? TASK_MODULE_TYPES[module.value] : TYPES)
+const typeItems = computed(() => [
   { label: 'Every task', value: 'all' },
-  { label: 'Sign-offs', value: 'signoff' },
-  { label: 'Renewals', value: 'renewal' },
-  { label: 'Buildings', value: 'building' },
-  { label: 'Incidents', value: 'incident' },
-]
+  ...moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], value: type })),
+])
 
-/** The cards filter the list, like Monitoring's; clicking the active one shows all again. */
+/** The tab's cards filter the list, like Monitoring's; clicking the active one shows all again. */
 const cards = computed(() => {
   const counts = data.value?.counts
-  return [
-    { label: 'Sign-offs', type: 'signoff' as const, icon: 'i-lucide-badge-check', tone: 'info' as const, value: counts?.signoff, hint: query.value.scope === 'mine' ? 'SCCA approvals and RA steps waiting for you.' : 'Every SCCA and RA in approval.' },
-    { label: 'Renewals', type: 'renewal' as const, icon: 'i-lucide-calendar-clock', tone: 'warning' as const, value: counts?.renewal, hint: 'Overdue or due within 90 days.' },
-    { label: 'Buildings', type: 'building' as const, icon: 'i-lucide-building', tone: 'warning' as const, value: counts?.building, hint: 'New, or to make inactive, waiting for approval.' },
-    { label: 'Incidents', type: 'incident' as const, icon: 'i-lucide-siren', tone: 'error' as const, value: counts?.incident, hint: 'Declared, waiting for approval.' },
-  ]
+  const all = data.value?.oversees
+  const hints: Record<TaskType, string> = {
+    signoff: module.value === 'scca'
+      ? (all ? 'Every SCCA in approval.' : 'SCCA approvals waiting for you.')
+      : (all ? 'Every RA in sign-off.' : 'RA sign-off steps waiting for you.'),
+    renewal: all ? 'Overdue or due within 90 days.' : 'Of what you look after, overdue or due within 90 days.',
+    building: 'New, or to make inactive, waiting for approval.',
+    incident: 'Declared, waiting for approval.',
+  }
+  const looks: Record<TaskType, { icon: string, tone: 'info' | 'warning' | 'error' }> = {
+    signoff: { icon: 'i-lucide-badge-check', tone: 'info' },
+    renewal: { icon: 'i-lucide-calendar-clock', tone: 'warning' },
+    building: { icon: 'i-lucide-building', tone: 'warning' },
+    incident: { icon: 'i-lucide-siren', tone: 'error' },
+  }
+  return moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], type, value: counts?.[type], hint: hints[type], ...looks[type] }))
 })
 function cardLink(type: TaskType) {
   return { query: { ...route.query, type: query.value.type === type ? undefined : type, level: undefined, page: undefined } }
@@ -122,9 +131,10 @@ function urgent(task: Task) {
 function urgentLabel(task: Task) {
   return task.type === 'signoff' ? 'Stuck' : 'Escalated to BCM'
 }
-function moduleLabel(task: Task) {
-  if (task.module === 'location') return task.kind ? `Location · ${task.kind === 'branch' ? 'Branch' : 'Head office'}` : 'Location'
-  return TASK_MODULES[task.module]
+/** A building task says whether it is a head office building or a branch. */
+function subline(task: Task) {
+  const kind = task.type === 'building' && task.kind ? (task.kind === 'branch' ? 'Branch' : 'Head office') : null
+  return [task.ref, task.detail, kind].filter(Boolean).join(' · ')
 }
 function openLabel(task: Task) {
   if (!task.mine) return 'Open'
@@ -134,46 +144,25 @@ function openLabel(task: Task) {
 const columns: TableColumn<Task>[] = [
   { accessorKey: 'type', header: 'Task' },
   { id: 'record', header: 'What' },
-  { accessorKey: 'module', header: 'Module' },
   { accessorKey: 'assignee', header: 'Who acts' },
   { id: 'waiting', header: 'Waiting or due' },
   { id: 'actions', header: '', meta: { class: { td: 'text-right' } } },
 ]
-
-const reminding = ref<string | null>(null)
-async function remind(task: Task) {
-  reminding.value = task.key
-  try {
-    const result = await taskApi.remind(task)
-    toast.add({
-      title: result.sent ? 'Reminder sent' : 'Reminder recorded',
-      description: result.sent
-        ? `${task.title}: ${task.type === 'signoff' ? 'the signer' : 'every approver but who asked'} got an email.`
-        : 'No email went out. Check the email settings in Administration.',
-      color: result.sent ? 'success' : 'warning',
-      icon: result.sent ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert',
-    })
-    await refresh()
-  } catch (failure) {
-    toast.add({ title: 'Couldn\'t send the reminder', description: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
-  } finally {
-    reminding.value = null
-  }
-}
 </script>
 
 <template>
   <AppPage
     title="Task Management"
     icon="i-lucide-list-todo"
-    description="What waits for someone, across SCCA, RA HO, RA Branch and Location. Each task is done on its own page."
+    description="What waits for someone, one tab per module you work in. Each task is done on its own page."
     :crumbs="[{ label: 'Task Management' }]"
   >
     <UTabs
-      v-if="scopeItems.length > 1"
-      v-model="scope"
-      :items="scopeItems"
+      v-if="tabItems.length"
+      v-model="tab"
+      :items="tabItems"
       :content="false"
+      variant="link"
       class="w-full"
     />
 
@@ -207,7 +196,18 @@ async function remind(task: Task) {
       v-else
       class="space-y-6"
     >
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <UAlert
+        v-if="data && !data.module"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-lock"
+        title="No module to show"
+        description="Your roles open none of SCCA, RA HO, RA Branch or the building approvals."
+      />
+      <div
+        v-else
+        class="grid gap-4 sm:grid-cols-2"
+      >
         <KpiCard
           v-for="card in cards"
           :key="card.type"
@@ -240,12 +240,6 @@ async function remind(task: Task) {
             :items="typeItems"
             class="w-40"
             aria-label="Filter by task"
-          />
-          <USelect
-            v-model="moduleFilter"
-            :items="moduleItems"
-            class="w-40"
-            aria-label="Filter by module"
           />
           <UBadge
             v-if="query.level"
@@ -288,11 +282,8 @@ async function remind(task: Task) {
               {{ row.original.title }}
             </NuxtLink>
             <p class="text-xs text-muted">
-              {{ [row.original.ref, row.original.detail].filter(Boolean).join(' · ') }}
+              {{ subline(row.original) }}
             </p>
-          </template>
-          <template #module-cell="{ row }">
-            <span class="whitespace-nowrap">{{ moduleLabel(row.original) }}</span>
           </template>
           <template #assignee-cell="{ row }">
             <span>{{ row.original.mine && row.original.type === 'signoff' ? 'You' : (row.original.assignee ?? '—') }}</span>
@@ -324,17 +315,6 @@ async function remind(task: Task) {
           <template #actions-cell="{ row }">
             <div class="flex justify-end gap-2">
               <UButton
-                v-if="row.original.can_remind"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-bell-ring"
-                label="Remind"
-                :aria-label="`Remind: ${row.original.title}`"
-                :loading="reminding === row.original.key"
-                @click="remind(row.original)"
-              />
-              <UButton
                 :to="row.original.url"
                 size="sm"
                 :color="row.original.mine ? 'primary' : 'neutral'"
@@ -352,7 +332,7 @@ async function remind(task: Task) {
           </template>
           <template #empty>
             <p class="py-10 text-center text-sm text-muted">
-              {{ filtered ? 'No task matches these filters.' : query.scope === 'mine' ? 'Nothing waits for you.' : 'Nothing is waiting.' }}
+              {{ filtered ? 'No task matches these filters.' : data?.oversees ? 'Nothing is waiting.' : 'Nothing waits for you.' }}
             </p>
           </template>
         </UTable>
