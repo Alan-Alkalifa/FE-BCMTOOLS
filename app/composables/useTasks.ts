@@ -1,15 +1,13 @@
 /**
- * Task Management across every module (SCCA, RA HO, RA Branch, Location): what waits for the
- * user (`scope: 'mine'`) or, for BCM, everything waiting, stuck or overdue in the modules they
- * oversee (`scope: 'all'`). The Home overview reads the counts (`useTaskSummary`).
+ * Task Management: one tab per module the user's roles open (SCCA, RA HO, RA Branch, Location).
+ * The module's BCM sees every task of it (`oversees`), everyone else what waits for them. The
+ * Home overview shows each module at a glance (`useTaskSummary`). It sends no reminders.
  */
 export type TaskModule = 'scca' | 'ra' | 'ra_branch' | 'location'
 export type TaskType = 'signoff' | 'renewal' | 'building' | 'incident'
 export type TaskLevel = 'ok' | 'reminder' | 'escalated' | 'overdue' | 'due_30' | 'due_90'
-export type TaskScope = 'mine' | 'all'
 /** The quick filters: stuck sign-offs, overdue or due renewals. */
 export type TaskLevelFilter = 'stuck' | 'overdue' | 'due'
-export type TaskRemind = 'scca_signoff' | 'ra_signoff' | 'building' | 'incident'
 
 export interface Task {
   key: string
@@ -38,12 +36,9 @@ export interface Task {
   /** A building or incident the user asked for: someone else decides. */
   own?: boolean
   url: string
-  can_remind: boolean
-  remind: TaskRemind | null
 }
 
 export interface TaskQuery {
-  scope?: TaskScope
   module?: TaskModule
   type?: TaskType
   level?: TaskLevelFilter
@@ -58,24 +53,31 @@ export interface TaskPage {
   per_page: number
   total: number
   pages: number
-  scope: TaskScope
-  counts: Record<'total' | TaskType | TaskModule, number>
-  can_see_all: boolean
-  modules: TaskModule[]
+  /** The tab shown (null when the user's roles open none). */
+  module: TaskModule | null
+  /** The modules the user's roles open, with how many tasks each has. */
+  tabs: { module: TaskModule, total: number }[]
+  /** The user sees every task of this module (its BCM). */
+  oversees: boolean
+  counts: Record<'total' | TaskType, number>
+}
+
+/** One module at a glance on Home. Sign-off modules count `mine` … `due_renewals` (every one
+ *  for its BCM, `oversees`; otherwise the user's own); Location counts `building` and `incident`. */
+export interface TaskGlance {
+  module: TaskModule
+  oversees: boolean
+  mine?: number
+  in_approval?: number
+  stuck?: number
+  overdue_renewals?: number
+  due_renewals?: number
+  building?: number
+  incident?: number
 }
 
 export interface TaskSummary {
-  mine: Record<'total' | TaskType | 'overdue_renewals', number>
-  all: null | {
-    total: number
-    in_approval: number
-    stuck: number
-    overdue_renewals: number
-    due_renewals: number
-    building: number
-    incident: number
-  }
-  modules: TaskModule[]
+  modules: TaskGlance[]
 }
 
 export function useTasks(query: MaybeRefOrGetter<TaskQuery>) {
@@ -89,16 +91,26 @@ export function useTaskSummary() {
   return useFetch<TaskSummary>('/api/tasks/summary', { key: 'tasks-summary' })
 }
 
-export const taskApi = {
-  remind: (task: Pick<Task, 'remind' | 'id'>) =>
-    $fetch<{ sent: boolean }>(`/api/tasks/${task.remind}/${task.id}/remind`, { method: 'POST' }),
-}
-
 export const TASK_MODULES: Record<TaskModule, string> = {
   scca: 'SCCA',
   ra: 'RA HO',
   ra_branch: 'RA Branch',
   location: 'Location',
+}
+
+export const TASK_MODULE_ICONS: Record<TaskModule, string> = {
+  scca: 'i-lucide-shield-check',
+  ra: 'i-lucide-building-2',
+  ra_branch: 'i-lucide-landmark',
+  location: 'i-lucide-map-pinned',
+}
+
+/** The task types each module's tab has. */
+export const TASK_MODULE_TYPES: Record<TaskModule, TaskType[]> = {
+  scca: ['signoff', 'renewal'],
+  ra: ['signoff', 'renewal'],
+  ra_branch: ['signoff', 'renewal'],
+  location: ['building', 'incident'],
 }
 
 /** Each kind of task, as a badge (`StatusBadge`). */
