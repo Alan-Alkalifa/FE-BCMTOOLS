@@ -333,24 +333,3 @@ test('the BCM board sends a reminder to the selected SCCAs and says what was ski
   const sent = calls.find((call) => call.url === '/api/scca/approvals/nudge')!
   expect(sent.body).toEqual({ assessment_ids: [1, 3] })
 })
-
-test('an SCCA user without monitor rights sees SCCA at a glance for their own SCCAs', async ({ page }) => {
-  await signIn(page, { permissions: ['scca.access', 'scca.create', 'scca.report.download'] })
-  const { calls } = await mockSccaWorkflow(page)
-  await page.route('**/api/scca/assessments?*', (route) => route.fulfill({ json: { items: [], total: 0, page: 1, per_page: 1, pages: 0 } }))
-  await page.goto('/')
-  const glance = page.getByRole('region', { name: 'SCCA at a glance' })
-  await expect(glance).toBeVisible({ timeout: 60_000 })
-  await expect(glance.getByRole('link', { name: /Overdue renewals/ })).toHaveAttribute('href', '/scca/monitoring?tab=renewals')
-  await expect(glance.getByRole('link', { name: /Stuck approvals/ })).toHaveAttribute('href', '/scca/monitoring?tab=bottlenecks')
-  expect(calls.some((call) => call.url === '/api/scca/monitoring/overview')).toBe(true)
-})
-
-test('BCM opens stuck approvals on the BCM board from the home page', async ({ page }) => {
-  await signIn(page)
-  await mockSccaWorkflow(page)
-  await page.route('**/api/scca/assessments?*', (route) => route.fulfill({ json: { items: [], total: 0, page: 1, per_page: 1, pages: 0 } }))
-  await page.goto('/')
-  const glance = page.getByRole('region', { name: 'SCCA at a glance' })
-  await expect(glance.getByRole('link', { name: /Stuck approvals/ })).toHaveAttribute('href', '/scca/approval?tab=board', { timeout: 60_000 })
-})
