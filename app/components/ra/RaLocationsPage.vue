@@ -175,6 +175,14 @@ const addTo = computed(() => {
       />
       <UButton
         v-if="canEdit"
+        :to="LOCATION_IMPORT_PATH"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-up"
+        label="Import from Excel"
+      />
+      <UButton
+        v-if="canEdit"
         :to="addTo"
         icon="i-lucide-plus"
         label="Input building data"

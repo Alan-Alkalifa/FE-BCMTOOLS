@@ -1,0 +1,1670 @@
+{
+ "assessment_date": null,
+ "call_tree": [
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "Legiran (LIC)",
+   "division": "SPAPM",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "081312262739"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "D-1 Level TAJINDRA PAL SINGH",
+   "division": "Head of Central Operations",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "08161482787"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "D-1 Level MAGDALENA",
+   "division": "Head of OTAA Office, Cost Management & Analytics",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "-"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "D-1 Level BANYON ANANTOSENO",
+   "division": "Head of Consumer Collection & Recovery",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "-"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "D-1 Level TRISNA LUCIA MAULIATY SIAHAAN",
+   "division": "Head of Credit Card, Merchant & Personal Financing Business",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "-"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "D-1 Level DJOJO BOENTORO",
+   "division": "Head of Secured Lending Business & Consumer Credit Underw",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "-"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "Sesuai dokumen BCP masing-masing",
+   "division": "Ketua Inciden Management Team (IMT)",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "Sesuai dokumen BCP masing-masing"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "Sesuai dokumen BCP masing-masing",
+   "division": "Recovery Task Force (RTF)",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "Sesuai dokumen BCP masing-masing"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "Sesuai dokumen BIA masing-masing · Mulyadi",
+   "division": "BCM Coordinator",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "Sesuai dokumen BIA masing-masing"
+  },
+  {
+   "caller": "Albert Suhandinata / Crispina Arumardi (Alt.)",
+   "contact_name": "Bernard Budidharma (BCM)",
+   "division": "BCM Head",
+   "home_phone": null,
+   "level": 1,
+   "mobile": "08176415583"
+  },
+  {
+   "caller": "LIC – LEGIRAN",
+   "contact_name": "Legiran, ERT",
+   "division": "General Admin Officer - Office Support, Mailing & Filing/Archiving Management",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081312262739"
+  },
+  {
+   "caller": "LIC – LEGIRAN",
+   "contact_name": "Hare Kharisna, DAT",
+   "division": "Building Maintenance & Renovation Project Head",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081219609697"
+  },
+  {
+   "caller": "LIC – LEGIRAN",
+   "contact_name": "Core Support Team",
+   "division": "(Lihat Lampiran 2)",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "-"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Heri Prasetyo",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081905050808"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Andreas Tanudjaja",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "08170055339"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Paulus Dwiharto",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081905000109"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Cecep W. Kusuma",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081703217509"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Roosy Egypta Musina",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "081905055202"
+  },
+  {
+   "caller": "D-1 Level",
+   "contact_name": "Ketut Meliana Saputra",
+   "division": "Ketua IMT",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "08159033555"
+  },
+  {
+   "caller": "CCT",
+   "contact_name": "Sesuai BCP",
+   "division": "Crisis Coordination Team (CCT)",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "-"
+  },
+  {
+   "caller": "CMC/CCT Secretary – Bernard B.",
+   "contact_name": "Rico Usthavia Frans",
+   "division": "Crisis Management Team (CMT)",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "-"
+  },
+  {
+   "caller": "CMC/CCT Secretary – Bernard B.",
+   "contact_name": "Pihak Internal (diluar gedung)",
+   "division": "(Jika ada)",
+   "home_phone": null,
+   "level": 2,
+   "mobile": "-"
+  },
+  {
+   "caller": "Legiran · Emergency Response Team (ERT)",
+   "contact_name": "Floor Warden",
+   "division": "(Lihat Lampiran 2)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "-"
+  },
+  {
+   "caller": "Legiran · Emergency Response Team (ERT)",
+   "contact_name": "Legiran (LIC)",
+   "division": "SPAPM",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081312262739"
+  },
+  {
+   "caller": "Legiran · Emergency Response Team (ERT)",
+   "contact_name": "Krisna Priyo Adi",
+   "division": "Building Management Representative",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "087888383996"
+  },
+  {
+   "caller": "Legiran · Emergency Response Team (ERT)",
+   "contact_name": "Security",
+   "division": "(mengikuti jadwal shift)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "-"
+  },
+  {
+   "caller": "Hare Kharisna · Damage Assessment Team (DAT)",
+   "contact_name": "Bagus Sulispramono",
+   "division": "SPAPM, Head Office & Data Center Maintenance Staff",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "08176823374"
+  },
+  {
+   "caller": "Hare Kharisna · Damage Assessment Team (DAT)",
+   "contact_name": "Krisna Priyo Adi",
+   "division": "Building Management Representative",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "087888383996"
+  },
+  {
+   "caller": "Hare Kharisna · Damage Assessment Team (DAT)",
+   "contact_name": "Purwanto",
+   "division": "Building Management Representative",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081388648939"
+  },
+  {
+   "caller": "Hare Kharisna · Damage Assessment Team (DAT)",
+   "contact_name": "Dwi Septo Aji Marwanto",
+   "division": "Building Management Head",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081221374644"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Aurel Natasha Dachi",
+   "division": "Human Resource (Benefit Services)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "082213500570"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Roro Widayati",
+   "division": "Human Resource (Sr. Benefit Services)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081905027208"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Crispina Arumardi",
+   "division": "General Admin, Corporate Security & Insurance Head",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "08170054168"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Tjahjo Bawono",
+   "division": "Compliance Quality Assurance Head",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "08176823426"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Eri Ardianto",
+   "division": "Compliance Advisory Head - Non Credit",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081905057245"
+  },
+  {
+   "caller": "Core Support Team",
+   "contact_name": "Hery Kurniawan",
+   "division": "Corporate Communications Head",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "081905057581"
+  },
+  {
+   "caller": "IMT Member",
+   "contact_name": "(RTF Sesuai dokumen BC Plan masing-masing Critical Business Function)",
+   "division": "(Sesuai struktur)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "-"
+  },
+  {
+   "caller": "Group Head (D2)",
+   "contact_name": "(Sesuai struktur oraganiasai masing-masing)",
+   "division": "(Sesuai struktur)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "-"
+  },
+  {
+   "caller": "BMC’s Secretary",
+   "contact_name": "(Sesuai list masing-masing secretary)",
+   "division": "(Sesuai struktur)",
+   "home_phone": null,
+   "level": 3,
+   "mobile": "-"
+  }
+ ],
+ "contacts": [
+  {
+   "floor": "1",
+   "group_name": "SCRG",
+   "kind": "floor_warden",
+   "name": "Satrio Pinandito",
+   "phone": "081905056947"
+  },
+  {
+   "floor": "2",
+   "group_name": "LDSK",
+   "kind": "floor_warden",
+   "name": "Wahyu Prasetyo",
+   "phone": "08176557347"
+  },
+  {
+   "floor": "3",
+   "group_name": "reporting & quality development",
+   "kind": "floor_warden",
+   "name": "Lasdiarion",
+   "phone": "085261800145"
+  },
+  {
+   "floor": "5",
+   "group_name": "OIT Management Off.",
+   "kind": "floor_warden",
+   "name": "Firly",
+   "phone": "085959701504"
+  },
+  {
+   "floor": "7",
+   "group_name": "Collection",
+   "kind": "floor_warden",
+   "name": "Handie H",
+   "phone": "087889805165"
+  },
+  {
+   "address": "Jl. Moh. Husni Thamrin No.1, Pd. Jaya, Kec. Pd. Aren, Kota Tangerang Selatan, Banten 15224",
+   "kind": "hospital",
+   "name": "RS  Priemer Bintaro",
+   "phone": "(021) 27625500 / 021-7455500/ 7455600"
+  },
+  {
+   "address": "Bintaro sektor 5 Setia Budi",
+   "kind": "police",
+   "name": "Polsek Bintaro",
+   "phone": "(021) 7304324, 7393234; Call Center (113)"
+  },
+  {
+   "address": "Pemadam kebakaran Bintaro, Jakarta Selatan",
+   "kind": "fire_brigade",
+   "name": "Pemadam Kebakaran",
+   "phone": "021-74861734 & 021-75818117"
+  }
+ ],
+ "existing": null,
+ "filename": "HO_Risk Assessment Location-Version 2025-Griya Niaga 2-r4.xlsx",
+ "kind": "head_office",
+ "kind_label": "Head office building",
+ "lic": {
+  "candidates": [],
+  "is_me": false,
+  "name": "Legiran",
+  "phone": "081312262739",
+  "text": "Bp. Legiran HP: 081312262739",
+  "user": null
+ },
+ "licom": {
+  "candidates": [
+   {
+    "display_name": "Crispina Arumardi",
+    "email": "crispina@example.co.id",
+    "id": 12,
+    "mobile_phone": null
+   }
+  ],
+  "name": "Crispina Arumardi",
+  "phone": "081802331872",
+  "text": "Ibu Crispina Arumardi HP: 081802331872",
+  "user": {
+   "display_name": "Crispina Arumardi",
+   "email": "crispina@example.co.id",
+   "id": 12,
+   "mobile_phone": null
+  }
+ },
+ "location": {
+  "address": "Jl. Wahid Hasyim Blok B4 No.3 Bintaro Jaya Sektor 7 Tangerang 15224",
+  "name": "Griya CIMB Niaga 2",
+  "region": null
+ },
+ "missing": [
+  {
+   "field": "province",
+   "label": "Province, city, district and postal code",
+   "why": "The workbook has one address cell. BCM Tools keeps the parts separately."
+  },
+  {
+   "field": "period_year",
+   "label": "Period",
+   "why": "The workbook has no period."
+  },
+  {
+   "field": "assessment_date",
+   "label": "Assessment date",
+   "why": "No date in the sign-off boxes."
+  },
+  {
+   "field": "reason",
+   "label": "Reason for assessment",
+   "why": "The workbook doesn't say why the RA is made."
+  },
+  {
+   "field": "licom_user_id",
+   "label": "LICOM as a BCM Tools user",
+   "why": "The workbook has a name and a phone. BCM Tools signs off with user accounts."
+  },
+  {
+   "field": "signers",
+   "label": "Signers",
+   "why": "The sign-off boxes hold names, not user accounts. Pick the signers on the Sign-off tab."
+  },
+  {
+   "field": "organization",
+   "label": "Organization (directorate, group, level) and map pin",
+   "why": "Not in the workbook: add them on the building's Details and Map tabs."
+  }
+ ],
+ "occupants": [
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 10,
+   "floor": "5",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Application Access Management"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 26,
+   "floor": null,
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "ATM Business & ATM Strategy & Business Solution"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 22,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Branchless Banking strategic Project & Availability"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 5,
+   "floor": "6",
+   "has_bcp": false,
+   "mtd": "12 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Business Continuity Management"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 147,
+   "floor": "6",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Digital Channel Development"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 111,
+   "floor": "6",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Customer Engagement Development"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 50,
+   "floor": "3&5",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Cash & Payment Operations"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 39,
+   "floor": "9",
+   "has_bcp": false,
+   "mtd": "3 days",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Collection Performance Management & Strategy"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 12,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": "1 day",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Collection Transformation And Digitalization"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 26,
+   "floor": "5",
+   "has_bcp": false,
+   "mtd": "2 days",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "OIT OCMA (3 Group)"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 35,
+   "floor": "2",
+   "has_bcp": false,
+   "mtd": "2 days",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Credit Documentation"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 15,
+   "floor": "9",
+   "has_bcp": false,
+   "mtd": "1 week",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Credit Card Business"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 26,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Credit Infrastructure Analytics & Portfolio"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 23,
+   "floor": "3",
+   "has_bcp": false,
+   "mtd": "3 days",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Credit Inspection, Valuation & Verification"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 13,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Credit Monitoring"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 10,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": null,
+   "unit_name": "Credit Processing"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 23,
+   "floor": "10",
+   "has_bcp": false,
+   "mtd": "1 week",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Digital Branch Banking & Contact Center Technology"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 7,
+   "floor": "10",
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Digital Partnership"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 45,
+   "floor": "6",
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Digital Enablement Development"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 58,
+   "floor": null,
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Fraud Management & Consumer Legal"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 7,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Governance & Support"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 7,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Indirect Auto Acquisition & Partnership"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 112,
+   "floor": "6 & hyspace",
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "IT Business Partner"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 8,
+   "floor": "5",
+   "has_bcp": false,
+   "mtd": "1 day",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Internal Support"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 50,
+   "floor": "8",
+   "has_bcp": false,
+   "mtd": "1 day",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Merchant Business - Consumer Banking"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 24,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "NDB Data Management & Business Enablement | Business Enablement & Relation | Credit Card & Personal Loan Branch & Mobile Sales | Mortgage Developer Business | National Mortgage Sales"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 35,
+   "floor": "3",
+   "has_bcp": false,
+   "mtd": "4 weeks",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "OTAA Risk Control Unit & Strategic Risk Analytic (SubDir)"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 40,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": "1 day",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Card Usage, Acquisition & Partnership | Card & Merchant Acquisition & Portfolio | Business Solution & Process Engineering"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 213,
+   "floor": "3",
+   "has_bcp": false,
+   "mtd": "2 days",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Consumer Credit Underwriting"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 32,
+   "floor": "5",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Trade & Loan Operations"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 292,
+   "floor": "7",
+   "has_bcp": false,
+   "mtd": "1 day",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Unsecured Collection & Recovery"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 52,
+   "floor": "5",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Reconciliation & Proofing, Card & Statement Production"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 37,
+   "floor": "GF",
+   "has_bcp": true,
+   "mtd": "4 hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Jakarta Region A Area IV"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Network & Digital Banking",
+   "disabled_count": null,
+   "employee_count": 15,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Mobile Banking Development & Project"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 19,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": "1 week",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Personal Financing Business"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 5,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Sharia Financing Administration"
+  },
+  {
+   "alternate_site": true,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 51,
+   "floor": null,
+   "has_bcp": true,
+   "mtd": "4 Hours",
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "SST, Transaction & Card Services, Complaint Resolution"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Operations, Technology, Analytics & AI",
+   "disabled_count": null,
+   "employee_count": 13,
+   "floor": "6 & hyspace",
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Technology Program Management"
+  },
+  {
+   "alternate_site": false,
+   "company": "PT. CIMB Niaga",
+   "directorate": "Consumer Banking",
+   "disabled_count": null,
+   "employee_count": 10,
+   "floor": null,
+   "has_bcp": false,
+   "mtd": null,
+   "pregnant_count": null,
+   "pregnant_due_dates": null,
+   "remarks": "Mengacu pada dokumen BIA unit kerja",
+   "shift_times": null,
+   "shift_work": false,
+   "unit_name": "Secured Collection & Recovery"
+  }
+ ],
+ "period_year": 2026,
+ "ratings": {
+  "counts": {
+   "gross": {
+    "High": 2,
+    "Low": 3,
+    "Medium": 10
+   },
+   "residual": {
+    "Low": 10,
+    "Medium": 5
+   }
+  },
+  "found": 33,
+  "items": [
+   {
+    "code": "H01",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 1,
+    "residual_level": "Low",
+    "short_name": "Banjir/ Banjir Bandang"
+   },
+   {
+    "code": "H02",
+    "complete": true,
+    "gross_level": null,
+    "no": 2,
+    "residual_level": null,
+    "short_name": "Tanah Longsor/ Penurunan Tanah/ Likuifaksi"
+   },
+   {
+    "code": "H03",
+    "complete": true,
+    "gross_level": "High",
+    "no": 3,
+    "residual_level": "Medium",
+    "short_name": "Gempa Bumi"
+   },
+   {
+    "code": "H04",
+    "complete": true,
+    "gross_level": null,
+    "no": 4,
+    "residual_level": null,
+    "short_name": "Tsunami"
+   },
+   {
+    "code": "H05",
+    "complete": true,
+    "gross_level": null,
+    "no": 5,
+    "residual_level": null,
+    "short_name": "Angin Topan/ Hujan Badai/ Badai"
+   },
+   {
+    "code": "H06",
+    "complete": true,
+    "gross_level": "Low",
+    "no": 6,
+    "residual_level": "Low",
+    "short_name": "Cuaca Ekstream"
+   },
+   {
+    "code": "H07",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 7,
+    "residual_level": "Low",
+    "short_name": "Sambaran/ Gangguan Petir"
+   },
+   {
+    "code": "H08",
+    "complete": true,
+    "gross_level": null,
+    "no": 8,
+    "residual_level": null,
+    "short_name": "Erupsi Gunung Berapi"
+   },
+   {
+    "code": "H09",
+    "complete": true,
+    "gross_level": null,
+    "no": 9,
+    "residual_level": null,
+    "short_name": "Kebakaran dalam skala besar"
+   },
+   {
+    "code": "H10",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 10,
+    "residual_level": "Low",
+    "short_name": "Kabut/Kualitas udara yang buruk"
+   },
+   {
+    "code": "H11",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 11,
+    "residual_level": "Low",
+    "short_name": "Wabah Penyakit Epidemi /Pandemi"
+   },
+   {
+    "code": "H12",
+    "complete": true,
+    "gross_level": null,
+    "no": 12,
+    "residual_level": null,
+    "short_name": "Kontaminasi Air"
+   },
+   {
+    "code": "H13",
+    "complete": true,
+    "gross_level": null,
+    "no": 13,
+    "residual_level": null,
+    "short_name": "Insiden Material Berbahaya"
+   },
+   {
+    "code": "H14",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 14,
+    "residual_level": "Medium",
+    "short_name": "Kebakaran"
+   },
+   {
+    "code": "H15",
+    "complete": true,
+    "gross_level": null,
+    "no": 15,
+    "residual_level": null,
+    "short_name": "Ledakan/ Bom - Ancaman & Saat Terjadi Ledakan"
+   },
+   {
+    "code": "H16",
+    "complete": true,
+    "gross_level": null,
+    "no": 16,
+    "residual_level": null,
+    "short_name": "Perampokan"
+   },
+   {
+    "code": "H17",
+    "complete": true,
+    "gross_level": null,
+    "no": 17,
+    "residual_level": null,
+    "short_name": "Situasi Penyanderaan"
+   },
+   {
+    "code": "H18",
+    "complete": true,
+    "gross_level": null,
+    "no": 18,
+    "residual_level": null,
+    "short_name": "Demo Karyawan"
+   },
+   {
+    "code": "H19",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 19,
+    "residual_level": "Low",
+    "short_name": "Kerusuhan/ huru-hara"
+   },
+   {
+    "code": "H20",
+    "complete": true,
+    "gross_level": null,
+    "no": 20,
+    "residual_level": null,
+    "short_name": "Ketidakstabilan politis/Kudeta dalam Pemerintahan/ Perang/ Perlakuan Jam Malam"
+   },
+   {
+    "code": "H21",
+    "complete": true,
+    "gross_level": null,
+    "no": 21,
+    "residual_level": null,
+    "short_name": "Terorisme"
+   },
+   {
+    "code": "H22",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 22,
+    "residual_level": "Medium",
+    "short_name": "Gangguan pasokan listrik"
+   },
+   {
+    "code": "H23",
+    "complete": true,
+    "gross_level": null,
+    "no": 23,
+    "residual_level": null,
+    "short_name": "Gangguan Pasokan Air Bersih"
+   },
+   {
+    "code": "H24",
+    "complete": true,
+    "gross_level": null,
+    "no": 24,
+    "residual_level": null,
+    "short_name": "Gangguan Pipa Air Bocor"
+   },
+   {
+    "code": "H25",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 25,
+    "residual_level": "Low",
+    "short_name": "Gangguan Telekomunikasi, Voice & Network"
+   },
+   {
+    "code": "H26",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 26,
+    "residual_level": "Low",
+    "short_name": "Kerusakan Struktur Gedung"
+   },
+   {
+    "code": "H27",
+    "complete": true,
+    "gross_level": "Low",
+    "no": 27,
+    "residual_level": "Low",
+    "short_name": "Serangan Virus Komputer"
+   },
+   {
+    "code": "H28",
+    "complete": true,
+    "gross_level": "High",
+    "no": 28,
+    "residual_level": "Medium",
+    "short_name": "Peretasan Sistem Komputer"
+   },
+   {
+    "code": "H29",
+    "complete": true,
+    "gross_level": "Medium",
+    "no": 29,
+    "residual_level": "Medium",
+    "short_name": "Gangguan Sistem/ Software/ Hardware"
+   },
+   {
+    "code": "H30",
+    "complete": true,
+    "gross_level": null,
+    "no": 30,
+    "residual_level": null,
+    "short_name": "Sabotase"
+   },
+   {
+    "code": "H31",
+    "complete": true,
+    "gross_level": null,
+    "no": 31,
+    "residual_level": null,
+    "short_name": "Perusakan aset fisik secara sengaja"
+   },
+   {
+    "code": "H32",
+    "complete": true,
+    "gross_level": null,
+    "no": 32,
+    "residual_level": null,
+    "short_name": "Kekerasan ditempat kerja"
+   },
+   {
+    "code": "H33",
+    "complete": true,
+    "gross_level": "Low",
+    "no": 33,
+    "residual_level": "Low",
+    "short_name": "Kerentanan Keamanan Fisik Gedung"
+   }
+  ],
+  "rated": 33,
+  "total": 33
+ },
+ "recovery_team": [
+  {
+   "home_phone": null,
+   "mobile": "08111216754",
+   "name": "Albert Suhandinata",
+   "role": "Location Incident Commander",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08170054168",
+   "name": "Crispina Arumardi",
+   "role": "Alternate Location Incident Commander",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081312262739",
+   "name": "Legiran",
+   "role": "Location Incident Coordinator (LIC)",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "Sesuai dokumen BCP masing-masing",
+   "name": "Sesuai dokumen BCP masing-masing",
+   "role": "Ketua Inciden Management Team (IMT) -didalam gedung",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "Sesuai dokumen BCP masing-masing",
+   "name": "Sesuai dokumen BCP masing-masing",
+   "role": "Recovery Task Force (RTF)",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "Sesuai dokumen BIA masing-masing",
+   "name": "Sesuai dokumen BIA masing-masing",
+   "role": "BCM Coordinator",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08176415583",
+   "name": "Bernard Budidharma",
+   "role": "BCM",
+   "team": "location_recovery_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081219609697",
+   "name": "Hare Kharisna",
+   "role": "SPAPM",
+   "team": "damage_assessment_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08176071491",
+   "name": "Amanalia",
+   "role": "SPAPM",
+   "team": "damage_assessment_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "087888383996",
+   "name": "Krisna Priyo Adi",
+   "role": "Building Management Representative (NMC)",
+   "team": "damage_assessment_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081388648939",
+   "name": "Purwanto",
+   "role": "Building Management Representative (NMC)",
+   "team": "damage_assessment_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08161426941",
+   "name": "Dwi Sulistyowati",
+   "role": "Building Management Representative (NMC)",
+   "team": "damage_assessment_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "-",
+   "name": "Sesuai Tab LRP (front)",
+   "role": "Floor Warden (lantai B1)",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "-",
+   "name": "Sesuai Tab LRP (front)",
+   "role": "Floor Warden (lantai GF)",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "-",
+   "name": "Sesuai Tab LRP (front)",
+   "role": "Floor Warden (lantai 1)",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "-",
+   "name": "Sesuai Tab LRP (front)",
+   "role": "Floor Warden (lantai ..10)",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081316167328",
+   "name": "Krisna Priyo Adi",
+   "role": "Building Management Representative",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "-",
+   "name": "(Sesuai Shift)",
+   "role": "Security",
+   "team": "emergency_response_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "082213500570",
+   "name": "Aurel Natasha Dachi",
+   "role": "Human Resource",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081905027208",
+   "name": "Roro Widayati",
+   "role": "Human Resource",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08170054168",
+   "name": "Crispina Arumardi",
+   "role": "SPAPM",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081219609697",
+   "name": "Hare Kharisna",
+   "role": "SPAPM",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "08176823426",
+   "name": "Tjahjo Bawono",
+   "role": "Corporate Communication (MBCX) & Compliance",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "081905027245",
+   "name": "Eri Ardianto",
+   "role": "Corporate Communication (MBCX) & Compliance",
+   "team": "core_support_team"
+  },
+  {
+   "home_phone": null,
+   "mobile": "0819 0505 7581",
+   "name": "Hery Kurniawan",
+   "role": "Corporate Communication (MBCX) & Compliance",
+   "team": "core_support_team"
+  }
+ ],
+ "risk_summary": "High: N/A\n\nMedium: Gempa Bumi, Kebakaran, Gangguan pasokan listrik, Gangguan Sistem/ Software/ Hardware, dan  Peretasan Sistem Komputer. Medium disini berarti potensi dampak yang ditimbulkan oleh sumber ancaman cukup tinggi, kecuali untuk gangguan pasokan listrik dan gangguan sistem/software/hardware dimana berpotensi terjadi satu kali dalam 1 tahun kedepan dan Peretasan Sistem Komputer dimana berpotensi terjadi satu kali dalam satu bulan kedepan (dihitung sebagai attack attempt).\n\nLow: Banjir, Cuaca Ekstream, Kabut / Kualitas udara yang buruk, Sambaran/ Gangguan Petir, Kerusuhan/ huru-hara, Wabah Penyakit Epidemi /Pandemi (Covid-19, SARS, Avian Flu, Dengue, etc), Gangguan telekomunikasi, Voice dan Network, Kerusakan Struktur Gedung, Serangan Virus Komputer, Kerentanan Keamanan Fisik Gedung. Low berarti potensi kemungkinan terjadinya sumber ancaman dan potensi dampaknya minor untuk lokasi gedung tersebut.",
+ "signers": [
+  {
+   "box": 1,
+   "designation": "Location Incident Coordinator (LIC)",
+   "heading": "Prepared by",
+   "name": "Legiran",
+   "signed_on": null
+  },
+  {
+   "box": 2,
+   "designation": null,
+   "heading": "Acknowledged by",
+   "name": "Unit Critical Business Function",
+   "signed_on": null
+  },
+  {
+   "box": 3,
+   "designation": "Alternate Location Incident Commander",
+   "heading": "Reviewed by",
+   "name": "Crispina Arumardi",
+   "signed_on": null
+  },
+  {
+   "box": 4,
+   "designation": "Business Continuity Management Head",
+   "heading": "Acknowledge by",
+   "name": "Bernard Budidharma",
+   "signed_on": null
+  }
+ ],
+ "template": "HO Risk Assessment Location – Version 2025 – r4",
+ "warnings": [
+  {
+   "cell": "F41",
+   "message": "\"Floor Warden 6 dst\" says \"Detail Lengkap Sesuai Lampiran\": the wardens it refers to are not in the workbook. Add them on the building's Emergency contacts tab.",
+   "sheet": "LRP (front)"
+  },
+  {
+   "cell": "D53",
+   "message": "DAMKAR has no name: imported as \"Pemadam Kebakaran\". Rename it.",
+   "sheet": "LRP (front)"
+  },
+  {
+   "cell": "C44",
+   "message": "Floor Warden (lantai B1) – Sesuai Tab LRP (front) has no mobile: imported with \"-\". Fill it in on the Recovery team tab.",
+   "sheet": "LCP-Recovery Team Structure"
+  },
+  {
+   "cell": "C45",
+   "message": "Floor Warden (lantai GF) – Sesuai Tab LRP (front) has no mobile: imported with \"-\". Fill it in on the Recovery team tab.",
+   "sheet": "LCP-Recovery Team Structure"
+  },
+  {
+   "cell": "C46",
+   "message": "Floor Warden (lantai 1) – Sesuai Tab LRP (front) has no mobile: imported with \"-\". Fill it in on the Recovery team tab.",
+   "sheet": "LCP-Recovery Team Structure"
+  },
+  {
+   "cell": "C47",
+   "message": "Floor Warden (lantai ..10) – Sesuai Tab LRP (front) has no mobile: imported with \"-\". Fill it in on the Recovery team tab.",
+   "sheet": "LCP-Recovery Team Structure"
+  },
+  {
+   "cell": "C49",
+   "message": "Security – (Sesuai Shift) has no mobile: imported with \"-\". Fill it in on the Recovery team tab.",
+   "sheet": "LCP-Recovery Team Structure"
+  },
+  {
+   "cell": "C28",
+   "message": "Level 1: D-1 Level MAGDALENA has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C29",
+   "message": "Level 1: D-1 Level BANYON ANANTOSENO has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C30",
+   "message": "Level 1: D-1 Level TRISNA LUCIA MAULIATY SIAHAAN has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C31",
+   "message": "Level 1: D-1 Level DJOJO BOENTORO has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C42",
+   "message": "Level 2: Core Support Team has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C50",
+   "message": "Level 2: Sesuai BCP has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C51",
+   "message": "Level 2: Rico Usthavia Frans has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C52",
+   "message": "Level 2: Pihak Internal (diluar gedung) has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C58",
+   "message": "Level 3: Floor Warden has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C61",
+   "message": "Level 3: Security has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C74",
+   "message": "Level 3: (RTF Sesuai dokumen BC Plan masing-masing Critical Business Function) has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C76",
+   "message": "Level 3: (Sesuai struktur oraganiasai masing-masing) has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "C78",
+   "message": "Level 3: (Sesuai list masing-masing secretary) has no mobile: imported with \"-\". Fill it in on the Call tree tab.",
+   "sheet": "LCP-Call Tree"
+  },
+  {
+   "cell": "F13",
+   "message": "The workbook's LIC is Legiran. In BCM Tools the person who imports is the LIC (the assessor). Hand the RA over later to change it.",
+   "sheet": "LRP (front)"
+  }
+ ]
+}

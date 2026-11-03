@@ -667,6 +667,8 @@ export const raWaitLevel = defineStatusScale<RaWaitLevel>({
  *  Buildings. The routes keep their /locations names. */
 export const BUILDINGS_GROUP = 'Location'
 export const LOCATIONS_PATH = '/locations'
+/** Import from Excel: a building and its RA from the HO or Cabang workbook. */
+export const LOCATION_IMPORT_PATH = '/locations/import'
 export const LOCATION_MAP_PATH = '/locations/map'
 export const CRISES_PATH = '/crises'
 export const GUIDEBOOK_PATH = '/crises/guidebook'

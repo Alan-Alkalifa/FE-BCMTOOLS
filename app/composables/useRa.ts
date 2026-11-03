@@ -803,7 +803,98 @@ export const raCrisisApi = {
     $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
 
+/** Import from Excel: what an HO or Cabang workbook holds, lacks and leaves out. */
+export interface RaImportUser {
+  id: number
+  display_name: string | null
+  email: string | null
+  mobile_phone: string | null
+}
+export interface RaImportPerson {
+  text: string | null
+  name: string | null
+  phone: string | null
+  user: RaImportUser | null
+  candidates: RaImportUser[]
+  is_me?: boolean
+}
+export interface RaImportWarning {
+  sheet: string
+  cell: string | null
+  message: string
+}
+export interface RaImportPreview {
+  filename: string | null
+  kind: RaKind
+  kind_label: string
+  template: string
+  location: { name: string | null, address: string | null, region: string | null }
+  existing: {
+    id: number
+    code: string
+    name: string
+    is_active: boolean
+    approval_status: string
+    contacts: number
+    occupants: number
+    recovery_team: number
+    call_tree: number
+    has_period: boolean
+    has_final: boolean
+  } | null
+  lic: RaImportPerson | null
+  licom: RaImportPerson | null
+  signers: { box: number, heading: string | null, name: string | null, designation: string | null, signed_on: string | null }[]
+  assessment_date: string | null
+  period_year: number
+  contacts: { kind: RaContactKind, name: string }[]
+  occupants: { unit_name: string | null, employee_count: number | null }[]
+  recovery_team: { team: RaRecoveryTeam, role: string, name: string }[]
+  call_tree: { level: RaCallTreeLevel, caller: string, contact_name: string }[]
+  ratings: {
+    total: number
+    found: number
+    rated: number
+    counts: Record<'gross' | 'residual', Partial<Record<RaLevel, number>>>
+    items: { no: number, code: string, short_name: string, complete: boolean, gross_level: RaLevel | null, residual_level: RaLevel | null }[]
+  }
+  risk_summary: string | null
+  missing: { field: string, label: string, why: string }[]
+  warnings: RaImportWarning[]
+}
+export interface RaImportOptions {
+  location_id?: number
+  location?: Partial<Pick<RaLocationInput, 'name' | 'address' | 'region'>> & Pick<RaLocationInput, 'province' | 'city' | 'district' | 'zip_code'>
+  replace_profile?: boolean
+  assessment?: {
+    period_year: number
+    assessment_date: string
+    reason?: RaReason
+    licom_user_id: number
+    lic_phone?: string
+    licom_phone?: string
+  }
+}
+export interface RaImportResult {
+  location: { id: number, code: string, name: string, kind: RaKind, created: boolean }
+  assessment: { id: number, ref_no: string, kind: RaKind } | null
+  saved: Partial<Record<'contacts' | 'occupants' | 'recovery_team' | 'call_tree', number>>
+  ratings: number
+  warnings: RaImportWarning[]
+}
+
 export const raApi = {
+  importPreview: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<RaImportPreview>('/api/ra/imports/preview', { method: 'POST', body })
+  },
+  importWorkbook: (file: File, options: RaImportOptions) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('options', JSON.stringify(options))
+    return $fetch<RaImportResult>('/api/ra/imports', { method: 'POST', body })
+  },
   createLocation: (body: RaLocationInput) => $fetch<RaLocationDetail>(LOCATIONS, { method: 'POST', body }),
   /** Renewals > Generate annual review for the last final RAs. */
   generateRenewals: (assessmentIds: number[]) =>

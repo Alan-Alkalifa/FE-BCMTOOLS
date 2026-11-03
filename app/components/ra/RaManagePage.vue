@@ -122,6 +122,14 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
       />
       <UButton
         v-if="can(ra.perm.edit)"
+        :to="LOCATION_IMPORT_PATH"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-up"
+        label="Import from Excel"
+      />
+      <UButton
+        v-if="can(ra.perm.edit)"
         :to="raPath(ra.kind, 'manage', 'new')"
         icon="i-lucide-plus"
         label="New assessment"
