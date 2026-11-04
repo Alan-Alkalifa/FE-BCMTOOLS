@@ -8,7 +8,7 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
  * between any two, see what is near a place, and declare an incident. Open incidents show for
  * everyone until they are closed.
  */
-definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
@@ -178,6 +178,8 @@ function locationUrl(place: { id: number, kind: string }) {
 function assessmentUrl(place: RaMapPlace) {
   return raRecordPath(place.kind, place.latest!)
 }
+/** Without RA access the latest RA is named, not linked. */
+const canOpenRa = useCanOpenRa()
 </script>
 
 <template>
@@ -429,11 +431,13 @@ function assessmentUrl(place: RaMapPlace) {
                 <span class="text-muted">Latest RA:</span>
                 <template v-if="selected.latest">
                   <NuxtLink
+                    v-if="canOpenRa(selected.kind)"
                     :to="assessmentUrl(selected)"
                     class="text-primary hover:underline"
                   >
                     {{ selected.latest.ref_no ?? selected.latest.period_year }}
                   </NuxtLink>
+                  <span v-else>{{ selected.latest.ref_no ?? selected.latest.period_year }}</span>
                   <StatusBadge
                     v-if="selected.latest.highest_residual_level"
                     :scale="raRiskLevel"

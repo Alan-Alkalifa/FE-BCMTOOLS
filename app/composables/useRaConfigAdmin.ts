@@ -86,6 +86,23 @@ export interface RaSettings {
   updated_by?: string | null
 }
 
+/** RA configuration > Team diagrams: a chart of a kind, uploaded or the workbook's. */
+export interface RaDiagramInfo {
+  diagram: RaDiagram
+  label: string
+  kind: RaKind
+  custom: boolean
+  filename: string | null
+  content_type: 'image/png' | 'image/jpeg'
+  width: number
+  height: number
+  size: number
+  /** Changes with the image. */
+  version: string
+  updated_at: string | null
+  updated_by: string | null
+}
+
 const BASE = '/api/admin/ra-config'
 const VERSIONS = `${BASE}/versions`
 
@@ -130,6 +147,14 @@ export const raConfigApi = {
   deleteDivision: (id: number) => $fetch(`${BASE}/divisions/${id}`, { method: 'DELETE' }),
   settings: () => $fetch<RaSettings>(`${BASE}/settings`),
   saveSettings: (body: RaSettings) => $fetch<RaSettings>(`${BASE}/settings`, { method: 'PUT', body }),
+  diagrams: (kind: RaKind) => $fetch<{ items: RaDiagramInfo[] }>(`${BASE}/diagrams?kind=${kind}`),
+  uploadDiagram: (kind: RaKind, diagram: RaDiagram, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<RaDiagramInfo>(`${BASE}/diagrams/${diagram}?kind=${kind}`, { method: 'PUT', body })
+  },
+  resetDiagram: (kind: RaKind, diagram: RaDiagram) =>
+    $fetch<RaDiagramInfo>(`${BASE}/diagrams/${diagram}?kind=${kind}`, { method: 'DELETE' }),
 }
 
 function copy<T>(value: T): T {

@@ -8,7 +8,7 @@ import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
  * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
  */
-definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
@@ -83,6 +83,8 @@ function teamLabel(team: string) {
 function assessmentUrl(row: RaCrisisPlace) {
   return raRecordPath(row.assessment!.kind, row.assessment!)
 }
+/** Without RA access the RA is named, not linked. */
+const canOpenRa = useCanOpenRa()
 
 function locationUrl(location: { id: number, kind: string }) {
   return locationPath(location.id)
@@ -421,11 +423,13 @@ const historyIcon: Record<string, string> = {
                     <template v-if="item.row.assessment">
                       <p class="mt-1 text-sm text-muted">
                         <NuxtLink
+                          v-if="canOpenRa(item.row.assessment.kind)"
                           :to="assessmentUrl(item.row)"
                           class="text-primary hover:underline"
                         >
                           {{ item.row.assessment.ref_no ?? item.row.assessment.period_year }}
                         </NuxtLink>
+                        <span v-else>{{ item.row.assessment.ref_no ?? item.row.assessment.period_year }}</span>
                         · <StatusBadge
                           :scale="raStatus"
                           :value="item.row.assessment.status"
@@ -587,9 +591,16 @@ const historyIcon: Record<string, string> = {
                   </section>
 
                   <section>
-                    <h3 class="font-medium text-highlighted">
-                      Call tree
-                    </h3>
+                    <div class="flex flex-wrap items-center justify-between gap-x-3">
+                      <h3 class="font-medium text-highlighted">
+                        Call tree
+                      </h3>
+                      <RaDiagramButton
+                        :kind="item.row.location.kind"
+                        diagram="call_tree"
+                        compact
+                      />
+                    </div>
                     <ol
                       v-if="item.row.call_tree.length"
                       class="mt-2 space-y-1 text-sm"
@@ -620,9 +631,16 @@ const historyIcon: Record<string, string> = {
                     </p>
 
                     <template v-if="item.row.recovery_team.length">
-                      <h3 class="mt-4 font-medium text-highlighted">
-                        Recovery team
-                      </h3>
+                      <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3">
+                        <h3 class="font-medium text-highlighted">
+                          Recovery team
+                        </h3>
+                        <RaDiagramButton
+                          :kind="item.row.location.kind"
+                          diagram="recovery_team"
+                          compact
+                        />
+                      </div>
                       <ul class="mt-2 space-y-1 text-sm">
                         <li
                           v-for="member in item.row.recovery_team"

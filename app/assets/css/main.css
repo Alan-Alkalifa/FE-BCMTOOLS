@@ -81,6 +81,17 @@ body {
     margin: 16mm;
   }
 
+  /* A page that only prints in landscape (the RA report) marks itself with
+     data-print-landscape; every printed page then uses this named page. */
+  @page landscape {
+    size: landscape;
+    margin: 12mm;
+  }
+
+  body:has([data-print-landscape]) {
+    page: landscape;
+  }
+
   .break-inside-avoid {
     break-inside: avoid;
   }
