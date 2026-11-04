@@ -44,10 +44,25 @@ The backend (Flask API, ID-and-password sign-in, roles and menus, SMTP email, My
 
 ```mermaid
 flowchart LR
-    Browser --> N["nginx (this image)"]
-    N -->|"static files"| SPA["Nuxt SPA"]
-    N -->|"/api"| API["Backend (Flask)"]
+    Browser --> V["Vercel (DEV: Preview, PROD: Production)"]
+    V -->|"static files"| SPA["Nuxt SPA"]
+    V -->|"/api, middleware.ts + x-bcm-edge-key"| NG["Backend's ngrok endpoint"]
+    NG --> API["Backend (Flask)"]
 ```
+
+DEV and PROD are two Vercel environments of one project, each pointing at its own backend:
+
+| | DEV | PROD |
+|---|---|---|
+| Branch | `DEV-BCMTOOLS` (work on `DEV/<name>`) | `PROD-BCMTOOLS` |
+| Vercel environment | Preview, on the fixed DEV domain (`DEV_DOMAIN`) | Production |
+| `BACKEND_URL` | `https://` + the DEV ngrok domain | `https://divisive-eleonore-pseudosacrilegiously.ngrok-free.dev` |
+| `BACKEND_EDGE_KEY` (Sensitive) | DEV key (same as the DEV backend's `policy.yaml` / `.env`) | PROD key (same as `backend-prod/policy.yaml`) |
+| Deployed by | `deploy-dev.yml` | `deploy-prod.yml` (approver, release window) |
+
+After changing a Vercel environment variable, redeploy that environment: Vercel reads variables when a deployment is built. The backend side (projects, ports, ngrok accounts) is in the backend README > *Environments: DEV and PROD*.
+
+The same static build also runs behind the nginx image (`Dockerfile` target `prod`) when the frontend is hosted next to the backend instead of on Vercel.
 
 - The app is pre-built into static files (`nuxt generate`). There is no Node server in production.
 - All data comes from the backend over `/api/*`. The frontend never holds tokens or passwords after sign-in; it relies on the backend's `HttpOnly` session cookie and sends the session's CSRF token on every write.
@@ -239,14 +254,14 @@ The built app has no environment-specific settings: the same image runs in every
 
 | Variable | Where | Default | Purpose |
 |---|---|---|---|
-| `BACKEND_URL` | Production container (runtime) | — (required) | Where nginx forwards `/api`, e.g. `https://bcm-api-prod.azurewebsites.net`. Scheme and host only, no path. |
+| `BACKEND_URL` | Vercel (Preview / Production), or the nginx container | — (required) | Where `/api` goes: the environment's ngrok domain on Vercel, e.g. `https://divisive-eleonore-pseudosacrilegiously.ngrok-free.dev`; the backend's address for nginx. Scheme and host only, no path. |
+| `BACKEND_EDGE_KEY` | Vercel (Preview / Production) | — | Sent by `middleware.ts` as `x-bcm-edge-key`; the backend's ngrok policy refuses `/api` calls without it. Mark it Sensitive. |
 | `APP_VERSION` | Docker build arg | `dev` | Written to `/version.json`; the deploy pipeline uses it to detect the new release. |
 | `NUXT_DEV_BACKEND_URL` | Dev server | `http://localhost:8000` | Backend for the dev proxy. |
 | `CHOKIDAR_USEPOLLING` | Dev server | unset | `true` to poll for file changes (needed for Docker on Windows). |
 | `E2E_BASE_URL` | Playwright | `http://localhost:3000` | Site under test. |
 | `BACKEND_URL` | `compose.yaml` (dev) | — | A backend elsewhere, e.g. `https://<name>.ngrok-free.app`; overrides `BACKEND_HOST_PORT`. In the production image it is where nginx forwards `/api`. |
 | `BACKEND_HOST_PORT` | `compose.yaml` | `8000` | The backend's host port; the dev container proxies to `http://host.docker.internal:<port>`. Same value as in the backend's `.env`. |
-| `WEBSITES_PORT` | App Service | — | `8080`, the port nginx listens on. |
 
 ## Authentication in the frontend
 
@@ -543,7 +558,7 @@ docker run --rm -p 3000:8080 --add-host host.docker.internal:host-gateway `
 
 - **SPA fallback**: unknown paths serve `index.html`, so deep links work. Pre-rendered pages such as `/login` are served from `login/index.html` directly.
 - **Relative redirects** (`absolute_redirect off`): nginx never builds redirects with its internal port 8080.
-- **Proxy**: `/api/*` goes to `BACKEND_URL`. The upstream `Host` header is the backend's own host (required by App Service routing), with the original host in `X-Forwarded-Host`. SNI is enabled for HTTPS upstreams. `X-Forwarded-Proto` is passed through from the load balancer.
+- **Proxy**: `/api/*` goes to `BACKEND_URL`. The upstream `Host` header is the backend's own host (needed by reverse proxies and tunnels in front of it), with the original host in `X-Forwarded-Host`. SNI is enabled for HTTPS upstreams. `X-Forwarded-Proto` is passed through from the load balancer.
 - **Compression**: gzip for JS, CSS, JSON and SVG over 1 KB.
 - **Caching**: hashed assets under `/_nuxt/` are cached for 1 year; HTML and `version.json` are `no-cache`, so a new release is picked up immediately.
 - **Security headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
@@ -580,7 +595,10 @@ The two repositories deploy independently, so the frontend must cope with the ba
 | Hot reload doesn't pick up changes in Docker | Polling must be enabled (`CHOKIDAR_USEPOLLING=true`, already set in `compose.yaml`). The project folder being synced by OneDrive can also slow down watching. |
 | `/api/...` returns 502/504 locally | The backend isn't running on port 8000, or `NUXT_DEV_BACKEND_URL` / `BACKEND_URL` points to the wrong place. |
 | Login page loops back to `/login?error=signin_failed` | A backend sign-in problem — check the backend logs and its README's troubleshooting section. |
-| Production container exits at start with `host not found in upstream` | nginx can't resolve `BACKEND_URL`. Check the value, and in Azure the private DNS zone for the backend's private endpoint. |
-| Production App Service returns 404 from `/api` | The upstream `Host` must be the backend's hostname. Don't override `proxy_set_header Host` in the nginx template. |
+| nginx container exits at start with `host not found in upstream` | nginx can't resolve `BACKEND_URL`. Check the value and the DNS from that host. |
+| nginx returns 404 from `/api` | The upstream `Host` must be the backend's hostname. Don't override `proxy_set_header Host` in the nginx template. |
+| On Vercel, `/api` answers 404 | `BACKEND_URL` isn't set for that environment (Preview or Production), or Vercel wasn't redeployed after setting it. |
+| On Vercel, `/api` answers `Forbidden` | `BACKEND_EDGE_KEY` in Vercel differs from the key in the backend's ngrok policy (`policy.yaml` / the server's `.env`), or the deployment predates the change: redeploy. |
+| On Vercel, PROD shows DEV data (or the reverse) | That environment's `BACKEND_URL` points at the other environment's ngrok domain. |
 | Icons missing | The icon set isn't installed locally. Install `@iconify-json/<set>`. |
 | Playwright: `browserType.launch: Executable doesn't exist` | Run `npx playwright install chromium`. |
