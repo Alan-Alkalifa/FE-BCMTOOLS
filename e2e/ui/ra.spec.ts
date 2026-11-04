@@ -616,6 +616,22 @@ test('View report shows the RA like SCCA\'s report, and prints it', async ({ pag
   expect(await overlaps()).toEqual([])
   expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('page'))).toBe('landscape')
   await page.emulateMedia({ media: 'screen' })
+  // As the Hazards tab: a Hazard group column, and a group filter for the screen.
+  const hazards = page.getByTestId('ra-report-hazards')
+  await expect(hazards.getByRole('columnheader', { name: 'Hazard group' })).toBeVisible()
+  const visibleRows = () => hazards.locator('tbody tr').filter({ visible: true })
+  await expect(visibleRows()).toHaveCount(33)
+  await page.getByRole('combobox', { name: 'Hazard group' }).click()
+  await page.getByRole('option', { name: 'Natural disasters' }).click()
+  await expect(page.getByText('Showing 9 of 33 hazards')).toBeVisible()
+  await expect(visibleRows()).toHaveCount(9)
+  // Printed: every hazard, ten to a page.
+  await page.emulateMedia({ media: 'print' })
+  await expect(visibleRows()).toHaveCount(33)
+  const breaks = await hazards.locator('tbody tr').evaluateAll((rows) =>
+    rows.flatMap((row, index) => (getComputedStyle(row).breakAfter === 'page' ? [index + 1] : [])))
+  expect(breaks).toEqual([10, 20, 30])
+  await page.emulateMedia({ media: 'screen' })
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Prepared by')
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Legiran')
   // A draft has no downloads yet; Print is the page's main action.
