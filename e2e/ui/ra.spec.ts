@@ -265,15 +265,16 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
 
-test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {
+test('on the BCM board, BCM acts for the signer also on an RA they made', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/approval?tab=board&q=own')
   const board = page.getByRole('table').filter({ visible: true })
-  await expect(board.getByText('Your own RA: reminders only')).toBeVisible({ timeout: 60_000 })
+  await expect(board.getByRole('button', { name: /^Act on/ })).toBeVisible({ timeout: 60_000 })
+  await expect(board.getByText('Your own RA: reminders only')).toHaveCount(0)
   await page.getByRole('button', { name: /^Act on/ }).click()
   await expect(page.getByRole('menuitem', { name: 'Send a reminder now' })).toBeEnabled()
-  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeDisabled()
-  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeEnabled()
 })
 
 test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {
@@ -601,6 +602,20 @@ test('View report shows the RA like SCCA\'s report, and prints it', async ({ pag
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   }
   await expect(page.getByTestId('ra-report-hazards')).toContainText('Banjir/ Banjir Bandang')
+  // No column heading runs into the next one, on screen or printed (the table scrolls instead),
+  // and the report prints in landscape only.
+  const overlaps = () => page.getByTestId('ra-report-hazards').locator('thead th').evaluateAll((cells) =>
+    cells.filter((cell) => {
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      return range.getBoundingClientRect().right > cell.getBoundingClientRect().right + 0.5
+    }).map((cell) => cell.textContent?.trim()))
+  expect(await overlaps()).toEqual([])
+  await expect(page.locator('[data-print-landscape]')).toHaveCount(1)
+  await page.emulateMedia({ media: 'print' })
+  expect(await overlaps()).toEqual([])
+  expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('page'))).toBe('landscape')
+  await page.emulateMedia({ media: 'screen' })
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Prepared by')
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Legiran')
   // A draft has no downloads yet; Print is the page's main action.

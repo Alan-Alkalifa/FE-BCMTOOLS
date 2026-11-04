@@ -47,11 +47,6 @@ const rows = computed(() => {
   })))
 })
 
-/** The Hazards table's column widths, in its column order (RA Branch has no gross risk). */
-const hazardColumns = computed(() => singleRisk.value
-  ? ['4%', '18%', '32%', '7%', '7%', '9%', '23%']
-  : ['4%', '15%', '5%', '5%', '8%', '25%', '5%', '5%', '8%', '20%'])
-
 function rating(value: number | null | undefined) {
   if (value === null || value === undefined) return '—'
   return value === 0 ? 'N/A' : String(value)
@@ -173,7 +168,11 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
     </UAlert>
 
     <template v-else-if="ready && assessment && formula">
-      <header class="space-y-2">
+      <!-- data-print-landscape: the report always prints in landscape (main.css). -->
+      <header
+        class="space-y-2"
+        data-print-landscape
+      >
         <p class="text-sm text-muted">
           {{ ra.kind === 'branch' ? 'RA Branch' : 'RA HO' }} {{ assessment.formula_version }}
           <template v-if="assessment.ref_no">
@@ -315,52 +314,46 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
             {{ formatNumber(assessment.summary.rated, 0) }} of {{ formatNumber(assessment.summary.total, 0) }} hazards rated.
           </p>
         </template>
-        <!-- Fixed column widths so the text columns get room and the table fits the printed
-             page; on a narrow screen it scrolls sideways. -->
+        <!-- Columns size to their content, so a heading never runs into the next one: short
+             headings stay on one line, the text columns wrap. On screen the table scrolls
+             sideways like the list tables; printed (always landscape) it fits the page. -->
         <div class="overflow-x-auto print:overflow-visible">
           <table
-            class="w-full min-w-5xl table-fixed text-sm print:min-w-0 print:text-xs"
+            class="w-full min-w-[72rem] table-auto text-sm print:min-w-0 print:text-xs"
             data-testid="ra-report-hazards"
           >
-            <colgroup>
-              <col
-                v-for="(width, index) in hazardColumns"
-                :key="index"
-                :style="{ width }"
-              >
-            </colgroup>
             <thead>
-              <tr class="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted">
-                <th class="px-2 py-2 text-right">
+              <tr class="bg-muted text-left align-bottom text-xs font-semibold uppercase tracking-wide text-muted print:text-[10px] print:tracking-normal">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   No
                 </th>
-                <th class="px-2 py-2">
+                <th class="min-w-48 px-2 py-2 print:min-w-[30mm]">
                   Type of Hazard
                 </th>
                 <template v-if="!singleRisk">
-                  <th class="px-2 py-2 text-right">
+                  <th class="px-2 py-2 text-right whitespace-nowrap">
                     Gross P
                   </th>
-                  <th class="px-2 py-2 text-right">
+                  <th class="px-2 py-2 text-right whitespace-nowrap">
                     Gross I
                   </th>
-                  <th class="px-2 py-2">
+                  <th class="px-2 py-2 whitespace-nowrap">
                     Gross risk
                   </th>
                 </template>
-                <th class="px-2 py-2">
+                <th class="min-w-72 px-2 py-2 print:min-w-[62mm]">
                   Existing mitigation measures
                 </th>
-                <th class="px-2 py-2 text-right">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   {{ singleRisk ? 'Probability' : 'Residual P' }}
                 </th>
-                <th class="px-2 py-2 text-right">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   {{ singleRisk ? 'Impact' : 'Residual I' }}
                 </th>
-                <th class="px-2 py-2">
+                <th class="px-2 py-2 whitespace-nowrap">
                   {{ singleRisk ? 'Risk level' : 'Residual risk' }}
                 </th>
-                <th class="px-2 py-2">
+                <th class="min-w-56 px-2 py-2 print:min-w-[40mm]">
                   Action plan
                 </th>
               </tr>
@@ -385,7 +378,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
                   <td class="px-2 py-2 text-right tabular-nums">
                     {{ rating(row.rating?.result.gross_impact) }}
                   </td>
-                  <td class="px-2 py-2">
+                  <td class="px-2 py-2 whitespace-nowrap">
                     <StatusBadge
                       v-if="row.rating?.result.is_rated"
                       :scale="raRiskLevel"
@@ -407,7 +400,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
                 <td class="px-2 py-2 text-right tabular-nums">
                   {{ rating(row.rating?.result.residual_impact) }}
                 </td>
-                <td class="px-2 py-2">
+                <td class="px-2 py-2 whitespace-nowrap">
                   <StatusBadge
                     v-if="row.rating?.result.is_rated"
                     :scale="raRiskLevel"

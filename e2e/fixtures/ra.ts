@@ -783,9 +783,9 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
-      // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
+      // `q=own`: an RA the signed-in BCM user made: BCM still acts for its signers (unlike SCCA).
       const own = name === 'approvals/board' && url.searchParams.get('q') === 'own'
-      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: false })) : waiting
+      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: true })) : waiting
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : rows) })
     } else if (name === 'approvals/inbox') {
       await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
