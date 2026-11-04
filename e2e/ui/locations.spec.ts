@@ -65,7 +65,7 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   const type = page.getByRole('combobox', { name: 'Type of building' })
   await expect(type).toContainText('Head office building')
   await expect(page.getByTestId('building-type-hint')).toContainText('The building or work location that is assessed each RA cycle.')
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Region', exact: true })).toHaveCount(0)
   await page.getByRole('textbox', { name: /Building name/ }).fill('KC Bandung Asia Afrika')
   await type.click()
   await page.getByRole('option', { name: 'Branch' }).click()
@@ -74,7 +74,7 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KC Bandung Asia Afrika')
   // Without the region list a branch has no Region field: its Sub Directorate and Group (its
   // region and area) are picked in Organization.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Region', exact: true })).toHaveCount(0)
   await expect(page.getByText('The branch\'s area.')).toBeVisible()
   await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()

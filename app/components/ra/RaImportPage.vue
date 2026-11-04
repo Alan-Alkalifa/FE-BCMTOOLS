@@ -66,6 +66,8 @@ const schema = computed(() => z.object({
   name: z.string(),
   address: z.string(),
   region: z.string(),
+  area: z.string(),
+  region_description: z.string(),
   province: z.string(),
   city: z.string(),
   district: z.string(),
@@ -86,6 +88,12 @@ const schema = computed(() => z.object({
     if (!value.city.trim()) need('city', 'Enter the city.')
     if (!value.district.trim()) need('district', 'Enter the district.')
     if (!/^[0-9A-Za-z -]{1,10}$/.test(value.zip_code.trim())) need('zip_code', 'Enter the zip code: digits and letters, at most 10.')
+    if (value.region_description.trim().length > 255) need('region_description', 'At most 255 characters.')
+    if (preview.value?.kind === 'branch' && fromDirectory.value) {
+      const region = regionList.value.find((item) => item.region === value.region)
+      if (!region) need('region', 'Choose the region.')
+      else if (region.areas.length && !region.areas.some((item) => item.area === value.area)) need('area', 'Choose the area.')
+    }
   }
   if (value.create_assessment) {
     if (!value.assessment_date) need('assessment_date', 'Enter the assessment date.')
@@ -102,6 +110,8 @@ const state = reactive<State>({
   name: '',
   address: '',
   region: '',
+  area: '',
+  region_description: '',
   province: '',
   city: '',
   district: '',
@@ -119,6 +129,17 @@ const licUser = ref<RaUserRef | null>(null)
 const licUserId = computed<number | null>({ get: () => licUser.value?.id ?? null, set: () => {} })
 const licomUser = ref<RaUserRef | null>(null)
 const formError = ref<string | null>(null)
+
+/** A new branch takes its region and area from the region directory once it has regions. */
+const { data: directory } = useRaRegionDirectory()
+const regionList = computed(() => directory.value?.items ?? [])
+const fromDirectory = computed(() => regionList.value.length > 0)
+const regionItems = computed(() => regionList.value.map((item) => ({ label: item.region, value: item.region, description: item.head ?? undefined })))
+const areaItems = computed(() => (regionList.value.find((item) => item.region === state.region)?.areas ?? [])
+  .map((item) => ({ label: item.area, value: item.area, description: item.head ?? undefined })))
+watch(() => state.region, () => {
+  if (!areaItems.value.some((item) => item.value === state.area)) state.area = ''
+})
 const form = useTemplateRef<{ setErrors: (errors: { name: string, message: string }[]) => void }>('form')
 
 function toRef(person: { id: number, display_name: string | null, email: string | null, mobile_phone: string | null } | null): RaUserRef | null {
@@ -130,11 +151,15 @@ function reset(result: RaImportPreview) {
     target: result.existing ? 'existing' : 'new',
     name: result.location.name ?? '',
     address: result.location.address ?? '',
-    region: result.location.region ?? '',
+    // A branch: the directory's region the workbook names (or, without a directory, its text),
+    // and the workbook's own words as the region description.
+    region: result.location.region_match ?? (fromDirectory.value ? '' : result.location.region ?? ''),
+    area: '',
+    region_description: result.kind === 'branch' ? result.location.region ?? '' : '',
     province: '',
     city: '',
     district: '',
-    zip_code: '',
+    zip_code: result.location.zip_code ?? '',
     replace_profile: false,
     create_assessment: true,
     assessment_date: result.assessment_date ?? todayIso(),
@@ -240,7 +265,13 @@ async function onSubmit(event: FormSubmitEvent<State>) {
       city: value.city.trim(),
       district: value.district.trim(),
       zip_code: value.zip_code.trim(),
-      ...(preview.value.kind === 'branch' && value.region.trim() ? { region: value.region.trim() } : {}),
+      ...(preview.value.kind === 'branch'
+        ? {
+            ...(value.region.trim() ? { region: value.region.trim() } : {}),
+            ...(value.area.trim() ? { area: value.area.trim() } : {}),
+            region_description: value.region_description.trim(),
+          }
+        : {}),
     }
   }
   if (value.create_assessment) {
@@ -424,29 +455,75 @@ async function onSubmit(event: FormSubmitEvent<State>) {
                 />
               </template>
               <template v-else>
-                <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField
+                  :label="`${ra.location.single} name`"
+                  name="name"
+                  required
+                >
+                  <UInput
+                    v-model="state.name"
+                    class="w-full"
+                  />
+                </UFormField>
+                <template v-if="preview.kind === 'branch'">
                   <UFormField
-                    :label="`${ra.location.single} name`"
-                    name="name"
-                    required
+                    label="Region Description"
+                    name="region_description"
+                    help="The workbook's Nama Region Cabang, as written. Optional."
                   >
                     <UInput
-                      v-model="state.name"
+                      v-model="state.region_description"
                       class="w-full"
                     />
                   </UFormField>
+                  <div
+                    v-if="fromDirectory"
+                    class="grid gap-4 sm:grid-cols-2"
+                  >
+                    <UFormField
+                      label="Region"
+                      name="region"
+                      required
+                      :help="preview.location.region_match ? 'The directory region the workbook names.' : 'From the region directory (the workbook\'s region isn\'t one of its regions).'"
+                    >
+                      <USelectMenu
+                        v-model="state.region"
+                        value-key="value"
+                        :items="regionItems"
+                        placeholder="Choose the region"
+                        class="w-full"
+                        aria-label="Region"
+                      />
+                    </UFormField>
+                    <UFormField
+                      label="Area"
+                      name="area"
+                      :required="areaItems.length > 0"
+                      :help="state.region ? (areaItems.length ? 'The Group within the region.' : 'This region has no areas.') : 'Choose the region first.'"
+                    >
+                      <USelectMenu
+                        v-model="state.area"
+                        value-key="value"
+                        :items="areaItems"
+                        :disabled="!areaItems.length"
+                        placeholder="Choose the area"
+                        class="w-full"
+                        aria-label="Area"
+                      />
+                    </UFormField>
+                  </div>
                   <UFormField
-                    v-if="preview.kind === 'branch'"
+                    v-else
                     label="Region"
                     name="region"
-                    help="From the workbook. Branches added from the region directory get their area there."
+                    help="The region directory is empty, so the workbook's region is kept as it is."
                   >
                     <UInput
                       v-model="state.region"
                       class="w-full"
                     />
                   </UFormField>
-                </div>
+                </template>
                 <UFormField
                   label="Address"
                   name="address"
@@ -460,7 +537,7 @@ async function onSubmit(event: FormSubmitEvent<State>) {
                   />
                 </UFormField>
                 <p class="text-sm text-muted">
-                  The workbook has one address cell. Enter its parts:
+                  The workbook has one address cell. Enter its parts{{ preview.location.zip_code ? ' (the zip code is taken from the end of the address)' : '' }}:
                 </p>
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField

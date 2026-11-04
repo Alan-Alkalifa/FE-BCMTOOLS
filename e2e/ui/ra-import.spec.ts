@@ -10,8 +10,8 @@ const WORKBOOK = { name: 'Griya.xlsx', mimeType: 'application/vnd.openxmlformats
 
 type Sent = { options: Record<string, unknown> | null }
 
-async function mockImport(page: Page, preview: typeof PREVIEW | Record<string, unknown> = PREVIEW, failure?: Record<string, string>) {
-  await mockRa(page)
+async function mockImport(page: Page, preview: typeof PREVIEW | Record<string, unknown> = PREVIEW, failure?: Record<string, string>, regions = false) {
+  await mockRa(page, { regions })
   const sent: Sent[] = []
   await page.route('**/api/ra/imports/preview', (route) => route.fulfill({ json: preview }))
   await page.route('**/api/ra/imports', async (route) => {
@@ -75,7 +75,10 @@ test('importing a new building asks for the address parts, then opens the new RA
   await page.getByRole('textbox', { name: 'Province' }).fill('Banten')
   await page.getByRole('textbox', { name: 'City' }).fill('Tangerang Selatan')
   await page.getByRole('textbox', { name: 'District' }).fill('Pondok Aren')
-  await page.getByRole('textbox', { name: 'Zip code' }).fill('15224')
+  // The zip code at the end of the workbook's address is filled in.
+  await expect(page.getByRole('textbox', { name: 'Zip code' })).toHaveValue('15224')
+  // A head office building has no region description.
+  await expect(page.getByRole('textbox', { name: 'Region Description' })).toHaveCount(0)
   await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('081802331872')
   await page.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(page).toHaveURL(/\/ra\/manage\/55/)
@@ -107,4 +110,40 @@ test('a registered building is used by default; its profile is kept unless repla
   await expect(page.getByText('Choose a user with RA access.')).toBeVisible()
   expect(sent[0]!.options).toMatchObject({ location_id: 7, replace_profile: true, assessment: { reason: 'annual_review' } })
   await expect(page).toHaveURL(/\/locations\/import$/)
+})
+
+test('a branch keeps the workbook\'s region as its Region Description and picks region and area from the directory', async ({ page }) => {
+  const JABAR = 'Network - Jabar & Jateng Region'
+  const branch = {
+    ...PREVIEW,
+    kind: 'branch',
+    kind_label: 'Branch',
+    template: 'Risk Assessment Location – Version 2025-2026 – Cabang rev4',
+    location: { name: 'KC Bandung Asia Afrika', address: 'Jl. Asia Afrika No. 122, Bandung 40261', region: JABAR, zip_code: '40261', region_match: JABAR },
+    occupants: [],
+    recovery_team: [],
+    call_tree: [],
+  }
+  const sent = await mockImport(page, branch, undefined, true)
+  await page.goto('/locations/import')
+  await page.getByLabel('Choose the RA workbook').setInputFiles(WORKBOOK)
+  await expect(page.getByText(/Cabang rev4/).first()).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Region Description' })).toHaveValue(JABAR)
+  await expect(page.getByRole('button', { name: 'Region', exact: true })).toContainText(JABAR)
+  await expect(page.getByRole('textbox', { name: 'Zip code' })).toHaveValue('40261')
+  for (const [name, value] of [['Province', 'Jawa Barat'], ['City', 'Bandung'], ['District', 'Sumur Bandung']] as const) {
+    await page.getByRole('textbox', { name }).fill(value)
+  }
+  await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('0818')
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  // The region has areas: one is picked first.
+  await expect(page.getByText('Choose the area.')).toBeVisible()
+  expect(sent).toHaveLength(0)
+  await page.getByRole('button', { name: 'Area', exact: true }).click()
+  await page.getByRole('option', { name: /Jabar Area I(?!I)/ }).click()
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]!.options).toMatchObject({ location: {
+    region: JABAR, area: `${JABAR} - Jabar Area I`, region_description: JABAR, zip_code: '40261',
+  } })
 })

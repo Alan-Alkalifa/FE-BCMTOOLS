@@ -92,7 +92,7 @@ test('a branch has occupants, a recovery team and a call tree; without the regio
   await expect(page.getByRole('textbox', { name: /Branch name/ })).toHaveValue('KCP Bogor Pajajaran', { timeout: 60_000 })
   // No region directory loaded (it comes from LDAP in production): no Region field; the
   // branch's Sub Directorate (its region) and Group (its area) are picked in Organization.
-  await expect(page.getByRole('textbox', { name: /Region/ })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Region', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Area')).toHaveCount(0)
   await expect(page.getByText('The branch\'s region.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Group', exact: true })).toBeEnabled()
@@ -122,6 +122,12 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   await expect(page.getByRole('combobox', { name: 'Type of building' })).toBeDisabled({ timeout: 60_000 })
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
+  // Region Description sits right below the branch name (free text, optional).
+  const description = page.getByRole('textbox', { name: 'Region Description' })
+  const nameBox = await page.getByRole('textbox', { name: /Branch name/ }).boundingBox()
+  const descriptionBox = await description.boundingBox()
+  expect(descriptionBox!.y).toBeGreaterThan(nameBox!.y)
+  await description.fill('Region Jabar, Bandung Raya')
   await page.getByRole('button', { name: 'Add branch' }).click()
   for (const message of ['Enter the address.', 'Enter the province.', 'Enter the city.', 'Enter the district.', 'Enter the zip code.']) {
     await expect(page.getByText(message)).toBeVisible()
@@ -131,13 +137,13 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   await expect(page.getByText('Enter the address.')).toHaveCount(0)
   // Without the region directory there is no Region field: the branch's Sub Directorate (its
   // region) and Group (its area) are picked in Organization.
-  await expect(page.getByRole('textbox', { name: 'Region' })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Region', exact: true })).toHaveCount(0)
   await expect(page.getByText('The region list comes from LDAP.')).toHaveCount(0)
   await page.getByLabel('Group', { exact: true }).click()
   await page.getByRole('option', { name: 'Building Management' }).click()
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta', org_group: 'Building Management' })
+  expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta', org_group: 'Building Management', region_description: 'Region Jabar, Bandung Raya' })
   expect(log.created[0]).not.toHaveProperty('region')
 })
 

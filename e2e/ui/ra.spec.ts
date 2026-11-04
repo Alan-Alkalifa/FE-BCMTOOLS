@@ -775,6 +775,8 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page.getByText('Enter the building name.')).toBeVisible()
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
+  // Region Description is a branch field.
+  await expect(page.getByRole('textbox', { name: 'Region Description' })).toHaveCount(0)
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
   await fillAddress(page)
   // Its organization, as SCCA's application owner: picked from the user master's values.

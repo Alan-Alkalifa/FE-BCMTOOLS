@@ -232,6 +232,8 @@ export interface RaLocationRef {
   region: string | null
   /** A branch's area (the Group of its region) in the Network organisation. */
   area?: string | null
+  /** A branch's own description of its region (free text, below its name on the form). */
+  region_description?: string | null
   /** The organization it belongs to (the user master's HR fields), as SCCA's application
    *  owner. A branch's Directorate and Sub Directorate follow its region. */
   directorate?: string | null
@@ -563,6 +565,8 @@ export interface RaLocationInput {
   district?: string | null
   zip_code?: string | null
   region?: string | null
+  area?: string | null
+  region_description?: string | null
   directorate?: string | null
   sub_directorate?: string | null
   org_group?: string | null
@@ -828,7 +832,15 @@ export interface RaImportPreview {
   kind: RaKind
   kind_label: string
   template: string
-  location: { name: string | null, address: string | null, region: string | null }
+  location: {
+    name: string | null
+    address: string | null
+    region: string | null
+    /** The postal code at the end of the address, to fill in. */
+    zip_code: string | null
+    /** The directory region the branch's region text names. */
+    region_match: string | null
+  }
   existing: {
     id: number
     code: string
@@ -864,7 +876,7 @@ export interface RaImportPreview {
 }
 export interface RaImportOptions {
   location_id?: number
-  location?: Partial<Pick<RaLocationInput, 'name' | 'address' | 'region'>> & Pick<RaLocationInput, 'province' | 'city' | 'district' | 'zip_code'>
+  location?: Partial<Pick<RaLocationInput, 'name' | 'address' | 'region' | 'area' | 'region_description'>> & Pick<RaLocationInput, 'province' | 'city' | 'district' | 'zip_code'>
   replace_profile?: boolean
   assessment?: {
     period_year: number
