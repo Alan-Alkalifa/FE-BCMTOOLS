@@ -1,0 +1,598 @@
+{
+  "categories": [
+    {
+      "code": "NAT",
+      "hazards": [
+        {
+          "code": "H01",
+          "name": "Banjir/ Banjir Bandang",
+          "no": 1,
+          "short_name": "Banjir/ Banjir Bandang"
+        },
+        {
+          "code": "H02",
+          "name": "Tanah Longsor/ Penurunan Tanah/ Likuifaksi",
+          "no": 2,
+          "short_name": "Tanah Longsor/ Penurunan Tanah/ Likuifaksi"
+        },
+        {
+          "code": "H03",
+          "name": "Gempa Bumi",
+          "no": 3,
+          "short_name": "Gempa Bumi"
+        },
+        {
+          "code": "H04",
+          "name": "Tsunami",
+          "no": 4,
+          "short_name": "Tsunami"
+        },
+        {
+          "code": "H05",
+          "name": "Angin Topan/ Hujan Badai/ Badai",
+          "no": 5,
+          "short_name": "Angin Topan/ Hujan Badai/ Badai"
+        },
+        {
+          "code": "H06",
+          "name": "Cuaca Ekstream",
+          "no": 6,
+          "short_name": "Cuaca Ekstream"
+        },
+        {
+          "code": "H07",
+          "name": "Sambaran/ Gangguan Petir",
+          "no": 7,
+          "short_name": "Sambaran/ Gangguan Petir"
+        },
+        {
+          "code": "H08",
+          "name": "Erupsi Gunung Berapi",
+          "no": 8,
+          "short_name": "Erupsi Gunung Berapi"
+        },
+        {
+          "code": "H09",
+          "name": "Kebakaran dalam skala besar (kebakaran hutan)",
+          "no": 9,
+          "short_name": "Kebakaran dalam skala besar"
+        }
+      ],
+      "label": "Natural disasters",
+      "name": "Bencana Alam"
+    },
+    {
+      "code": "ENV",
+      "hazards": [
+        {
+          "code": "H10",
+          "name": "Kabut / Kualitas udara yang buruk",
+          "no": 10,
+          "short_name": "Kabut/Kualitas udara yang buruk"
+        },
+        {
+          "code": "H11",
+          "name": "Wabah Penyakit Epidemi /Pandemi (Covid-19, SARS, Avian Flu, Dengue, etc)",
+          "no": 11,
+          "short_name": "Wabah Penyakit Epidemi /Pandemi"
+        },
+        {
+          "code": "H12",
+          "name": "Kontaminasi Air",
+          "no": 12,
+          "short_name": "Kontaminasi Air"
+        },
+        {
+          "code": "H13",
+          "name": "Insiden Material Berbahaya (Kebocoran Gas, Tumpahan bahan kimia beracun)",
+          "no": 13,
+          "short_name": "Insiden Material Berbahaya"
+        }
+      ],
+      "label": "Environment (health and safety)",
+      "name": "Lingkungan (Kesehatan & Keselamatan)"
+    },
+    {
+      "code": "SEC",
+      "hazards": [
+        {
+          "code": "H14",
+          "name": "Kebakaran",
+          "no": 14,
+          "short_name": "Kebakaran"
+        },
+        {
+          "code": "H15",
+          "name": "Ledakan/ Bom - Ancaman & Saat Terjadi Ledakan",
+          "no": 15,
+          "short_name": "Ledakan/ Bom - Ancaman & Saat Terjadi Ledakan"
+        },
+        {
+          "code": "H16",
+          "name": "Perampokan",
+          "no": 16,
+          "short_name": "Perampokan"
+        },
+        {
+          "code": "H17",
+          "name": "Situasi Penyanderaan",
+          "no": 17,
+          "short_name": "Situasi Penyanderaan"
+        },
+        {
+          "code": "H18",
+          "name": "Demo karyawan",
+          "no": 18,
+          "short_name": "Demo Karyawan"
+        },
+        {
+          "code": "H19",
+          "name": "Kerusuhan/ huru-hara",
+          "no": 19,
+          "short_name": "Kerusuhan/ huru-hara"
+        },
+        {
+          "code": "H20",
+          "name": "Ketidakstabilan politis/Kudeta dalam Pemerintahan/ Perang/ Perlakuan Jam Malam",
+          "no": 20,
+          "short_name": "Ketidakstabilan politis/Kudeta dalam Pemerintahan/ Perang/ Perlakuan Jam Malam"
+        },
+        {
+          "code": "H21",
+          "name": "Terorisme",
+          "no": 21,
+          "short_name": "Terorisme"
+        }
+      ],
+      "label": "Security threats",
+      "name": "Ancaman Keamanan"
+    },
+    {
+      "code": "INF",
+      "hazards": [
+        {
+          "code": "H22",
+          "name": "Gangguan pasokan listrik",
+          "no": 22,
+          "short_name": "Gangguan pasokan listrik"
+        },
+        {
+          "code": "H23",
+          "name": "Gangguan pasokan air bersih",
+          "no": 23,
+          "short_name": "Gangguan Pasokan Air Bersih"
+        },
+        {
+          "code": "H24",
+          "name": "Gangguan Pipa Air Bocor",
+          "no": 24,
+          "short_name": "Gangguan Pipa Air Bocor"
+        },
+        {
+          "code": "H25",
+          "name": "Gangguan telekomunikasi, Voice dan Network",
+          "no": 25,
+          "short_name": "Gangguan Telekomunikasi, Voice & Network"
+        },
+        {
+          "code": "H26",
+          "name": "Kerusakan Struktur Gedung",
+          "no": 26,
+          "short_name": "Kerusakan Struktur Gedung"
+        }
+      ],
+      "label": "Infrastructure and equipment failure",
+      "name": "Infrastruktur/ Gangguan Peralatan"
+    },
+    {
+      "code": "ITD",
+      "hazards": [
+        {
+          "code": "H27",
+          "name": "Serangan Virus komputer",
+          "no": 27,
+          "short_name": "Serangan Virus Komputer"
+        },
+        {
+          "code": "H28",
+          "name": "Peretasan Sistem Komputer",
+          "no": 28,
+          "short_name": "Peretasan Sistem Komputer"
+        },
+        {
+          "code": "H29",
+          "name": "Gangguan Sistem/ Software/ Hardware",
+          "no": 29,
+          "short_name": "Gangguan Sistem/ Software/ Hardware"
+        }
+      ],
+      "label": "Information technology disruption",
+      "name": "Gangguan Teknologi Informasi"
+    },
+    {
+      "code": "MAN",
+      "hazards": [
+        {
+          "code": "H30",
+          "name": "Sabotase (external maupun internal)/Pembakaran secara sengaja/ Pelanggaran Akses",
+          "no": 30,
+          "short_name": "Sabotase"
+        },
+        {
+          "code": "H31",
+          "name": "Perusakan aset fisik secara sengaja",
+          "no": 31,
+          "short_name": "Perusakan aset fisik secara sengaja"
+        },
+        {
+          "code": "H32",
+          "name": "Kekerasan ditempat kerja",
+          "no": 32,
+          "short_name": "Kekerasan ditempat kerja"
+        },
+        {
+          "code": "H33",
+          "name": "Kerentanan Keamanan Fisik Gedung",
+          "no": 33,
+          "short_name": "Kerentanan Keamanan Fisik Gedung"
+        }
+      ],
+      "label": "Man-made (deliberate and accidental)",
+      "name": "Buatan-Manusia (Kesengajaan dan Kecelakaan)"
+    }
+  ],
+  "code": "2025-r4",
+  "guides": {
+    "historical": [
+      {
+        "guidance": "More than 15 times in the past 10 years",
+        "label": null,
+        "rating": 5
+      },
+      {
+        "guidance": "10 to 14 times in the past 10 years",
+        "label": null,
+        "rating": 4
+      },
+      {
+        "guidance": "6 to 9 times in the past 10 years",
+        "label": null,
+        "rating": 3
+      },
+      {
+        "guidance": "2 to 5 times in the past 10 years",
+        "label": null,
+        "rating": 2
+      },
+      {
+        "guidance": "Once in the past 10 years",
+        "label": null,
+        "rating": 1
+      }
+    ],
+    "human": [
+      {
+        "guidance": "Significant injuries or health problems, or death, of employees or third parties",
+        "label": "Critical",
+        "rating": 5
+      },
+      {
+        "guidance": "An injury or health problem that needs inpatient treatment at a hospital for employees or third parties",
+        "label": "Major",
+        "rating": 4
+      },
+      {
+        "guidance": "An injury or health problem that needs outpatient treatment at a hospital for employees or third parties",
+        "label": "Moderate",
+        "rating": 3
+      },
+      {
+        "guidance": "No injury or health problem, or a minor injury to employees or third parties",
+        "label": "Minor",
+        "rating": 2
+      },
+      {
+        "guidance": "No safety or health impact on employees",
+        "label": "Insignificant",
+        "rating": 1
+      }
+    ],
+    "infrastructure": [
+      {
+        "guidance": "IT systems and infrastructure, including network devices, electronic equipment and other supporting facilities, are damaged, lost, unavailable or affected",
+        "label": "Critical",
+        "rating": 5
+      },
+      {
+        "guidance": "IT systems and infrastructure, including network devices and electronic equipment, are damaged, lost, unavailable or affected, but other supporting facilities are not",
+        "label": "Major",
+        "rating": 4
+      },
+      {
+        "guidance": "IT systems and infrastructure, including network devices, are damaged, lost, unavailable or affected, but electronic equipment and other supporting facilities are not",
+        "label": "Moderate",
+        "rating": 3
+      },
+      {
+        "guidance": "IT systems are damaged, lost, unavailable or affected, but infrastructure, network devices, electronic equipment and other supporting facilities are not",
+        "label": "Minor",
+        "rating": 2
+      },
+      {
+        "guidance": "IT systems and infrastructure, including network devices, electronic equipment and their supporting facilities, are not affected",
+        "label": "Insignificant",
+        "rating": 1
+      }
+    ],
+    "monetary": [
+      {
+        "guidance": "Actual or potential loss of Rp 3.5 billion or more",
+        "label": "Critical",
+        "rating": 5
+      },
+      {
+        "guidance": "Actual or potential loss of Rp 1.75 billion ≤ x < Rp 3.5 billion",
+        "label": "Major",
+        "rating": 4
+      },
+      {
+        "guidance": "Actual or potential loss of Rp 350 million ≤ x < Rp 1.75 billion",
+        "label": "Moderate",
+        "rating": 3
+      },
+      {
+        "guidance": "Actual or potential loss of Rp 175 million ≤ x < Rp 350 million",
+        "label": "Minor",
+        "rating": 2
+      },
+      {
+        "guidance": "Actual or potential loss below Rp 175 million, or no loss",
+        "label": "Insignificant",
+        "rating": 1
+      }
+    ],
+    "probability": [
+      {
+        "guidance": "May happen once in the next month",
+        "label": "Almost certain",
+        "rating": 5
+      },
+      {
+        "guidance": "May happen once in the next 3 months",
+        "label": "Likely",
+        "rating": 4
+      },
+      {
+        "guidance": "May happen once in the next year",
+        "label": "Possible",
+        "rating": 3
+      },
+      {
+        "guidance": "May happen once in the next 3 years",
+        "label": "Unlikely",
+        "rating": 2
+      },
+      {
+        "guidance": "May happen once in the next 5 years",
+        "label": "Rare",
+        "rating": 1
+      }
+    ],
+    "reputation": [
+      {
+        "guidance": "Actual or potential wide or repeated negative coverage in national media in several countries",
+        "label": "Critical",
+        "rating": 5
+      },
+      {
+        "guidance": "Actual or potential wide or repeated negative coverage in national media in one country",
+        "label": "Major",
+        "rating": 4
+      },
+      {
+        "guidance": "Actual or potential negative coverage in national media in one country",
+        "label": "Moderate",
+        "rating": 3
+      },
+      {
+        "guidance": "Actual or potential negative coverage in local media that affects the company's reputation in one country",
+        "label": "Minor",
+        "rating": 2
+      },
+      {
+        "guidance": "Negative media coverage with minimal impact on the company's reputation",
+        "label": "Insignificant",
+        "rating": 1
+      }
+    ]
+  },
+  "inputs": [
+    "historical",
+    "probability",
+    "monetary",
+    "human",
+    "reputation",
+    "infrastructure",
+    "residual_probability",
+    "residual_monetary",
+    "residual_human",
+    "residual_reputation",
+    "residual_infrastructure"
+  ],
+  "instructions": [
+    "1. Identifikasi semua ancaman yang relefan dengan lokasi. Ancaman yang tidak relefan dengan lokasi kerja tidak perlu diisikan dan dapat diartikan Not Applicable (NA). Ancaman yang bersifat \"Historical of Occurrence\" harus dilakukan penilaian.",
+    "2. Lihat Tabel 1 untuk rating. Historical Occurrence rating berdasarkan historis dalam 10 tahun kebelakang.",
+    "3. Lihat Tabel 2 untuk Probability of Occurrence",
+    "4. Lihat Tabel 3 untuk rating Monetary Impact, Human Impact, Reputation Impact dan Infrastructure Impact. Ini adalah nilai dampak yang juga dipakai untuk penilaian dampak setelah diterapkannya mitigation measures",
+    "5. Mohon isikan kolom Existing Mitigation Measures dengan mitigasi yang telah dimiliki oleh gedung/ lokasi kerja terkait dengan masing-masing ancaman sehingga dapat mengurangi baik Prob. Of Occurrence maupun Impact.",
+    "Note: Setiap Gross Risk dengan nilai 1 baik untuk \"Probability\" dan \"Impact\" tidak butuh untuk mengisikan Existing Mitigation Measures"
+  ],
+  "kind": "head_office",
+  "levels": [
+    "Low",
+    "Medium",
+    "High"
+  ],
+  "matrix": [
+    {
+      "impact": 1,
+      "level": "Medium",
+      "probability": 5
+    },
+    {
+      "impact": 2,
+      "level": "Medium",
+      "probability": 5
+    },
+    {
+      "impact": 3,
+      "level": "High",
+      "probability": 5
+    },
+    {
+      "impact": 4,
+      "level": "High",
+      "probability": 5
+    },
+    {
+      "impact": 5,
+      "level": "High",
+      "probability": 5
+    },
+    {
+      "impact": 1,
+      "level": "Medium",
+      "probability": 4
+    },
+    {
+      "impact": 2,
+      "level": "Medium",
+      "probability": 4
+    },
+    {
+      "impact": 3,
+      "level": "Medium",
+      "probability": 4
+    },
+    {
+      "impact": 4,
+      "level": "High",
+      "probability": 4
+    },
+    {
+      "impact": 5,
+      "level": "High",
+      "probability": 4
+    },
+    {
+      "impact": 1,
+      "level": "Low",
+      "probability": 3
+    },
+    {
+      "impact": 2,
+      "level": "Medium",
+      "probability": 3
+    },
+    {
+      "impact": 3,
+      "level": "Medium",
+      "probability": 3
+    },
+    {
+      "impact": 4,
+      "level": "High",
+      "probability": 3
+    },
+    {
+      "impact": 5,
+      "level": "High",
+      "probability": 3
+    },
+    {
+      "impact": 1,
+      "level": "Low",
+      "probability": 2
+    },
+    {
+      "impact": 2,
+      "level": "Low",
+      "probability": 2
+    },
+    {
+      "impact": 3,
+      "level": "Medium",
+      "probability": 2
+    },
+    {
+      "impact": 4,
+      "level": "Medium",
+      "probability": 2
+    },
+    {
+      "impact": 5,
+      "level": "Medium",
+      "probability": 2
+    },
+    {
+      "impact": 1,
+      "level": "Low",
+      "probability": 1
+    },
+    {
+      "impact": 2,
+      "level": "Low",
+      "probability": 1
+    },
+    {
+      "impact": 3,
+      "level": "Medium",
+      "probability": 1
+    },
+    {
+      "impact": 4,
+      "level": "Medium",
+      "probability": 1
+    },
+    {
+      "impact": 5,
+      "level": "Medium",
+      "probability": 1
+    }
+  ],
+  "mitigation_examples": [
+    {
+      "area": "KEY PERSONNEL /LOSS OF PEOPLE",
+      "example": "Replacement staff are available, who may need training or special qualifications.\nDetailed work instructions and scenarios are also needed to support the plan."
+    },
+    {
+      "area": "ACCESS TO OFFICE PREMISES",
+      "example": "An alternate site is available or, in some cases, the premises can be repaired quickly."
+    },
+    {
+      "area": "INFORMATION & RECORDS",
+      "example": "Information can be recovered by recreating it (e.g. running end of day again) or by restoring the data."
+    },
+    {
+      "area": "IT & COMMUNICATION",
+      "example": "Regular backups, process workarounds (another way to work when a system or application has a problem or limit), backup systems and spare infrastructure are in place."
+    },
+    {
+      "area": "FUNCTIONS",
+      "example": "Alternative equipment is provided or used. Another option is to use equipment from another party while the main equipment is repaired."
+    },
+    {
+      "area": "KEY SUPPLIER/ VENDORS",
+      "example": "Supplies of material arrive on time in an emergency. This may need advance orders, alternative suppliers or a comprehensive list of needs.\nThe details vary with the urgency, volume and uniqueness of the supply needed."
+    }
+  ],
+  "name": "HO Risk Assessment Location Version 2025 r4",
+  "risk_summary_note": "Risk Summary : Semua Ancaman dengan nilai Risiko Residual diatas \"Medium\" perlu ditindaklanjuti dengan Control Issue Management (CIM) oleh unit terkait, berupa:\n1. Tindak lanjut/ Rencana Pemulihan (Recovery Plan) setelah terjadinya bencana.\n2. Setiap tindakan pencegahan (preventive actions) yang sedang direncanakan\n3. Pertanggungan Asuransi untuk kemungkinan kerugian",
+  "signoff_roles": [
+    "prepared_by",
+    "acknowledged_by_unit",
+    "reviewed_by",
+    "acknowledged_by_bcm"
+  ],
+  "signoff_statement": "Saya menyatakan bahwa Risk Assessment yang telah dilakukan terhadap fungsi bisnis adalah AKURAT dan BENAR. Implementasi upaya mitigasi, baik yang sudah ada maupun tindakan lainnya sebagai strategi untuk menurunkan/mengurangi dampak risiko. Kertas kerja Risk Assessment ini akan selalu kami review dan dikinikan untuk menandakan perubahan yang terjadi pada lokasi kerja.\n\nSaya bertanggung jawab untuk memastikan kertas kerja RA ini dikinikan sesuai jadwal dan memberi update Unit Kerja BCM untuk perubahan yang dilakukan"
+}

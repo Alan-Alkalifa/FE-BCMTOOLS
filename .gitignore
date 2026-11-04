@@ -6,3 +6,9 @@ dist/
 test-results/
 playwright-report/
 .env
+dist
+# Written by scripts/write-version.mjs at build time
+public/version.json
+.env.*
+!.env.example.*
+.vercel

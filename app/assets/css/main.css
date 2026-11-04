@@ -1,2 +1,87 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Design tokens. Spec: docs/design-system.md */
+
+@theme static {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* CIMB red, built around the logo colours #ED3024 (500) and #790008 (900).
+     Approximation pending confirmation by the CIMB Niaga brand team. */
+  --color-cimb-50: #fef3f2;
+  --color-cimb-100: #fee4e2;
+  --color-cimb-200: #fdcdca;
+  --color-cimb-300: #faa7a1;
+  --color-cimb-400: #f5736a;
+  --color-cimb-500: #ed3024;
+  --color-cimb-600: #d21e13;
+  --color-cimb-700: #b0170f;
+  --color-cimb-800: #911611;
+  --color-cimb-900: #790008;
+  --color-cimb-950: #44030a;
+
+  /* Okabe-Ito colour-blind-safe series, in the order charts should use them. */
+  --color-chart-1: #0072b2;
+  --color-chart-2: #e69f00;
+  --color-chart-3: #009e73;
+  --color-chart-4: #d55e00;
+  --color-chart-5: #56b4e9;
+  --color-chart-6: #cc79a7;
+  --color-chart-7: #7a6f00;
+  --color-chart-8: #64748b;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+}
+
+:root {
+  /* Solid fills and coloured text use shades that reach 4.5:1 against white (WCAG AA). */
+  --ui-primary: var(--ui-color-primary-600);
+  --ui-error: var(--ui-color-error-700);
+  --ui-success: var(--ui-color-success-700);
+  --ui-warning: var(--ui-color-warning-700);
+  --ui-info: var(--ui-color-info-600);
+
+  --ui-radius: 0.25rem;
+  --ui-bg: var(--color-white);
+  --ui-bg-muted: var(--ui-color-neutral-50);
+  
+}
+
+body {
+  font-feature-settings: "cv11";
+}
+
+/* A decorative placeholder bar. Wrap groups of them in <SkeletonGroup> (or use the Skeleton* components),
+   which announce "Loading" once; USkeleton announces every bar separately. */
+@utility skeleton {
+  @apply animate-pulse rounded-md bg-accented/60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* A spinner is the only sign that work is running, so it keeps turning, just slower. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+}
