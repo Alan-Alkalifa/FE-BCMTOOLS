@@ -1,0 +1,27 @@
+# Code scanning for JavaScript and TypeScript on every pull request and weekly. Results: Security > Code scanning.
+# Private repos need GitHub Code Security (paid). Without it the job is skipped; once it is on,
+# set the repository variable CODE_SECURITY=true to run it.
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [DEV-BCMTOOLS, PROD-BCMTOOLS]
+  schedule:
+    - cron: "17 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    if: ${{ !github.event.repository.private || vars.CODE_SECURITY == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3

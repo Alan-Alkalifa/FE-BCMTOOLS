@@ -1,0 +1,7 @@
+# Changes to these paths need a review from a code owner (branch rules: PROD-BCMTOOLS).
+/.github/        @Alan-Alkalifa
+/scripts/        @Alan-Alkalifa
+/vercel.json     @Alan-Alkalifa
+/middleware.ts   @Alan-Alkalifa
+/Dockerfile      @Alan-Alkalifa
+/nginx/          @Alan-Alkalifa
