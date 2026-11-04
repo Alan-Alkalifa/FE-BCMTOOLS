@@ -359,6 +359,8 @@ export async function mockRa(
     steps?: (typeof SIGNOFF_STEPS)['head_office']
     /** Outside BCM: the access scope opens only these location ids for an Annual review. */
     scopeIds?: number[]
+    /** Why a building can't be picked, by reason then building id (the API's `problems`). */
+    scopeProblems?: Partial<Record<'annual_review' | 'structural_change', Record<string, string>>>
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], generated: [], locationQueries: [], approvals: [] }
@@ -439,8 +441,11 @@ export async function mockRa(
     const url = new URL(route.request().url())
     const method = route.request().method()
     if (url.pathname.endsWith('/locations/scope')) {
-      const scoped = options.scopeIds && ['annual_review', 'structural_change'].includes(url.searchParams.get('reason') ?? '')
-      await route.fulfill({ json: scoped ? { all: false, ids: options.scopeIds } : { all: true, ids: [] } })
+      const reason = url.searchParams.get('reason') ?? ''
+      const ruled = reason === 'annual_review' || reason === 'structural_change'
+      const problems = (ruled && options.scopeProblems?.[reason]) || {}
+      const scoped = options.scopeIds && ruled
+      await route.fulfill({ json: scoped ? { all: false, ids: options.scopeIds, problems } : { all: true, ids: [], problems } })
       return
     }
     const list = url.pathname.match(/\/(contacts|occupants|recovery-team|call-tree)$/)?.[1]

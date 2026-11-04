@@ -926,8 +926,13 @@ export const raApi = {
   generateRenewals: (assessmentIds: number[]) =>
     $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds } }),
   /** New assessment: the locations the access scope opens for a reason (`all` for BCM). */
-  locationScope: (kind: RaKind, reason: string) =>
-    $fetch<{ all: boolean, ids: number[] }>(`${LOCATIONS}/scope`, { query: { kind, reason } }),
+  /** The buildings the access scope opens for an Annual review or a Structural change, and why
+   *  a building can't be picked for it (`problems` by id, as SCCA's application lookup).
+   *  `assessmentId`: the RA whose reason changes (its own draft doesn't count as open). */
+  locationScope: (kind: RaKind, reason: string, assessmentId?: number) =>
+    $fetch<{ all: boolean, ids: number[], problems: Record<string, string> }>(`${LOCATIONS}/scope`, {
+      query: { kind, reason, assessment_id: assessmentId },
+    }),
   updateLocation: (id: number, body: RaLocationInput) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`, { method: 'PUT', body }),
   getLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`),

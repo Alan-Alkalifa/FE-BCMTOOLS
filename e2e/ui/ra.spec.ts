@@ -162,7 +162,7 @@ test('New assessment offers only the buildings the access scope opens for an Ann
   await page.goto('/ra/manage/new')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
   await page.getByRole('option', { name: /Annual review/ }).click()
-  await expect(page.getByText('Only buildings with a final RA to renew. Only the buildings your access scope opens.')).toBeVisible()
+  await expect(page.getByText('Only buildings with a final RA to renew, while no other RA of it is open. Only the buildings your access scope opens.')).toBeVisible()
   await page.getByRole('button', { name: /^Building\*?$/ }).click()
   // Griya has a final RA but is outside the scope.
   await expect(page.getByRole('option', { name: /Griya CIMB Niaga 2/ })).toHaveCount(0)
@@ -1000,11 +1000,47 @@ test('the reason decides which buildings can be picked, as SCCA\'s reason decide
   await reason.click()
   await page.getByRole('option', { name: /Structural change/ }).click()
   await building.click()
-  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(2)
+  // As SCCA's System change, a Structural change follows a final RA too.
+  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(0)
+})
+
+test('as SCCA, a building with another RA open, or overdue for a Structural change, shows greyed out with why', async ({ page }) => {
+  const open = 'RA-2026-0007 is already open for Griya CIMB Niaga 2.'
+  const overdue = 'Griya CIMB Niaga 2\'s renewal is overdue: start an Annual review instead of a Structural change.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: open }, structural_change: { 1: overdue } } })
+  await griyaHasAFinalRa(page)
+  await page.goto('/ra/manage/new')
+  const reason = page.getByLabel('Reason for assessment')
+  await reason.click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  await expect(page.getByText('Only buildings with a final RA to renew, while no other RA of it is open.')).toBeVisible()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  const griya = page.getByRole('option', { name: /Griya CIMB Niaga 2/ })
+  await expect(griya).toHaveAttribute('data-disabled', '')
+  await expect(griya).toContainText(open)
+  await page.keyboard.press('Escape')
+  await reason.click()
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  await expect(griya).toHaveAttribute('data-disabled', '')
+  await expect(griya).toContainText(overdue)
+})
+
+test('a building picked from its page that the rule refuses says why before saving', async ({ page }) => {
+  const open = 'RA-2026-0007 is already open for Griya CIMB Niaga 2.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: open } } })
+  await griyaHasAFinalRa(page)
+  await page.goto('/ra/manage/new?location_id=1')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  const note = page.getByTestId('building-note')
+  await expect(note).toContainText('Annual review isn\'t possible for this building')
+  await expect(note).toContainText(`${open} Pick another building or reason.`)
 })
 
 test('a reason the picked building doesn\'t fit asks first, then clears the building', async ({ page }) => {
   await mockRa(page)
+  await griyaHasAFinalRa(page)
   await page.goto('/ra/manage/new')
   const reason = page.getByLabel('Reason for assessment')
   const building = page.getByRole('button', { name: /^Building\*?$/ })
@@ -1045,15 +1081,15 @@ test('a building that already has an RA for the period says so on the date, befo
   const year = await griyaHasAnRaThisYear(page, 'draft')
   await page.goto('/ra/manage/new?location_id=1')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
-  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('option', { name: /Annual review/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  // Even a structural change waits until the period's RA is final.
-  await expect(page.getByText(`The RA for ${year} (RA-${year}-0005) isn't final yet. A structural change can start once it is final.`)).toBeVisible()
+  await expect(page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA.`, { exact: false }).first()).toBeVisible()
   expect(log.created).toHaveLength(0)
 })
 
 test('a structural change can follow a final RA in the same period', async ({ page }) => {
   await mockRa(page)
+  await griyaHasAFinalRa(page)
   const year = await griyaHasAnRaThisYear(page, 'approved')
   await page.goto('/ra/manage/new?location_id=1')
   const reason = page.getByLabel('Reason for assessment')
@@ -1073,12 +1109,16 @@ test('a structural change can follow a final RA in the same period', async ({ pa
 })
 
 test('on the Details tab a reason the building doesn\'t fit is offered disabled', async ({ page }) => {
-  await mockRa(page)
+  const none = 'Griya CIMB Niaga 2 has no final RA yet.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: none }, structural_change: { 1: none } } })
   await page.goto('/ra/manage/1')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
-  // Its only RA is this one: no final RA to renew; it is the building's first RA.
-  await expect(page.getByRole('option', { name: /Annual review/ })).toHaveAttribute('data-disabled', '')
-  await expect(page.getByRole('option', { name: /Annual review/ })).toContainText('There is no final RA to renew.')
+  // Its only RA is this one: no final RA for an Annual review or a Structural change (the API's
+  // reasons, as SCCA's); it is the building's first RA.
+  for (const name of [/Annual review/, /Structural change/]) {
+    await expect(page.getByRole('option', { name })).toHaveAttribute('data-disabled', '')
+    await expect(page.getByRole('option', { name })).toContainText(none)
+  }
   await expect(page.getByRole('option', { name: /New building/ })).not.toHaveAttribute('data-disabled', '')
 })
 
