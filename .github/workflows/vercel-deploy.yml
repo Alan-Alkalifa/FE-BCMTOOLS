@@ -65,7 +65,7 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Point ${{ inputs.alias }} at it
         if: inputs.alias != ''
-        run: npx --yes "$VERCEL_CLI" alias set "${{ steps.deploy.outputs.url }}" "${{ inputs.alias }}" --token="$VERCEL_TOKEN"
+        run: npx --yes "$VERCEL_CLI" alias set "${{ steps.deploy.outputs.url }}" "${{ inputs.alias }}" --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
       - name: Wait for ${{ inputs.url }}/version.json to show this commit
         env:
           SITE: ${{ inputs.url }}
