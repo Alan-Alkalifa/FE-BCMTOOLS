@@ -7,6 +7,10 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'retain-on-failure',
+    // Smoke tests against a protected Vercel preview (DEV): Vercel's Protection Bypass for Automation.
+    ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+      ? { extraHTTPHeaders: { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET, 'x-vercel-set-bypass-cookie': 'true' } }
+      : {}),
     ...devices['Desktop Chrome'],
   },
   projects: [
