@@ -23,7 +23,6 @@ The backend (Flask API, ID-and-password sign-in, roles and menus, SMTP email, My
 - [Testing](#testing)
 - [Docker images and nginx](#docker-images-and-nginx)
 - [CI/CD](#cicd)
-- [Azure setup](#azure-setup)
 - [Compatibility with the backend](#compatibility-with-the-backend)
 - [Troubleshooting](#troubleshooting)
 
@@ -112,7 +111,7 @@ frontend/
 │   ├── ui/                        # Playwright tests with the API mocked
 │   └── smoke/                     # Playwright tests against a real backend
 ├── nginx/default.conf.template    # Production nginx config (BACKEND_URL injected at start)
-├── .github/workflows/             # ci.yml, deploy.yml, deploy-env.yml
+├── .github/workflows/             # ci.yml, deploy-dev.yml, deploy-prod.yml, vercel-deploy.yml, rollback.yml, codeql.yml
 ├── compose.yaml                   # Local dev server with hot reload
 ├── Dockerfile                     # Targets: dev, build, prod
 ├── eslint.config.mjs              # ESLint (rules and code style set in nuxt.config.ts)
@@ -187,8 +186,8 @@ The proxy sends `ngrok-skip-browser-warning`, so ngrok's free-plan warning page 
 
 On Vercel there is no nginx: `middleware.ts` (Vercel Routing Middleware, matcher `/api/:path*`) forwards every `/api` request to the backend, with `ngrok-skip-browser-warning` so the ngrok warning page never replaces an API answer, the profile photo or a download. The browser keeps calling the Vercel origin, so cookies, CSRF and sealed passwords work as behind nginx.
 
-1. Vercel > Project > Settings > Environment Variables: `BACKEND_URL` = `https://<name>.ngrok-free.dev` (Production and Preview). Scheme and host only.
-2. Redeploy (or push a commit). Without `BACKEND_URL`, `/api` answers 404.
+1. Vercel > Project > Settings > Environment Variables: `BACKEND_URL` = `https://<name>.ngrok-free.dev` (Production and Preview). Scheme and host only. For the DEV and PROD servers also `BACKEND_EDGE_KEY` (the server's key, sent as `x-bcm-edge-key`; [docs/ci-cd.md](docs/ci-cd.md)).
+2. Redeploy (or push a commit). Without `BACKEND_URL`, `/api` answers 404. DEV-BCMTOOLS and PROD-BCMTOOLS deploy only through GitHub Actions (`vercel.json`).
 3. In the backend's `.env`, set `PUBLIC_BASE_URL=https://<project>.vercel.app` so email links open the Vercel site, then `docker compose up -d`.
 
 Check it: `https://<project>.vercel.app/api/health` returns `{"status":"ok"}`.
@@ -555,66 +554,16 @@ docker run --rm -p 3000:8080 --add-host host.docker.internal:host-gateway `
 
 ## CI/CD
 
-```mermaid
-flowchart LR
-    PR["Pull request"] --> CI["CI: lint, typecheck, build, UI tests on prod image"]
-    Main["Push to main"] --> CI2["CI"] --> Build["Build + push bcm-frontend:SHA to ACR"]
-    Build --> Dev["Deploy dev + smoke"] --> Test["Deploy test + smoke (approval)"] --> Prod["Deploy prod + smoke (approval)"]
-```
+Pull requests, DEV and PROD deploys and rollbacks run in GitHub Actions and deploy to Vercel with the Vercel CLI (Vercel's own Git deployments are off for DEV-BCMTOOLS and PROD-BCMTOOLS). **Frontend part: [docs/ci-cd.md](docs/ci-cd.md); the full setup guide for both repos is `docs/ci-cd.md` in BE-BCMTOOLS.** (The earlier Azure workflows were removed on 4 Nov 2026.)
 
-| Workflow | Trigger | What it does |
-|---|---|---|
-| `ci.yml` | Pull requests; called by `deploy.yml` | `npm ci`, lint, typecheck, build; then builds the **prod** image, runs it, and runs the Playwright `ui` project against it |
-| `deploy.yml` | Push to `main`, manual | Runs CI, builds the image once, tagged with the commit SHA, pushes to ACR, then promotes the **same image** through `dev`, `test`, `prod` |
-| `deploy-env.yml` | Called per environment | Points the App Service at the new image, waits until `APP_URL/version.json` reports the new SHA, then runs the Playwright `smoke` project against `APP_URL` |
-
-### GitHub configuration
-
-Azure login uses OpenID Connect (federated credentials) — no Azure secrets in GitHub.
-
-**Repository variables:**
-
-| Variable | Purpose |
-|---|---|
-| `AZURE_TENANT_ID` | Tenant of the deployment identity |
-| `AZURE_SUBSCRIPTION_ID` | Subscription containing the resources |
-| `AZURE_CLIENT_ID` | Identity used by the build job to push to ACR |
-| `ACR_NAME` | Container registry name (without `.azurecr.io`) |
-| `DEPLOY_RUNNER` | Label of the self-hosted runner inside the VNet (empty = `ubuntu-latest`) |
-
-**Environments** `dev`, `test`, `prod`, each with:
-
-| Variable | Example | Purpose |
-|---|---|---|
-| `AZURE_CLIENT_ID` | | Deployment identity for this environment |
-| `FRONTEND_APP_NAME` | `bcm-web-dev` | App Service name |
-| `APP_URL` | `https://bcm-dev.example.co.id` | Public URL of the app, reachable from the runner. Used for the version check and smoke tests; leave empty to skip both |
-
-Protection rules: require reviewers on `test` and `prod`; restrict `prod` to `main`.
-
-The self-hosted runner (shared with the backend repository) needs Docker, Azure CLI, `curl` and Node.js 24, plus the OS libraries Playwright installs with `npx playwright install --with-deps`.
-
-## Azure setup
-
-Per environment:
-
-| Resource | Notes |
-|---|---|
-| App Service (Linux, container) | e.g. `bcm-web-<env>`. Private endpoint for inbound (reached via Application Gateway); VNet integration for outbound to the backend's private endpoint. |
-| Application Gateway with WAF | Public or internal entry point for users; TLS termination; routes to the frontend App Service. Its hostname is the `PUBLIC_BASE_URL` configured on the backend. |
-
-### App Service settings
-
-| Setting | Value |
-|---|---|
-| `WEBSITES_PORT` | `8080` |
-| `BACKEND_URL` | Backend App Service URL, e.g. `https://bcm-api-dev.azurewebsites.net` (resolves to its private endpoint through private DNS) |
-
-Also give the App Service a managed identity with *AcrPull* on the registry, enable managed-identity ACR pull, and set the health check path to `/`.
-
-### Deployment identity
-
-As for the backend: a managed identity per environment with a federated credential for `repo:<org>/<frontend-repo>:environment:<env>` (and `ref:refs/heads/main` for the build identity), with *AcrPush* (build) and *Website Contributor* on the frontend App Service (environments).
+| Workflow | When | What it does |
+| --- | --- | --- |
+| `ci.yml` | Pull requests into DEV-BCMTOOLS / PROD-BCMTOOLS; called by the deploys | `lint`, `typecheck`, `build`, `e2e` (Playwright UI on the nginx image), `security` (npm audit), `secrets` (gitleaks) |
+| `deploy-dev.yml` | Merge into DEV-BCMTOOLS, manual | CI, Vercel Preview + the DEV domain, `/version.json` check, smoke tests, status `deploy-dev` |
+| `deploy-prod.yml` | Merge into PROD-BCMTOOLS, manual | `scripts/ci/prod-gate.sh` (approver, release window, same files green on DEV), CI, Vercel production, smoke tests, tag + release |
+| `vercel-deploy.yml` | Called by both deploys | `vercel pull`, `vercel build`, `vercel deploy --prebuilt` |
+| `rollback.yml` | Manual | Vercel Instant Rollback of production |
+| `codeql.yml` | Pull requests, weekly | Code scanning |
 
 ## Compatibility with the backend
 
