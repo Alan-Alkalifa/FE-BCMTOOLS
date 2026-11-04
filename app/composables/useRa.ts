@@ -756,19 +756,33 @@ export function raReportUrl(id: number, format: RaReportFormat) {
   return `${BASE}/${id}/report.${format}`
 }
 
-/** Download a report as a file named by the server; throws when the server refuses. */
-export async function downloadRaReport(id: number, format: RaReportFormat) {
-  const response = await $fetch.raw<Blob>(raReportUrl(id, format), { responseType: 'blob' })
+/** Download a file named by the server (else `fallback`); throws when the server refuses. */
+async function downloadNamed(path: string, fallback: string) {
+  const response = await $fetch.raw<Blob>(path, { responseType: 'blob' })
   const disposition = response.headers.get('content-disposition') ?? ''
   const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
   const url = URL.createObjectURL(response._data!)
   const link = document.createElement('a')
   link.href = url
-  link.download = name ? decodeURIComponent(name) : `RA-${id}.${format}`
+  link.download = name ? decodeURIComponent(name) : fallback
   document.body.appendChild(link)
   link.click()
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Download a report as a file named by the server; throws when the server refuses. */
+export function downloadRaReport(id: number, format: RaReportFormat) {
+  return downloadNamed(raReportUrl(id, format), `RA-${id}.${format}`)
+}
+
+export function raImportTemplateUrl(kind: RaKind) {
+  return `/api/ra/imports/template?kind=${kind}`
+}
+
+/** The empty official workbook of `kind` to fill in and import (Import from Excel). */
+export function downloadRaImportTemplate(kind: RaKind) {
+  return downloadNamed(raImportTemplateUrl(kind), kind === 'branch' ? 'RAB_Import-template_Cabang.xlsx' : 'RA_Import-template_HO.xlsx')
 }
 
 const CRISES = '/api/ra/crises'

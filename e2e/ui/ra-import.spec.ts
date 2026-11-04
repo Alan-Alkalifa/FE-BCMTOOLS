@@ -147,3 +147,27 @@ test('a branch keeps the workbook\'s region as its Region Description and picks 
     region: JABAR, area: `${JABAR} - Jabar Area I`, region_description: JABAR, zip_code: '40261',
   } })
 })
+
+test('the empty HO and Cabang templates download from step 1', async ({ page }) => {
+  await mockImport(page)
+  const asked: string[] = []
+  await page.route('**/api/ra/imports/template**', (route) => {
+    const kind = new URL(route.request().url()).searchParams.get('kind') ?? ''
+    asked.push(kind)
+    const name = kind === 'branch' ? 'RAB_Import-template_Cabang_V.04.xlsx' : 'RA_Import-template_HO_V.04.xlsx'
+    return route.fulfill({
+      body: Buffer.from('PK template'),
+      headers: { 'content-type': WORKBOOK.mimeType, 'content-disposition': `attachment; filename=${name}` },
+    })
+  })
+  await page.goto('/locations/import')
+  const workbooks = page.getByRole('list', { name: 'Workbooks BCM Tools reads' })
+  await expect(workbooks.getByRole('listitem')).toHaveCount(3)
+  const ho = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download the HO template' }).click()
+  expect((await ho).suggestedFilename()).toBe('RA_Import-template_HO_V.04.xlsx')
+  const cabang = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download the Cabang template' }).click()
+  expect((await cabang).suggestedFilename()).toBe('RAB_Import-template_Cabang_V.04.xlsx')
+  expect(asked).toEqual(['head_office', 'branch'])
+})

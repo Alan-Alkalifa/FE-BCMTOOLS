@@ -53,6 +53,24 @@ async function onFile(event: Event) {
   }
 }
 
+/** The empty workbooks to fill in, for the kinds the user may import. */
+const templates = computed(() => ([
+  { kind: 'head_office', label: 'HO Risk Assessment Location – Version 2025 – r4 (head office buildings).' },
+  { kind: 'branch', label: 'Risk Assessment Location – Version 2025-2026 – Cabang rev4 (branches).' },
+] as const).map((item) => ({ ...item, allowed: can(RA_MODULES[item.kind].perm.edit) })))
+const downloading = ref<RaKind | null>(null)
+
+async function downloadTemplate(kind: RaKind) {
+  downloading.value = kind
+  try {
+    await downloadRaImportTemplate(kind)
+  } catch (failure) {
+    toast.add({ color: 'error', title: 'Couldn\'t download the template', description: apiErrorMessage(failure) })
+  } finally {
+    downloading.value = null
+  }
+}
+
 function startOver() {
   preview.value = null
   file.value = null
@@ -360,11 +378,35 @@ async function onSubmit(event: FormSubmitEvent<State>) {
             BCM Tools reads the building or branch, its emergency contacts, every hazard's ratings, existing mitigation and action plan, and for head office buildings the occupants, recovery team and call tree. Nothing is saved until you review it and press Import.
           </p>
         </div>
-        <ul class="list-disc space-y-1 ps-5 text-sm text-muted">
-          <li>HO Risk Assessment Location – Version 2025 – r4 (head office buildings).</li>
-          <li>Risk Assessment Location – Version 2025-2026 – Cabang rev4 (branches).</li>
-          <li>Any RA workbook downloaded from BCM Tools.</li>
+        <ul
+          class="divide-y divide-default rounded-md border border-default text-sm"
+          aria-label="Workbooks BCM Tools reads"
+        >
+          <li
+            v-for="item in templates"
+            :key="item.kind"
+            class="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+          >
+            <span class="text-muted">{{ item.label }}</span>
+            <UButton
+              v-if="item.allowed"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-download"
+              label="Download template"
+              :aria-label="`Download the ${item.kind === 'branch' ? 'Cabang' : 'HO'} template`"
+              :loading="downloading === item.kind"
+              @click="downloadTemplate(item.kind)"
+            />
+          </li>
+          <li class="px-3 py-2 text-muted">
+            Any RA workbook downloaded from BCM Tools.
+          </li>
         </ul>
+        <p class="text-sm text-muted">
+          The template is the official workbook with nothing filled in. Fill in Sections A and B, the hazard ratings and, for a head office building, the LCP sheets, then choose it below.
+        </p>
         <UAlert
           v-if="fileError"
           color="error"
