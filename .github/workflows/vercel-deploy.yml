@@ -65,7 +65,18 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Point ${{ inputs.alias }} at it
         if: inputs.alias != ''
-        run: npx --yes "$VERCEL_CLI" alias set "${{ steps.deploy.outputs.url }}" "${{ inputs.alias }}" --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
+        # The REST API, not `vercel alias set`: the CLI looks up the token's user first, which a
+        # team-scoped token cannot do ("User not found"). Same token, same team as the deploy.
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          ALIAS: ${{ inputs.alias }}
+        run: |
+          set -o pipefail
+          api=https://api.vercel.com
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          id=$(curl --fail-with-body -sS -H "$auth" "$api/v13/deployments/${DEPLOY_URL#https://}?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          curl --fail-with-body -sS -X POST -H "$auth" -H "Content-Type: application/json" \
+            "$api/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID" -d "{\"alias\":\"$ALIAS\"}" | jq -r '"Aliased " + .alias'
       - name: Wait for ${{ inputs.url }}/version.json to show this commit
         env:
           SITE: ${{ inputs.url }}
