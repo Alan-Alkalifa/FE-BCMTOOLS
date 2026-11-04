@@ -12,8 +12,10 @@ import type { RaLocation } from '~/composables/useRa'
  * and deleting are done on the building's page, not here.
  */
 const { can } = useAuth()
-/** RA and RA Branch are granted separately: the register lists the sides the user holds. */
-const kinds = useRaKinds()
+/** Every building and branch with the Location permission, otherwise the RA sides the user
+ *  holds (RA and RA Branch are granted separately). */
+const kinds = useLocationKinds()
+const canOpenRa = useCanOpenRa()
 const editKinds = useRaKinds('edit')
 const canEdit = computed(() => editKinds.value.length > 0)
 function canEditRow(location: RaLocation) {
@@ -170,6 +172,14 @@ const addTo = computed(() => {
         variant="outline"
         icon="i-lucide-map"
         label="Building map"
+      />
+      <UButton
+        v-if="canEdit"
+        :to="LOCATION_IMPORT_PATH"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-up"
+        label="Import from Excel"
       />
       <UButton
         v-if="canEdit"
@@ -338,13 +348,17 @@ const addTo = computed(() => {
         </template>
         <template #latest_assessment-cell="{ row }">
           <NuxtLink
-            v-if="row.original.latest_assessment"
+            v-if="row.original.latest_assessment && canOpenRa(row.original.kind)"
             :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
             class="whitespace-nowrap text-primary hover:underline"
             @click.stop
           >
             {{ row.original.latest_assessment.ref_no }}
           </NuxtLink>
+          <span
+            v-else-if="row.original.latest_assessment"
+            class="whitespace-nowrap"
+          >{{ row.original.latest_assessment.ref_no }}</span>
           <span
             v-else
             class="text-muted"

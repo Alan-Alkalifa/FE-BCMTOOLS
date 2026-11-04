@@ -232,6 +232,8 @@ export interface RaLocationRef {
   region: string | null
   /** A branch's area (the Group of its region) in the Network organisation. */
   area?: string | null
+  /** A branch's own description of its region (free text, below its name on the form). */
+  region_description?: string | null
   /** The organization it belongs to (the user master's HR fields), as SCCA's application
    *  owner. A branch's Directorate and Sub Directorate follow its region. */
   directorate?: string | null
@@ -563,6 +565,8 @@ export interface RaLocationInput {
   district?: string | null
   zip_code?: string | null
   region?: string | null
+  area?: string | null
+  region_description?: string | null
   directorate?: string | null
   sub_directorate?: string | null
   org_group?: string | null
@@ -612,6 +616,21 @@ export function useRaModule() {
 export function useRaKinds(level: 'access' | 'edit' | 'manage' = 'access') {
   const { can } = useAuth()
   return computed(() => (Object.keys(RA_MODULES) as RaKind[]).filter((kind) => can(RA_MODULES[kind].perm[level])))
+}
+
+/** The kinds the Location module shows the user: every kind with its own permission
+ *  (`location.access`), otherwise the RA sides they hold (`useRaKinds`). */
+export function useLocationKinds() {
+  const { can } = useAuth()
+  const raKinds = useRaKinds()
+  return computed(() => can('location.access') ? (Object.keys(RA_MODULES) as RaKind[]) : raKinds.value)
+}
+
+/** Whether the user may open the RAs of a kind: the Location module shows RA references to
+ *  people without RA access, as plain text. */
+export function useCanOpenRa() {
+  const { can } = useAuth()
+  return (kind: RaKind | string) => can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access')
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -737,19 +756,33 @@ export function raReportUrl(id: number, format: RaReportFormat) {
   return `${BASE}/${id}/report.${format}`
 }
 
-/** Download a report as a file named by the server; throws when the server refuses. */
-export async function downloadRaReport(id: number, format: RaReportFormat) {
-  const response = await $fetch.raw<Blob>(raReportUrl(id, format), { responseType: 'blob' })
+/** Download a file named by the server (else `fallback`); throws when the server refuses. */
+async function downloadNamed(path: string, fallback: string) {
+  const response = await $fetch.raw<Blob>(path, { responseType: 'blob' })
   const disposition = response.headers.get('content-disposition') ?? ''
   const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
   const url = URL.createObjectURL(response._data!)
   const link = document.createElement('a')
   link.href = url
-  link.download = name ? decodeURIComponent(name) : `RA-${id}.${format}`
+  link.download = name ? decodeURIComponent(name) : fallback
   document.body.appendChild(link)
   link.click()
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Download a report as a file named by the server; throws when the server refuses. */
+export function downloadRaReport(id: number, format: RaReportFormat) {
+  return downloadNamed(raReportUrl(id, format), `RA-${id}.${format}`)
+}
+
+export function raImportTemplateUrl(kind: RaKind) {
+  return `/api/ra/imports/template?kind=${kind}`
+}
+
+/** The empty official workbook of `kind` to fill in and import (Import from Excel). */
+export function downloadRaImportTemplate(kind: RaKind) {
+  return downloadNamed(raImportTemplateUrl(kind), kind === 'branch' ? 'RAB_Import-template_Cabang.xlsx' : 'RA_Import-template_HO.xlsx')
 }
 
 const CRISES = '/api/ra/crises'
@@ -788,14 +821,118 @@ export const raCrisisApi = {
     $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
 
+/** Import from Excel: what an HO or Cabang workbook holds, lacks and leaves out. */
+export interface RaImportUser {
+  id: number
+  display_name: string | null
+  email: string | null
+  mobile_phone: string | null
+}
+export interface RaImportPerson {
+  text: string | null
+  name: string | null
+  phone: string | null
+  user: RaImportUser | null
+  candidates: RaImportUser[]
+  is_me?: boolean
+}
+export interface RaImportWarning {
+  sheet: string
+  cell: string | null
+  message: string
+}
+export interface RaImportPreview {
+  filename: string | null
+  kind: RaKind
+  kind_label: string
+  template: string
+  location: {
+    name: string | null
+    address: string | null
+    region: string | null
+    /** The postal code at the end of the address, to fill in. */
+    zip_code: string | null
+    /** The directory region the branch's region text names. */
+    region_match: string | null
+  }
+  existing: {
+    id: number
+    code: string
+    name: string
+    is_active: boolean
+    approval_status: string
+    contacts: number
+    occupants: number
+    recovery_team: number
+    call_tree: number
+    has_period: boolean
+    has_final: boolean
+  } | null
+  lic: RaImportPerson | null
+  licom: RaImportPerson | null
+  signers: { box: number, heading: string | null, name: string | null, designation: string | null, signed_on: string | null }[]
+  assessment_date: string | null
+  period_year: number
+  contacts: { kind: RaContactKind, name: string }[]
+  occupants: { unit_name: string | null, employee_count: number | null }[]
+  recovery_team: { team: RaRecoveryTeam, role: string, name: string }[]
+  call_tree: { level: RaCallTreeLevel, caller: string, contact_name: string }[]
+  ratings: {
+    total: number
+    found: number
+    rated: number
+    counts: Record<'gross' | 'residual', Partial<Record<RaLevel, number>>>
+    items: { no: number, code: string, short_name: string, complete: boolean, gross_level: RaLevel | null, residual_level: RaLevel | null }[]
+  }
+  risk_summary: string | null
+  missing: { field: string, label: string, why: string }[]
+  warnings: RaImportWarning[]
+}
+export interface RaImportOptions {
+  location_id?: number
+  location?: Partial<Pick<RaLocationInput, 'name' | 'address' | 'region' | 'area' | 'region_description'>> & Pick<RaLocationInput, 'province' | 'city' | 'district' | 'zip_code'>
+  replace_profile?: boolean
+  assessment?: {
+    period_year: number
+    assessment_date: string
+    reason?: RaReason
+    licom_user_id: number
+    lic_phone?: string
+    licom_phone?: string
+  }
+}
+export interface RaImportResult {
+  location: { id: number, code: string, name: string, kind: RaKind, created: boolean }
+  assessment: { id: number, ref_no: string, kind: RaKind } | null
+  saved: Partial<Record<'contacts' | 'occupants' | 'recovery_team' | 'call_tree', number>>
+  ratings: number
+  warnings: RaImportWarning[]
+}
+
 export const raApi = {
+  importPreview: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<RaImportPreview>('/api/ra/imports/preview', { method: 'POST', body })
+  },
+  importWorkbook: (file: File, options: RaImportOptions) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('options', JSON.stringify(options))
+    return $fetch<RaImportResult>('/api/ra/imports', { method: 'POST', body })
+  },
   createLocation: (body: RaLocationInput) => $fetch<RaLocationDetail>(LOCATIONS, { method: 'POST', body }),
   /** Renewals > Generate annual review for the last final RAs. */
   generateRenewals: (assessmentIds: number[]) =>
     $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds } }),
   /** New assessment: the locations the access scope opens for a reason (`all` for BCM). */
-  locationScope: (kind: RaKind, reason: string) =>
-    $fetch<{ all: boolean, ids: number[] }>(`${LOCATIONS}/scope`, { query: { kind, reason } }),
+  /** The buildings the access scope opens for an Annual review or a Structural change, and why
+   *  a building can't be picked for it (`problems` by id, as SCCA's application lookup).
+   *  `assessmentId`: the RA whose reason changes (its own draft doesn't count as open). */
+  locationScope: (kind: RaKind, reason: string, assessmentId?: number) =>
+    $fetch<{ all: boolean, ids: number[], problems: Record<string, string> }>(`${LOCATIONS}/scope`, {
+      query: { kind, reason, assessment_id: assessmentId },
+    }),
   updateLocation: (id: number, body: RaLocationInput) =>
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`, { method: 'PUT', body }),
   getLocation: (id: number) => $fetch<RaLocationDetail>(`${LOCATIONS}/${id}`),
@@ -923,7 +1060,7 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   submitted_by: string | null
   /** Who made the RA (its creator), as SCCA's Assessor. */
   assessor?: string | null
-  /** BCM board: false on an RA the caller made (reminders only, as SCCA's). */
+  /** BCM board: whether the caller may change the signer or approve on behalf (BCM may, also on an RA they made). */
   can_act?: boolean
   reminders_sent: number
   escalated_at: string | null

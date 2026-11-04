@@ -5,7 +5,7 @@ import type { RaPlaybookEntry, RaPlaybookPhase } from '~/composables/useRa'
  * BCM's standard incident steps for each of the 33 hazards. Every incident shows the steps of its
  * hazard. The module ships starter steps; BCM (ra.manage) reviews and replaces them.
  */
-definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()

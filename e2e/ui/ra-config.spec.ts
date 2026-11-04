@@ -51,6 +51,17 @@ async function mockRaConfig(page: Page) {
     user_ids: [] as number[], users: [] as { id: number, name: string }[], valid_from: null as string | null,
     valid_until: null as string | null, is_active: true, sort_order: 0, updated_by: null as string | null, updated_at: null as string | null,
   }]
+  // RA configuration > Team diagrams: the workbook's pictures until one is uploaded.
+  const diagramDefaults = {
+    recovery_team: { label: 'Recovery team structure', width: 1070, height: 739, size: 102422 },
+    call_tree: { label: 'Location call tree', width: 1470, height: 1042, size: 109506 },
+  }
+  const diagrams = new Map<string, Record<string, unknown>>()
+  const diagramOf = (kind: string, diagram: keyof typeof diagramDefaults) => diagrams.get(`${kind}/${diagram}`) ?? {
+    diagram, kind, custom: false, filename: null, content_type: 'image/png', version: `wb-${diagram}`,
+    updated_at: null, updated_by: null, ...diagramDefaults[diagram],
+  }
+  await page.route(/\/api\/ra\/diagrams\//, (route) => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }))
   let settings = {
     reminders_enabled: true, reminder_after_days: 3, reminder_every_days: 2, escalate_after_days: 7,
     extra_escalation_emails: [], renewal_notice_days: [90, 30, 7], overdue_repeat_days: 30,
@@ -120,6 +131,23 @@ async function mockRaConfig(page: Page) {
       return route.fulfill({ json: settings })
     }
     if (path.endsWith('/settings')) return route.fulfill({ json: settings })
+    if (path.includes('/diagrams')) {
+      const kind = new URL(request.url()).searchParams.get('kind') ?? 'head_office'
+      const diagram = path.split('/').pop() as keyof typeof diagramDefaults
+      if (request.method() === 'PUT') {
+        calls[calls.length - 1]!.body = request.headers()['content-type']
+        diagrams.set(`${kind}/${diagram}`, {
+          ...diagramOf(kind, diagram), custom: true, filename: 'new-chart.png', width: 1, height: 1, size: 70,
+          version: 'uploaded', updated_by: 'Test User', updated_at: '2026-11-03T03:00:00Z',
+        })
+        return route.fulfill({ json: diagramOf(kind, diagram) })
+      }
+      if (request.method() === 'DELETE') {
+        diagrams.delete(`${kind}/${diagram}`)
+        return route.fulfill({ json: diagramOf(kind, diagram) })
+      }
+      return route.fulfill({ json: { items: [diagramOf(kind, 'recovery_team'), diagramOf(kind, 'call_tree')] } })
+    }
     if (path.endsWith('/access-rules/check')) {
       return route.fulfill({ json: { user: { id: 9, name: 'Dewi Lestari', directorate: 'OPS', org_level: 'D-2' }, rules: [{ id: 1, name: 'Directorate heads' }], can_generate: true, reasons: ['annual_review', 'structural_change'], locations: { annual_review: 4, structural_change: 4 } } })
     }
@@ -253,6 +281,43 @@ test('the reminder rules are like SCCA\'s', async ({ page }) => {
   await page.getByRole('button', { name: 'Save reminder rules' }).click()
   await expect(page.getByText('Reminder rules saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/settings'))!.body).toMatchObject({ renewal_notice_days: [60, 14], window_start_hour: 8 })
+})
+
+test('team diagrams start as the workbook pictures and are replaced per kind', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  await page.goto('/admin/ra-config?tab=diagrams')
+  const structure = page.getByRole('region', { name: 'Recovery team structure' })
+  await expect(structure.getByText('Workbook picture')).toBeVisible({ timeout: 60_000 })
+  await expect(structure.getByText('1070 × 739 px · PNG · 100 KB')).toBeVisible()
+  await expect(structure.getByRole('img')).toHaveAttribute('src', '/api/ra/diagrams/recovery_team?kind=head_office&v=wb-recovery_team')
+  await expect(structure.getByRole('button', { name: 'Use the workbook picture' })).toHaveCount(0)
+  // Not part of a version: no version picker or draft actions.
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveCount(0)
+
+  // A GIF is refused before it is sent.
+  const input = structure.getByLabel('Choose an image for the recovery team structure')
+  await input.setInputFiles({ name: 'chart.gif', mimeType: 'image/gif', buffer: Buffer.from('GIF89a') })
+  await expect(structure.getByRole('alert')).toHaveText('Use a PNG or JPEG image.')
+  expect(calls.some((call) => call.method === 'PUT')).toBe(false)
+
+  await input.setInputFiles({ name: 'new-chart.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') })
+  await expect(page.getByText('Recovery team structure replaced').first()).toBeVisible()
+  await expect(structure.getByText('Uploaded', { exact: true })).toBeVisible()
+  await expect(structure.getByText(/new-chart\.png, uploaded by Test User on/)).toBeVisible()
+  await expect(structure.getByRole('img')).toHaveAttribute('src', '/api/ra/diagrams/recovery_team?kind=head_office&v=uploaded')
+  const put = calls.find((call) => call.method === 'PUT')!
+  expect(put.path).toBe('/api/admin/ra-config/diagrams/recovery_team')
+  expect(String(put.body)).toContain('multipart/form-data')
+
+  await structure.getByRole('button', { name: 'Use the workbook picture' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Use the workbook picture' }).click()
+  await expect(structure.getByText('Workbook picture')).toBeVisible()
+  expect(calls.some((call) => call.method === 'DELETE' && call.path.endsWith('/diagrams/recovery_team'))).toBe(true)
+
+  // RA Branch has its own.
+  await page.getByRole('combobox', { name: 'Module' }).click()
+  await page.getByRole('option', { name: 'RA Branch' }).click()
+  await expect(page.getByRole('region', { name: 'Location call tree' }).getByRole('img')).toHaveAttribute('src', '/api/ra/diagrams/call_tree?kind=branch&v=wb-call_tree')
 })
 
 test('the draft\'s code is changed on the Versions tab', async ({ page }) => {
