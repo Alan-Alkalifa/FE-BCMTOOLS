@@ -1,0 +1,24 @@
+# Code scanning for JavaScript and TypeScript on every pull request and weekly. Results: Security > Code scanning.
+# (Private repos need GitHub Code Security; on a plan without it this workflow can be removed.)
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [DEV-BCMTOOLS, PROD-BCMTOOLS]
+  schedule:
+    - cron: "17 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
