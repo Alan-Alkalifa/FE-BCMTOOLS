@@ -47,9 +47,12 @@ type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
 type Member = 'lic' | 'licom'
 const MEMBERS: Member[] = ['lic', 'licom']
 /** The building's other RAs: as on New assessment (SCCA's conditions), New building fits only
- *  its first RA and Annual review only a building with another final RA. The building can't
- *  change here, so a reason it doesn't fit is offered disabled, saying why. */
+ *  its first RA. Annual review and Structural change follow a final RA while no other RA of the
+ *  building is open, and a Structural change not when its renewal is overdue (the API's reasons,
+ *  `problems`). The building can't change here, so a reason it doesn't fit is offered
+ *  disabled, saying why. */
 const others = ref<RaAssessmentSummary[] | null>(null)
+const ruled = ref<Partial<Record<RaReason, string>>>({})
 watch(() => props.assessment.location.id, async (id) => {
   try {
     const location = await raApi.getLocation(id)
@@ -57,12 +60,22 @@ watch(() => props.assessment.location.id, async (id) => {
   } catch {
     others.value = null
   }
+  const found: Partial<Record<RaReason, string>> = {}
+  await Promise.all((['annual_review', 'structural_change'] as const).map(async (reason) => {
+    try {
+      const scope = await raApi.locationScope(ra.value.kind, reason, props.assessment.id)
+      const problem = scope.problems?.[String(id)]
+      if (problem) found[reason] = problem
+    } catch {
+      // The API checks again on save.
+    }
+  }))
+  ruled.value = found
 }, { immediate: true })
 const reasonItems = computed(() => RA_REASONS.map((reason) => {
   const list = others.value
-  let why: string | undefined
+  let why: string | undefined = ruled.value[reason.value]
   if (list && reason.value === 'new_building' && list.length) why = 'This building already has another RA.'
-  if (list && reason.value === 'annual_review' && !list.some((row) => row.status === 'approved')) why = 'There is no final RA to renew.'
   return { label: reason.label, value: reason.value, disabled: Boolean(why) && state.reason !== reason.value, description: why }
 }))
 const reasonModel = computed<RaReason | undefined>({

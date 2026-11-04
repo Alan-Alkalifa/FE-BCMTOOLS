@@ -1,0 +1,64 @@
+# PROD: runs when DEV-BCMTOOLS is merged into PROD-BCMTOOLS (the person merging must be on
+# PROD_APPROVERS) or by hand (Actions > Deploy PROD > Run workflow, on PROD-BCMTOOLS).
+# Release the backend first when both repos change. Then it tags the release.
+name: Deploy PROD
+
+on:
+  push:
+    branches: [PROD-BCMTOOLS]
+  workflow_dispatch:
+    inputs:
+      hotfix_reason:
+        description: "Only for a hotfix outside weekdays 09:00-16:00 WIB: why it cannot wait"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PROD_APPROVERS: ${{ vars.PROD_APPROVERS }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref }}
+          HOTFIX_REASON: ${{ inputs.hotfix_reason }}
+        run: bash scripts/ci/prod-gate.sh
+
+  ci:
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: [gate, ci]
+    uses: ./.github/workflows/vercel-deploy.yml
+    with:
+      target: production
+      url: ${{ vars.PROD_URL }}
+    secrets: inherit
+
+  release:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release-tag.sh

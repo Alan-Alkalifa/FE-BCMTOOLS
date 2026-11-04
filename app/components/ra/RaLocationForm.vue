@@ -73,6 +73,7 @@ const schema = computed(() => z.object({
   is_active: z.boolean(),
   region: z.string(),
   area: z.string(),
+  region_description: z.string().trim().max(255, 'At most 255 characters.'),
   directorate: z.string(),
   sub_directorate: z.string(),
   org_group: z.string(),
@@ -98,6 +99,7 @@ function fromLocation(location?: RaLocationDetail): State {
     zip_code: location?.zip_code ?? '',
     region: location?.region ?? '',
     area: location?.area ?? '',
+    region_description: location?.region_description ?? '',
     directorate: location?.directorate ?? '',
     sub_directorate: location?.sub_directorate ?? '',
     org_group: location?.org_group ?? '',
@@ -201,7 +203,7 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, ...fields } = state
+    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, ...fields } = state
     const body = blankToNull({
       ...fields,
       name: state.name.trim(),
@@ -210,6 +212,8 @@ async function onSubmit() {
       // it, the Sub Directorate and Group are sent and the region and area follow them.
       ...(orgLocked('sub_directorate') ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate, org_group: orgGroup }),
       ...(orgLocked('directorate') ? {} : { directorate }),
+      // A branch's own words for its region; head office buildings have none.
+      ...(isBranch.value ? { region_description: regionDescription.trim() } : {}),
     })
     const saved = props.location
       ? await raApi.updateLocation(props.location.id, body)
@@ -286,6 +290,18 @@ async function onSubmit() {
               <UInput
                 v-model="state.name"
                 :placeholder="ra.kind === 'branch' ? 'e.g. KCP Bogor Pajajaran' : 'e.g. Griya CIMB Niaga 2'"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              v-if="isBranch"
+              label="Region Description"
+              name="region_description"
+              help="In the branch's own words, e.g. as the Cabang workbook names its region. Optional."
+            >
+              <UInput
+                v-model="state.region_description"
+                placeholder="e.g. Region Jabar, Bandung Raya"
                 class="w-full"
               />
             </UFormField>

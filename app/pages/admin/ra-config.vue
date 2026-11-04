@@ -6,7 +6,8 @@ import type { RaConfigVersion } from '~/composables/useRaConfigAdmin'
  * their hazards and guides, sign-off role titles, statements and notes: one active, at most
  * one draft (a copy of the active one), the rest retired. Only the draft is edited; publishing
  * takes two people (one requests, another approves). Assessments keep their version.
- * The division list, the reminder rules and the access scope are live, not part of a version.
+ * The division list, the reminder rules, the team diagrams and the access scope are live, not
+ * part of a version.
  */
 definePageMeta({ permission: 'ra.config.view' })
 
@@ -16,10 +17,10 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'access', 'changes'] as const
+const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'diagrams', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 /** Tabs that edit live rules rather than a version. */
-const LIVE: Tab[] = ['divisions', 'reminders', 'access']
+const LIVE: Tab[] = ['divisions', 'reminders', 'diagrams', 'access']
 const tab = computed<Tab>({
   // ?tab=roles is the older name of the Sign-off steps tab.
   get: () => (route.query.tab === 'roles' ? 'steps' : TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'versions'),
@@ -32,6 +33,7 @@ const tabItems = [
   { label: 'Statements and notes', value: 'texts', icon: 'i-lucide-text-quote', slot: 'texts' },
   { label: 'Divisions', value: 'divisions', icon: 'i-lucide-building-2', slot: 'divisions' },
   { label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' },
+  { label: 'Team diagrams', value: 'diagrams', icon: 'i-lucide-network', slot: 'diagrams' },
   { label: 'Access scope', value: 'access', icon: 'i-lucide-shield-check', slot: 'access' },
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare', slot: 'changes' },
 ]
@@ -161,7 +163,7 @@ async function discard() {
   <AppPage
     title="RA configuration"
     icon="i-lucide-file-cog"
-    description="The RA and RA Branch hazards and guides, sign-off steps, statements and notes by version. Also the default and fixed signers, the division list, the reminder rules and the access scope."
+    description="The RA and RA Branch hazards and guides, sign-off steps, statements and notes by version. Also the default and fixed signers, the division list, the reminder rules, the team diagrams and the access scope."
     :crumbs="[{ label: 'Administration' }, { label: 'RA configuration' }]"
   >
     <template #actions>
@@ -286,11 +288,13 @@ async function discard() {
         />
       </template>
 
+      <!-- Nine tabs: they keep their full labels and scroll sideways when they don't fit. -->
       <UTabs
         v-model="tab"
         :items="tabItems"
         variant="link"
         class="min-w-0"
+        :ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"
       >
         <template #versions>
           <AdminRaConfigVersions
@@ -332,6 +336,12 @@ async function discard() {
         </template>
         <template #reminders>
           <AdminRaConfigReminders class="mt-4" />
+        </template>
+        <template #diagrams>
+          <AdminRaConfigDiagrams
+            class="mt-4"
+            :kind="kind"
+          />
         </template>
         <template #access>
           <AdminRaConfigAccess class="mt-4" />

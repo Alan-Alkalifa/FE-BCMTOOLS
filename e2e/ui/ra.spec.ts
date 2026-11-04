@@ -116,9 +116,15 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
-  for (const header of ['Building ID', 'Directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
+  for (const header of ['Building ID', 'Directorate', 'Sub directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
     await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
   }
+  // Sub directorate sits between Directorate and Group / Area.
+  const headers = await table.getByRole('columnheader').allTextContents()
+  const at = (name: string) => headers.findIndex((text) => text.trim() === name)
+  expect(at('Sub directorate')).toBe(at('Directorate') + 1)
+  expect(at('Group / Area')).toBe(at('Sub directorate') + 1)
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ }).getByText('Ops Support')).toBeVisible()
   await expect(table.getByText('Building Management')).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Department', exact: true })).toHaveCount(0)
   await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2 for the Excel export' })).toBeVisible()
@@ -156,7 +162,7 @@ test('New assessment offers only the buildings the access scope opens for an Ann
   await page.goto('/ra/manage/new')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
   await page.getByRole('option', { name: /Annual review/ }).click()
-  await expect(page.getByText('Only buildings with a final RA to renew. Only the buildings your access scope opens.')).toBeVisible()
+  await expect(page.getByText('Only buildings with a final RA to renew, while no other RA of it is open. Only the buildings your access scope opens.')).toBeVisible()
   await page.getByRole('button', { name: /^Building\*?$/ }).click()
   // Griya has a final RA but is outside the scope.
   await expect(page.getByRole('option', { name: /Griya CIMB Niaga 2/ })).toHaveCount(0)
@@ -259,15 +265,16 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
 
-test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {
+test('on the BCM board, BCM acts for the signer also on an RA they made', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/approval?tab=board&q=own')
   const board = page.getByRole('table').filter({ visible: true })
-  await expect(board.getByText('Your own RA: reminders only')).toBeVisible({ timeout: 60_000 })
+  await expect(board.getByRole('button', { name: /^Act on/ })).toBeVisible({ timeout: 60_000 })
+  await expect(board.getByText('Your own RA: reminders only')).toHaveCount(0)
   await page.getByRole('button', { name: /^Act on/ }).click()
   await expect(page.getByRole('menuitem', { name: 'Send a reminder now' })).toBeEnabled()
-  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeDisabled()
-  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeEnabled()
 })
 
 test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {
@@ -595,6 +602,36 @@ test('View report shows the RA like SCCA\'s report, and prints it', async ({ pag
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   }
   await expect(page.getByTestId('ra-report-hazards')).toContainText('Banjir/ Banjir Bandang')
+  // No column heading runs into the next one, on screen or printed (the table scrolls instead),
+  // and the report prints in landscape only.
+  const overlaps = () => page.getByTestId('ra-report-hazards').locator('thead th').evaluateAll((cells) =>
+    cells.filter((cell) => {
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      return range.getBoundingClientRect().right > cell.getBoundingClientRect().right + 0.5
+    }).map((cell) => cell.textContent?.trim()))
+  expect(await overlaps()).toEqual([])
+  await expect(page.locator('[data-print-landscape]')).toHaveCount(1)
+  await page.emulateMedia({ media: 'print' })
+  expect(await overlaps()).toEqual([])
+  expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('page'))).toBe('landscape')
+  await page.emulateMedia({ media: 'screen' })
+  // As the Hazards tab: a Hazard group column, and a group filter for the screen.
+  const hazards = page.getByTestId('ra-report-hazards')
+  await expect(hazards.getByRole('columnheader', { name: 'Hazard group' })).toBeVisible()
+  const visibleRows = () => hazards.locator('tbody tr').filter({ visible: true })
+  await expect(visibleRows()).toHaveCount(33)
+  await page.getByRole('combobox', { name: 'Hazard group' }).click()
+  await page.getByRole('option', { name: 'Natural disasters' }).click()
+  await expect(page.getByText('Showing 9 of 33 hazards')).toBeVisible()
+  await expect(visibleRows()).toHaveCount(9)
+  // Printed: every hazard, ten to a page.
+  await page.emulateMedia({ media: 'print' })
+  await expect(visibleRows()).toHaveCount(33)
+  const breaks = await hazards.locator('tbody tr').evaluateAll((rows) =>
+    rows.flatMap((row, index) => (getComputedStyle(row).breakAfter === 'page' ? [index + 1] : [])))
+  expect(breaks).toEqual([10, 20, 30])
+  await page.emulateMedia({ media: 'screen' })
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Prepared by')
   await expect(page.getByTestId('ra-report-signoff')).toContainText('Legiran')
   // A draft has no downloads yet; Print is the page's main action.
@@ -707,6 +744,27 @@ test('the call tree saves each contact with its level', async ({ page }) => {
   expect(entries.filter((entry) => entry.level === 3)).toHaveLength(17)
 })
 
+test('the recovery team and call tree tabs open their charts, also without edit rights', async ({ page }) => {
+  await mockRa(page, { permissions: ['location.access', 'ra.access'] })
+  await page.goto('/locations/1?tab=team')
+  await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Save recovery team' })).toBeDisabled()
+  await page.getByRole('button', { name: 'View structure chart' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Recovery team structure (RA HO)' })
+  const chart = dialog.getByRole('img', { name: /^Recovery team structure:/ })
+  await expect(chart).toBeVisible()
+  await expect(chart).toHaveAttribute('src', '/api/ra/diagrams/recovery_team?kind=head_office')
+  await expect(dialog.getByRole('link', { name: 'Open full size' })).toHaveAttribute('href', '/api/ra/diagrams/recovery_team?kind=head_office')
+  await expect(dialog.getByText('Set by BCM in Administration > RA configuration > Team diagrams.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Call tree' }).click()
+  await page.getByRole('button', { name: 'View call tree chart' }).click()
+  await expect(page.getByRole('dialog', { name: 'Location call tree (RA HO)' }).getByRole('img', { name: /^Location call tree:/ }))
+    .toHaveAttribute('src', '/api/ra/diagrams/call_tree?kind=head_office')
+})
+
 test('adding a location opens its profile, starting with the emergency contacts', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations')
@@ -717,6 +775,8 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page.getByText('Enter the building name.')).toBeVisible()
   await page.getByRole('textbox', { name: /Building name/ }).fill('Menara CIMB Niaga')
+  // Region Description is a branch field.
+  await expect(page.getByRole('textbox', { name: 'Region Description' })).toHaveCount(0)
   await expect(page.getByText('Enter the building name.')).toHaveCount(0)
   await fillAddress(page)
   // Its organization, as SCCA's application owner: picked from the user master's values.
@@ -940,11 +1000,47 @@ test('the reason decides which buildings can be picked, as SCCA\'s reason decide
   await reason.click()
   await page.getByRole('option', { name: /Structural change/ }).click()
   await building.click()
-  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(2)
+  // As SCCA's System change, a Structural change follows a final RA too.
+  await expect(page.getByRole('option', { name: /CIMB Niaga/ })).toHaveCount(0)
+})
+
+test('as SCCA, a building with another RA open, or overdue for a Structural change, shows greyed out with why', async ({ page }) => {
+  const open = 'RA-2026-0007 is already open for Griya CIMB Niaga 2.'
+  const overdue = 'Griya CIMB Niaga 2\'s renewal is overdue: start an Annual review instead of a Structural change.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: open }, structural_change: { 1: overdue } } })
+  await griyaHasAFinalRa(page)
+  await page.goto('/ra/manage/new')
+  const reason = page.getByLabel('Reason for assessment')
+  await reason.click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  await expect(page.getByText('Only buildings with a final RA to renew, while no other RA of it is open.')).toBeVisible()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  const griya = page.getByRole('option', { name: /Griya CIMB Niaga 2/ })
+  await expect(griya).toHaveAttribute('data-disabled', '')
+  await expect(griya).toContainText(open)
+  await page.keyboard.press('Escape')
+  await reason.click()
+  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('button', { name: /^Building\*?$/ }).click()
+  await expect(griya).toHaveAttribute('data-disabled', '')
+  await expect(griya).toContainText(overdue)
+})
+
+test('a building picked from its page that the rule refuses says why before saving', async ({ page }) => {
+  const open = 'RA-2026-0007 is already open for Griya CIMB Niaga 2.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: open } } })
+  await griyaHasAFinalRa(page)
+  await page.goto('/ra/manage/new?location_id=1')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /Annual review/ }).click()
+  const note = page.getByTestId('building-note')
+  await expect(note).toContainText('Annual review isn\'t possible for this building')
+  await expect(note).toContainText(`${open} Pick another building or reason.`)
 })
 
 test('a reason the picked building doesn\'t fit asks first, then clears the building', async ({ page }) => {
   await mockRa(page)
+  await griyaHasAFinalRa(page)
   await page.goto('/ra/manage/new')
   const reason = page.getByLabel('Reason for assessment')
   const building = page.getByRole('button', { name: /^Building\*?$/ })
@@ -985,15 +1081,15 @@ test('a building that already has an RA for the period says so on the date, befo
   const year = await griyaHasAnRaThisYear(page, 'draft')
   await page.goto('/ra/manage/new?location_id=1')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
-  await page.getByRole('option', { name: /Structural change/ }).click()
+  await page.getByRole('option', { name: /Annual review/ }).click()
   await page.getByRole('button', { name: 'Create assessment' }).click()
-  // Even a structural change waits until the period's RA is final.
-  await expect(page.getByText(`The RA for ${year} (RA-${year}-0005) isn't final yet. A structural change can start once it is final.`)).toBeVisible()
+  await expect(page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA.`, { exact: false }).first()).toBeVisible()
   expect(log.created).toHaveLength(0)
 })
 
 test('a structural change can follow a final RA in the same period', async ({ page }) => {
   await mockRa(page)
+  await griyaHasAFinalRa(page)
   const year = await griyaHasAnRaThisYear(page, 'approved')
   await page.goto('/ra/manage/new?location_id=1')
   const reason = page.getByLabel('Reason for assessment')
@@ -1013,12 +1109,16 @@ test('a structural change can follow a final RA in the same period', async ({ pa
 })
 
 test('on the Details tab a reason the building doesn\'t fit is offered disabled', async ({ page }) => {
-  await mockRa(page)
+  const none = 'Griya CIMB Niaga 2 has no final RA yet.'
+  await mockRa(page, { scopeProblems: { annual_review: { 1: none }, structural_change: { 1: none } } })
   await page.goto('/ra/manage/1')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
-  // Its only RA is this one: no final RA to renew; it is the building's first RA.
-  await expect(page.getByRole('option', { name: /Annual review/ })).toHaveAttribute('data-disabled', '')
-  await expect(page.getByRole('option', { name: /Annual review/ })).toContainText('There is no final RA to renew.')
+  // Its only RA is this one: no final RA for an Annual review or a Structural change (the API's
+  // reasons, as SCCA's); it is the building's first RA.
+  for (const name of [/Annual review/, /Structural change/]) {
+    await expect(page.getByRole('option', { name })).toHaveAttribute('data-disabled', '')
+    await expect(page.getByRole('option', { name })).toContainText(none)
+  }
   await expect(page.getByRole('option', { name: /New building/ })).not.toHaveAttribute('data-disabled', '')
 })
 

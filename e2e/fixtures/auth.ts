@@ -11,6 +11,7 @@ export const ALL_PERMISSIONS = [
   'scca.config.view',
   'scca.config.manage',
   'scca.config.publish',
+  'location.access',
   'ra.access',
   'ra.edit',
   'ra.manage',
@@ -68,10 +69,10 @@ const MENUS = [
   { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
-  { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.crises', label: 'Incidents', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'ra.access' },
-  { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'ra.access' },
+  { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.crises', label: 'Incidents', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'location.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
   { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'scca.access' },
@@ -79,12 +80,10 @@ const MENUS = [
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
 export function menuFor(permissions: string[]) {
-  // As the backend: the shared Location menus open with RA or RA Branch access.
-  const shared: Record<string, string> = { 'ra.access': 'ra_branch.access', 'ra.edit': 'ra_branch.edit' }
+  // As the backend: the Location menus have their own permission (location.access).
   // Task Management spans every module: any module's access opens it.
   const anyModule = ['scca.access', 'ra.access', 'ra_branch.access'].some((code) => permissions.includes(code))
   const visible = MENUS.filter((m) => !m.permission || permissions.includes(m.permission)
-    || (m.parent === 'locations' && permissions.includes(shared[m.permission] ?? ''))
     || (m.code === 'tasks' && anyModule))
   const node = (m: (typeof MENUS)[number], id: number) => ({
     id,

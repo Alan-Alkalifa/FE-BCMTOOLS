@@ -4,7 +4,7 @@ import type { RaCrisisStatus, RaCrisisSummary } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /** Every incident declared on the location map, open and closed, newest first. */
-definePageMeta({ permission: ['ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()

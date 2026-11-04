@@ -43,14 +43,28 @@ const rows = computed(() => {
   return (formula.value?.categories ?? []).flatMap((category) => category.hazards.map((hazard) => ({
     ...hazard,
     group: category.label,
+    groupCode: category.code,
     rating: ratings.get(hazard.code) as RaRating | undefined,
   })))
 })
 
-/** The Hazards table's column widths, in its column order (RA Branch has no gross risk). */
-const hazardColumns = computed(() => singleRisk.value
-  ? ['4%', '18%', '32%', '7%', '7%', '9%', '23%']
-  : ['4%', '15%', '5%', '5%', '8%', '25%', '5%', '5%', '8%', '20%'])
+/** As the Hazards tab: a hazard group narrows the table on screen. Printing always shows every
+ *  hazard, ten to a page. */
+const HAZARDS_PER_PRINTED_PAGE = 10
+const groupFilter = ref('all')
+const groupItems = computed(() => [
+  { label: 'All hazard groups', value: 'all' },
+  ...(formula.value?.categories ?? []).map((category) => ({ label: category.label, value: category.code })),
+])
+const shownCount = computed(() => rows.value.filter((row) => groupFilter.value === 'all' || row.groupCode === groupFilter.value).length)
+
+function rowClass(row: { groupCode: string }, index: number) {
+  return {
+    'hidden print:table-row': groupFilter.value !== 'all' && row.groupCode !== groupFilter.value,
+    // A new printed page after every tenth hazard (the column headings repeat on it).
+    'print:break-after-page': (index + 1) % HAZARDS_PER_PRINTED_PAGE === 0 && index + 1 < rows.value.length,
+  }
+}
 
 function rating(value: number | null | undefined) {
   if (value === null || value === undefined) return '—'
@@ -173,7 +187,11 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
     </UAlert>
 
     <template v-else-if="ready && assessment && formula">
-      <header class="space-y-2">
+      <!-- data-print-landscape: the report always prints in landscape (main.css). -->
+      <header
+        class="space-y-2"
+        data-print-landscape
+      >
         <p class="text-sm text-muted">
           {{ ra.kind === 'branch' ? 'RA Branch' : 'RA HO' }} {{ assessment.formula_version }}
           <template v-if="assessment.ref_no">
@@ -308,75 +326,92 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
            the card must not clip the table where it breaks across pages. -->
       <UCard class="print:break-before-page print:overflow-visible">
         <template #header>
-          <h2 class="text-lg font-semibold">
-            Hazards
-          </h2>
-          <p class="text-sm text-muted">
-            {{ formatNumber(assessment.summary.rated, 0) }} of {{ formatNumber(assessment.summary.total, 0) }} hazards rated.
-          </p>
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold">
+                Hazards
+              </h2>
+              <p class="text-sm text-muted">
+                {{ formatNumber(assessment.summary.rated, 0) }} of {{ formatNumber(assessment.summary.total, 0) }} hazards rated.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 print:hidden">
+              <span
+                v-if="groupFilter !== 'all'"
+                class="text-sm text-muted"
+                aria-live="polite"
+              >Showing {{ shownCount }} of {{ rows.length }} hazards</span>
+              <USelect
+                v-model="groupFilter"
+                :items="groupItems"
+                class="w-64"
+                aria-label="Hazard group"
+              />
+            </div>
+          </div>
         </template>
-        <!-- Fixed column widths so the text columns get room and the table fits the printed
-             page; on a narrow screen it scrolls sideways. -->
+        <!-- Columns size to their content, so a heading never runs into the next one: short
+             headings stay on one line, the text columns wrap. On screen the table scrolls
+             sideways like the list tables; printed (always landscape) it fits the page. -->
         <div class="overflow-x-auto print:overflow-visible">
           <table
-            class="w-full min-w-5xl table-fixed text-sm print:min-w-0 print:text-xs"
+            class="w-full min-w-[72rem] table-auto text-sm print:min-w-0 print:text-xs print:leading-snug print:[&_td]:py-1 print:[&_th]:py-1"
             data-testid="ra-report-hazards"
           >
-            <colgroup>
-              <col
-                v-for="(width, index) in hazardColumns"
-                :key="index"
-                :style="{ width }"
-              >
-            </colgroup>
             <thead>
-              <tr class="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted">
-                <th class="px-2 py-2 text-right">
+              <tr class="bg-muted text-left align-bottom text-xs font-semibold uppercase tracking-wide text-muted print:text-[10px] print:tracking-normal">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   No
                 </th>
-                <th class="px-2 py-2">
+                <th class="min-w-40 px-2 py-2 print:min-w-[22mm]">
+                  Hazard group
+                </th>
+                <th class="min-w-48 px-2 py-2 print:min-w-[26mm]">
                   Type of Hazard
                 </th>
                 <template v-if="!singleRisk">
-                  <th class="px-2 py-2 text-right">
+                  <th class="px-2 py-2 text-right whitespace-nowrap">
                     Gross P
                   </th>
-                  <th class="px-2 py-2 text-right">
+                  <th class="px-2 py-2 text-right whitespace-nowrap">
                     Gross I
                   </th>
-                  <th class="px-2 py-2">
+                  <th class="px-2 py-2 whitespace-nowrap">
                     Gross risk
                   </th>
                 </template>
-                <th class="px-2 py-2">
+                <th class="min-w-72 px-2 py-2 print:min-w-[54mm]">
                   Existing mitigation measures
                 </th>
-                <th class="px-2 py-2 text-right">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   {{ singleRisk ? 'Probability' : 'Residual P' }}
                 </th>
-                <th class="px-2 py-2 text-right">
+                <th class="px-2 py-2 text-right whitespace-nowrap">
                   {{ singleRisk ? 'Impact' : 'Residual I' }}
                 </th>
-                <th class="px-2 py-2">
+                <th class="px-2 py-2 whitespace-nowrap">
                   {{ singleRisk ? 'Risk level' : 'Residual risk' }}
                 </th>
-                <th class="px-2 py-2">
+                <th class="min-w-56 px-2 py-2 print:min-w-[34mm]">
                   Action plan
                 </th>
               </tr>
             </thead>
             <tbody class="divide-y divide-default">
               <tr
-                v-for="row in rows"
+                v-for="(row, index) in rows"
                 :key="row.code"
                 class="align-top"
+                :class="rowClass(row, index)"
               >
                 <td class="px-2 py-2 text-right tabular-nums">
                   {{ row.no }}
                 </td>
+                <td class="px-2 py-2 text-muted">
+                  {{ row.group }}
+                </td>
                 <td class="px-2 py-2">
                   <span class="font-medium text-highlighted">{{ row.name }}</span>
-                  <span class="block text-xs text-muted">{{ row.group }}</span>
                 </td>
                 <template v-if="!singleRisk">
                   <td class="px-2 py-2 text-right tabular-nums">
@@ -385,7 +420,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
                   <td class="px-2 py-2 text-right tabular-nums">
                     {{ rating(row.rating?.result.gross_impact) }}
                   </td>
-                  <td class="px-2 py-2">
+                  <td class="px-2 py-2 whitespace-nowrap">
                     <StatusBadge
                       v-if="row.rating?.result.is_rated"
                       :scale="raRiskLevel"
@@ -407,7 +442,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
                 <td class="px-2 py-2 text-right tabular-nums">
                   {{ rating(row.rating?.result.residual_impact) }}
                 </td>
-                <td class="px-2 py-2">
+                <td class="px-2 py-2 whitespace-nowrap">
                   <StatusBadge
                     v-if="row.rating?.result.is_rated"
                     :scale="raRiskLevel"

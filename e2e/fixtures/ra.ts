@@ -359,6 +359,8 @@ export async function mockRa(
     steps?: (typeof SIGNOFF_STEPS)['head_office']
     /** Outside BCM: the access scope opens only these location ids for an Annual review. */
     scopeIds?: number[]
+    /** Why a building can't be picked, by reason then building id (the API's `problems`). */
+    scopeProblems?: Partial<Record<'annual_review' | 'structural_change', Record<string, string>>>
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], generated: [], locationQueries: [], approvals: [] }
@@ -392,6 +394,8 @@ export async function mockRa(
     route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
+  // RA configuration > Team diagrams: the chart images (a blank PNG here).
+  await page.route(/\/api\/ra\/diagrams\//, (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => {
     const params = new URL(route.request().url()).searchParams
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
@@ -437,8 +441,11 @@ export async function mockRa(
     const url = new URL(route.request().url())
     const method = route.request().method()
     if (url.pathname.endsWith('/locations/scope')) {
-      const scoped = options.scopeIds && ['annual_review', 'structural_change'].includes(url.searchParams.get('reason') ?? '')
-      await route.fulfill({ json: scoped ? { all: false, ids: options.scopeIds } : { all: true, ids: [] } })
+      const reason = url.searchParams.get('reason') ?? ''
+      const ruled = reason === 'annual_review' || reason === 'structural_change'
+      const problems = (ruled && options.scopeProblems?.[reason]) || {}
+      const scoped = options.scopeIds && ruled
+      await route.fulfill({ json: scoped ? { all: false, ids: options.scopeIds, problems } : { all: true, ids: [], problems } })
       return
     }
     const list = url.pathname.match(/\/(contacts|occupants|recovery-team|call-tree)$/)?.[1]
@@ -669,7 +676,7 @@ function workflowLocations(branch: boolean) {
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
   return [
-    { location: { ...first, directorate: 'OPS', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
+    { location: { ...first, directorate: 'OPS', sub_directorate: 'Ops Support', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
     { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, assessor: null, licom: null, history: [] },
   ]
 }
@@ -781,9 +788,9 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
-      // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
+      // `q=own`: an RA the signed-in BCM user made: BCM still acts for its signers (unlike SCCA).
       const own = name === 'approvals/board' && url.searchParams.get('q') === 'own'
-      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: false })) : waiting
+      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: true })) : waiting
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : rows) })
     } else if (name === 'approvals/inbox') {
       await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
@@ -925,6 +932,8 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
+  // RA configuration > Team diagrams: the chart images (a blank PNG here).
+  await page.route(/\/api\/ra\/diagrams\//, (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   await page.route(/\/api\/ra\/formula/, (route) => route.fulfill({ json: withTexts(FORMULA) }))
   const crisis = structuredClone({
     ...CRISIS,

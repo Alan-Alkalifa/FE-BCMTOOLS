@@ -1,0 +1,41 @@
+# Vercel Instant Rollback of PROD: the production domains go back to the previous production
+# deployment (or the one given), in seconds, without a build. Only PROD_APPROVERS may run it.
+# The next release must be promoted (vercel promote <url>), see docs/ci-cd.md.
+name: Roll back frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment:
+        description: Deployment URL or id to go back to; empty = the previous production deployment
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_CLI: vercel@${{ vars.VERCEL_CLI_VERSION || 'latest' }}
+    steps:
+      - name: Only approvers roll back PROD
+        env:
+          PROD_APPROVERS: ${{ vars.PROD_APPROVERS }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          approvers=",$(echo "$PROD_APPROVERS" | tr '[:upper:]' '[:lower:]' | tr -d ' '),"
+          case "$approvers" in
+            *",$(echo "$ACTOR" | tr '[:upper:]' '[:lower:]'),"*) echo "Approver: $ACTOR" ;;
+            *) echo "::error::$ACTOR is not on PROD_APPROVERS."; exit 1 ;;
+          esac
+      - name: Roll back
+        env:
+          TARGET: ${{ inputs.deployment }}
+        run: |
+          # shellcheck disable=SC2086 # empty TARGET = the previous production deployment
+          npx --yes "$VERCEL_CLI" rollback $TARGET --token="$VERCEL_TOKEN"

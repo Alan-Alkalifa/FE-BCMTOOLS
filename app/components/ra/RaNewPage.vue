@@ -94,23 +94,29 @@ const assessmentDate = computed({
   },
 })
 
-/** Whether a building can be assessed for a reason (the API checks the same). */
+/** Whether a building can be assessed for a reason (the API checks the same). New building is
+ *  a building's first RA; an Annual review or a Structural change follows its final RA. */
 function fits(reason: RaReason | undefined, location: RaLocation | undefined) {
   if (!reason || !location) return true
   if (reason === 'new_building') return location.assessment_count === 0
-  if (reason === 'annual_review') return Boolean(location.final_assessment)
-  return true
+  return Boolean(location.final_assessment)
 }
 const chosen = computed(() => locations.value?.items.find((item) => item.id === state.location_id))
 /** As SCCA's access scope: outside BCM, an Annual review or a Structural change picks only the
  *  buildings an access rule opens (RA configuration > Access scope). Null: every building. */
 const scopedIds = ref<Set<number> | null>(null)
+/** As SCCA's rule, from the API: why a building with a final RA can't be picked for the reason
+ *  (another RA of it is open; a Structural change when its renewal is overdue). */
+const problems = ref<Record<string, string>>({})
 watch(() => [state.reason, ra.value.kind] as const, async ([reason, kind]) => {
   scopedIds.value = null
+  problems.value = {}
   if (reason !== 'annual_review' && reason !== 'structural_change') return
   try {
     const scope = await raApi.locationScope(kind, reason)
-    if (state.reason === reason) scopedIds.value = scope.all ? null : new Set(scope.ids)
+    if (state.reason !== reason) return
+    scopedIds.value = scope.all ? null : new Set(scope.ids)
+    problems.value = scope.problems ?? {}
   } catch {
     scopedIds.value = null
   }
@@ -118,22 +124,30 @@ watch(() => [state.reason, ra.value.kind] as const, async ([reason, kind]) => {
 function inScope(location: RaLocation) {
   return !scopedIds.value || scopedIds.value.has(location.id)
 }
-/** As SCCA's application lookup: only the buildings the reason fits (and the one picked). */
+/** As SCCA's application lookup: only the buildings the reason fits (and the one picked); one
+ *  the rule refuses shows greyed out with the reason. */
 const locationItems = computed(() =>
   (locations.value?.items ?? [])
     .filter((location) => location.id === state.location_id || (fits(state.reason, location) && inScope(location)))
-    .map((location) => ({
-      label: location.name,
-      value: location.id,
-      description: [location.code, ra.value.hasRegion ? location.region : location.address].filter(Boolean).join(' · ') || undefined,
-    })),
+    .map((location) => {
+      const problem = problems.value[String(location.id)]
+      const about = [location.code, ra.value.hasRegion ? location.region : location.address].filter(Boolean).join(' · ')
+      return {
+        label: location.name,
+        value: location.id,
+        description: problem ? [location.code, problem].filter(Boolean).join(' · ') : about || undefined,
+        disabled: Boolean(problem) && location.id !== state.location_id,
+      }
+    }),
 )
+/** Why the picked building can't take the reason (the API refuses it too). */
+const pickedProblem = computed(() => (state.location_id ? problems.value[String(state.location_id)] ?? null : null))
 const locationHelp = computed(() => {
   const { lower, lowerPlural } = ra.value.location
   if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet. Not listed? Use Add ${lower}.`
   const scoped = scopedIds.value ? ` Only the ${lowerPlural} your access scope opens.` : ''
-  if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew.${scoped}`
-  if (state.reason === 'structural_change') return `The ${lower} that changed. It can follow a final RA in the same period.${scoped}`
+  if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew, while no other RA of it is open.${scoped}`
+  if (state.reason === 'structural_change') return `The ${lower} that changed: one with a final RA, while no other RA of it is open and its renewal isn't overdue. It can follow a final RA in the same period.${scoped}`
   return `The ${lower} to assess. One assessment per ${lower} per period.`
 })
 
@@ -209,7 +223,7 @@ watch(() => state.reason, async (reason, before) => {
   const noun = ra.value.location.lower
   const why = reason === 'new_building'
     ? `${location.name} already has an RA${location.latest_assessment?.ref_no ? ` (${location.latest_assessment.ref_no})` : ''}, so it isn't a new ${noun}.`
-    : `${location.name} has no final RA to renew yet.`
+    : `${location.name} has no final RA yet.`
   const ok = await confirm({
     title: 'Change the reason?',
     description: `${why} The ${noun} you picked is cleared.`,
@@ -226,6 +240,14 @@ watch(() => state.reason, async (reason, before) => {
 /** What the picked building already has, as SCCA's note on the picked application. */
 const pickedNote = computed(() => {
   if (!state.location_id || !detail.value) return null
+  if (pickedProblem.value) {
+    const reason = RA_REASONS.find((item) => item.value === state.reason)?.label ?? 'This reason'
+    return {
+      color: 'error' as const,
+      title: `${reason} isn't possible for this ${ra.value.location.lower}`,
+      description: `${pickedProblem.value} Pick another ${ra.value.location.lower} or reason.`,
+    }
+  }
   const last = previous.value
   const noun = ra.value.location.lower
   if (!last) {
@@ -374,7 +396,7 @@ async function onSubmit() {
             class="sm:col-span-2"
             :color="pickedNote.color"
             variant="subtle"
-            :icon="pickedNote.color === 'warning' ? 'i-lucide-triangle-alert' : 'i-lucide-history'"
+            :icon="pickedNote.color === 'error' ? 'i-lucide-circle-alert' : pickedNote.color === 'warning' ? 'i-lucide-triangle-alert' : 'i-lucide-history'"
             :title="pickedNote.title"
             :description="pickedNote.description"
             data-testid="building-note"
