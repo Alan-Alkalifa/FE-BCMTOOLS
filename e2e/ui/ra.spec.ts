@@ -116,9 +116,15 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
-  for (const header of ['Building ID', 'Directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
+  for (const header of ['Building ID', 'Directorate', 'Sub directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
     await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
   }
+  // Sub directorate sits between Directorate and Group / Area.
+  const headers = await table.getByRole('columnheader').allTextContents()
+  const at = (name: string) => headers.findIndex((text) => text.trim() === name)
+  expect(at('Sub directorate')).toBe(at('Directorate') + 1)
+  expect(at('Group / Area')).toBe(at('Sub directorate') + 1)
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ }).getByText('Ops Support')).toBeVisible()
   await expect(table.getByText('Building Management')).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Department', exact: true })).toHaveCount(0)
   await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2 for the Excel export' })).toBeVisible()

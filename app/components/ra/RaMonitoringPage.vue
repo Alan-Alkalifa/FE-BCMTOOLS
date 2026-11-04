@@ -196,6 +196,11 @@ const register = useRaRegister(computed(() => ({
   page: page.value,
   per_page: perPage.value,
 })))
+/** The List's Sub directorate: the location's (a branch's region is its Sub Directorate). */
+function subDirectorateOf(row: RaMonitorLocation) {
+  return row.location.sub_directorate || (row.location.kind === 'branch' ? row.location.region : null) || null
+}
+
 /** The List's Group / Area: the location's Group (a branch's area). */
 function groupOf(row: RaMonitorLocation) {
   return row.location.org_group || row.location.area || null
@@ -394,6 +399,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'location', header: locationColumn.value },
   { id: 'code', header: `${locationColumn.value} ID` },
   { id: 'directorate', header: 'Directorate' },
+  { id: 'sub_directorate', header: 'Sub directorate' },
   { id: 'group', header: 'Group / Area' },
   { id: 'level', header: 'Highest residual' },
   { id: 'approved', header: 'Last final RA' },
@@ -898,6 +904,9 @@ function record(id: number) {
             </template>
             <template #directorate-cell="{ row }">
               <span :class="row.original.location.directorate ? '' : 'text-muted'">{{ row.original.location.directorate || '—' }}</span>
+            </template>
+            <template #sub_directorate-cell="{ row }">
+              <span :class="subDirectorateOf(row.original) ? '' : 'text-muted'">{{ subDirectorateOf(row.original) || '—' }}</span>
             </template>
             <!-- The location's Group, as the user master names it; a branch's is its area. -->
             <template #group-cell="{ row }">

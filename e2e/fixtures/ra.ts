@@ -671,7 +671,7 @@ function workflowLocations(branch: boolean) {
   // The 2026 cycle, returned for changes and being worked on again.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
   return [
-    { location: { ...first, directorate: 'OPS', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
+    { location: { ...first, directorate: 'OPS', sub_directorate: 'Ops Support', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
     { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, assessor: null, licom: null, history: [] },
   ]
 }
