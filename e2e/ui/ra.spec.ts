@@ -265,16 +265,15 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
 
-test('on the BCM board, BCM acts for the signer also on an RA they made', async ({ page }) => {
+test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/approval?tab=board&q=own')
   const board = page.getByRole('table').filter({ visible: true })
-  await expect(board.getByRole('button', { name: /^Act on/ })).toBeVisible({ timeout: 60_000 })
-  await expect(board.getByText('Your own RA: reminders only')).toHaveCount(0)
+  await expect(board.getByText('Your own RA: reminders only')).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: /^Act on/ }).click()
   await expect(page.getByRole('menuitem', { name: 'Send a reminder now' })).toBeEnabled()
-  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeEnabled()
-  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Change the signer' })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeDisabled()
 })
 
 test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {

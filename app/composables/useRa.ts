@@ -1060,7 +1060,7 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   submitted_by: string | null
   /** Who made the RA (its creator), as SCCA's Assessor. */
   assessor?: string | null
-  /** BCM board: whether the caller may change the signer or approve on behalf (BCM may, also on an RA they made). */
+  /** BCM board: false on an RA the caller made (reminders only, as SCCA's). */
   can_act?: boolean
   reminders_sent: number
   escalated_at: string | null
