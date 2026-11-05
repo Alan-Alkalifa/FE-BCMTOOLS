@@ -241,11 +241,68 @@ test('the map legend shows the symbols the map draws', async ({ page }) => {
   await page.goto('/locations/map')
   await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
   const symbols = page.getByTestId('ra-map-symbol')
-  await expect(symbols).toHaveCount(4)
+  await expect(symbols).toHaveCount(6)
   // The branch in the legend is the map's branch marker (a rounded square with a bank).
   const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
   await expect(branch).toHaveCount(1)
   await expect(page.locator('path.ra-radius-crisis')).toHaveCount(1)
+})
+
+test('a place not approved yet is marked on the map, in the legend and in the list', async ({ page }) => {
+  await mockRaMap(page, { unapproved: true })
+  await page.goto('/locations/map')
+  const legend = page.getByText('Waiting for approval (new, or to deactivate)')
+  await expect(legend).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Rejected', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="waiting"] .ra-pin-badge-waiting')).toHaveCount(1)
+
+  // On the map: the new building and the branch being deactivated carry the hourglass badge,
+  // the rejected building the cross; the others none. Their names say it too.
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-waiting')).toHaveCount(2)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-rejected')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-badge')).toHaveCount(3)
+  await expect(page.locator('.leaflet-marker-icon[title="Menara Baru (Head office building): Waiting for approval"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="KCP Depok Margonda (Branch): Deactivation requested"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="Griya CIMB Niaga 2 (Head office building)"]')).toHaveCount(1)
+
+  // In the list and on the selected place.
+  const table = page.getByRole('table')
+  await expect(table.getByRole('row', { name: /Menara Baru/ })).toContainText('Waiting for approval')
+  await expect(table.getByRole('row', { name: /Wisma Ditolak/ })).toContainText('Rejected')
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).not.toContainText('approval')
+  await table.getByRole('button', { name: 'Menara Baru' }).click()
+  await expect(page.getByRole('heading', { name: 'Menara Baru', level: 2 }).locator('..')).toContainText('Waiting for approval')
+})
+
+test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/locations/map')
+  const map = page.locator('.leaflet-container')
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
+  const toggle = page.getByRole('switch', { name: 'Scroll to zoom' })
+  await expect(toggle).toBeChecked()
+  // The + and - buttons are there too.
+  await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Zoom out' })).toBeVisible()
+
+  const zoom = () => map.evaluate((element) => element.querySelector<HTMLElement>('.leaflet-map-pane')!.style.transform
+    + [...element.querySelectorAll<HTMLImageElement>('.leaflet-tile')].map((tile) => tile.src).join())
+  const scrollIn = async () => {
+    const box = (await map.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -600)
+    await page.waitForTimeout(800)
+  }
+  let before = await zoom()
+  await scrollIn()
+  await expect.poll(zoom).not.toBe(before)
+
+  // Off: the wheel scrolls the page, not the map.
+  await toggle.click()
+  await expect(toggle).not.toBeChecked()
+  before = await zoom()
+  await scrollIn()
+  expect(await zoom()).toBe(before)
 })
 
 test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {

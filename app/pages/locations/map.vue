@@ -6,7 +6,9 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 /**
  * Every head office building and branch with a map pin, on one map: measure the distance
  * between any two, see what is near a place, and declare an incident. Open incidents show for
- * everyone until they are closed.
+ * everyone until they are closed. A place not approved yet (new, or to deactivate) carries an
+ * hourglass badge, a rejected one a cross; the legend and the list say so too. The map zooms
+ * with the scroll wheel while "Scroll to zoom" is on.
  */
 definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
@@ -19,6 +21,19 @@ const mapRef = useTemplateRef<{ focus: (pin: RaPin) => void, fit: (pins: RaPin[]
 
 const showHeadOffice = ref(true)
 const showBranches = ref(true)
+/** Zoom the map with the mouse wheel or trackpad (on by default here; the page still scrolls
+ *  outside the map). */
+const scrollZoom = ref(true)
+
+/** Where a place's approval stands, as the Buildings register says it. */
+function stateOf(place: RaMapPlace): RaBuildingState {
+  return raBuildingState({ is_active: true, approval: place.approval ?? null })
+}
+const PIN_APPROVAL: Partial<Record<RaBuildingState, RaPinApproval>> = {
+  pending: 'waiting',
+  deactivating: 'waiting',
+  rejected: 'rejected',
+}
 const places = computed(() => data.value?.places ?? [])
 const visible = computed(() => places.value.filter((place) =>
   place.kind === 'branch' ? showBranches.value : showHeadOffice.value))
@@ -99,14 +114,18 @@ const nearby = computed(() => {
 })
 
 const markers = computed<RaMapMarker[]>(() => [
-  ...visible.value.map((place) => ({
-    id: place.id,
-    lat: place.latitude,
-    lng: place.longitude,
-    label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})`,
-    level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
-    variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
-  })),
+  ...visible.value.map((place) => {
+    const state = stateOf(place)
+    return {
+      id: place.id,
+      lat: place.latitude,
+      lng: place.longitude,
+      label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})${PIN_APPROVAL[state] ? `: ${raBuildingStatus[state].label}` : ''}`,
+      level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
+      variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
+      approval: PIN_APPROVAL[state] ?? null,
+    }
+  }),
   ...(data.value?.crises ?? []).map((crisis) => ({
     id: crisis.id,
     lat: crisis.latitude,
@@ -267,6 +286,12 @@ const canOpenRa = useCanOpenRa()
               v-model="showBranches"
               :label="`Branches (${counts.branch})`"
             />
+            <USwitch
+              v-model="scrollZoom"
+              label="Scroll to zoom"
+              description="Zoom the map with the mouse wheel or trackpad."
+              :ui="{ description: 'sr-only' }"
+            />
             <USelectMenu
               :model-value="selectedId ?? undefined"
               :items="placeItems"
@@ -287,6 +312,7 @@ const canOpenRa = useCanOpenRa()
             :selected="selectedId"
             label="Map of the head office buildings and branches. Select a place for its details."
             height-class="h-[32rem]"
+            :scroll-zoom="scrollZoom"
             @select="onMarker"
           />
 
@@ -300,6 +326,14 @@ const canOpenRa = useCanOpenRa()
               name="branch"
               class="text-muted"
             /> Branch</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="waiting"
+              class="mr-1 text-muted"
+            /> Waiting for approval (new, or to deactivate)</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="rejected"
+              class="mr-1 text-muted"
+            /> Rejected</span>
             <span class="flex items-center gap-1"><RaMapSymbol
               name="crisis"
               class="text-error"
@@ -407,6 +441,13 @@ const canOpenRa = useCanOpenRa()
                   <p class="text-sm text-muted">
                     {{ [RA_PLACE_KIND_LABEL[selected.kind], selected.region].filter(Boolean).join(' · ') }}
                   </p>
+                  <StatusBadge
+                    v-if="PIN_APPROVAL[stateOf(selected)]"
+                    :scale="raBuildingStatus"
+                    :value="stateOf(selected)"
+                    size="sm"
+                    class="mt-1"
+                  />
                 </div>
                 <UTooltip text="Clear the selection">
                   <UButton
@@ -556,12 +597,20 @@ const canOpenRa = useCanOpenRa()
           sticky
         >
           <template #name-cell="{ row }">
-            <UButton
-              variant="link"
-              class="px-0 font-medium"
-              :label="row.original.name"
-              @click="select(row.original.id)"
-            />
+            <div class="flex flex-wrap items-center gap-x-2">
+              <UButton
+                variant="link"
+                class="px-0 font-medium"
+                :label="row.original.name"
+                @click="select(row.original.id)"
+              />
+              <StatusBadge
+                v-if="PIN_APPROVAL[stateOf(row.original)]"
+                :scale="raBuildingStatus"
+                :value="stateOf(row.original)"
+                size="sm"
+              />
+            </div>
           </template>
           <template #kind-cell="{ row }">
             {{ RA_PLACE_KIND_LABEL[row.original.kind] }}

@@ -272,6 +272,9 @@ export interface RaMapMarker extends RaPin {
   variant?: 'location' | 'branch' | 'crisis'
   /** An incident waiting for approval: its point is orange. */
   pending?: boolean
+  /** A building or branch waiting for approval (new, or to deactivate), or rejected: a badge
+   *  on its marker. */
+  approval?: RaPinApproval | null
 }
 
 export interface RaMapCircle extends RaPin {
@@ -297,6 +300,9 @@ export interface RaPlace {
 
 export interface RaMapPlace extends RaPlace {
   latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
+  /** Where its four-eyes approval stands: a new building waiting (pending, register), a
+   *  deactivation waiting (pending, deactivate), rejected or approved. */
+  approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
 }
 
 export interface RaHazardRef {

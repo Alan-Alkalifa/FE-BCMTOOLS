@@ -823,7 +823,16 @@ const PLACE = (id: number, kind: 'head_office' | 'branch', name: string, latitud
   latitude,
   longitude,
   latest: level ? { id: id * 10, ref_no: `RA-2025-00${id}`, period_year: 2025, status: 'approved', highest_residual_level: level } : null,
+  approval: { status: 'approved', action: null } as { status: string, action: string | null },
 })
+
+/** `unapproved`: a new building waiting for approval, a branch whose deactivation waits, and a
+ *  rejected new building, also on the map. */
+export const UNAPPROVED_PLACES = [
+  { ...PLACE(3, 'head_office', 'Menara Baru', -6.2088, 106.8456), approval: { status: 'pending', action: 'register' } },
+  { ...PLACE(14, 'branch', 'KCP Depok Margonda', -6.3693, 106.8326, 'Low'), approval: { status: 'pending', action: 'deactivate' } },
+  { ...PLACE(4, 'head_office', 'Wisma Ditolak', -6.1951, 106.8231), approval: { status: 'rejected', action: 'register' } },
+]
 
 /** The location map: two buildings and three branches; Griya to KC Pondok Indah is 7,1 km. */
 export const MAP_PLACES = [
@@ -924,7 +933,7 @@ export interface RaMapLog {
  * Mocks the location map, incidents and the playbook. `crisis: false` starts with no open incident;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean } = {}) {
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean } = {}) {
   const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
@@ -952,7 +961,7 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
   }
   const open = () => (options.crisis === false || !['open', 'pending'].includes(crisis.status) ? [] : [crisis])
   await page.route('**/api/ra/map', (route) => route.fulfill({
-    json: { places: MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
+    json: { places: options.unapproved ? [...MAP_PLACES, ...UNAPPROVED_PLACES] : MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
   }))
   await page.route(/\/api\/ra\/crises/, async (route) => {
     const url = new URL(route.request().url())
