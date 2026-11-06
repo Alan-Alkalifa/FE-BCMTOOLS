@@ -55,6 +55,7 @@ body {
 
 /* A decorative placeholder bar. Wrap groups of them in <SkeletonGroup> (or use the Skeleton* components),
    which announce "Loading" once; USkeleton announces every bar separately. */
+   
 @utility skeleton {
   @apply animate-pulse rounded-md bg-accented/60;
 }
