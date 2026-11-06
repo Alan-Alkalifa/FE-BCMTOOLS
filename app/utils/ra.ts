@@ -23,18 +23,36 @@ export const raCompletion = defineStatusScale({
 })
 
 /** An RA's status, in SCCA's words and colours (`sccaStatus`): Draft, In approval, Final. A
- *  returned RA is a draft again; its page says it was returned and why. */
+ *  returned RA is a draft again (status `draft`), shown as Revision (as SCCA's Revisi). */
 export type RaStatus = 'draft' | 'in_signoff' | 'approved'
 export const RA_STATUSES: RaStatus[] = ['draft', 'in_signoff', 'approved']
-export const raStatus = defineStatusScale<RaStatus>({
+/** What a status badge shows: the status, or Revision for a draft a signer returned. */
+export type RaStatusKey = RaStatus | 'returned'
+export const raStatus = defineStatusScale<RaStatusKey>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  returned: { label: 'Revision', color: 'warning', icon: 'i-lucide-undo-2' },
   in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
   approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
 })
 
-/** The scale key of an RA's status (a returned RA is a draft). */
-export function raStatusKey(item: { status: RaStatus }): RaStatus {
-  return item.status
+/** The scale key of an RA's status: Revision for a draft a signer returned. */
+export function raStatusKey(item: { status: RaStatus, is_returned?: boolean }): RaStatusKey {
+  return item.status === 'draft' && item.is_returned ? 'returned' : item.status
+}
+
+/** As SCCA's New application: a New building's assessment date can be earlier than today (back
+ *  date), but not in an earlier year (no back year). The API says the same. */
+export function raNewBuildingDateProblem(reason: string | null | undefined, date: string | null | undefined, todayIso = raTodayIso()) {
+  if (reason !== 'new_building' || !date) return null
+  const year = todayIso.slice(0, 4)
+  return date.slice(0, 4) < year
+    ? `A new building's assessment date can be earlier this year, but not before 1 Jan ${year}.`
+    : null
+}
+
+/** Today in WIB, as YYYY-MM-DD. */
+export function raTodayIso() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
 }
 
 /** A status column: the badges centred under a centred header (as SCCA's lists). */

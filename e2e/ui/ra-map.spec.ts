@@ -355,9 +355,18 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(2)
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake.text-warning')).toHaveCount(2)
   await expect(page.locator('path.ra-radius-quake')).toHaveCount(0)
+  // Show on map (from the list, under the map): back up to the map, zoomed to the earthquake
+  // and its alert radius (the tiles of a closer zoom level load).
+  const zoom = () => page.locator('#building-map .leaflet-tile').evaluateAll((tiles) =>
+    Math.max(...tiles.map((tile) => Number((tile as HTMLImageElement).src.split('/e2e-tiles/')[1]?.split('/')[0] ?? 0))))
+  const before = await zoom()
+  await strong.scrollIntoViewIfNeeded()
+  await expect(page.locator('#building-map')).not.toBeInViewport()
   await strong.getByRole('button', { name: 'Show on map' }).click()
   await expect(page).toHaveURL(/quake=3/)
+  await expect(page.locator('#building-map')).toBeInViewport()
   await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
+  await expect.poll(zoom).toBeGreaterThan(before)
   // Hiding them takes them off the map.
   await page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ }).uncheck()
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)

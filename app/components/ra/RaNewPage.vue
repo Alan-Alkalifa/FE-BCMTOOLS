@@ -20,6 +20,8 @@ const form = useTemplateRef('form')
 const formError = ref<string | null>(null)
 
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, active: true }))
+/** 1 January this year (WIB): the earliest date a New building can have. */
+const yearStart = parseDate(`${raTodayIso().slice(0, 4)}-01-01`)
 
 const required = (message: string) => z.string().trim().min(1, message)
 const schema = computed(() => z.object({
@@ -44,6 +46,9 @@ const schema = computed(() => z.object({
   } else if (open) {
     context.addIssue({ code: 'custom', path: ['assessment_date'], message: `The RA for ${year} (${refOf(open)}) isn't final yet. A structural change can start once it is final.` })
   }
+  // As SCCA's New application: a New building can be back-dated, not to an earlier year.
+  const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
+  if (backYear) context.addIssue({ code: 'custom', path: ['assessment_date'], message: backYear })
   // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {
@@ -405,9 +410,12 @@ async function onSubmit() {
             label="Assessment date"
             name="assessment_date"
             required
-            :help="raPeriodOf(state.assessment_date) ? `RA period ${raPeriodOf(state.assessment_date)}, the year of this date.` : undefined"
+            :help="[raPeriodOf(state.assessment_date) ? `RA period ${raPeriodOf(state.assessment_date)}, the year of this date.` : null, state.reason === 'new_building' ? 'A new building can be dated earlier this year, not in an earlier year.' : null].filter(Boolean).join(' ') || undefined"
           >
-            <DatePicker v-model="assessmentDate" />
+            <DatePicker
+              v-model="assessmentDate"
+              :min="state.reason === 'new_building' ? yearStart : undefined"
+            />
           </UFormField>
           <UFormField
             v-if="customDue"

@@ -30,6 +30,12 @@ const schema = z.object({
   licom_user_id: z.number('Choose the LICOM.'),
   licom_phone: z.string().trim().min(1, 'Enter the LICOM mobile number.'),
 }).superRefine((value, context) => {
+  // As SCCA's New application: a New building can be back-dated, not to an earlier year. Only
+  // when the date or the reason changes, so a draft kept from an earlier year still saves.
+  if (value.assessment_date !== (props.assessment.assessment_date ?? '') || value.reason !== (props.assessment.reason ?? null)) {
+    const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
+    if (backYear) context.addIssue({ code: 'custom', path: ['assessment_date'], message: backYear })
+  }
   // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {

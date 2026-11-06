@@ -48,9 +48,15 @@ function quakeLabel(quake: RaEarthquake) {
   return `Earthquake M${raFormatMagnitude(quake.magnitude)}, ${formatDateTime(quake.occurred_at)}: ${quake.region ?? 'BMKG'}`
 }
 
-function selectQuake(quake: RaEarthquake) {
+/** Select an earthquake and zoom the map to it: its epicentre with the alert radius around it.
+ *  `scroll`: bring the map into view first (from the list under it, or the email's link). */
+function selectQuake(quake: RaEarthquake, scroll = false) {
   showQuakes.value = true
   selectedQuakeId.value = quake.id
+  if (scroll) {
+    const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  }
   const radius = (quakeList.value?.alert_radius_km ?? 100) * 1000
   const dLat = radius / 111_320
   const dLng = radius / (111_320 * Math.cos((quake.latitude * Math.PI) / 180))
@@ -63,7 +69,7 @@ function selectQuake(quake: RaEarthquake) {
 // Opened from the email (?quake=3): show it once the list and the map are there.
 watch([quakes, mapRef], ([items, map]) => {
   const quake = items.find((item) => item.id === selectedQuakeId.value)
-  if (quake && map) nextTick(() => selectQuake(quake))
+  if (quake && map) nextTick(() => selectQuake(quake, true))
 }, { once: true })
 
 async function declareFromQuake(quake: RaEarthquake) {
@@ -392,6 +398,7 @@ const canOpenRa = useCanOpenRa()
           </div>
 
           <RaMap
+            id="building-map"
             ref="map"
             :markers="markers"
             :circles="circles"
@@ -674,7 +681,7 @@ const canOpenRa = useCanOpenRa()
         :list="quakeList"
         :error="quakeError"
         :selected-id="selectedQuakeId"
-        @select="selectQuake"
+        @select="(quake) => selectQuake(quake, true)"
         @declare="declareFromQuake"
       />
 

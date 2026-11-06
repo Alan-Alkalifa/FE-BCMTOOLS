@@ -361,6 +361,8 @@ export async function mockRa(
     scopeIds?: number[]
     /** Why a building can't be picked, by reason then building id (the API's `problems`). */
     scopeProblems?: Partial<Record<'annual_review' | 'structural_change', Record<string, string>>>
+    /** The draft is on 2025-r4 while 2025-r5 is active: it can move (as SCCA's). */
+    oldVersion?: boolean
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], generated: [], locationQueries: [], approvals: [] }
@@ -373,6 +375,7 @@ export async function mockRa(
     setTeam(assessment, 'licom', LICOM_ID)
   }
   if (options.ready || options.status) readyToSubmit(current)
+  if (options.oldVersion) Object.assign(current, { latest_version: '2025-r5', can_move_version: true })
   if (options.status === 'in_signoff') setStatus(current, 'in_signoff', 'prepared_by')
   if (options.status === 'approved') setStatus(current, 'approved')
   const actForSigner = (assessment: MockAssessment) => {
@@ -551,6 +554,12 @@ export async function mockRa(
     }
     const assessment: MockAssessment = url.pathname.includes(`/assessments/${BRANCH_ASSESSMENT_ID}`) ? branchCurrent : current
     const roles = assessment.kind === 'branch' ? BRANCH_ROLES : HO_ROLES
+    if (method === 'POST' && url.pathname.endsWith('/move-version')) {
+      log.workflow.push('move-version')
+      Object.assign(assessment, { formula_version: '2025-r5', can_move_version: false })
+      await route.fulfill({ json: { ...assessment, cleared: ['Ratings of H33 (Kebakaran Besar)'] } })
+      return
+    }
     if (method === 'POST' && url.pathname.endsWith('/nudge')) {
       log.signoff.push(['nudge', null])
       await route.fulfill({ json: { sent: true, assessment } })
@@ -749,7 +758,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     if (name === 'monitoring/overview') {
       await route.fulfill({
         json: {
-          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0, stuck_approvals: 0 },
+          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, returned: 1, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0, stuck_approvals: 0 },
           by_level: [{ level: 'Low', locations: 0 }, { level: 'Medium', locations: 1 }, { level: 'High', locations: 0 }, { level: 'none', locations: 1 }],
           approved_per_month: Array.from({ length: 12 }, (_, index) => ({
             month: `${index < 2 ? 2025 : 2026}-${String(((index + 10) % 12) + 1).padStart(2, '0')}`,
@@ -778,7 +787,8 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
       ]) })
     } else if (name === 'monitoring/register') {
       const state = url.searchParams.get('state')
-      const rows = state === 'none' ? [locations[1]] : state === 'approved' ? [locations[0]] : state ? [] : locations
+      // Griya's open RA was returned for changes: Revision.
+      const rows = state === 'none' ? [locations[1]] : state === 'approved' || state === 'returned' ? [locations[0]] : state ? [] : locations
       await route.fulfill({ json: paged(rows) })
     } else if (name === 'monitoring/regions') {
       await route.fulfill({ json: { items: branch ? ['Jabodetabek', 'Region Jabar'] : [] } })

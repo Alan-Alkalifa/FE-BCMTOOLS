@@ -561,6 +561,9 @@ export interface RaAssessment extends RaAssessmentFields, RaWorkflow {
   ref_no: string | null
   kind: RaKind
   formula_version: string
+  /** The active configuration version of its kind; a draft on an older one can move to it. */
+  latest_version?: string | null
+  can_move_version?: boolean
   can_delete: boolean
   /** The LIC and LICOM: picked users (null on assessments from before), names as stored. */
   lic_user: RaUserRef | null
@@ -1022,6 +1025,8 @@ export const raApi = {
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/call-tree`, { method: 'PUT', body: { entries } }),
   get: (id: number) => $fetch<RaAssessment>(`${BASE}/${id}`),
   create: (body: RaAssessmentCreate) => $fetch<RaAssessment>(BASE, { method: 'POST', body }),
+  /** A draft on an older configuration version moves to the active one, as SCCA's. */
+  moveVersion: (id: number) => $fetch<RaAssessment & { cleared: string[] }>(`/api/ra/assessments/${id}/move-version`, { method: 'POST' }),
   update: (id: number, body: RaAssessmentUpdate) =>
     $fetch<RaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
   setRatings: (id: number, ratings: RaRatingUpdate[]) =>
@@ -1150,7 +1155,7 @@ export interface RaMonitoringFilters {
   q?: string
   region?: string
   level?: RaLevel | 'none'
-  state?: 'approved' | 'draft' | 'in_signoff' | 'none'
+  state?: 'approved' | 'draft' | 'returned' | 'in_signoff' | 'none'
   /** The reason of the building's RA in force or the one being worked on. */
   reason?: RaReason
   // Date range filters (assessment date)
@@ -1170,6 +1175,8 @@ export interface RaOverview {
     assessed: number
     not_assessed: number
     drafts: number
+    /** Drafts a signer returned for changes (Revision, as SCCA's). */
+    returned: number
     in_signoff: number
     overdue_renewals: number
     due_in_90_days: number

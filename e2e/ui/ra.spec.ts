@@ -914,6 +914,8 @@ test('the location incident team is required', async ({ page }) => {
 })
 
 test('the assessment date is picked from a calendar; the renewal follows it', async ({ page }) => {
+  // The sample is a 2025 New building: picked in 2025, when it may still move within the year.
+  await page.clock.setFixedTime(new Date('2025-12-31T05:00:00Z'))
   await mockRa(page)
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
@@ -937,6 +939,64 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   const body = (await request).postDataJSON()
   expect(body).toMatchObject({ assessment_date: '2025-03-17', period_year: 2025, reason: 'new_building' })
   expect(body).not.toHaveProperty('due_date')
+})
+
+test('a new building can be back-dated this year, not to an earlier year, as SCCA\'s new application', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-06T05:00:00Z'))
+  await mockRa(page)
+  // On the Details tab: the 2025 New building moved to another 2025 date is refused.
+  await page.goto('/ra/manage/1')
+  const date = page.getByRole('button', { name: 'Assessment date' })
+  await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  await date.click()
+  await page.getByRole('gridcell', { name: /17/ }).first().click()
+  let saved = false
+  page.on('request', (r) => {
+    if (r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1')) saved = true
+  })
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  await expect(page.getByText('A new building\'s assessment date can be earlier this year, but not before 1 Jan 2026.')).toBeVisible()
+  expect(saved).toBe(false)
+
+  // On New assessment: the help says it, and the calendar starts on 1 January.
+  await page.goto('/ra/manage/new')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /New building/ }).click()
+  await expect(page.getByText('A new building can be dated earlier this year, not in an earlier year.')).toBeVisible()
+})
+
+test('a draft on an older configuration version moves to the active one, as SCCA\'s', async ({ page }) => {
+  const log = await mockRa(page, { oldVersion: true })
+  await page.goto('/ra/manage/1')
+  const note = page.getByTestId('move-version')
+  await expect(note).toContainText('This draft uses 2025-r4. 2025-r5 is the active version.', { timeout: 60_000 })
+  await note.getByRole('button', { name: 'Move to 2025-r5' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Move this draft to 2025-r5?' })
+  await expect(dialog).toContainText('hazards and their descriptions')
+  await dialog.getByRole('button', { name: 'Move to 2025-r5' }).click()
+  await expect(page.getByText('Now on 2025-r5').first()).toBeVisible()
+  await expect(page.getByText('Redo: Ratings of H33 (Kebakaran Besar).').first()).toBeVisible()
+  await expect(note).toHaveCount(0)
+  expect(log.workflow).toContain('move-version')
+
+  // Monitoring only reads: no move there.
+  await mockRa(page, { oldVersion: true })
+  await page.goto('/ra/monitoring/1')
+  await expect(page.getByText('Monitoring is read-only')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('move-version')).toHaveCount(0)
+})
+
+test('Monitoring shows the RAs returned for changes as Revision, as SCCA\'s', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/monitoring')
+  const card = page.getByRole('link', { name: /Revision/ }).first()
+  await expect(card).toContainText('RAs returned for changes', { timeout: 60_000 })
+  await expect(card).toContainText('1')
+  await card.click()
+  await expect(page).toHaveURL(/tab=register/)
+  await expect(page).toHaveURL(/state=returned/)
+  const row = page.getByRole('table').getByRole('row', { name: /Griya CIMB Niaga 2/ })
+  await expect(row.getByRole('link', { name: /: Revision$/ })).toBeVisible()
 })
 
 test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {
@@ -1324,9 +1384,9 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
   await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()
   await expect(table.getByRole('link', { name: 'RA-2025-0001' })).toHaveCount(0)
-  // Open RA: the status of the RA being worked on, in SCCA's words (a returned RA is a draft).
+  // Open RA: the status of the RA being worked on, in SCCA's words; a returned one is Revision.
   const row = table.getByRole('row', { name: /Griya CIMB Niaga 2/ })
-  await expect(row.getByRole('link', { name: /: Draft$/ })).toHaveAttribute('href', '/ra/monitoring/99')
+  await expect(row.getByRole('link', { name: /: Revision$/ })).toHaveAttribute('href', '/ra/monitoring/99')
   await expect(row).not.toContainText('Returned')
   // The building's ID in its own column, as SCCA's Application code.
   await expect(row.getByText('RA-HQ-0001', { exact: true })).toBeVisible()
