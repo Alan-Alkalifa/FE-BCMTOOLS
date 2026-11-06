@@ -11,6 +11,8 @@ const props = defineProps<{
   noteLabel: string
   help?: string
   required?: boolean
+  /** The error when a required note is left empty (default: "Enter the reason."). */
+  requiredMessage?: string
   destructive?: boolean
 }>()
 const emit = defineEmits<{ close: [note: string | false] }>()
@@ -37,7 +39,7 @@ function confirm() {
         :label="props.noteLabel"
         :required="props.required"
         :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the incident history.')"
-        :error="missing && !note.trim() ? 'Enter the reason.' : undefined"
+        :error="missing && !note.trim() ? (props.requiredMessage ?? 'Enter the reason.') : undefined"
       >
         <UTextarea
           v-model="note"

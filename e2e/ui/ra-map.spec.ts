@@ -121,10 +121,20 @@ test('an incident gives each affected place its instructions and keeps a history
   await page.getByRole('button', { name: 'KCP Bintaro Sektor 9 Branch · 2 km from the incident point' }).click()
   await expect(page.getByText('No RA for this place yet.')).toBeVisible()
 
-  await page.getByLabel('Add an update').fill('Floor wardens evacuated level 1.')
+  // Add update opens the update dialog: the radius and the rest, with the update (required).
   await page.getByRole('button', { name: 'Add update' }).click()
-  await expect(page.getByText('Floor wardens evacuated level 1.')).toBeVisible()
-  expect(log.notes).toEqual([{ note: 'Floor wardens evacuated level 1.' }])
+  const update = page.getByRole('dialog', { name: 'Update CR-2026-0001' })
+  await expect(update.getByLabel('Update')).toBeVisible({ timeout: 30_000 })
+  await update.getByRole('button', { name: 'Save update' }).click()
+  await expect(update.getByText('Write the update: what is happening now, or why it changed.')).toBeVisible()
+  expect(log.updates).toEqual([])
+  await update.getByRole('button', { name: '10 km', exact: true }).click()
+  await update.getByLabel('Update').fill('Floor wardens evacuated level 1.')
+  await update.getByRole('button', { name: 'Save update' }).click()
+  await expect(update).toBeHidden()
+  await expect(page.getByText('Radius: 5 km → 10 km. Floor wardens evacuated level 1.')).toBeVisible()
+  expect(log.updates).toEqual([expect.objectContaining({ radius_m: 10000, note: 'Floor wardens evacuated level 1.' })])
+  expect(log.notes).toEqual([])
 
   await page.getByRole('button', { name: 'Close incident' }).click()
   const dialog = page.getByRole('dialog', { name: 'Close CR-2026-0001?' })
@@ -136,7 +146,7 @@ test('an incident gives each affected place its instructions and keeps a history
 })
 
 test('without the declare permission the map and incident are read-only', async ({ page }) => {
-  await mockRaMap(page, { declare: false })
+  const log = await mockRaMap(page, { declare: false })
   await page.goto('/locations/map?place=1')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Measure from here' })).toBeVisible()
@@ -144,7 +154,16 @@ test('without the declare permission the map and incident are read-only', async 
   await page.goto('/crises/7')
   await expect(page.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Add update' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update incident' })).toHaveCount(0)
+  // Without the right to manage it, Add update adds a note (required).
+  await page.getByRole('button', { name: 'Add update' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add an update to CR-2026-0001' })
+  await dialog.getByRole('button', { name: 'Add update' }).click()
+  await expect(dialog.getByText('Write the update first.')).toBeVisible()
+  await dialog.getByLabel('Update').fill('Seen from the branch: the road is flooded.')
+  await dialog.getByRole('button', { name: 'Add update' }).click()
+  await expect(page.getByText('Seen from the branch: the road is flooded.')).toBeVisible()
+  expect(log.notes).toEqual([{ note: 'Seen from the branch: the road is flooded.' }])
 })
 
 test('the incident history lists incidents with their status', async ({ page }) => {
@@ -217,8 +236,10 @@ test('a declared incident waits for someone else\'s approval', async ({ page }) 
   await page.goto('/crises/7')
   const banner = page.getByTestId('approval-banner')
   await expect(banner).toContainText('Waiting for approval. Rina declared this incident', { timeout: 30_000 })
+  // It can't be closed yet, but it can be updated (its approver approves it as it stands).
   await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Update incident' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update incident' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add update' })).toBeVisible()
   await banner.getByRole('button', { name: 'Approve' }).click()
   await page.getByRole('dialog', { name: 'Approve this incident?' }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByText('This incident is approved').first()).toBeVisible()

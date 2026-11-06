@@ -924,6 +924,8 @@ export interface RaMapLog {
   declared: Record<string, unknown>[]
   closed: unknown[]
   notes: unknown[]
+  /** Bodies of PUT /api/ra/crises/{id} (the update dialog). */
+  updates: Record<string, unknown>[]
   playbook: [string, unknown][]
   /** Approve / reject calls on the incident: [action, body]. */
   decisions: [string, unknown][]
@@ -934,7 +936,7 @@ export interface RaMapLog {
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
 export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean } = {}) {
-  const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [], decisions: [] }
+  const log: RaMapLog = { declared: [], closed: [], notes: [], updates: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
   await page.route('**/api/ra/map-settings', (route) =>
@@ -993,6 +995,13 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
       log.closed.push(body)
       Object.assign(crisis, { status: 'closed', closed_at: '2026-10-21T08:00:00Z', closed_by: 'Test User', closing_note: (body as { note?: string })?.note ?? null })
       crisis.history.push({ action: 'closed', note: crisis.closing_note, user: 'Test User', at: '2026-10-21T08:00:00Z' })
+    }
+    if (method === 'PUT' && /\/crises\/\d+$/.test(url.pathname)) {
+      log.updates.push(body!)
+      const radius = body!.radius_m as number
+      const changed = radius !== crisis.radius_m ? `Radius: ${crisis.radius_m / 1000} km → ${radius / 1000} km. ` : ''
+      Object.assign(crisis, { radius_m: radius })
+      crisis.history.push({ action: 'updated', note: `${changed}${body!.note as string}`, user: 'Test User', at: '2026-10-21T06:30:00Z' })
     }
     if (url.pathname.endsWith('/notes')) {
       log.notes.push(body)

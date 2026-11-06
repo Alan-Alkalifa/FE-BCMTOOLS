@@ -4,8 +4,10 @@ import { z } from 'zod'
 import type { RaCrisis, RaCrisisInput, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
- * Declares an incident, or edits an open one: the hazard, where it happens, the affected radius and
- * when it started (WIB). Closes with the saved incident, or false.
+ * Declares an incident, or updates one that is open or waiting for approval: the hazard, where it
+ * happens, the affected radius and when it started (WIB). An update needs its message (what is
+ * happening now, or why it changed), kept in the history. Closes with the saved incident, or
+ * false.
  *
  * Where is always a pin on the map: drop it by clicking the map, drag it, or pick a building or
  * branch (from the list or its marker) to put the pin on it. The ring shows the affected area.
@@ -48,7 +50,8 @@ const state = reactive({
   note: '',
 })
 
-const schema = z.object({
+const NOTE_REQUIRED = 'Write the update: what is happening now, or why it changed.'
+const schema = computed(() => z.object({
   hazard_code: z.string().min(1, 'Choose the hazard.'),
   location_id: z.number().optional(),
   pin: z.custom<RaPin | null>((value) => !!value, 'Click the map to drop the pin, or choose a building or branch.'),
@@ -56,8 +59,8 @@ const schema = z.object({
   date: z.string().min(1, 'Pick the date.'),
   time: z.string().regex(/^\d{2}:\d{2}$/, 'Enter the time, e.g. 14:30.'),
   description: z.string(),
-  note: z.string(),
-})
+  note: editing.value ? z.string().trim().min(1, NOTE_REQUIRED) : z.string(),
+}))
 
 const mapRef = useTemplateRef<{ fit: (pins: RaPin[]) => void }>('map')
 
@@ -139,7 +142,7 @@ async function onSubmit() {
     radius_m: Math.round(state.radius_km * 1000),
     started_at: raWibToIso(state.date, state.time),
     description: state.description.trim() || null,
-    ...(editing.value && state.note.trim() ? { note: state.note.trim() } : {}),
+    ...(editing.value ? { note: state.note.trim() } : {}),
   }
   saving.value = true
   try {
@@ -160,7 +163,7 @@ async function onSubmit() {
   <UModal
     :title="editing ? `Update ${crisis!.ref_no}` : 'Declare an incident'"
     :description="editing
-      ? 'What changes is added to the incident history.'
+      ? 'Change the radius or anything else, and say what is happening now. Both go into the incident history.'
       : 'It shows on the building map as pending until someone else with the approve permission confirms it. Then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
@@ -181,6 +184,23 @@ async function onSubmit() {
           :title="editing ? 'Couldn\'t update the incident' : 'Couldn\'t declare the incident'"
           :description="formError"
         />
+
+        <UFormField
+          v-if="editing"
+          label="Update"
+          name="note"
+          required
+          help="What is happening now, or why it changed. Kept in the history with what changed, and seen by everyone following the incident."
+          :error="fieldErrors.note"
+        >
+          <UTextarea
+            v-model="state.note"
+            :rows="3"
+            autoresize
+            autofocus
+            class="w-full"
+          />
+        </UFormField>
 
         <UFormField
           label="Hazard"
@@ -318,20 +338,6 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
-
-        <UFormField
-          v-if="editing"
-          label="Why it changed"
-          name="note"
-          help="Optional. Kept in the history with what changed."
-        >
-          <UTextarea
-            v-model="state.note"
-            :rows="2"
-            autoresize
-            class="w-full"
-          />
-        </UFormField>
       </UForm>
     </template>
     <template #footer>
@@ -346,7 +352,7 @@ async function onSubmit() {
           type="submit"
           form="ra-crisis-form"
           :icon="editing ? undefined : 'i-lucide-siren'"
-          :label="editing ? 'Save changes' : 'Submit disaster/incident'"
+          :label="editing ? 'Save update' : 'Submit disaster/incident'"
           :loading="saving"
         />
       </div>
