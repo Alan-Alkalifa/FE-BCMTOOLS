@@ -229,7 +229,7 @@ function boardActions(row: RaSignoffWaiting): DropdownMenuItem[] {
   return [
     { label: 'Open sign-off', icon: 'i-lucide-folder-open', to: raPath(ra.value.kind, 'approval', row.id) },
     { label: 'Send a reminder now', icon: 'i-lucide-bell-ring', disabled: !row.signer, onSelect: () => nudge(row) },
-    // BCM acts for the signer, also on an RA they made (the API's can_act).
+    // As SCCA's: nobody acts for the signer of an RA they made (reminders only).
     { label: 'Change the signer', icon: 'i-lucide-user-round-cog', disabled: row.can_act === false, onSelect: () => changeSigner(row) },
     { label: 'Approve on behalf', icon: 'i-lucide-badge-check', disabled: row.can_act === false, onSelect: () => onBehalf(row) },
   ]
@@ -538,6 +538,12 @@ const tabs = computed(() => [
             </template>
             <template #signer-cell="{ row }">
               {{ row.original.signer?.name ?? '—' }}
+              <p
+                v-if="row.original.can_act === false"
+                class="text-xs text-muted"
+              >
+                Your own RA: reminders only
+              </p>
             </template>
             <template #working_days_waiting-cell="{ row }">
               <StatusBadge

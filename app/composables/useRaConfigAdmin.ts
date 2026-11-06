@@ -1,4 +1,4 @@
-import type { RaDivision, RaDivisionInput, RaFormula, RaSignoffStep } from '~/composables/useRa'
+import type { RaBmkgStatus, RaDivision, RaDivisionInput, RaFormula, RaSignoffStep } from '~/composables/useRa'
 
 /**
  * Administration > RA configuration, like the SCCA one: versions per kind (RA and RA Branch)
@@ -146,6 +146,9 @@ export const raConfigApi = {
     $fetch<RaDivision>(`${BASE}/divisions/${id}`, { method: 'PATCH', body }),
   deleteDivision: (id: number) => $fetch(`${BASE}/divisions/${id}`, { method: 'DELETE' }),
   settings: () => $fetch<RaSettings>(`${BASE}/settings`),
+  bmkg: () => $fetch<RaBmkgStatus>(`${BASE}/bmkg`),
+  saveBmkg: (body: { enabled: boolean, min_magnitude: number, alert_radius_km: number }) =>
+    $fetch<RaBmkgStatus>(`${BASE}/bmkg`, { method: 'PUT', body }),
   saveSettings: (body: RaSettings) => $fetch<RaSettings>(`${BASE}/settings`, { method: 'PUT', body }),
   diagrams: (kind: RaKind) => $fetch<{ items: RaDiagramInfo[] }>(`${BASE}/diagrams?kind=${kind}`),
   uploadDiagram: (kind: RaKind, diagram: RaDiagram, file: File) => {

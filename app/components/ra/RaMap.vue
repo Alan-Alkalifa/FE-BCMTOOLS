@@ -27,6 +27,9 @@ const props = withDefaults(defineProps<{
   recentre?: boolean
   /** The editable pin's look: a building pin, or an incident point. */
   pinVariant?: 'location' | 'crisis'
+  /** Zoom with the mouse wheel or trackpad (off by default, so scrolling the page never gets
+   *  caught by a map). The + and - buttons and double-click always zoom. */
+  scrollZoom?: boolean
 }>(), {
   markers: () => [],
   circles: () => [],
@@ -37,6 +40,7 @@ const props = withDefaults(defineProps<{
   autoFit: true,
   recentre: true,
   pinVariant: 'location',
+  scrollZoom: false,
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
 const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], ready: [] }>()
@@ -55,11 +59,11 @@ let map: LeafletMap | undefined
 let layer: import('leaflet').LayerGroup | undefined
 let editMarker: Marker | undefined
 
-function icon(level: RaMapMarker['level'], active: boolean) {
+function icon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
-    html: RA_PIN_SVG,
-    className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}`,
+    html: raPinHtml(RA_PIN_SVG, approval),
+    className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}${approval ? ` ra-pin-${approval}` : ''}`,
     iconSize: [32, 32],
     iconAnchor: [16, 31],
     tooltipAnchor: [0, -28],
@@ -77,11 +81,22 @@ function crisisIcon(pending = false) {
   })
 }
 
-function branchIcon(level: RaMapMarker['level'], active: boolean) {
+/** A BMKG earthquake's epicentre: orange, red from magnitude 6.0. */
+function quakeIcon(strong = false) {
+  return L!.divIcon({
+    html: RA_QUAKE_SVG,
+    className: `ra-pin ra-pin-quake ${strong ? 'text-error' : 'text-warning'}`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    tooltipAnchor: [0, -14],
+  })
+}
+
+function branchIcon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
-    html: RA_BRANCH_SVG,
-    className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}`,
+    html: raPinHtml(RA_BRANCH_SVG, approval),
+    className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}${approval ? ` ra-pin-${approval}` : ''}`,
     iconSize: [24, 24],
     iconAnchor: [12, 12],
     tooltipAnchor: [0, -12],
@@ -101,9 +116,11 @@ function drawMarkers(fit: boolean) {
   for (const ring of props.circles) {
     layer.addLayer(L.circle([ring.lat, ring.lng], {
       radius: ring.radiusM,
-      className: ring.crisis
-        ? `ra-radius ${ring.pending ? 'ra-radius-pending' : 'ra-radius-crisis'}`
-        : ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
+      className: ring.quake
+        ? 'ra-radius ra-radius-quake'
+        : ring.crisis
+          ? `ra-radius ${ring.pending ? 'ra-radius-pending' : 'ra-radius-crisis'}`
+          : ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
       interactive: false,
     }))
   }
@@ -114,11 +131,15 @@ function drawMarkers(fit: boolean) {
     }))
   }
   for (const item of props.markers) {
-    const active = item.variant !== 'crisis' && item.id === props.selected
+    const active = item.variant !== 'crisis' && item.variant !== 'quake' && item.id === props.selected
     const marker = L.marker([item.lat, item.lng], {
       icon: item.variant === 'crisis'
         ? crisisIcon(item.pending)
-        : item.variant === 'branch' ? branchIcon(item.level, active) : icon(item.level, active),
+        : item.variant === 'quake'
+          ? quakeIcon(item.strong)
+          : item.variant === 'branch'
+            ? branchIcon(item.level, active, item.approval)
+            : icon(item.level, active, item.approval),
       title: item.label,
       alt: item.label,
       keyboard: true,
@@ -184,7 +205,7 @@ async function init() {
   map = L.map(container.value, {
     center: DEFAULT_VIEW.center,
     zoom: DEFAULT_VIEW.zoom,
-    scrollWheelZoom: false,
+    scrollWheelZoom: props.scrollZoom,
     keyboard: true,
   })
   L.tileLayer(settings.value.tile_url, {
@@ -216,6 +237,10 @@ onMounted(() => {
   }
 })
 watch(settings, () => init())
+watch(() => props.scrollZoom, (on) => {
+  if (on) map?.scrollWheelZoom.enable()
+  else map?.scrollWheelZoom.disable()
+})
 watch(() => [props.markers, props.circles], () => drawMarkers(props.autoFit), { deep: true })
 watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
@@ -326,6 +351,16 @@ defineExpose({
   fill-opacity: 0.1;
 }
 
+/* A BMKG earthquake's alert radius around the selected epicentre: orange and dotted. */
+.ra-radius-quake {
+  stroke: var(--ui-warning);
+  stroke-width: 2;
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+  fill: var(--ui-warning);
+  fill-opacity: 0.05;
+}
+
 .ra-measure {
   stroke: var(--ui-primary);
   stroke-width: 3;
@@ -336,6 +371,13 @@ defineExpose({
 .ra-pin-active svg {
   transform: scale(1.2);
   transform-origin: 50% 100%;
+}
+
+/* Not approved yet (or rejected): the marker is a little faded and carries a badge
+   (ra-map-symbols.ts), so it reads apart without colour too. */
+.ra-pin-waiting .ra-pin-stack > svg,
+.ra-pin-rejected .ra-pin-stack > svg {
+  opacity: 0.8;
 }
 
 .ra-pin:focus-visible {

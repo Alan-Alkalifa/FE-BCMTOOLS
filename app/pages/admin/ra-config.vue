@@ -17,7 +17,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'diagrams', 'access', 'changes'] as const
+const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'earthquakes', 'diagrams', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 /** Tabs that edit live rules rather than a version. */
 const LIVE: Tab[] = ['divisions', 'reminders', 'diagrams', 'access']
@@ -33,6 +33,7 @@ const tabItems = [
   { label: 'Statements and notes', value: 'texts', icon: 'i-lucide-text-quote', slot: 'texts' },
   { label: 'Divisions', value: 'divisions', icon: 'i-lucide-building-2', slot: 'divisions' },
   { label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' },
+  { label: 'Earthquakes', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' },
   { label: 'Team diagrams', value: 'diagrams', icon: 'i-lucide-network', slot: 'diagrams' },
   { label: 'Access scope', value: 'access', icon: 'i-lucide-shield-check', slot: 'access' },
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare', slot: 'changes' },
@@ -336,6 +337,9 @@ async function discard() {
         </template>
         <template #reminders>
           <AdminRaConfigReminders class="mt-4" />
+        </template>
+        <template #earthquakes>
+          <AdminRaConfigEarthquakes class="mt-4" />
         </template>
         <template #diagrams>
           <AdminRaConfigDiagrams
