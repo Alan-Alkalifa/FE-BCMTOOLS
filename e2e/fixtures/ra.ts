@@ -788,9 +788,9 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
-      // `q=own`: an RA the signed-in BCM user made: BCM still acts for its signers (unlike SCCA).
+      // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
       const own = name === 'approvals/board' && url.searchParams.get('q') === 'own'
-      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: true })) : waiting
+      const rows = own ? waiting.map((row) => ({ ...row, assessor: 'Test User', can_act: false })) : waiting
       await route.fulfill({ json: paged(step && step !== roles[2] ? [] : rows) })
     } else if (name === 'approvals/inbox') {
       await route.fulfill({ json: paged([waitingRow(branch, roles[1]!, 1, 2)]) })
@@ -823,7 +823,54 @@ const PLACE = (id: number, kind: 'head_office' | 'branch', name: string, latitud
   latitude,
   longitude,
   latest: level ? { id: id * 10, ref_no: `RA-2025-00${id}`, period_year: 2025, status: 'approved', highest_residual_level: level } : null,
+  approval: { status: 'approved', action: null } as { status: string, action: string | null },
 })
+
+/** BMKG earthquakes for the map: a felt M5.6 near Bintaro, and a felt M3.4 in Sulawesi. */
+export const BMKG_QUAKES = [
+  {
+    id: 3,
+    occurred_at: '2026-11-06T06:42:10Z',
+    magnitude: 5.6,
+    depth_km: 10,
+    latitude: -6.28,
+    longitude: 106.73,
+    region: 'Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan',
+    tsunami: 'Tidak berpotensi tsunami',
+    felt: 'IV Tangerang Selatan, III Jakarta',
+    is_felt: true,
+    shakemap_url: 'https://static.bmkg.go.id/20261106134210.mmi.jpg',
+    feeds: ['autogempa', 'gempadirasakan', 'gempaterkini'],
+    alerted_at: '2026-11-06T06:44:00Z',
+    nearby: [] as { location: unknown, distance_m: number }[],
+    incidents: [] as { id: number, ref_no: string, status: string }[],
+  },
+  {
+    id: 2,
+    occurred_at: '2026-11-04T07:56:34Z',
+    magnitude: 3.4,
+    depth_km: 10,
+    latitude: -1.14,
+    longitude: 120.15,
+    region: 'Pusat gempa berada di darat 40 km TimurLaut Sigi',
+    tsunami: null,
+    felt: 'III Sigi, II Palu',
+    is_felt: true,
+    shakemap_url: null,
+    feeds: ['gempadirasakan'],
+    alerted_at: null,
+    nearby: [] as { location: unknown, distance_m: number }[],
+    incidents: [{ id: 7, ref_no: 'CR-2026-0001', status: 'open' }],
+  },
+]
+
+/** `unapproved`: a new building waiting for approval, a branch whose deactivation waits, and a
+ *  rejected new building, also on the map. */
+export const UNAPPROVED_PLACES = [
+  { ...PLACE(3, 'head_office', 'Menara Baru', -6.2088, 106.8456), approval: { status: 'pending', action: 'register' } },
+  { ...PLACE(14, 'branch', 'KCP Depok Margonda', -6.3693, 106.8326, 'Low'), approval: { status: 'pending', action: 'deactivate' } },
+  { ...PLACE(4, 'head_office', 'Wisma Ditolak', -6.1951, 106.8231), approval: { status: 'rejected', action: 'register' } },
+]
 
 /** The location map: two buildings and three branches; Griya to KC Pondok Indah is 7,1 km. */
 export const MAP_PLACES = [
@@ -915,6 +962,8 @@ export interface RaMapLog {
   declared: Record<string, unknown>[]
   closed: unknown[]
   notes: unknown[]
+  /** Bodies of PUT /api/ra/crises/{id} (the update dialog). */
+  updates: Record<string, unknown>[]
   playbook: [string, unknown][]
   /** Approve / reject calls on the incident: [action, body]. */
   decisions: [string, unknown][]
@@ -924,8 +973,8 @@ export interface RaMapLog {
  * Mocks the location map, incidents and the playbook. `crisis: false` starts with no open incident;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean } = {}) {
-  const log: RaMapLog = { declared: [], closed: [], notes: [], playbook: [], decisions: [] }
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean, quakes?: boolean | 'stale' | 'off' } = {}) {
+  const log: RaMapLog = { declared: [], closed: [], notes: [], updates: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
   await page.route('**/api/ra/map-settings', (route) =>
@@ -951,8 +1000,38 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
       : { status: 'pending', declared_by: 'Rina', approval_can: { approve: true, reject: true } })
   }
   const open = () => (options.crisis === false || !['open', 'pending'].includes(crisis.status) ? [] : [crisis])
+  // BMKG earthquakes (`quakes`): a felt M5.6 near Griya and the Bintaro branch, with a shakemap,
+  // and a felt M3.4 far away. 'stale': BMKG not read for hours; 'off': switched off.
+  const quakeItems = options.quakes
+    ? [
+        {
+          ...BMKG_QUAKES[0]!,
+          nearby: [
+            { location: MAP_PLACES[2], distance_m: 1500 },
+            { location: MAP_PLACES[0], distance_m: 2100 },
+          ],
+        },
+        BMKG_QUAKES[1]!,
+      ]
+    : []
+  await page.route(/\/api\/ra\/earthquakes/, (route) => route.fulfill({
+    json: {
+      items: options.quakes === 'off' ? [] : quakeItems,
+      days: 7,
+      source: 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)',
+      source_url: 'https://data.bmkg.go.id/gempabumi/',
+      enabled: options.quakes !== 'off',
+      min_magnitude: 5,
+      alert_radius_km: 100,
+      polled_at: options.quakes === 'stale' ? '2026-11-06T01:00:00Z' : '2026-11-06T06:44:00Z',
+      poll_error: options.quakes === 'stale' ? 'gempaterkini: timed out' : null,
+      stale: options.quakes === 'stale',
+      hazard_code: 'H03',
+      can_declare: canDeclare,
+    },
+  }))
   await page.route('**/api/ra/map', (route) => route.fulfill({
-    json: { places: MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
+    json: { places: options.unapproved ? [...MAP_PLACES, ...UNAPPROVED_PLACES] : MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
   }))
   await page.route(/\/api\/ra\/crises/, async (route) => {
     const url = new URL(route.request().url())
@@ -984,6 +1063,13 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
       log.closed.push(body)
       Object.assign(crisis, { status: 'closed', closed_at: '2026-10-21T08:00:00Z', closed_by: 'Test User', closing_note: (body as { note?: string })?.note ?? null })
       crisis.history.push({ action: 'closed', note: crisis.closing_note, user: 'Test User', at: '2026-10-21T08:00:00Z' })
+    }
+    if (method === 'PUT' && /\/crises\/\d+$/.test(url.pathname)) {
+      log.updates.push(body!)
+      const radius = body!.radius_m as number
+      const changed = radius !== crisis.radius_m ? `Radius: ${crisis.radius_m / 1000} km → ${radius / 1000} km. ` : ''
+      Object.assign(crisis, { radius_m: radius })
+      crisis.history.push({ action: 'updated', note: `${changed}${body!.note as string}`, user: 'Test User', at: '2026-10-21T06:30:00Z' })
     }
     if (url.pathname.endsWith('/notes')) {
       log.notes.push(body)

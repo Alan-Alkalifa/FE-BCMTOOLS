@@ -7,6 +7,10 @@ import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
  * One incident: where and what, the affected area on the map, and for every affected building or
  * branch what to do — BCM's guidebook steps, its own RA for the hazard, its contacts, call tree
  * and recovery team, and the nearest places outside the area. The history is kept beside it.
+ *
+ * While the incident is open or waiting for approval, "Update incident" (top bar) and "Add
+ * update" (under the history) open the update dialog for whoever may manage it: the radius and
+ * the rest, with the update itself (required). Anyone else adds an update as a note.
  */
 definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
@@ -108,6 +112,26 @@ async function edit() {
   }
 }
 
+/** Open or waiting for approval: it can still get updates. */
+const updatable = computed(() => crisis.value?.status === 'open' || crisis.value?.status === 'pending')
+
+/** Add update: the update dialog for whoever may manage the incident; a note for anyone else. */
+async function addUpdate() {
+  if (!crisis.value) return
+  if (crisis.value.can_manage) return edit()
+  const note = await noteModal.open({
+    title: `Add an update to ${crisis.value.ref_no}`,
+    description: 'Seen by everyone following this incident.',
+    confirmLabel: 'Add update',
+    noteLabel: 'Update',
+    help: 'What is happening now, e.g. who has been evacuated.',
+    required: true,
+    requiredMessage: 'Write the update first.',
+  }).result
+  if (note === false) return
+  await act(() => raCrisisApi.addNote(id.value, note), 'Update added')
+}
+
 async function close() {
   if (!crisis.value) return
   const note = await noteModal.open({
@@ -142,23 +166,6 @@ async function act(call: () => Promise<RaCrisis>, message: string) {
   }
 }
 
-const note = ref('')
-const noteError = ref<string | null>(null)
-async function addNote() {
-  noteError.value = null
-  if (!note.value.trim()) {
-    noteError.value = 'Write the update first.'
-    return
-  }
-  try {
-    set(await raCrisisApi.addNote(id.value, note.value.trim()))
-    note.value = ''
-    toast.add({ title: 'Update added', color: 'success', icon: 'i-lucide-circle-check' })
-  } catch (err) {
-    noteError.value = apiErrorMessage(err)
-  }
-}
-
 const historyIcon: Record<string, string> = {
   declared: 'i-lucide-siren',
   approved: 'i-lucide-badge-check',
@@ -181,7 +188,7 @@ const historyIcon: Record<string, string> = {
   >
     <template #actions>
       <template v-if="crisis?.can_manage">
-        <template v-if="crisis.status === 'open'">
+        <template v-if="updatable">
           <UButton
             color="neutral"
             variant="outline"
@@ -190,6 +197,7 @@ const historyIcon: Record<string, string> = {
             @click="edit"
           />
           <UButton
+            v-if="crisis.status === 'open'"
             icon="i-lucide-circle-check"
             label="Close incident"
             @click="close"
@@ -289,6 +297,21 @@ const historyIcon: Record<string, string> = {
           class="whitespace-pre-line"
         >
           {{ crisis.description }}
+        </p>
+        <p
+          v-if="crisis.earthquake"
+          class="flex items-center gap-1.5 text-sm text-muted"
+          data-testid="crisis-earthquake"
+        >
+          <UIcon
+            name="i-lucide-activity"
+            class="size-4 shrink-0 text-warning"
+          />
+          <span>Declared from the BMKG earthquake M{{ raFormatMagnitude(crisis.earthquake.magnitude) }} on {{ formatDateTime(crisis.earthquake.occurred_at) }}<template v-if="crisis.earthquake.region">
+            ({{ crisis.earthquake.region }})</template>. <NuxtLink
+            :to="`/locations/map?quake=${crisis.earthquake.id}`"
+            class="text-primary hover:underline"
+          >See it on the map</NuxtLink>. Source: {{ crisis.earthquake.source }}.</span>
         </p>
         <p
           v-if="crisis.status === 'closed'"
@@ -697,26 +720,21 @@ const historyIcon: Record<string, string> = {
               </div>
             </li>
           </ol>
-          <template #footer>
-            <UFormField
-              label="Add an update"
-              help="Seen by everyone following this incident."
-              :error="noteError ?? undefined"
-            >
-              <UTextarea
-                v-model="note"
-                :rows="3"
-                autoresize
-                class="w-full"
-              />
-            </UFormField>
-            <div class="mt-2 flex justify-end">
+          <template
+            v-if="updatable"
+            #footer
+          >
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm text-muted">
+                {{ crisis.can_manage ? 'Change the radius or anything else, with what is happening now.' : 'Seen by everyone following this incident.' }}
+              </p>
               <UButton
                 color="neutral"
                 variant="outline"
+                icon="i-lucide-message-square-plus"
                 label="Add update"
-                loading-auto
-                @click="addNote"
+                class="shrink-0"
+                @click="addUpdate"
               />
             </div>
           </template>

@@ -268,10 +268,16 @@ export interface RaMapMarker extends RaPin {
   label: string
   /** Pin colour: the latest highest residual level, "na", or "none" without an assessment. */
   level?: RaLevel | 'na' | 'none' | null
-  /** A head office building (pin), a branch (square), or an incident point (siren). */
-  variant?: 'location' | 'branch' | 'crisis'
+  /** A head office building (pin), a branch (square), an incident point (siren), or a BMKG
+   *  earthquake (rings). */
+  variant?: 'location' | 'branch' | 'crisis' | 'quake'
   /** An incident waiting for approval: its point is orange. */
   pending?: boolean
+  /** A building or branch waiting for approval (new, or to deactivate), or rejected: a badge
+   *  on its marker. */
+  approval?: RaPinApproval | null
+  /** An earthquake of magnitude 6.0 or more: its marker is red (orange below). */
+  strong?: boolean
 }
 
 export interface RaMapCircle extends RaPin {
@@ -282,6 +288,8 @@ export interface RaMapCircle extends RaPin {
   crisis?: boolean
   /** An incident waiting for approval: its area is orange and dashed. */
   pending?: boolean
+  /** A BMKG earthquake's alert radius: orange and dotted. */
+  quake?: boolean
 }
 
 /** A pinned building or branch on the location map. */
@@ -297,6 +305,9 @@ export interface RaPlace {
 
 export interface RaMapPlace extends RaPlace {
   latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
+  /** Where its four-eyes approval stands: a new building waiting (pending, register), a
+   *  deactivation waiting (pending, deactivate), rejected or approved. */
+  approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
 }
 
 export interface RaHazardRef {
@@ -349,6 +360,53 @@ export interface RaCrisisSummary {
   decided_by?: string | null
   decided_at?: string | null
   decision_note?: string | null
+  /** The BMKG earthquake it was declared from. */
+  earthquake?: { id: number, magnitude: number, occurred_at: string, region: string | null, source: string } | null
+}
+
+/** An earthquake from BMKG's open data, kept when it is of magnitude 5.0 or more or felt. */
+export interface RaEarthquake {
+  id: number
+  occurred_at: string
+  magnitude: number
+  depth_km: number | null
+  latitude: number
+  longitude: number
+  /** BMKG's Wilayah: where the epicentre is. */
+  region: string | null
+  /** BMKG's Potensi: the tsunami potential. */
+  tsunami: string | null
+  /** BMKG's Dirasakan: where it was felt, e.g. "IV Bogor, III Jakarta". */
+  felt: string | null
+  is_felt: boolean
+  shakemap_url: string | null
+  feeds: string[]
+  alerted_at: string | null
+  /** Active buildings and branches with a pin within the alert radius, nearest first. */
+  nearby: { location: RaPlace, distance_m: number }[]
+  incidents: { id: number, ref_no: string, status: RaCrisisStatus }[]
+}
+
+/** The BMKG feed's status (RA configuration > Earthquakes). */
+export interface RaBmkgStatus {
+  enabled: boolean
+  min_magnitude: number
+  alert_radius_km: number
+  polled_at: string | null
+  poll_error: string | null
+  /** No good poll in the last 30 minutes. */
+  stale: boolean
+}
+
+export interface RaEarthquakeList extends RaBmkgStatus {
+  items: RaEarthquake[]
+  days: number
+  /** Must be shown with the data (BMKG's terms). */
+  source: string
+  source_url: string
+  /** The RA hazard for an earthquake (Gempa Bumi). */
+  hazard_code: string
+  can_declare: boolean
 }
 
 export interface RaCrisisPlace {
@@ -402,6 +460,8 @@ export interface RaCrisisInput {
   started_at?: string
   description?: string | null
   note?: string | null
+  /** Declaring only: the BMKG earthquake it is declared from. */
+  earthquake_id?: number | null
 }
 
 export interface RaMapSettings {
@@ -791,6 +851,14 @@ export function useRaMap() {
   return useFetch<RaMapData>('/api/ra/map', { key: 'ra-map' })
 }
 
+/** BMKG's recent earthquakes (the last `days`), refreshed every 2 minutes while shown. */
+export function useRaEarthquakes(days: MaybeRefOrGetter<number> = 7) {
+  return useFetch<RaEarthquakeList>('/api/ra/earthquakes', {
+    key: computed(() => `ra-earthquakes-${toValue(days)}`),
+    query: computed(() => ({ days: toValue(days) })),
+  })
+}
+
 export function useRaCrises(query: MaybeRefOrGetter<{ status?: RaCrisisStatus, q?: string, page: number, per_page?: number }>) {
   return useFetch<RaPage<RaCrisisSummary>>(CRISES, {
     key: computed(() => `ra-crises-${JSON.stringify(toValue(query))}`),
@@ -1060,7 +1128,7 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   submitted_by: string | null
   /** Who made the RA (its creator), as SCCA's Assessor. */
   assessor?: string | null
-  /** BCM board: whether the caller may change the signer or approve on behalf (BCM may, also on an RA they made). */
+  /** BCM board: false on an RA the caller made (reminders only, as SCCA's). */
   can_act?: boolean
   reminders_sent: number
   escalated_at: string | null

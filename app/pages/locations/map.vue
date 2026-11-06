@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
  * Every head office building and branch with a map pin, on one map: measure the distance
  * between any two, see what is near a place, and declare an incident. Open incidents show for
- * everyone until they are closed.
+ * everyone until they are closed. A place not approved yet (new, or to deactivate) carries an
+ * hourglass badge, a rejected one a cross; the legend and the list say so too. The map zooms
+ * with the scroll wheel while "Scroll to zoom" is on.
+ *
+ * BMKG's recent earthquakes (magnitude 5.0 or more, or felt) show as rings at their epicentre
+ * and in "Recent earthquakes (BMKG)" below the map, refreshed every 2 minutes; selecting one
+ * (?quake=3) draws its alert radius, and an incident can be declared from it. BMKG is credited
+ * as the source next to the map and the list (BMKG's terms).
  */
 definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
@@ -19,6 +26,74 @@ const mapRef = useTemplateRef<{ focus: (pin: RaPin) => void, fit: (pins: RaPin[]
 
 const showHeadOffice = ref(true)
 const showBranches = ref(true)
+const showQuakes = ref(true)
+
+// BMKG's recent earthquakes, read again every 2 minutes (the server polls BMKG as often).
+const { data: quakeList, error: quakeError, refresh: refreshQuakes } = useRaEarthquakes(7)
+const quakes = computed(() => quakeList.value?.items ?? [])
+let quakeTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  quakeTimer = setInterval(() => refreshQuakes(), 120_000)
+})
+onBeforeUnmount(() => clearInterval(quakeTimer))
+
+/** The selected earthquake stays in the URL (?quake=3), as the email links to it. */
+const selectedQuakeId = computed<number | null>({
+  get: () => Number(route.query.quake) || null,
+  set: (id) => router.replace({ query: { ...route.query, quake: id ?? undefined } }),
+})
+const selectedQuake = computed(() => quakes.value.find((item) => item.id === selectedQuakeId.value) ?? null)
+
+function quakeLabel(quake: RaEarthquake) {
+  return `Earthquake M${raFormatMagnitude(quake.magnitude)}, ${formatDateTime(quake.occurred_at)}: ${quake.region ?? 'BMKG'}`
+}
+
+function selectQuake(quake: RaEarthquake) {
+  showQuakes.value = true
+  selectedQuakeId.value = quake.id
+  const radius = (quakeList.value?.alert_radius_km ?? 100) * 1000
+  const dLat = radius / 111_320
+  const dLng = radius / (111_320 * Math.cos((quake.latitude * Math.PI) / 180))
+  mapRef.value?.fit([
+    { lat: quake.latitude + dLat, lng: quake.longitude + dLng },
+    { lat: quake.latitude - dLat, lng: quake.longitude - dLng },
+  ])
+}
+
+// Opened from the email (?quake=3): show it once the list and the map are there.
+watch([quakes, mapRef], ([items, map]) => {
+  const quake = items.find((item) => item.id === selectedQuakeId.value)
+  if (quake && map) nextTick(() => selectQuake(quake))
+}, { once: true })
+
+async function declareFromQuake(quake: RaEarthquake) {
+  const list = quakeList.value
+  if (!list) return
+  const crisis = await crisisModal.open({
+    places: places.value,
+    fromQuake: {
+      earthquake: quake,
+      hazardCode: list.hazard_code,
+      // The alert radius, within what an incident allows (200 km).
+      radiusM: Math.min(list.alert_radius_km * 1000, 200_000),
+      source: list.source,
+    },
+  }).result
+  if (crisis) await navigateTo(crisisPath(crisis.id))
+}
+/** Zoom the map with the mouse wheel or trackpad (on by default here; the page still scrolls
+ *  outside the map). */
+const scrollZoom = ref(true)
+
+/** Where a place's approval stands, as the Buildings register says it. */
+function stateOf(place: RaMapPlace): RaBuildingState {
+  return raBuildingState({ is_active: true, approval: place.approval ?? null })
+}
+const PIN_APPROVAL: Partial<Record<RaBuildingState, RaPinApproval>> = {
+  pending: 'waiting',
+  deactivating: 'waiting',
+  rejected: 'rejected',
+}
 const places = computed(() => data.value?.places ?? [])
 const visible = computed(() => places.value.filter((place) =>
   place.kind === 'branch' ? showBranches.value : showHeadOffice.value))
@@ -50,6 +125,12 @@ function select(id: number) {
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
   if (variant === 'crisis') return navigateTo(crisisPath(Number(id)))
+  if (variant === 'quake') {
+    const quake = quakes.value.find((item) => item.id === id)
+    if (quake) selectQuake(quake)
+    nextTick(() => document.querySelector(`[data-quake="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+    return
+  }
   selectedId.value = id
 }
 
@@ -99,14 +180,18 @@ const nearby = computed(() => {
 })
 
 const markers = computed<RaMapMarker[]>(() => [
-  ...visible.value.map((place) => ({
-    id: place.id,
-    lat: place.latitude,
-    lng: place.longitude,
-    label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})`,
-    level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
-    variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
-  })),
+  ...visible.value.map((place) => {
+    const state = stateOf(place)
+    return {
+      id: place.id,
+      lat: place.latitude,
+      lng: place.longitude,
+      label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})${PIN_APPROVAL[state] ? `: ${raBuildingStatus[state].label}` : ''}`,
+      level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
+      variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
+      approval: PIN_APPROVAL[state] ?? null,
+    }
+  }),
   ...(data.value?.crises ?? []).map((crisis) => ({
     id: crisis.id,
     lat: crisis.latitude,
@@ -114,6 +199,14 @@ const markers = computed<RaMapMarker[]>(() => [
     label: `${crisis.status === 'pending' ? 'Pending approval: incident' : 'Incident'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
     pending: crisis.status === 'pending',
+  })),
+  ...(showQuakes.value ? quakes.value : []).map((quake) => ({
+    id: quake.id,
+    lat: quake.latitude,
+    lng: quake.longitude,
+    label: quakeLabel(quake),
+    variant: 'quake' as const,
+    strong: quake.magnitude >= 6,
   })),
 ])
 
@@ -128,6 +221,15 @@ const circles = computed(() => [
   })),
   ...(selected.value && ringKm.value !== 'off'
     ? [{ id: -1, ...pinOf(selected.value), radiusM: ringKm.value * 1000, active: true }]
+    : []),
+  ...(selectedQuake.value && showQuakes.value
+    ? [{
+        id: -2,
+        lat: selectedQuake.value.latitude,
+        lng: selectedQuake.value.longitude,
+        radiusM: (quakeList.value?.alert_radius_km ?? 100) * 1000,
+        quake: true,
+      }]
     : []),
 ])
 
@@ -267,6 +369,16 @@ const canOpenRa = useCanOpenRa()
               v-model="showBranches"
               :label="`Branches (${counts.branch})`"
             />
+            <UCheckbox
+              v-model="showQuakes"
+              :label="`Earthquakes, BMKG (${quakes.length})`"
+            />
+            <USwitch
+              v-model="scrollZoom"
+              label="Scroll to zoom"
+              description="Zoom the map with the mouse wheel or trackpad."
+              :ui="{ description: 'sr-only' }"
+            />
             <USelectMenu
               :model-value="selectedId ?? undefined"
               :items="placeItems"
@@ -287,6 +399,7 @@ const canOpenRa = useCanOpenRa()
             :selected="selectedId"
             label="Map of the head office buildings and branches. Select a place for its details."
             height-class="h-[32rem]"
+            :scroll-zoom="scrollZoom"
             @select="onMarker"
           />
 
@@ -301,6 +414,14 @@ const canOpenRa = useCanOpenRa()
               class="text-muted"
             /> Branch</span>
             <span class="flex items-center gap-1"><RaMapSymbol
+              name="waiting"
+              class="mr-1 text-muted"
+            /> Waiting for approval (new, or to deactivate)</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="rejected"
+              class="mr-1 text-muted"
+            /> Rejected</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
               name="crisis"
               class="text-error"
             /> Incident and its affected area</span>
@@ -308,12 +429,20 @@ const canOpenRa = useCanOpenRa()
               name="crisis"
               class="text-warning"
             /> Incident waiting for approval (dashed area)</span>
+            <span class="flex items-center gap-1"><RaMapSymbol
+              name="quake"
+              class="text-warning"
+            /> Earthquake (BMKG), red from M6.0; dotted: its alert radius</span>
             <span>Colour: latest residual risk</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-info" />Low</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-muted ring-1 ring-default" />No RA yet</span>
           </div>
+
+          <p class="text-xs text-muted">
+            Earthquake data: {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.
+          </p>
 
           <p
             v-if="unpinnedLinks.length"
@@ -407,6 +536,13 @@ const canOpenRa = useCanOpenRa()
                   <p class="text-sm text-muted">
                     {{ [RA_PLACE_KIND_LABEL[selected.kind], selected.region].filter(Boolean).join(' · ') }}
                   </p>
+                  <StatusBadge
+                    v-if="PIN_APPROVAL[stateOf(selected)]"
+                    :scale="raBuildingStatus"
+                    :value="stateOf(selected)"
+                    size="sm"
+                    class="mt-1"
+                  />
                 </div>
                 <UTooltip text="Clear the selection">
                   <UButton
@@ -534,6 +670,14 @@ const canOpenRa = useCanOpenRa()
         </div>
       </div>
 
+      <RaEarthquakesCard
+        :list="quakeList"
+        :error="quakeError"
+        :selected-id="selectedQuakeId"
+        @select="selectQuake"
+        @declare="declareFromQuake"
+      />
+
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -556,12 +700,20 @@ const canOpenRa = useCanOpenRa()
           sticky
         >
           <template #name-cell="{ row }">
-            <UButton
-              variant="link"
-              class="px-0 font-medium"
-              :label="row.original.name"
-              @click="select(row.original.id)"
-            />
+            <div class="flex flex-wrap items-center gap-x-2">
+              <UButton
+                variant="link"
+                class="px-0 font-medium"
+                :label="row.original.name"
+                @click="select(row.original.id)"
+              />
+              <StatusBadge
+                v-if="PIN_APPROVAL[stateOf(row.original)]"
+                :scale="raBuildingStatus"
+                :value="stateOf(row.original)"
+                size="sm"
+              />
+            </div>
           </template>
           <template #kind-cell="{ row }">
             {{ RA_PLACE_KIND_LABEL[row.original.kind] }}

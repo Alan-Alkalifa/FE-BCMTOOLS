@@ -121,10 +121,20 @@ test('an incident gives each affected place its instructions and keeps a history
   await page.getByRole('button', { name: 'KCP Bintaro Sektor 9 Branch · 2 km from the incident point' }).click()
   await expect(page.getByText('No RA for this place yet.')).toBeVisible()
 
-  await page.getByLabel('Add an update').fill('Floor wardens evacuated level 1.')
+  // Add update opens the update dialog: the radius and the rest, with the update (required).
   await page.getByRole('button', { name: 'Add update' }).click()
-  await expect(page.getByText('Floor wardens evacuated level 1.')).toBeVisible()
-  expect(log.notes).toEqual([{ note: 'Floor wardens evacuated level 1.' }])
+  const update = page.getByRole('dialog', { name: 'Update CR-2026-0001' })
+  await expect(update.getByLabel('Update')).toBeVisible({ timeout: 30_000 })
+  await update.getByRole('button', { name: 'Save update' }).click()
+  await expect(update.getByText('Write the update: what is happening now, or why it changed.')).toBeVisible()
+  expect(log.updates).toEqual([])
+  await update.getByRole('button', { name: '10 km', exact: true }).click()
+  await update.getByLabel('Update').fill('Floor wardens evacuated level 1.')
+  await update.getByRole('button', { name: 'Save update' }).click()
+  await expect(update).toBeHidden()
+  await expect(page.getByText('Radius: 5 km → 10 km. Floor wardens evacuated level 1.')).toBeVisible()
+  expect(log.updates).toEqual([expect.objectContaining({ radius_m: 10000, note: 'Floor wardens evacuated level 1.' })])
+  expect(log.notes).toEqual([])
 
   await page.getByRole('button', { name: 'Close incident' }).click()
   const dialog = page.getByRole('dialog', { name: 'Close CR-2026-0001?' })
@@ -136,7 +146,7 @@ test('an incident gives each affected place its instructions and keeps a history
 })
 
 test('without the declare permission the map and incident are read-only', async ({ page }) => {
-  await mockRaMap(page, { declare: false })
+  const log = await mockRaMap(page, { declare: false })
   await page.goto('/locations/map?place=1')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Measure from here' })).toBeVisible()
@@ -144,7 +154,16 @@ test('without the declare permission the map and incident are read-only', async 
   await page.goto('/crises/7')
   await expect(page.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Add update' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update incident' })).toHaveCount(0)
+  // Without the right to manage it, Add update adds a note (required).
+  await page.getByRole('button', { name: 'Add update' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add an update to CR-2026-0001' })
+  await dialog.getByRole('button', { name: 'Add update' }).click()
+  await expect(dialog.getByText('Write the update first.')).toBeVisible()
+  await dialog.getByLabel('Update').fill('Seen from the branch: the road is flooded.')
+  await dialog.getByRole('button', { name: 'Add update' }).click()
+  await expect(page.getByText('Seen from the branch: the road is flooded.')).toBeVisible()
+  expect(log.notes).toEqual([{ note: 'Seen from the branch: the road is flooded.' }])
 })
 
 test('the incident history lists incidents with their status', async ({ page }) => {
@@ -217,8 +236,10 @@ test('a declared incident waits for someone else\'s approval', async ({ page }) 
   await page.goto('/crises/7')
   const banner = page.getByTestId('approval-banner')
   await expect(banner).toContainText('Waiting for approval. Rina declared this incident', { timeout: 30_000 })
+  // It can't be closed yet, but it can be updated (its approver approves it as it stands).
   await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Update incident' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update incident' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add update' })).toBeVisible()
   await banner.getByRole('button', { name: 'Approve' }).click()
   await page.getByRole('dialog', { name: 'Approve this incident?' }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByText('This incident is approved').first()).toBeVisible()
@@ -241,11 +262,140 @@ test('the map legend shows the symbols the map draws', async ({ page }) => {
   await page.goto('/locations/map')
   await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
   const symbols = page.getByTestId('ra-map-symbol')
-  await expect(symbols).toHaveCount(4)
+  await expect(symbols).toHaveCount(7)
   // The branch in the legend is the map's branch marker (a rounded square with a bank).
   const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
   await expect(branch).toHaveCount(1)
   await expect(page.locator('path.ra-radius-crisis')).toHaveCount(1)
+})
+
+test('a place not approved yet is marked on the map, in the legend and in the list', async ({ page }) => {
+  await mockRaMap(page, { unapproved: true })
+  await page.goto('/locations/map')
+  const legend = page.getByText('Waiting for approval (new, or to deactivate)')
+  await expect(legend).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Rejected', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="waiting"] .ra-pin-badge-waiting')).toHaveCount(1)
+
+  // On the map: the new building and the branch being deactivated carry the hourglass badge,
+  // the rejected building the cross; the others none. Their names say it too.
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-waiting')).toHaveCount(2)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-rejected')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-badge')).toHaveCount(3)
+  await expect(page.locator('.leaflet-marker-icon[title="Menara Baru (Head office building): Waiting for approval"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="KCP Depok Margonda (Branch): Deactivation requested"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="Griya CIMB Niaga 2 (Head office building)"]')).toHaveCount(1)
+
+  // In the list and on the selected place.
+  const table = page.getByRole('table')
+  await expect(table.getByRole('row', { name: /Menara Baru/ })).toContainText('Waiting for approval')
+  await expect(table.getByRole('row', { name: /Wisma Ditolak/ })).toContainText('Rejected')
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).not.toContainText('approval')
+  await table.getByRole('button', { name: 'Menara Baru' }).click()
+  await expect(page.getByRole('heading', { name: 'Menara Baru', level: 2 }).locator('..')).toContainText('Waiting for approval')
+})
+
+test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/locations/map')
+  const map = page.locator('.leaflet-container')
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
+  const toggle = page.getByRole('switch', { name: 'Scroll to zoom' })
+  await expect(toggle).toBeChecked()
+  // The + and - buttons are there too.
+  await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Zoom out' })).toBeVisible()
+
+  const zoom = () => map.evaluate((element) => element.querySelector<HTMLElement>('.leaflet-map-pane')!.style.transform
+    + [...element.querySelectorAll<HTMLImageElement>('.leaflet-tile')].map((tile) => tile.src).join())
+  const scrollIn = async () => {
+    const box = (await map.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -600)
+    await page.waitForTimeout(800)
+  }
+  let before = await zoom()
+  await scrollIn()
+  await expect.poll(zoom).not.toBe(before)
+
+  // Off: the wheel scrolls the page, not the map.
+  await toggle.click()
+  await expect(toggle).not.toBeChecked()
+  before = await zoom()
+  await scrollIn()
+  expect(await zoom()).toBe(before)
+})
+
+test('BMKG earthquakes show on the map and in a list, credited to BMKG', async ({ page }) => {
+  await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map')
+  const list = page.getByTestId('ra-earthquakes')
+  await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
+  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within 100 km.')
+  await expect(list).toContainText('Updated 6 Nov 2026, 13:44 WIB')
+  // BMKG is credited next to the map and under the list.
+  await expect(page.getByText('Earthquake data: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
+  await expect(list.getByRole('link', { name: 'data.bmkg.go.id' })).toHaveAttribute('href', 'https://data.bmkg.go.id/gempabumi/')
+  await expect(page.getByText('Earthquakes, BMKG (2)')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ })).toBeChecked()
+
+  const strong = list.locator('[data-quake="3"]')
+  await expect(strong).toContainText('M5,6')
+  await expect(strong).toContainText('6 Nov 2026, 13:42 WIB · 10 km deep')
+  await expect(strong).toContainText('Felt: IV Tangerang Selatan, III Jakarta')
+  await expect(strong).toContainText('KCP Bintaro Sektor 9, 1,5 km from the epicentre and 1 more.')
+  await expect(strong.getByRole('link', { name: 'Shakemap' })).toHaveAttribute('href', 'https://static.bmkg.go.id/20261106134210.mmi.jpg')
+  // The far one was declared already: its incident instead of the button.
+  const far = list.locator('[data-quake="2"]')
+  await expect(far).toContainText('No building or branch within 100 km.')
+  await expect(far.getByRole('link', { name: 'CR-2026-0001' })).toHaveAttribute('href', '/crises/7')
+  await expect(far.getByRole('button', { name: 'Declare incident' })).toHaveCount(0)
+
+  // On the map: two epicentres (orange below M6.0); selecting one draws its alert radius.
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(2)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake.text-warning')).toHaveCount(2)
+  await expect(page.locator('path.ra-radius-quake')).toHaveCount(0)
+  await strong.getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/quake=3/)
+  await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
+  // Hiding them takes them off the map.
+  await page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ }).uncheck()
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
+})
+
+test('an incident is declared from an earthquake, filled in from BMKG', async ({ page }) => {
+  const log = await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map?quake=3')
+  const list = page.getByTestId('ra-earthquakes')
+  await list.locator('[data-quake="3"]').getByRole('button', { name: 'Declare incident' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
+  await expect(dialog.getByText('From the BMKG earthquake M5,6 on 6 Nov 2026, 13:42 WIB')).toBeVisible({ timeout: 30_000 })
+  await expect(dialog.getByLabel('What is happening')).toHaveValue(
+    'Earthquake M5,6 (BMKG), 10 km deep. Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan. Felt: IV Tangerang Selatan, III Jakarta. Tidak berpotensi tsunami',
+  )
+  await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
+  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await expect.poll(() => log.declared.length).toBe(1)
+  expect(log.declared[0]).toMatchObject({
+    hazard_code: 'H03',
+    latitude: -6.28,
+    longitude: 106.73,
+    radius_m: 100_000,
+    earthquake_id: 3,
+    started_at: '2026-11-06T13:42:00+07:00',
+  })
+})
+
+test('the earthquake list says when BMKG is old news or switched off', async ({ page }) => {
+  await mockRaMap(page, { quakes: 'stale', crisis: false })
+  await page.goto('/locations/map')
+  const list = page.getByTestId('ra-earthquakes')
+  await expect(list.getByText('BMKG hasn\'t been read since 6 Nov 2026, 08:00 WIB')).toBeVisible({ timeout: 30_000 })
+  await expect(list).toContainText('The last try: gempaterkini: timed out')
+
+  await mockRaMap(page, { quakes: 'off', crisis: false })
+  await page.reload()
+  await expect(list.getByText('Earthquakes from BMKG are switched off')).toBeVisible({ timeout: 30_000 })
 })
 
 test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {
