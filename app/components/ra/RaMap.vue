@@ -81,6 +81,17 @@ function crisisIcon(pending = false) {
   })
 }
 
+/** A BMKG earthquake's epicentre: orange, red from magnitude 6.0. */
+function quakeIcon(strong = false) {
+  return L!.divIcon({
+    html: RA_QUAKE_SVG,
+    className: `ra-pin ra-pin-quake ${strong ? 'text-error' : 'text-warning'}`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    tooltipAnchor: [0, -14],
+  })
+}
+
 function branchIcon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
@@ -105,9 +116,11 @@ function drawMarkers(fit: boolean) {
   for (const ring of props.circles) {
     layer.addLayer(L.circle([ring.lat, ring.lng], {
       radius: ring.radiusM,
-      className: ring.crisis
-        ? `ra-radius ${ring.pending ? 'ra-radius-pending' : 'ra-radius-crisis'}`
-        : ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
+      className: ring.quake
+        ? 'ra-radius ra-radius-quake'
+        : ring.crisis
+          ? `ra-radius ${ring.pending ? 'ra-radius-pending' : 'ra-radius-crisis'}`
+          : ring.active ? 'ra-radius ra-radius-active' : 'ra-radius',
       interactive: false,
     }))
   }
@@ -118,13 +131,15 @@ function drawMarkers(fit: boolean) {
     }))
   }
   for (const item of props.markers) {
-    const active = item.variant !== 'crisis' && item.id === props.selected
+    const active = item.variant !== 'crisis' && item.variant !== 'quake' && item.id === props.selected
     const marker = L.marker([item.lat, item.lng], {
       icon: item.variant === 'crisis'
         ? crisisIcon(item.pending)
-        : item.variant === 'branch'
-          ? branchIcon(item.level, active, item.approval)
-          : icon(item.level, active, item.approval),
+        : item.variant === 'quake'
+          ? quakeIcon(item.strong)
+          : item.variant === 'branch'
+            ? branchIcon(item.level, active, item.approval)
+            : icon(item.level, active, item.approval),
       title: item.label,
       alt: item.label,
       keyboard: true,
@@ -334,6 +349,16 @@ defineExpose({
   stroke-dasharray: 8 5;
   fill: var(--ui-warning);
   fill-opacity: 0.1;
+}
+
+/* A BMKG earthquake's alert radius around the selected epicentre: orange and dotted. */
+.ra-radius-quake {
+  stroke: var(--ui-warning);
+  stroke-width: 2;
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+  fill: var(--ui-warning);
+  fill-opacity: 0.05;
 }
 
 .ra-measure {

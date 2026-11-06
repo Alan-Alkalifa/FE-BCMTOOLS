@@ -471,6 +471,11 @@ export function raFormatDistance(metres: number) {
   return `${formatNumber(metres / 1000, metres < 10_000 ? 1 : 0)} km`
 }
 
+/** An earthquake's magnitude with one decimal, in Indonesian number format: "5,6", "5,0". */
+export function raFormatMagnitude(value: number) {
+  return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
+}
+
 /** Driving directions between two pins in Google Maps (road distance and time). */
 export function raDirectionsUrl(from: { lat: number, lng: number }, to: { lat: number, lng: number }) {
   return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`

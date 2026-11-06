@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaCrisis, RaCrisisInput, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaCrisis, RaCrisisInput, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
  * Declares an incident, or updates one that is open or waiting for approval: the hazard, where it
@@ -17,7 +17,10 @@ const props = withDefaults(defineProps<{
   crisis?: RaCrisis | null
   /** Preselects the place when declaring from a place on the map. */
   locationId?: number | null
-}>(), { crisis: null, locationId: null })
+  /** Declaring from a BMKG earthquake: the hazard, the epicentre, the radius, the time and the
+   *  description are filled in, and the incident is linked to the earthquake. */
+  fromQuake?: { earthquake: RaEarthquake, hazardCode: string, radiusM: number, source: string } | null
+}>(), { crisis: null, locationId: null, fromQuake: null })
 const emit = defineEmits<{ close: [crisis: RaCrisis | false] }>()
 
 const { data: formula } = useRaFormula('head_office')
@@ -35,18 +38,32 @@ const placeItems = computed(() => props.places.map((place) => ({
   icon: place.kind === 'branch' ? 'i-lucide-landmark' : 'i-lucide-building-2',
 })))
 
-const startedAt = raWibParts(props.crisis?.started_at ?? new Date())
+const quake = props.crisis ? null : props.fromQuake
+const startedAt = raWibParts(props.crisis?.started_at ?? quake?.earthquake.occurred_at ?? new Date())
 const initialPlace = props.places.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
+
+/** What BMKG says about the earthquake, as the incident's description. */
+function quakeDescription(item: RaEarthquake) {
+  return [
+    `Earthquake M${raFormatMagnitude(item.magnitude)} (BMKG)${item.depth_km !== null ? `, ${item.depth_km} km deep` : ''}.`,
+    item.region ? `${item.region.replace(/[.\s]+$/, '')}.` : null,
+    item.felt ? `Felt: ${item.felt}.` : null,
+    item.tsunami,
+  ].filter(Boolean).join(' ')
+}
+
 const state = reactive({
-  hazard_code: props.crisis?.hazard_code ?? '',
+  hazard_code: props.crisis?.hazard_code ?? quake?.hazardCode ?? '',
   location_id: initialPlace?.id as number | undefined,
   pin: (props.crisis
     ? { lat: props.crisis.latitude, lng: props.crisis.longitude }
-    : initialPlace ? { lat: initialPlace.latitude, lng: initialPlace.longitude } : null) as RaPin | null,
-  radius_km: (props.crisis?.radius_m ?? 1000) / 1000,
+    : quake
+      ? { lat: quake.earthquake.latitude, lng: quake.earthquake.longitude }
+      : initialPlace ? { lat: initialPlace.latitude, lng: initialPlace.longitude } : null) as RaPin | null,
+  radius_km: (props.crisis?.radius_m ?? quake?.radiusM ?? 1000) / 1000,
   date: startedAt.date,
   time: startedAt.time,
-  description: props.crisis?.description ?? '',
+  description: props.crisis?.description ?? (quake ? quakeDescription(quake.earthquake) : ''),
   note: '',
 })
 
@@ -143,6 +160,7 @@ async function onSubmit() {
     started_at: raWibToIso(state.date, state.time),
     description: state.description.trim() || null,
     ...(editing.value ? { note: state.note.trim() } : {}),
+    ...(quake ? { earthquake_id: quake.earthquake.id } : {}),
   }
   saving.value = true
   try {
@@ -183,6 +201,15 @@ async function onSubmit() {
           icon="i-lucide-circle-alert"
           :title="editing ? 'Couldn\'t update the incident' : 'Couldn\'t declare the incident'"
           :description="formError"
+        />
+
+        <UAlert
+          v-if="quake"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-activity"
+          :title="`From the BMKG earthquake M${raFormatMagnitude(quake.earthquake.magnitude)} on ${formatDateTime(quake.earthquake.occurred_at)}`"
+          :description="`The epicentre, time and description come from BMKG; the radius is the alert radius. Change anything that doesn't fit. Source: ${quake.source}.`"
         />
 
         <UFormField

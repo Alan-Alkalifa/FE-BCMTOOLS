@@ -19,6 +19,13 @@ export const RA_CRISIS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
   + '<path fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M8 16.5v-4a4 4 0 0 1 8 0v4M6.5 16.5h11M12 5.5v1.2M6.7 7.7l.8.8M17.3 7.7l-.8.8"/>'
   + '</svg>'
 
+/** A BMKG earthquake's epicentre: a dot in two rings (orange; red from magnitude 6.0). */
+export const RA_QUAKE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">'
+  + '<circle cx="12" cy="12" r="10.5" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.5"/>'
+  + '<circle cx="12" cy="12" r="6.5" fill="currentColor" fill-opacity="0.35" stroke="currentColor" stroke-width="1.5"/>'
+  + '<circle cx="12" cy="12" r="3" fill="currentColor" stroke="white" stroke-width="1.2"/>'
+  + '</svg>'
+
 /** A badge on a building or branch that waits for approval (a new one, or its deactivation):
  *  an hourglass in an orange circle. */
 export const RA_WAITING_BADGE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">'
@@ -47,6 +54,7 @@ export const RA_MAP_SYMBOLS = {
   building: RA_PIN_SVG,
   branch: RA_BRANCH_SVG,
   crisis: RA_CRISIS_SVG,
+  quake: RA_QUAKE_SVG,
   waiting: raPinHtml(RA_PIN_SVG, 'waiting'),
   rejected: raPinHtml(RA_PIN_SVG, 'rejected'),
 } as const

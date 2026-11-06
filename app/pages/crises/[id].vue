@@ -299,6 +299,21 @@ const historyIcon: Record<string, string> = {
           {{ crisis.description }}
         </p>
         <p
+          v-if="crisis.earthquake"
+          class="flex items-center gap-1.5 text-sm text-muted"
+          data-testid="crisis-earthquake"
+        >
+          <UIcon
+            name="i-lucide-activity"
+            class="size-4 shrink-0 text-warning"
+          />
+          <span>Declared from the BMKG earthquake M{{ raFormatMagnitude(crisis.earthquake.magnitude) }} on {{ formatDateTime(crisis.earthquake.occurred_at) }}<template v-if="crisis.earthquake.region">
+            ({{ crisis.earthquake.region }})</template>. <NuxtLink
+            :to="`/locations/map?quake=${crisis.earthquake.id}`"
+            class="text-primary hover:underline"
+          >See it on the map</NuxtLink>. Source: {{ crisis.earthquake.source }}.</span>
+        </p>
+        <p
           v-if="crisis.status === 'closed'"
           class="text-sm text-muted"
         >

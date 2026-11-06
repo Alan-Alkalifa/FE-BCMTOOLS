@@ -826,6 +826,44 @@ const PLACE = (id: number, kind: 'head_office' | 'branch', name: string, latitud
   approval: { status: 'approved', action: null } as { status: string, action: string | null },
 })
 
+/** BMKG earthquakes for the map: a felt M5.6 near Bintaro, and a felt M3.4 in Sulawesi. */
+export const BMKG_QUAKES = [
+  {
+    id: 3,
+    occurred_at: '2026-11-06T06:42:10Z',
+    magnitude: 5.6,
+    depth_km: 10,
+    latitude: -6.28,
+    longitude: 106.73,
+    region: 'Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan',
+    tsunami: 'Tidak berpotensi tsunami',
+    felt: 'IV Tangerang Selatan, III Jakarta',
+    is_felt: true,
+    shakemap_url: 'https://static.bmkg.go.id/20261106134210.mmi.jpg',
+    feeds: ['autogempa', 'gempadirasakan', 'gempaterkini'],
+    alerted_at: '2026-11-06T06:44:00Z',
+    nearby: [] as { location: unknown, distance_m: number }[],
+    incidents: [] as { id: number, ref_no: string, status: string }[],
+  },
+  {
+    id: 2,
+    occurred_at: '2026-11-04T07:56:34Z',
+    magnitude: 3.4,
+    depth_km: 10,
+    latitude: -1.14,
+    longitude: 120.15,
+    region: 'Pusat gempa berada di darat 40 km TimurLaut Sigi',
+    tsunami: null,
+    felt: 'III Sigi, II Palu',
+    is_felt: true,
+    shakemap_url: null,
+    feeds: ['gempadirasakan'],
+    alerted_at: null,
+    nearby: [] as { location: unknown, distance_m: number }[],
+    incidents: [{ id: 7, ref_no: 'CR-2026-0001', status: 'open' }],
+  },
+]
+
 /** `unapproved`: a new building waiting for approval, a branch whose deactivation waits, and a
  *  rejected new building, also on the map. */
 export const UNAPPROVED_PLACES = [
@@ -935,7 +973,7 @@ export interface RaMapLog {
  * Mocks the location map, incidents and the playbook. `crisis: false` starts with no open incident;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean } = {}) {
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean, quakes?: boolean | 'stale' | 'off' } = {}) {
   const log: RaMapLog = { declared: [], closed: [], notes: [], updates: [], playbook: [], decisions: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
@@ -962,6 +1000,36 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
       : { status: 'pending', declared_by: 'Rina', approval_can: { approve: true, reject: true } })
   }
   const open = () => (options.crisis === false || !['open', 'pending'].includes(crisis.status) ? [] : [crisis])
+  // BMKG earthquakes (`quakes`): a felt M5.6 near Griya and the Bintaro branch, with a shakemap,
+  // and a felt M3.4 far away. 'stale': BMKG not read for hours; 'off': switched off.
+  const quakeItems = options.quakes
+    ? [
+        {
+          ...BMKG_QUAKES[0]!,
+          nearby: [
+            { location: MAP_PLACES[2], distance_m: 1500 },
+            { location: MAP_PLACES[0], distance_m: 2100 },
+          ],
+        },
+        BMKG_QUAKES[1]!,
+      ]
+    : []
+  await page.route(/\/api\/ra\/earthquakes/, (route) => route.fulfill({
+    json: {
+      items: options.quakes === 'off' ? [] : quakeItems,
+      days: 7,
+      source: 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)',
+      source_url: 'https://data.bmkg.go.id/gempabumi/',
+      enabled: options.quakes !== 'off',
+      min_magnitude: 5,
+      alert_radius_km: 100,
+      polled_at: options.quakes === 'stale' ? '2026-11-06T01:00:00Z' : '2026-11-06T06:44:00Z',
+      poll_error: options.quakes === 'stale' ? 'gempaterkini: timed out' : null,
+      stale: options.quakes === 'stale',
+      hazard_code: 'H03',
+      can_declare: canDeclare,
+    },
+  }))
   await page.route('**/api/ra/map', (route) => route.fulfill({
     json: { places: options.unapproved ? [...MAP_PLACES, ...UNAPPROVED_PLACES] : MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
   }))

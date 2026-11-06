@@ -262,7 +262,7 @@ test('the map legend shows the symbols the map draws', async ({ page }) => {
   await page.goto('/locations/map')
   await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
   const symbols = page.getByTestId('ra-map-symbol')
-  await expect(symbols).toHaveCount(6)
+  await expect(symbols).toHaveCount(7)
   // The branch in the legend is the map's branch marker (a rounded square with a bank).
   const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
   await expect(branch).toHaveCount(1)
@@ -324,6 +324,78 @@ test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ 
   before = await zoom()
   await scrollIn()
   expect(await zoom()).toBe(before)
+})
+
+test('BMKG earthquakes show on the map and in a list, credited to BMKG', async ({ page }) => {
+  await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map')
+  const list = page.getByTestId('ra-earthquakes')
+  await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
+  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within 100 km.')
+  await expect(list).toContainText('Updated 6 Nov 2026, 13:44 WIB')
+  // BMKG is credited next to the map and under the list.
+  await expect(page.getByText('Earthquake data: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
+  await expect(list.getByRole('link', { name: 'data.bmkg.go.id' })).toHaveAttribute('href', 'https://data.bmkg.go.id/gempabumi/')
+  await expect(page.getByText('Earthquakes, BMKG (2)')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ })).toBeChecked()
+
+  const strong = list.locator('[data-quake="3"]')
+  await expect(strong).toContainText('M5,6')
+  await expect(strong).toContainText('6 Nov 2026, 13:42 WIB · 10 km deep')
+  await expect(strong).toContainText('Felt: IV Tangerang Selatan, III Jakarta')
+  await expect(strong).toContainText('KCP Bintaro Sektor 9, 1,5 km from the epicentre and 1 more.')
+  await expect(strong.getByRole('link', { name: 'Shakemap' })).toHaveAttribute('href', 'https://static.bmkg.go.id/20261106134210.mmi.jpg')
+  // The far one was declared already: its incident instead of the button.
+  const far = list.locator('[data-quake="2"]')
+  await expect(far).toContainText('No building or branch within 100 km.')
+  await expect(far.getByRole('link', { name: 'CR-2026-0001' })).toHaveAttribute('href', '/crises/7')
+  await expect(far.getByRole('button', { name: 'Declare incident' })).toHaveCount(0)
+
+  // On the map: two epicentres (orange below M6.0); selecting one draws its alert radius.
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(2)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake.text-warning')).toHaveCount(2)
+  await expect(page.locator('path.ra-radius-quake')).toHaveCount(0)
+  await strong.getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/quake=3/)
+  await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
+  // Hiding them takes them off the map.
+  await page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ }).uncheck()
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
+})
+
+test('an incident is declared from an earthquake, filled in from BMKG', async ({ page }) => {
+  const log = await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map?quake=3')
+  const list = page.getByTestId('ra-earthquakes')
+  await list.locator('[data-quake="3"]').getByRole('button', { name: 'Declare incident' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
+  await expect(dialog.getByText('From the BMKG earthquake M5,6 on 6 Nov 2026, 13:42 WIB')).toBeVisible({ timeout: 30_000 })
+  await expect(dialog.getByLabel('What is happening')).toHaveValue(
+    'Earthquake M5,6 (BMKG), 10 km deep. Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan. Felt: IV Tangerang Selatan, III Jakarta. Tidak berpotensi tsunami',
+  )
+  await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
+  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await expect.poll(() => log.declared.length).toBe(1)
+  expect(log.declared[0]).toMatchObject({
+    hazard_code: 'H03',
+    latitude: -6.28,
+    longitude: 106.73,
+    radius_m: 100_000,
+    earthquake_id: 3,
+    started_at: '2026-11-06T13:42:00+07:00',
+  })
+})
+
+test('the earthquake list says when BMKG is old news or switched off', async ({ page }) => {
+  await mockRaMap(page, { quakes: 'stale', crisis: false })
+  await page.goto('/locations/map')
+  const list = page.getByTestId('ra-earthquakes')
+  await expect(list.getByText('BMKG hasn\'t been read since 6 Nov 2026, 08:00 WIB')).toBeVisible({ timeout: 30_000 })
+  await expect(list).toContainText('The last try: gempaterkini: timed out')
+
+  await mockRaMap(page, { quakes: 'off', crisis: false })
+  await page.reload()
+  await expect(list.getByText('Earthquakes from BMKG are switched off')).toBeVisible({ timeout: 30_000 })
 })
 
 test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {
