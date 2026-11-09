@@ -48,9 +48,15 @@ function quakeLabel(quake: RaEarthquake) {
   return `Earthquake M${raFormatMagnitude(quake.magnitude)}, ${formatDateTime(quake.occurred_at)}: ${quake.region ?? 'BMKG'}`
 }
 
+/** The map shows every place until the user picks an earthquake or a place: from then on it
+ *  stays where they put it, also when the selected ring changes or the earthquakes are read
+ *  again, instead of zooming back out to everything. */
+const autoFit = ref(true)
+
 /** Select an earthquake and zoom the map to it: its epicentre with the alert radius around it.
  *  `scroll`: bring the map into view first (from the list under it, or the email's link). */
 function selectQuake(quake: RaEarthquake, scroll = false) {
+  autoFit.value = false
   showQuakes.value = true
   selectedQuakeId.value = quake.id
   if (scroll) {
@@ -124,6 +130,7 @@ const selectedId = computed<number | null>({
 const selected = computed(() => byId(selectedId.value))
 
 function select(id: number) {
+  autoFit.value = false
   selectedId.value = id
   const place = byId(id)
   if (place) mapRef.value?.focus(pinOf(place))
@@ -131,6 +138,7 @@ function select(id: number) {
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
   if (variant === 'crisis') return navigateTo(crisisPath(Number(id)))
+  autoFit.value = false
   if (variant === 'quake') {
     const quake = quakes.value.find((item) => item.id === id)
     if (quake) selectQuake(quake)
@@ -404,6 +412,7 @@ const canOpenRa = useCanOpenRa()
             :circles="circles"
             :line="line"
             :selected="selectedId"
+            :auto-fit="autoFit"
             label="Map of the head office buildings and branches. Select a place for its details."
             height-class="h-[32rem]"
             :scroll-zoom="scrollZoom"
@@ -440,6 +449,9 @@ const canOpenRa = useCanOpenRa()
               name="quake"
               class="text-warning"
             /> Earthquake (BMKG), red from M6.0; dotted: its alert radius</span>
+            </div>
+
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
             <span>Colour: latest residual risk</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>

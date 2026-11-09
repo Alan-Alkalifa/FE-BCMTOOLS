@@ -367,6 +367,26 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('#building-map')).toBeInViewport()
   await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
   await expect.poll(zoom).toBeGreaterThan(before)
+  const zoomed = await zoom()
+  // Another one, straight after: the map moves to it at the same zoom, not out to every place.
+  const centre = () => page.evaluate(() => {
+    const pane = document.querySelector('#building-map .leaflet-map-pane') as HTMLElement
+    return pane.style.transform
+  })
+  const first = await centre()
+  await far.scrollIntoViewIfNeeded()
+  await far.getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/quake=2/)
+  await expect(page.locator('#building-map')).toBeInViewport()
+  await expect.poll(centre).not.toBe(first)
+  await page.waitForTimeout(800) // a late re-fit would zoom out here
+  await expect.poll(zoom).toBe(zoomed)
+  // And back to the first one.
+  await strong.scrollIntoViewIfNeeded()
+  await strong.getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/quake=3/)
+  await page.waitForTimeout(800)
+  await expect.poll(zoom).toBe(zoomed)
   // Hiding them takes them off the map.
   await page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ }).uncheck()
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
