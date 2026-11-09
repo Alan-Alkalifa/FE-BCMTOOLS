@@ -93,19 +93,21 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
 
-// Every field is required except the home phone (the API checks the same).
+// As in the workbook, a role (caller) is written once with its people under it, and every field
+// takes free text: a person and a number, or a note such as "Sesuai Tab LRP (front)". The role,
+// name and mobile (caller, contact and mobile) are required; the API checks the same.
+const teamLead = { key: 'role', label: 'Role', placeholder: 'Role, e.g. Floor Warden (lantai B1) or Security' }
 const teamFields = [
-  { key: 'role', label: 'Role', wide: true, required: true },
-  { key: 'name', label: 'Name', required: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
-  { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
+  { key: 'name', label: 'Name', required: true, wide: true, placeholder: 'Name, or a note such as (Sesuai Shift)' },
+  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
+  { key: 'home_phone', label: 'Home phone' },
 ]
+const callTreeLead = { key: 'caller', label: 'Caller', placeholder: 'Who calls, e.g. LIC – Legiran' }
 const callTreeFields = [
-  { key: 'caller', label: 'Caller', required: true },
-  { key: 'contact_name', label: 'Contact', required: true },
-  { key: 'division', label: 'Division or role', wide: true, required: true },
-  { key: 'mobile', label: 'Mobile', type: 'tel' as const, required: true },
-  { key: 'home_phone', label: 'Home phone', type: 'tel' as const },
+  { key: 'contact_name', label: 'Contact', required: true, placeholder: 'Name, or a note' },
+  { key: 'division', label: 'Division or role', wide: true },
+  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
+  { key: 'home_phone', label: 'Home phone' },
 ]
 const callTreeLevels = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
 
@@ -391,8 +393,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           #team
         >
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p class="text-sm text-muted">
-              Who is in each team. The chart shows how the teams are organized.
+            <p class="max-w-3xl text-sm text-muted">
+              Define the members of each team by specifying their roles and listing everyone assigned to each role. Enter each role only once, then add all corresponding team members. The role, member names and mobile numbers are required (a mobile can also be text), while home phone numbers are optional. The chart will display the complete team structure and organizational hierarchy.
             </p>
             <RaDiagramButton
               :kind="ra.kind"
@@ -407,6 +409,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
               :key="`team-${formKey}`"
               :groups="RA_RECOVERY_TEAMS"
               group-key="team"
+              :lead="teamLead"
               :fields="teamFields"
               :initial="teamRows"
               item-label="member"
@@ -423,8 +426,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           #calltree
         >
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p class="text-sm text-muted">
-              Who calls whom at each level. The chart shows the whole call tree.
+            <p class="max-w-3xl text-sm text-muted">
+              Define the communication flow at each level by specifying who makes the call and listing all individuals or parties they need to contact. Enter any relevant text. The caller, at least one contact and each contact's mobile number (or text, such as “Sesuai dokumen BCP masing-masing”) are mandatory, while other details are optional. The chart will display the complete communication hierarchy.
             </p>
             <RaDiagramButton
               :kind="ra.kind"
@@ -439,6 +442,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
               :key="`calltree-${formKey}`"
               :groups="callTreeLevels"
               group-key="level"
+              :lead="callTreeLead"
               :fields="callTreeFields"
               :initial="callTreeRows"
               item-label="contact"

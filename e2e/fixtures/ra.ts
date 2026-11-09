@@ -425,12 +425,13 @@ export async function mockRa(
     Object.assign(row, { approval: { ...APPROVED }, approval_can: { ...NO_APPROVAL_ACTIONS } })
     // Building Data Entry requires the full address.
     Object.assign(row, { ...ADDRESS, ...Object.fromEntries(Object.entries(ADDRESS).map(([key, value]) => [key, (row as Record<string, unknown>)[key] || value])) })
-    // The workbook leaves some of these blank; the app requires all but the home phone.
+    // The workbook leaves some of these blank; the app requires the role, name and mobile
+    // (caller, contact and mobile), as any text. The division and home phone may stay blank.
     for (const member of (row.recovery_team ?? []) as Record<string, unknown>[]) {
       for (const field of ['role', 'name', 'mobile']) member[field] ||= '-'
     }
     for (const entry of (row.call_tree ?? []) as Record<string, unknown>[]) {
-      for (const field of ['caller', 'contact_name', 'division', 'mobile']) entry[field] ||= '-'
+      for (const field of ['caller', 'contact_name', 'mobile']) entry[field] ||= '-'
     }
   }
   if (options.pendingLocation) {

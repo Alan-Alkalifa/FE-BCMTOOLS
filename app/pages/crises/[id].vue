@@ -636,6 +636,10 @@ const historyIcon: Record<string, string> = {
                         <span class="text-muted">L{{ entry.level }}</span>
                         <span>{{ entry.contact_name }}</span>
                         <span
+                          v-if="entry.caller"
+                          class="text-muted"
+                        >called by {{ entry.caller }}</span>
+                        <span
                           v-if="entry.division"
                           class="text-muted"
                         >{{ entry.division }}</span>
@@ -644,6 +648,10 @@ const historyIcon: Record<string, string> = {
                           :href="telUrl(entry.mobile)"
                           class="text-primary tabular-nums hover:underline"
                         >{{ entry.mobile }}</a>
+                        <span
+                          v-else-if="entry.mobile"
+                          class="text-muted"
+                        >{{ entry.mobile }}</span>
                       </li>
                     </ol>
                     <p
@@ -677,6 +685,10 @@ const historyIcon: Record<string, string> = {
                             :href="telUrl(member.mobile)"
                             class="text-primary tabular-nums hover:underline"
                           >{{ member.mobile }}</a>
+                          <span
+                            v-else-if="member.mobile"
+                            class="text-muted"
+                          >{{ member.mobile }}</span>
                         </li>
                       </ul>
                     </template>

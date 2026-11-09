@@ -570,7 +570,7 @@ SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), V
 | CIM | Control Issue Management, the follow-up for a high residual risk |
 | DAT / ERT | Damage Assessment Team / Emergency Response Team |
 | IMT / RTF | Incident Management Team / Recovery Task Force of a critical business function |
-| LCP | Location Continuity Plan: the building's occupants, continuity strategy, recovery team and call tree (RA only) |
+| LCP | Location Continuity Plan: the building's occupants, continuity strategy, recovery team and call tree (RA only). In the recovery team and call tree a role or caller is written once in a bordered block with its people under it (indented, a left rule), as the workbook's merged cell; any field may hold a note instead of a person ("(Sesuai Shift)") |
 | Import from Excel | Location › Buildings › Import from Excel (`/locations/import`): a building and its RA from the HO or Cabang workbook. Two steps: read (saves nothing), then review and **Import**. The review lists what the workbook lacks (*Not in the workbook*) and every row *Left out or changed* with its sheet and cell, so nothing is dropped silently |
 | Team diagrams | The recovery team structure and location call tree charts (the HO workbook's LCP pictures by default), per kind, set in RA configuration › Team diagrams. A location's Recovery team and Call tree tabs open them with **View structure chart** / **View call tree chart** (`RaDiagramButton`, neutral outline; `compact` is a small link for lists such as an incident's affected places), and the downloads print them |
 | BOSM / BM / NRSOH | Branch roles in RA Branch: the BOSM is the LIC and prepares the RA, the branch manager (BM) approves it, the NRSOH is the LICOM and reviews it |
