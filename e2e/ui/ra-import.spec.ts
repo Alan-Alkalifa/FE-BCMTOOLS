@@ -105,7 +105,7 @@ test('a registered building is used by default; its profile is kept unless repla
   await expect(page.getByText('8 rows · now 3, replaced')).toBeVisible()
   // A building with a final RA: Annual review or Structural change.
   await expect(page.getByRole('combobox', { name: 'Reason for assessment' })).toContainText('Annual review')
-  await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('0818')
+  await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('0818-0233-1872')
   await page.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(page.getByText('Choose a user with RA access.')).toBeVisible()
   expect(sent[0]!.options).toMatchObject({ location_id: 7, replace_profile: true, assessment: { reason: 'annual_review' } })
@@ -134,7 +134,7 @@ test('a branch keeps the workbook\'s region as its Region Description and picks 
   for (const [name, value] of [['Province', 'Jawa Barat'], ['City', 'Bandung'], ['District', 'Sumur Bandung']] as const) {
     await page.getByRole('textbox', { name }).fill(value)
   }
-  await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('0818')
+  await page.getByRole('textbox', { name: 'LICOM mobile number' }).fill('0818-0233-1872')
   await page.getByRole('button', { name: 'Import', exact: true }).click()
   // The region has areas: one is picked first.
   await expect(page.getByText('Choose the area.')).toBeVisible()

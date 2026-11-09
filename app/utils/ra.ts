@@ -50,6 +50,24 @@ export function raNewBuildingDateProblem(reason: string | null | undefined, date
     : null
 }
 
+export const RA_PHONE_EXAMPLE = '0813 1226 2739'
+
+/** The location incident team's mobile numbers (LIC, LICOM) are phone numbers, never a note
+ *  (the recovery team and call tree take notes instead): digits with spaces, brackets, dots or
+ *  dashes and an optional leading +, 8 to 15 digits. The API checks the same. */
+export function raPhoneProblem(value: string | null | undefined) {
+  const text = (value ?? '').trim()
+  if (!/^\+?[0-9 ().-]+$/.test(text)) return `Use digits only, e.g. ${RA_PHONE_EXAMPLE}. Spaces, + ( ) and - are allowed.`
+  const digits = text.replace(/\D/g, '').length
+  if (digits < 8 || digits > 15) return `A phone number has 8 to 15 digits, e.g. ${RA_PHONE_EXAMPLE}.`
+  return null
+}
+
+/** A number to prefill (a profile's mobile), or '' when it isn't a phone number ("-"). */
+export function raPhoneOrEmpty(value: string | null | undefined) {
+  return value && !raPhoneProblem(value) ? value.trim() : ''
+}
+
 /** Today in WIB, as YYYY-MM-DD. */
 export function raTodayIso() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())

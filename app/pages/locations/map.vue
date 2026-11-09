@@ -449,9 +449,9 @@ const canOpenRa = useCanOpenRa()
               name="quake"
               class="text-warning"
             /> Earthquake (BMKG), red from M6.0; dotted: its alert radius</span>
-            </div>
+          </div>
 
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
             <span>Colour: latest residual risk</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
             <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>

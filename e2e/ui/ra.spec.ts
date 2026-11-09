@@ -956,7 +956,17 @@ test('the location incident team is required', async ({ page }) => {
   await phone.fill('')
   await page.getByRole('button', { name: 'Save assessment' }).click()
   await expect(page.getByText('Enter the LIC mobile number.')).toBeVisible()
+  // A mobile number is a phone number, never text (unlike the call tree's).
+  await phone.fill('Sesuai dokumen BCP')
+  await expect(page.getByText('Use digits only, e.g. 0813 1226 2739. Spaces, + ( ) and - are allowed.')).toBeVisible()
+  await phone.fill('0812')
+  await expect(page.getByText('A phone number has 8 to 15 digits, e.g. 0813 1226 2739.')).toBeVisible()
+  await page.getByRole('button', { name: 'Save assessment' }).click()
   expect(saved).toBe(false)
+  await phone.fill('+62 812-0000-1111')
+  await expect(page.getByText('A phone number has 8 to 15 digits')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  await expect.poll(() => saved).toBe(true)
 })
 
 test('the assessment date is picked from a calendar; the renewal follows it', async ({ page }) => {

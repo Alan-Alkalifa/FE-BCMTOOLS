@@ -116,8 +116,10 @@ const schema = computed(() => z.object({
   if (value.create_assessment) {
     if (!value.assessment_date) need('assessment_date', 'Enter the assessment date.')
     if (!value.licom_user_id) need('licom_user_id', 'Choose the LICOM.')
-    if (!value.lic_phone.trim()) need('lic_phone', 'Enter the LIC mobile number.')
-    if (!value.licom_phone.trim()) need('licom_phone', 'Enter the LICOM mobile number.')
+    for (const [field, label] of [['lic_phone', 'LIC'], ['licom_phone', 'LICOM']] as const) {
+      const problem = value[field].trim() ? raPhoneProblem(value[field]) : `Enter the ${label} mobile number.`
+      if (problem) need(field, problem)
+    }
     if (periodTaken.value) need('assessment_date', `${preview.value?.existing?.name} already has an RA for ${periodOf(value.assessment_date)}. Pick a date in another year, or import only the profile.`)
   }
 }))
@@ -183,8 +185,9 @@ function reset(result: RaImportPreview) {
     assessment_date: result.assessment_date ?? todayIso(),
     reason: undefined,
     licom_user_id: result.licom?.user?.id ?? null,
-    lic_phone: (result.lic?.is_me ? result.lic.phone : null) ?? profile.value?.mobile_phone ?? '',
-    licom_phone: result.licom?.phone ?? result.licom?.user?.mobile_phone ?? '',
+    // Only phone numbers are prefilled: a profile's "-" leaves the field to fill in.
+    lic_phone: raPhoneOrEmpty(result.lic?.is_me ? result.lic.phone : null) || raPhoneOrEmpty(profile.value?.mobile_phone),
+    licom_phone: raPhoneOrEmpty(result.licom?.phone) || raPhoneOrEmpty(result.licom?.user?.mobile_phone),
   })
   licomUser.value = toRef(result.licom?.user ?? null)
   formError.value = null

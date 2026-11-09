@@ -24,6 +24,11 @@ const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, active:
 const yearStart = parseDate(`${raTodayIso().slice(0, 4)}-01-01`)
 
 const required = (message: string) => z.string().trim().min(1, message)
+// A mobile number: required, and a phone number (raPhoneProblem), as the API checks.
+const phoneField = (message: string) => required(message).superRefine((value, context) => {
+  const problem = value ? raPhoneProblem(value) : null
+  if (problem) context.addIssue({ code: 'custom', message: problem })
+})
 const schema = computed(() => z.object({
   location_id: z.number(`Choose the ${ra.value.location.lower}.`),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
@@ -31,9 +36,9 @@ const schema = computed(() => z.object({
   due_date: z.string().nullable(),
   // The LIC is the assessor: the signed-in user, never picked or sent.
   lic_user_id: z.number().nullable(),
-  lic_phone: required('Enter the LIC mobile number.'),
+  lic_phone: phoneField('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
-  licom_phone: required('Enter the LICOM mobile number.'),
+  licom_phone: phoneField('Enter the LICOM mobile number.'),
 }).superRefine((value, context) => {
   // One RA per building per period (the year of the assessment date), said before the API
   // does. A Structural change may follow in the same period once that period's RA is final.
@@ -89,7 +94,7 @@ watch(() => user.value, (me) => {
   state.lic_user_id = me?.id ?? null
 }, { immediate: true })
 watch(() => profile.value?.mobile_phone, (mobile) => {
-  if (mobile && !state.lic_phone.trim()) state.lic_phone = mobile
+  if (raPhoneOrEmpty(mobile) && !state.lic_phone.trim()) state.lic_phone = raPhoneOrEmpty(mobile)
 }, { immediate: true })
 
 const assessmentDate = computed({
