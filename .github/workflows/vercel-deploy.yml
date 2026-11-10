@@ -1,0 +1,103 @@
+# One Vercel deployment from GitHub Actions (Vercel's own Git deployments are off for
+# DEV-BCMTOOLS and PROD-BCMTOOLS in vercel.json). Called by deploy-dev.yml and deploy-prod.yml.
+#   target preview    = DEV: a Preview deployment, then the fixed DEV domain (DEV_DOMAIN) points at it
+#   target production = PROD
+# Then it waits until the site serves /version.json with this commit and runs the smoke tests.
+name: Vercel deployment
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: preview or production
+        required: true
+        type: string
+      url:
+        description: The site the smoke tests open (DEV_URL or PROD_URL)
+        required: true
+        type: string
+      alias:
+        description: Domain to point at the new preview deployment (DEV only)
+        required: false
+        type: string
+        default: ""
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+      VERCEL_AUTOMATION_BYPASS_SECRET:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_CLI: vercel@${{ vars.VERCEL_CLI_VERSION || 'latest' }}
+      APP_VERSION: ${{ github.sha }}
+      BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      PROD_FLAG: ${{ inputs.target == 'production' && '--prod' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Pull the project settings and ${{ inputs.target }} environment variables
+        run: npx --yes "$VERCEL_CLI" pull --yes --environment="${{ inputs.target }}" --token="$VERCEL_TOKEN"
+      - name: Build
+        run: npx --yes "$VERCEL_CLI" build ${PROD_FLAG:+"$PROD_FLAG"} --token="$VERCEL_TOKEN"
+      - name: Deploy
+        id: deploy
+        run: |
+          url=$(npx --yes "$VERCEL_CLI" deploy --prebuilt ${PROD_FLAG:+"$PROD_FLAG"} --token="$VERCEL_TOKEN")
+          echo "Deployed $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Point ${{ inputs.alias }} at it
+        if: inputs.alias != ''
+        # The REST API, not `vercel alias set`: the CLI looks up the token's user first, which a
+        # team-scoped token cannot do ("User not found"). Same token, same team as the deploy.
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          ALIAS: ${{ inputs.alias }}
+        run: |
+          set -o pipefail
+          api=https://api.vercel.com
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          id=$(curl --fail-with-body -sS -H "$auth" "$api/v13/deployments/${DEPLOY_URL#https://}?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          curl --fail-with-body -sS -X POST -H "$auth" -H "Content-Type: application/json" \
+            "$api/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID" -d "{\"alias\":\"$ALIAS\"}" | jq -r '"Aliased " + .alias'
+      - name: Wait for ${{ inputs.url }}/version.json to show this commit
+        env:
+          SITE: ${{ inputs.url }}
+        run: |
+          for _ in $(seq 1 36); do
+            if curl -fsS -H "x-vercel-protection-bypass: $BYPASS" "$SITE/version.json" | grep -q "\"$APP_VERSION\""; then
+              echo "$SITE serves $APP_VERSION"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$SITE doesn't serve $APP_VERSION after 6 minutes. After a Vercel rollback, production domains stay on the old deployment until it is promoted: vercel promote ${{ steps.deploy.outputs.url }}"
+          exit 1
+      - run: npx playwright install --with-deps chromium
+      - name: Smoke tests (real backend through the middleware)
+        env:
+          E2E_BASE_URL: ${{ inputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: npx playwright test --project=smoke
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ inputs.target }}
+          path: playwright-report
