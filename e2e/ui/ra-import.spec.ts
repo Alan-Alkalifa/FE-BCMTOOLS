@@ -65,7 +65,7 @@ test('Import from Excel is a dialog: pick the type, choose files, check each fil
   await expect(page).toHaveURL(/import=head_office/)
   await expect(dialog.getByRole('radio', { name: /RA HO/ })).toBeChecked()
   await expect(dialog.getByRole('radio', { name: /RA Branch/ })).toBeVisible()
-  await expect(dialog.getByText('No files yet.')).toBeVisible()
+  await expect(dialog.getByText('Drop the Excel files here')).toBeVisible()
 
   // A non-.xlsx file is refused before it is sent.
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles({ name: 'old.xls', mimeType: 'application/vnd.ms-excel', buffer: Buffer.from('x') })
@@ -99,6 +99,29 @@ test('Import from Excel is a dialog: pick the type, choose files, check each fil
   await page.goto('/ra-branch/manage')
   await page.getByRole('button', { name: 'Import from Excel' }).click({ timeout: 60_000 })
   await expect(page.getByRole('dialog', { name: 'Import from Excel' }).getByRole('radio', { name: /RA Branch/ })).toBeChecked()
+})
+
+test('files dropped on the drop zone are added like chosen ones, several at once', async ({ page }) => {
+  await mockImport(page, (file) => ({ ...PREVIEW, location: { ...PREVIEW.location, name: file === 'Menara.xlsx' ? 'Menara Uji' : PREVIEW.location.name } }))
+  const dialog = await openImport(page)
+  const zone = dialog.getByTestId('import-drop-zone')
+  const drop = async (files: { name: string, type: string }[]) => {
+    const dataTransfer = await page.evaluateHandle((list) => {
+      const transfer = new DataTransfer()
+      for (const item of list) transfer.items.add(new File(['PK workbook'], item.name, { type: item.type }))
+      return transfer
+    }, files)
+    await zone.dispatchEvent('dragenter', { dataTransfer })
+    await expect(zone).toContainText('Drop to add the files')
+    await zone.dispatchEvent('drop', { dataTransfer })
+  }
+  await drop([{ name: 'Griya.xlsx', type: MIME }, { name: 'Menara.xlsx', type: MIME }, { name: 'notes.pdf', type: 'application/pdf' }])
+  await expect(card(page, 'Griya.xlsx').getByText('Ready')).toBeVisible()
+  await expect(card(page, 'Menara.xlsx').getByText('Ready')).toBeVisible()
+  await expect(dialog.getByText('notes.pdf: use an .xlsx file. Save it as .xlsx in Excel first.')).toBeVisible()
+  await expect(zone).toContainText('Drop more files here')
+  await expect(dialog.getByText('2 of 2 ready.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Import 2 files' })).toBeEnabled()
 })
 
 test('a new building asks for the address parts, then shows the new RA', async ({ page }) => {
