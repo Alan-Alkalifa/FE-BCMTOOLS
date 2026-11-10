@@ -235,6 +235,7 @@ const ACTIONS: Record<RaSignoffEvent['action'] | 'on_behalf', { label: string, i
   approved: { label: 'Approved', icon: 'i-lucide-badge-check', class: 'text-success' },
   on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', class: 'text-success' },
   returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', class: 'text-warning' },
+  accepted: { label: 'Accepted the revision', icon: 'i-lucide-check', class: 'text-info' },
   reassigned: { label: 'Signer changed', icon: 'i-lucide-user-round-cog', class: 'text-warning' },
 }
 
@@ -273,15 +274,6 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       :description="formError"
     />
 
-    <UAlert
-      v-if="assessment.status === 'draft' && assessment.returned_comment"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-undo-2"
-      :title="`Returned for changes by ${assessment.returned_by ?? 'a signer'} on ${formatDateTime(assessment.returned_at)}`"
-      :description="assessment.returned_comment"
-      :ui="{ description: 'whitespace-pre-line' }"
-    />
     <UAlert
       v-if="assessment.status === 'draft' && !locationApproved"
       color="warning"

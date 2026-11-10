@@ -624,8 +624,22 @@ export async function mockRa(
         assessment.signoff_history.push({ action: 'returned', role: assessment.current_signoff_role, user: 'Test User', comment: body?.comment ?? null, at: NOW })
         for (const row of assessment.signoffs) Object.assign(row, { approved_at: null, signed_on: null, approved_by: null, comment: null })
         setStatus(assessment, 'draft')
-        Object.assign(assessment, { returned_comment: body?.comment ?? null, returned_by: 'Test User', returned_at: NOW })
+        // Need revision: locked until the assessor (the signed-in Test User) accepts it.
+        Object.assign(assessment, {
+          returned_comment: body?.comment ?? null, returned_by: 'Test User', returned_at: NOW,
+          revision_state: 'need_revision', can_accept_revision: true, can_edit: false, can_submit: false,
+        })
       }
+      await route.fulfill({ json: assessment })
+      return
+    }
+    if (method === 'POST' && url.pathname.endsWith('/accept-revision')) {
+      log.signoff.push(['accept-revision', null])
+      assessment.signoff_history.push({ action: 'accepted', role: null, user: 'Test User', comment: null, at: NOW })
+      Object.assign(assessment, {
+        revision_state: 'in_revision', can_accept_revision: false, can_edit: true, can_submit: true,
+        revision_accepted_by: 'Test User', revision_accepted_at: NOW,
+      })
       await route.fulfill({ json: assessment })
       return
     }
@@ -683,8 +697,8 @@ function workflowLocations(branch: boolean) {
     ? { id: 31, code: 'RA-BR-0002', kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
     : { id: 2, code: 'RA-HQ-0002', kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
   const approved = workflowRef(branch, 'approved')
-  // The 2026 cycle, returned for changes and being worked on again.
-  const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true }
+  // The 2026 cycle, returned for changes and accepted by its assessor: In revision.
+  const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true, revision_state: 'in_revision' }
   return [
     { location: { ...first, directorate: 'OPS', sub_directorate: 'Ops Support', org_group: 'Building Management', department: 'Facilities' }, approved, open, assessment_count: 2, renewal_date: '2026-03-10', days_left: -225, bucket: 'overdue', assessor: 'Rina Kartika', licom: 'Budi Hartono', history: [open, approved] },
     { location: second, approved: null, open: null, assessment_count: 0, renewal_date: null, days_left: null, bucket: null, assessor: null, licom: null, history: [] },
@@ -759,7 +773,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     if (name === 'monitoring/overview') {
       await route.fulfill({
         json: {
-          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, returned: 1, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0, stuck_approvals: 0 },
+          cards: { locations: 2, assessed: 1, not_assessed: 1, drafts: 0, need_revision: 0, in_revision: 1, returned: 1, in_signoff: 1, overdue_renewals: 1, due_in_90_days: 0, high_residual: 0, stuck_approvals: 0 },
           by_level: [{ level: 'Low', locations: 0 }, { level: 'Medium', locations: 1 }, { level: 'High', locations: 0 }, { level: 'none', locations: 1 }],
           approved_per_month: Array.from({ length: 12 }, (_, index) => ({
             month: `${index < 2 ? 2025 : 2026}-${String(((index + 10) % 12) + 1).padStart(2, '0')}`,
@@ -788,8 +802,8 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
       ]) })
     } else if (name === 'monitoring/register') {
       const state = url.searchParams.get('state')
-      // Griya's open RA was returned for changes: Revision.
-      const rows = state === 'none' ? [locations[1]] : state === 'approved' || state === 'returned' ? [locations[0]] : state ? [] : locations
+      // Griya's open RA was returned for changes and accepted: In revision.
+      const rows = state === 'none' ? [locations[1]] : ['approved', 'returned', 'in_revision'].includes(state ?? '') ? [locations[0]] : state ? [] : locations
       await route.fulfill({ json: paged(rows) })
     } else if (name === 'monitoring/regions') {
       await route.fulfill({ json: { items: branch ? ['Jabodetabek', 'Region Jabar'] : [] } })

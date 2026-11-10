@@ -1042,17 +1042,24 @@ test('a draft on an older configuration version moves to the active one, as SCCA
   await expect(page.getByTestId('move-version')).toHaveCount(0)
 })
 
-test('Monitoring shows the RAs returned for changes as Revision, as SCCA\'s', async ({ page }) => {
+test('Monitoring splits returned RAs into Need revision and In revision', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/monitoring')
-  const card = page.getByRole('link', { name: /Revision/ }).first()
-  await expect(card).toContainText('RAs returned for changes', { timeout: 60_000 })
+  const need = page.getByRole('link', { name: /Need revision/ }).first()
+  await expect(need).toContainText('Returned, not accepted yet', { timeout: 60_000 })
+  await expect(need).toContainText('0')
+  const card = page.getByRole('link', { name: /In revision/ }).first()
+  await expect(card).toContainText('Accepted, being changed')
   await expect(card).toContainText('1')
   await card.click()
   await expect(page).toHaveURL(/tab=register/)
-  await expect(page).toHaveURL(/state=returned/)
+  await expect(page).toHaveURL(/state=in_revision/)
   const row = page.getByRole('table').getByRole('row', { name: /Griya CIMB Niaga 2/ })
-  await expect(row.getByRole('link', { name: /: Revision$/ })).toBeVisible()
+  await expect(row.getByRole('link', { name: /: In revision$/ })).toBeVisible()
+  // Both are in the State filter.
+  await page.getByLabel('State', { exact: true }).click()
+  await expect(page.getByRole('option', { name: 'Need revision' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'In revision' })).toBeVisible()
 })
 
 test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {
@@ -1316,8 +1323,19 @@ test('submitting, approving and returning an assessment', async ({ page }) => {
   await dialog.getByRole('textbox', { name: /Comment/ }).fill('Floor wardens are out of date.')
   await expect(dialog.getByText('Say what needs to change.')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Return to draft' }).click()
-  await expect(page.getByText(/Returned for changes by Test User/)).toBeVisible()
   expect(log.signoff.at(-1)).toEqual(['return', { comment: 'Floor wardens are out of date.' }])
+  // Need revision: locked until the assessor accepts the return.
+  const banner = page.getByTestId('revision-banner')
+  await expect(banner).toContainText('Need revision: returned by Test User')
+  await expect(banner).toContainText('Floor wardens are out of date.')
+  await expect(banner).toContainText('Accept the revision to make changes.')
+  await expect(page.getByRole('button', { name: 'Submit for approval' })).toHaveCount(0)
+  await banner.getByRole('button', { name: 'Accept revision' }).click()
+  await expect(page.getByText('Revision accepted').first()).toBeVisible()
+  expect(log.signoff.at(-1)).toEqual(['accept-revision', null])
+  await expect(banner).toContainText('In revision: returned by Test User')
+  await expect(banner).toContainText('Accepted by Test User')
+  await expect(page.getByText('Accepted the revision').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeEnabled()
 })
 
@@ -1440,9 +1458,10 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
   await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()
   await expect(table.getByRole('link', { name: 'RA-2025-0001' })).toHaveCount(0)
-  // Open RA: the status of the RA being worked on, in SCCA's words; a returned one is Revision.
+  // Open RA: the status of the RA being worked on, in SCCA's words; a returned one the assessor
+  // accepted is In revision.
   const row = table.getByRole('row', { name: /Griya CIMB Niaga 2/ })
-  await expect(row.getByRole('link', { name: /: Revision$/ })).toHaveAttribute('href', '/ra/monitoring/99')
+  await expect(row.getByRole('link', { name: /: In revision$/ })).toHaveAttribute('href', '/ra/monitoring/99')
   await expect(row).not.toContainText('Returned')
   // The building's ID in its own column, as SCCA's Application code.
   await expect(row.getByText('RA-HQ-0001', { exact: true })).toBeVisible()

@@ -76,6 +76,7 @@ test('the incident point is a pin dropped on the map or put on a place', async (
   await page.goto('/locations/map')
   await page.getByRole('button', { name: 'Declare incident', exact: true }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
+  await expect(dialog.getByRole('group', { name: 'Map legend' })).toContainText('Incident point and its affected area', { timeout: 30_000 })
   await dialog.getByText('Choose one of the 33 RA hazards').click()
   await page.getByRole('option', { name: /Banjir/ }).first().click()
   await expect(dialog.getByText('No pin yet.')).toBeVisible()
@@ -143,6 +144,61 @@ test('an incident gives each affected place its instructions and keeps a history
   await expect(page.getByText('Closed', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reopen incident' })).toBeVisible()
   expect(log.closed).toEqual([{ note: 'Water receded.' }])
+})
+
+test('the incident map has a legend and zooms with the scroll wheel; who to call is in tables', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/crises/7')
+  await expect(page.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible({ timeout: 30_000 })
+  const legend = page.getByRole('group', { name: 'Map legend' })
+  await expect(legend).toContainText('Affected head office building')
+  await expect(legend).toContainText('Affected branch')
+  await expect(legend).toContainText('Colour: residual risk for Banjir/ Banjir Bandang')
+
+  const map = page.locator('.leaflet-container')
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
+  const zoom = () => map.evaluate((element) => element.querySelector<HTMLElement>('.leaflet-map-pane')!.style.transform
+    + [...element.querySelectorAll<HTMLImageElement>('.leaflet-tile')].map((tile) => tile.src).join())
+  const before = await zoom()
+  const box = (await map.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, -600)
+  await expect.poll(zoom).not.toBe(before)
+
+  // The open place's emergency contacts and call tree are tables; phones still dial.
+  const contacts = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Area or address' }) }).first()
+  await expect(contacts.getByRole('columnheader')).toHaveText(['Type', 'Name', 'Phone', 'Area or address'])
+  await expect(contacts.getByRole('link', { name: '113' })).toHaveAttribute('href', 'tel:113')
+  const callTree = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Called by' }) }).first()
+  await expect(callTree.getByRole('columnheader')).toHaveText(['Level', 'Called by', 'Name', 'Division', 'Mobile'])
+  await expect(callTree.getByRole('link', { name: '0812-1111-2222' })).toBeVisible()
+})
+
+test('the incident has a print view with every place and its contacts', async ({ page }) => {
+  await mockRaMap(page)
+  await page.addInitScript(() => {
+    window.print = () => {
+      (window as unknown as { printed: number }).printed = ((window as unknown as { printed?: number }).printed ?? 0) + 1
+    }
+  })
+  await page.goto('/crises/7')
+  await page.getByRole('link', { name: 'Print view' }).click({ timeout: 30_000 })
+  await expect(page).toHaveURL(/\/crises\/7\/report$/)
+  const report = page.getByTestId('crisis-report')
+  await expect(report.getByRole('heading', { name: 'Banjir/ Banjir Bandang at Griya CIMB Niaga 2' })).toBeVisible({ timeout: 30_000 })
+  await expect(report.getByRole('group', { name: 'Map legend' })).toBeVisible()
+  await expect(report.getByRole('heading', { name: 'What to do' })).toBeVisible()
+  await expect(report.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible()
+  // One section per place, the contacts as plain text (nothing to click on paper).
+  await expect(report.getByRole('region', { name: 'KCP Bintaro Sektor 9' })).toContainText('No RA for this place yet.')
+  const first = report.getByRole('region', { name: 'Griya CIMB Niaga 2' })
+  await expect(first.getByRole('columnheader', { name: 'Called by' })).toBeVisible()
+  await expect(first.getByText('113', { exact: true })).toBeVisible()
+  await expect(first.getByRole('link')).toHaveCount(0)
+  await expect(report.getByRole('heading', { name: 'History' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Print' }).click()
+  expect(await page.evaluate(() => (window as unknown as { printed?: number }).printed)).toBe(1)
 })
 
 test('without the declare permission the map and incident are read-only', async ({ page }) => {
@@ -245,6 +301,44 @@ test('a declared incident waits for someone else\'s approval', async ({ page }) 
   await expect(page.getByText('This incident is approved').first()).toBeVisible()
   expect(log.decisions).toEqual([['approve', { note: null }]])
   await expect(page.getByRole('button', { name: 'Close incident' })).toBeVisible()
+})
+
+test('a rejected incident leaves the building map at once', async ({ page }) => {
+  await mockRaMap(page, { pending: true })
+  await page.goto('/locations/map')
+  await expect(page.locator('path.ra-radius-pending')).toHaveCount(1, { timeout: 30_000 })
+  // Opened from the map and rejected there, then back to the map without reloading the app.
+  await page.getByRole('link', { name: 'View instructions' }).click()
+  await expect(page).toHaveURL(/\/crises\/7$/)
+  await page.getByTestId('approval-banner').getByRole('button', { name: 'Reject' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Reject this incident?' })
+  await dialog.getByLabel('Reason').fill('A drill, not a flood.')
+  await dialog.getByRole('button', { name: 'Reject' }).click()
+  await expect(dialog).toBeHidden()
+  await page.getByRole('navigation').getByRole('link', { name: 'Building map' }).click()
+  await expect(page).toHaveURL(/\/locations\/map/)
+  await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
+  await expect(page.locator('path.ra-radius-pending')).toHaveCount(0)
+  await expect(page.locator('.ra-pin-crisis')).toHaveCount(0)
+  await expect(page.getByText(/^Pending approval: Banjir/)).toHaveCount(0)
+})
+
+test('updating an incident opens its map on the incident, not zoomed out', async ({ page }) => {
+  await mockRaMap(page)
+  await page.goto('/crises/7')
+  await page.getByRole('button', { name: 'Update incident' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Update CR-2026-0001' })
+  const map = dialog.locator('.leaflet-container')
+  const ring = dialog.locator('path.ra-radius-crisis')
+  await expect(ring).toHaveCount(1, { timeout: 30_000 })
+  // Once the dialog has settled, the affected area fills most of the map, in the middle.
+  await expect.poll(async () => {
+    const [box, area] = [await map.boundingBox(), await ring.boundingBox()]
+    if (!box || !area) return false
+    const centred = Math.abs((area.x + area.width / 2) - (box.x + box.width / 2)) < box.width * 0.1
+      && Math.abs((area.y + area.height / 2) - (box.y + box.height / 2)) < box.height * 0.1
+    return centred && area.height > box.height * 0.4
+  }, { timeout: 10_000 }).toBe(true)
 })
 
 test('the map flags an incident waiting for approval, with an orange area', async ({ page }) => {

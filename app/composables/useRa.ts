@@ -136,8 +136,9 @@ export interface RaAttachmentRef {
 }
 
 export interface RaSignoffEvent {
-  /** `reassigned`: BCM changed the signer of the waiting step. */
-  action: 'submitted' | 'approved' | 'returned' | 'reassigned'
+  /** `reassigned`: BCM changed the signer of the waiting step. `accepted`: the assessor accepted
+   *  a return for revision. */
+  action: 'submitted' | 'approved' | 'returned' | 'accepted' | 'reassigned'
   role: RaSignoffRole | null
   /** Who acted (BCM, for an approval on behalf or a signer change). */
   user: string | null
@@ -170,6 +171,13 @@ export interface RaWorkflow {
   returned_at: string | null
   returned_by: string | null
   returned_comment: string | null
+  /** A returned draft: need_revision until its assessor accepts the return (locked), then
+   *  in_revision. */
+  revision_state?: RaRevisionState | null
+  revision_accepted_at?: string | null
+  revision_accepted_by?: string | null
+  /** The signed-in user is the assessor of a Need revision RA. */
+  can_accept_revision?: boolean
   signoff_history: RaSignoffEvent[]
 }
 
@@ -549,6 +557,7 @@ export interface RaAssessmentSummary {
   /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
   current_step_title?: string | null
   is_returned: boolean
+  revision_state?: RaRevisionState | null
   approved_at?: string | null
   /** An approved RA's renewal date (its due date, or a year after it was assessed). */
   renewal_date?: string | null
@@ -930,6 +939,15 @@ export interface RaImportPreview {
     id: number
     code: string
     name: string
+    /** Its registered details, shown read-only. */
+    address?: string | null
+    province?: string | null
+    city?: string | null
+    district?: string | null
+    zip_code?: string | null
+    region?: string | null
+    area?: string | null
+    region_description?: string | null
     is_active: boolean
     approval_status: string
     contacts: number
@@ -970,6 +988,8 @@ export interface RaImportOptions {
     licom_user_id: number
     lic_phone?: string
     licom_phone?: string
+    /** A Structural change's renewal date (at most a year after the assessment date). */
+    due_date?: string
   }
 }
 export interface RaImportResult {
@@ -1026,6 +1046,7 @@ export const raApi = {
   get: (id: number) => $fetch<RaAssessment>(`${BASE}/${id}`),
   create: (body: RaAssessmentCreate) => $fetch<RaAssessment>(BASE, { method: 'POST', body }),
   /** A draft on an older configuration version moves to the active one, as SCCA's. */
+  acceptRevision: (id: number) => $fetch<RaAssessment>(`/api/ra/assessments/${id}/accept-revision`, { method: 'POST' }),
   moveVersion: (id: number) => $fetch<RaAssessment & { cleared: string[] }>(`/api/ra/assessments/${id}/move-version`, { method: 'POST' }),
   update: (id: number, body: RaAssessmentUpdate) =>
     $fetch<RaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
@@ -1081,6 +1102,7 @@ export interface RaAssessmentRef {
   highest_residual_level: RaLevel | null
   approved_at: string | null
   is_returned: boolean
+  revision_state?: RaRevisionState | null
 }
 
 export type RaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
@@ -1155,7 +1177,7 @@ export interface RaMonitoringFilters {
   q?: string
   region?: string
   level?: RaLevel | 'none'
-  state?: 'approved' | 'draft' | 'returned' | 'in_signoff' | 'none'
+  state?: 'approved' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none'
   /** The reason of the building's RA in force or the one being worked on. */
   reason?: RaReason
   // Date range filters (assessment date)
@@ -1175,7 +1197,11 @@ export interface RaOverview {
     assessed: number
     not_assessed: number
     drafts: number
-    /** Drafts a signer returned for changes (Revision, as SCCA's). */
+    /** Drafts a signer returned that their assessor hasn't accepted yet. */
+    need_revision: number
+    /** Returned drafts their assessor accepted, being changed. */
+    in_revision: number
+    /** Both. */
     returned: number
     in_signoff: number
     overdue_renewals: number

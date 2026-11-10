@@ -222,17 +222,40 @@ async function init() {
       pin.value = round(event.latlng.lat, event.latlng.lng)
     })
   }
-  drawMarkers(true)
+  // An editable map opened on an existing pin (updating an incident) shows that pin's area
+  // (the parent fits it on `ready`), not every place.
+  drawMarkers(!(props.editable && pin.value && !props.autoFit))
   drawPin(true)
+  // Someone moving the map ends a view asked for with fit(): the map then stays where they put it.
+  container.value.addEventListener('pointerdown', dropWanted)
+  container.value.addEventListener('wheel', dropWanted, { passive: true })
   emit('ready')
 }
 
 // A map opened in a dialog starts while the dialog animates: re-measure when its size settles.
 let resizeObserver: ResizeObserver | undefined
+/** The area asked for with fit(), kept while the map settles: a dialog still animating changes
+ *  the map's size after the fit, which would leave the area off-centre or out of view. */
+let wanted: import('leaflet').LatLngBounds | undefined
+const FIT_OPTIONS = { padding: [60, 60] as [number, number], maxZoom: 16 }
+function dropWanted() {
+  wanted = undefined
+}
+function onResize() {
+  if (!map) return
+  map.invalidateSize({ animate: false })
+  if (wanted) map.fitBounds(wanted, { ...FIT_OPTIONS, animate: false })
+}
+// Printing lays the page out at the paper's width: re-measure so the tiles fill it.
+function onPrint() {
+  map?.invalidateSize({ animate: false })
+}
 onMounted(() => {
   init()
+  window.addEventListener('beforeprint', onPrint)
+  window.addEventListener('afterprint', onPrint)
   if (container.value && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => map?.invalidateSize())
+    resizeObserver = new ResizeObserver(onResize)
     resizeObserver.observe(container.value)
   }
 })
@@ -252,6 +275,10 @@ watch(pin, (value, previous) => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  container.value?.removeEventListener('pointerdown', dropWanted)
+  container.value?.removeEventListener('wheel', dropWanted)
+  window.removeEventListener('beforeprint', onPrint)
+  window.removeEventListener('afterprint', onPrint)
   if (map) {
     // Leaflet ends a zoom animation from a 250 ms timer that remove() doesn't cancel: leaving the
     // page (or closing a dialog) mid-zoom made that timer read the removed map pane ("Cannot read
@@ -268,12 +295,14 @@ onBeforeUnmount(() => {
 defineExpose({
   /** Zoom to a marker, e.g. when it is picked from the list next to the map. */
   focus(pinToShow: RaPin) {
+    wanted = undefined
     map?.setView([pinToShow.lat, pinToShow.lng], Math.max(map.getZoom(), 15))
   },
   /** Show all of these points, e.g. the two ends of a measured distance. */
   fit(pins: RaPin[]) {
     if (!L || !map || !pins.length) return
-    map.fitBounds(L.latLngBounds(pins.map((item) => [item.lat, item.lng] as [number, number])), { padding: [60, 60], maxZoom: 16 })
+    wanted = L.latLngBounds(pins.map((item) => [item.lat, item.lng] as [number, number]))
+    map.fitBounds(wanted, FIT_OPTIONS)
   },
 })
 </script>

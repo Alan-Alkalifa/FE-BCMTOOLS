@@ -34,6 +34,9 @@ const quakes = computed(() => quakeList.value?.items ?? [])
 let quakeTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
+  // The map data is shared with the incident page (the same key): read it again on arrival, so
+  // an incident approved, rejected or closed meanwhile is shown as it stands now.
+  if (data.value) refresh()
 })
 onBeforeUnmount(() => clearInterval(quakeTimer))
 
@@ -419,45 +422,7 @@ const canOpenRa = useCanOpenRa()
             @select="onMarker"
           />
 
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <!-- The same symbols the map draws (RaMapSymbol). -->
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="building"
-              class="text-muted"
-            /> Head office building</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="branch"
-              class="text-muted"
-            /> Branch</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="waiting"
-              class="mr-1 text-muted"
-            /> Waiting for approval (new, or to deactivate)</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="rejected"
-              class="mr-1 text-muted"
-            /> Rejected</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="crisis"
-              class="text-error"
-            /> Incident and its affected area</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="crisis"
-              class="text-warning"
-            /> Incident waiting for approval (dashed area)</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="quake"
-              class="text-warning"
-            /> Earthquake (BMKG), red from M6.0; dotted: its alert radius</span>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <span>Colour: latest residual risk</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-info" />Low</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-muted ring-1 ring-default" />No RA yet</span>
-          </div>
+          <RaMapLegend />
 
           <p class="text-xs text-muted">
             Earthquake data: {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.

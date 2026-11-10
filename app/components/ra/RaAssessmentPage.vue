@@ -132,6 +132,12 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
+/** The assessor accepted the return: the RA can be changed again (In revision). */
+function onAccepted(saved: RaAssessment) {
+  onSaved(saved)
+  formKey.value += 1
+}
+
 function onSaved(saved: RaAssessment) {
   assessment.value = saved
   dirty.value = false
@@ -341,14 +347,9 @@ async function moveVersion() {
           />
         </template>
       </UAlert>
-      <UAlert
-        v-if="props.section !== 'monitoring' && assessment.status === 'draft' && assessment.returned_comment && tab !== 'signoff'"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-undo-2"
-        :title="`Returned for changes by ${assessment.returned_by ?? 'a signer'}`"
-        :description="assessment.returned_comment"
-        :ui="{ description: 'whitespace-pre-line' }"
+      <RaRevisionBanner
+        :assessment="assessment"
+        @accepted="onAccepted"
       />
 
       <UTabs
