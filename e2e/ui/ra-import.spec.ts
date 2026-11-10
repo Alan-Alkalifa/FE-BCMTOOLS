@@ -143,7 +143,7 @@ test('a registered building shows its own details locked; a Structural change pi
   await expect(griya.getByRole('textbox', { name: 'Province' })).toHaveValue('Banten')
   await expect(griya.getByRole('textbox', { name: 'Province' })).toBeDisabled()
   await expect(griya.getByRole('textbox', { name: /Building name/ })).toBeDisabled()
-  await griya.getByRole('switch', { name: 'Update its profile from this file' }).click()
+  await griya.getByRole('switch', { name: 'Update the profile' }).click()
   // A building with a final RA: Annual review or Structural change.
   const reason = griya.getByRole('combobox', { name: 'Reason for assessment' })
   await expect(reason).toContainText('Annual review')
