@@ -175,6 +175,29 @@ test('a registered building with an RA in that period says so before importing',
   expect(sent).toHaveLength(0)
 })
 
+test('a registered building with an RA in progress gets no new RA; only its profile can be updated', async ({ page }) => {
+  const open = { id: 31, kind: 'head_office', ref_no: 'RA-2026-0031', period_year: 2026, status: 'draft', revision_state: null }
+  const sent = await mockImport(page, { ...PREVIEW, existing: { ...REGISTERED, open_assessment: open } })
+  const dialog = await openImport(page)
+  await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
+  const griya = card(page)
+  const create = griya.getByRole('switch', { name: 'Create a draft RA' })
+  await expect(create).not.toBeChecked()
+  await expect(create).toBeDisabled()
+  await expect(griya.getByText('An RA is already in progress')).toBeVisible()
+  await expect(griya.getByText('RA-2026-0031 (Draft, 2026) must be final before a new RA can be made. Only the profile can be updated.')).toBeVisible()
+  await expect(griya.getByRole('link', { name: 'Open RA' })).toHaveAttribute('href', '/ra/manage/31')
+  await expect(griya.getByRole('combobox', { name: 'Reason for assessment' })).toHaveCount(0)
+  // Nothing chosen yet: nothing to import.
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect(griya.getByText('Nothing to import yet. Turn on Update the profile.')).toBeVisible()
+  expect(sent).toHaveLength(0)
+  await griya.getByRole('switch', { name: 'Update the profile' }).click()
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]!.options).toEqual({ location_id: 7, replace_profile: true })
+})
+
 test('several files import together; a second file for the same building and period is held back', async ({ page }) => {
   const names: Record<string, string> = { 'Griya.xlsx': 'Griya CIMB Niaga 2', 'Menara.xlsx': 'Menara CIMB Niaga', 'Griya copy.xlsx': 'Griya CIMB Niaga 2' }
   const sent = await mockImport(page, (file) => ({ ...PREVIEW, location: { ...PREVIEW.location, name: names[file] ?? file } }))

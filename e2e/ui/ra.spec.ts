@@ -442,6 +442,20 @@ test('rating a hazard fills in its ratings and saves only that hazard', async ({
   expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H03', monetary: 5, historical: 3 })])
 })
 
+test('a hazard without its existing mitigation doesn\'t count as rated yet', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
+  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('3 - Gempa Bumi', { timeout: 60_000 })
+  const counter = page.getByRole('tabpanel', { name: 'Hazards' }).getByText(/^\d+ of 33 hazards rated/)
+  const rated = async () => Number((await counter.textContent())!.match(/^(\d+)/)![1])
+  const before = await rated()
+  const mitigation = page.getByRole('textbox', { name: /Existing mitigation measures/ })
+  await mitigation.fill('')
+  await expect.poll(rated).toBe(before - 1)
+  await mitigation.fill('Gedung tahan gempa; jalur evakuasi.')
+  await expect.poll(rated).toBe(before)
+})
+
 test('the action plan is optional, also for a high residual risk', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H28')

@@ -956,6 +956,15 @@ export interface RaImportPreview {
     call_tree: number
     has_period: boolean
     has_final: boolean
+    /** Its RA still in progress (draft or in approval): no new RA until that one is final. */
+    open_assessment?: {
+      id: number
+      kind: RaKind
+      ref_no: string | null
+      period_year: number
+      status: RaStatus
+      revision_state: RaRevisionState | null
+    } | null
   } | null
   lic: RaImportPerson | null
   licom: RaImportPerson | null

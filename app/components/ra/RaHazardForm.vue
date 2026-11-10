@@ -91,7 +91,8 @@ const evaluations = computed(() => {
   return map
 })
 
-const ratedCount = computed(() => [...evaluations.value.values()].filter((item) => item.result.is_rated).length)
+/** Rated as the API counts it: every rating given and no open issue (e.g. no existing mitigation). */
+const ratedCount = computed(() => [...evaluations.value.values()].filter((item) => item.status === 'done').length)
 
 // --- table -----------------------------------------------------------------------------------
 
