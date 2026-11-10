@@ -646,8 +646,8 @@ const otherType = computed(() => RA_MODULES[preview.value?.kind === 'branch' ? '
         <USwitch
           v-if="existing"
           v-model="state.replace_profile"
-          label="Update its profile from this file"
-          description="Contacts, occupants, recovery team and call tree. Off: only the RA is added."
+          label="Update the profile"
+          description="Update its contacts, occupants, recovery team and call tree."
         />
       </section>
 
