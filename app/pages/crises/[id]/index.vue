@@ -24,38 +24,10 @@ const crisisModal = useOverlay().create(RaCrisisModal)
 const noteModal = useOverlay().create(RaCrisisNoteModal)
 const actionError = ref<string | null>(null)
 
-const place = computed(() => crisis.value?.location?.name
-  ?? (crisis.value ? raFormatCoordinates({ lat: crisis.value.latitude, lng: crisis.value.longitude }) : ''))
+const place = computed(() => (crisis.value ? raCrisisPlaceName(crisis.value) : ''))
 const title = computed(() => (crisis.value ? `${crisis.value.hazard.short_name} at ${place.value}` : 'Incident'))
-
-const markers = computed<RaMapMarker[]>(() => {
-  if (!crisis.value) return []
-  const atPin = crisis.value.affected.some((row) => row.distance_m === 0)
-  return [
-    // An incident at a building's pin is shown by its ring; the pin stays visible.
-    ...(atPin
-      ? []
-      : [{
-          id: crisis.value.id,
-          lat: crisis.value.latitude,
-          lng: crisis.value.longitude,
-          label: `Incident point: ${place.value}`,
-          variant: 'crisis' as const,
-          pending: crisis.value.status === 'pending',
-        }]),
-    ...crisis.value.affected.map((row) => ({
-      id: row.location.id,
-      lat: row.location.latitude,
-      lng: row.location.longitude,
-      label: `${row.location.name} (${RA_PLACE_KIND_LABEL[row.location.kind]}), affected`,
-      level: row.assessment?.rating?.residual_level ?? (row.assessment ? 'na' as const : 'none' as const),
-      variant: row.location.kind === 'branch' ? 'branch' as const : 'location' as const,
-    })),
-  ]
-})
-const circles = computed(() => (crisis.value
-  ? [{ id: crisis.value.id, lat: crisis.value.latitude, lng: crisis.value.longitude, radiusM: crisis.value.radius_m, crisis: true, pending: crisis.value.status === 'pending' }]
-  : []))
+const markers = computed(() => (crisis.value ? raCrisisMarkers(crisis.value) : []))
+const circles = computed(() => (crisis.value ? raCrisisCircles(crisis.value) : []))
 
 const openPlaces = ref<string[]>([])
 watch(() => crisis.value?.affected[0]?.location.id, (first) => {
@@ -74,16 +46,6 @@ function onMarker(markerId: number, variant: RaMapMarker['variant']) {
   nextTick(() => document.getElementById(`place-${markerId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 
-function contactsByKind(row: RaCrisisPlace) {
-  return RA_CONTACT_KINDS
-    .map((kind) => ({ ...kind, rows: row.contacts.filter((contact) => contact.kind === kind.value) }))
-    .filter((group) => group.rows.length)
-}
-
-function teamLabel(team: string) {
-  return RA_RECOVERY_TEAMS.find((item) => item.value === team)?.label ?? team
-}
-
 function assessmentUrl(row: RaCrisisPlace) {
   return raRecordPath(row.assessment!.kind, row.assessment!)
 }
@@ -94,13 +56,11 @@ function locationUrl(location: { id: number, kind: string }) {
   return locationPath(location.id)
 }
 
-function telUrl(phone: string | null | undefined) {
-  const digits = (phone ?? '').replace(/[^\d+]/g, '')
-  return digits ? `tel:${digits}` : undefined
-}
-
 function set(next: RaCrisis) {
   crisis.value = next
+  // The building map shows open and pending incidents: let it follow the approval, rejection,
+  // update or closing straight away.
+  refreshNuxtData('ra-map')
 }
 
 async function edit() {
@@ -187,6 +147,14 @@ const historyIcon: Record<string, string> = {
     ]"
   >
     <template #actions>
+      <UButton
+        v-if="crisis"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-printer"
+        label="Print view"
+        :to="crisisReportPath(crisis.id)"
+      />
       <template v-if="crisis?.can_manage">
         <template v-if="updatable">
           <UButton
@@ -333,7 +301,14 @@ const historyIcon: Record<string, string> = {
               :circles="circles"
               :label="`Map of the incident at ${place} and the ${crisis.affected.length} affected places.`"
               height-class="h-80"
+              scroll-zoom
               @select="onMarker"
+            />
+            <RaMapLegend
+              class="mt-3"
+              :items="['building', 'branch', crisis.status === 'pending' ? 'crisis_pending' : 'crisis']"
+              :labels="{ building: 'Affected head office building', branch: 'Affected branch' }"
+              :residual="`Colour: residual risk for ${crisis.hazard.short_name}`"
             />
           </UCard>
 
@@ -567,120 +542,10 @@ const historyIcon: Record<string, string> = {
                     </p>
                   </section>
 
-                  <section>
-                    <h3 class="font-medium text-highlighted">
-                      Emergency contacts
-                    </h3>
-                    <div
-                      v-if="item.row.contacts.length"
-                      class="mt-2 space-y-3 text-sm"
-                    >
-                      <div
-                        v-for="group in contactsByKind(item.row)"
-                        :key="group.value"
-                      >
-                        <p class="text-xs font-medium text-muted uppercase">
-                          {{ group.label }}
-                        </p>
-                        <ul class="mt-1 space-y-1">
-                          <li
-                            v-for="contact in group.rows"
-                            :key="`${contact.kind}-${contact.seq}`"
-                            class="flex flex-wrap gap-x-2"
-                          >
-                            <span>{{ contact.name }}</span>
-                            <span
-                              v-if="contact.floor || contact.group_name"
-                              class="text-muted"
-                            >{{ [contact.group_name, contact.floor && `floor ${contact.floor}`].filter(Boolean).join(', ') }}</span>
-                            <a
-                              v-if="telUrl(contact.phone)"
-                              :href="telUrl(contact.phone)"
-                              class="text-primary tabular-nums hover:underline"
-                            >{{ contact.phone }}</a>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                    <p
-                      v-else
-                      class="mt-2 text-sm text-muted"
-                    >
-                      None recorded. <NuxtLink
-                        :to="`${locationUrl(item.row.location)}?tab=contacts`"
-                        class="text-primary hover:underline"
-                      >Add them</NuxtLink>.
-                    </p>
-                  </section>
-
-                  <section>
-                    <div class="flex flex-wrap items-center justify-between gap-x-3">
-                      <h3 class="font-medium text-highlighted">
-                        Call tree
-                      </h3>
-                      <RaDiagramButton
-                        :kind="item.row.location.kind"
-                        diagram="call_tree"
-                        compact
-                      />
-                    </div>
-                    <ol
-                      v-if="item.row.call_tree.length"
-                      class="mt-2 space-y-1 text-sm"
-                    >
-                      <li
-                        v-for="entry in item.row.call_tree"
-                        :key="`${entry.level}-${entry.seq}`"
-                        class="flex flex-wrap gap-x-2"
-                      >
-                        <span class="text-muted">L{{ entry.level }}</span>
-                        <span>{{ entry.contact_name }}</span>
-                        <span
-                          v-if="entry.division"
-                          class="text-muted"
-                        >{{ entry.division }}</span>
-                        <a
-                          v-if="telUrl(entry.mobile)"
-                          :href="telUrl(entry.mobile)"
-                          class="text-primary tabular-nums hover:underline"
-                        >{{ entry.mobile }}</a>
-                      </li>
-                    </ol>
-                    <p
-                      v-else
-                      class="mt-2 text-sm text-muted"
-                    >
-                      None recorded.
-                    </p>
-
-                    <template v-if="item.row.recovery_team.length">
-                      <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3">
-                        <h3 class="font-medium text-highlighted">
-                          Recovery team
-                        </h3>
-                        <RaDiagramButton
-                          :kind="item.row.location.kind"
-                          diagram="recovery_team"
-                          compact
-                        />
-                      </div>
-                      <ul class="mt-2 space-y-1 text-sm">
-                        <li
-                          v-for="member in item.row.recovery_team"
-                          :key="`${member.team}-${member.seq}`"
-                          class="flex flex-wrap gap-x-2"
-                        >
-                          <span>{{ member.name }}</span>
-                          <span class="text-muted">{{ [member.role, teamLabel(member.team)].filter(Boolean).join(', ') }}</span>
-                          <a
-                            v-if="telUrl(member.mobile)"
-                            :href="telUrl(member.mobile)"
-                            class="text-primary tabular-nums hover:underline"
-                          >{{ member.mobile }}</a>
-                        </li>
-                      </ul>
-                    </template>
-                  </section>
+                  <RaCrisisContacts
+                    :place="item.row"
+                    class="lg:col-span-2"
+                  />
                 </div>
               </template>
             </UAccordion>

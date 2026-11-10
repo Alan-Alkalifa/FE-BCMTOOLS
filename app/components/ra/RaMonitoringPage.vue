@@ -90,7 +90,7 @@ const toDate = computed<CalendarDate | undefined>({
 })
 
 const LEVEL_FILTERS = [...RA_LEVELS, 'none'] as const
-const STATES = ['approved', 'draft', 'in_signoff', 'none'] as const
+const STATES = ['approved', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none'] as const
 
 const level = computed<string>({
   get: () => filters.value.level ?? 'any',
@@ -117,6 +117,8 @@ const stateItems = [
   { label: 'Any state', value: 'any' },
   { label: 'Has a final RA', value: 'approved' },
   { label: 'Draft open', value: 'draft' },
+  { label: 'Need revision', value: 'need_revision' },
+  { label: 'In revision', value: 'in_revision' },
   { label: 'In approval', value: 'in_signoff' },
   { label: 'No final RA yet', value: 'none' },
 ]
@@ -228,6 +230,8 @@ const cards = computed(() => {
     { key: 'not_assessed', label: 'No final RA yet', hint: `Active ${places.value} without a final RA`, icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' },
     { key: 'in_signoff', label: 'In approval', hint: 'RAs waiting for their signers', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'RAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' },
+    { key: 'need_revision', label: 'Need revision', hint: 'Returned, not accepted yet', icon: 'i-lucide-undo-2', value: value?.need_revision, to: { tab: 'register', state: 'need_revision' }, tone: 'error' },
+    { key: 'in_revision', label: 'In revision', hint: 'Accepted, being changed', icon: 'i-lucide-pencil-line', value: value?.in_revision, to: { tab: 'register', state: 'in_revision' }, tone: 'warning' },
   ] as const
 })
 
@@ -956,7 +960,7 @@ function record(id: number) {
                 v-if="row.original.open"
                 :to="record(row.original.open.id)"
                 class="inline-block hover:underline"
-                :aria-label="`${refLabel(row.original.open)}: ${raStatus[row.original.open.status].label}`"
+                :aria-label="`${refLabel(row.original.open)}: ${raStatus[raStatusKey(row.original.open)].label}`"
               >
                 <StatusBadge
                   :scale="raStatus"

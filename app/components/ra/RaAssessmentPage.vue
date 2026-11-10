@@ -132,9 +132,49 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
+/** The assessor accepted the return: the RA can be changed again (In revision). */
+function onAccepted(saved: RaAssessment) {
+  onSaved(saved)
+  formKey.value += 1
+}
+
 function onSaved(saved: RaAssessment) {
   assessment.value = saved
   dirty.value = false
+}
+
+const toast = useToast()
+const moving = ref(false)
+
+/** Manage, a draft on an older configuration version: move it to the active one (as SCCA's). */
+async function moveVersion() {
+  const value = assessment.value
+  if (!value?.can_move_version) return
+  if (dirty.value && !(await confirmLeave())) return
+  const ok = await confirm({
+    title: `Move this draft to ${value.latest_version}?`,
+    description: `Its tabs then use the ${value.latest_version} hazards and their descriptions, rating guides, risk matrix, statements and sign-off steps. Ratings of a hazard ${value.latest_version} no longer has, and signers who may no longer sign a step, are cleared, and you are told which.`,
+    confirmLabel: `Move to ${value.latest_version}`,
+  })
+  if (!ok) return
+  moving.value = true
+  try {
+    const moved = await raApi.moveVersion(value.id)
+    onSaved(moved)
+    await refreshFormula()
+    formKey.value += 1
+    toast.add({
+      title: `Now on ${moved.formula_version}`,
+      description: moved.cleared.length ? `Redo: ${moved.cleared.join(', ')}.` : 'Nothing had to be cleared.',
+      color: moved.cleared.length ? 'warning' : 'success',
+      icon: 'i-lucide-circle-check',
+      duration: moved.cleared.length ? 12000 : 5000,
+    })
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  } finally {
+    moving.value = false
+  }
 }
 </script>
 
@@ -288,13 +328,28 @@ function onSaved(saved: RaAssessment) {
         </template>
       </UAlert>
       <UAlert
-        v-else-if="assessment.status === 'draft' && assessment.returned_comment && tab !== 'signoff'"
-        color="warning"
+        v-if="props.section === 'manage' && assessment.can_move_version"
+        color="info"
         variant="subtle"
-        icon="i-lucide-undo-2"
-        :title="`Returned for changes by ${assessment.returned_by ?? 'a signer'}`"
-        :description="assessment.returned_comment"
-        :ui="{ description: 'whitespace-pre-line' }"
+        icon="i-lucide-file-cog"
+        :title="`This draft uses ${assessment.formula_version}. ${assessment.latest_version} is the active version.`"
+        description="It can stay on its version and be submitted as it is, or move to the active version's hazards and descriptions, rating guides, risk matrix, statements and sign-off steps."
+        data-testid="move-version"
+      >
+        <template #actions>
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="outline"
+            :loading="moving"
+            :label="`Move to ${assessment.latest_version}`"
+            @click="moveVersion"
+          />
+        </template>
+      </UAlert>
+      <RaRevisionBanner
+        :assessment="assessment"
+        @accepted="onAccepted"
       />
 
       <UTabs

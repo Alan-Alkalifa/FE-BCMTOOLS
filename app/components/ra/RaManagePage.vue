@@ -67,6 +67,8 @@ const whose = computed<'all' | 'mine'>({
 })
 
 const { data, status, error, refresh } = useRaAssessments(query)
+/** Import from Excel, as a dialog on this module's type. */
+const importOpen = ref(false)
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason || query.value.mine))
@@ -122,11 +124,11 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
       />
       <UButton
         v-if="can(ra.perm.edit)"
-        :to="LOCATION_IMPORT_PATH"
         color="neutral"
         variant="outline"
         icon="i-lucide-file-up"
         label="Import from Excel"
+        @click="importOpen = true"
       />
       <UButton
         v-if="can(ra.perm.edit)"
@@ -285,5 +287,10 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         label="Drafts"
       />
     </UCard>
+    <RaImportModal
+      v-model:open="importOpen"
+      :kind="ra.kind"
+      @imported="refresh()"
+    />
   </AppPage>
 </template>

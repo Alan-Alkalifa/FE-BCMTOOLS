@@ -3,6 +3,8 @@
  * the kind: the HO workbook (RA, office buildings) and the Cabang workbook (RA Branch).
  */
 
+import type { RaCrisis, RaMapMarker } from '~/composables/useRa'
+
 export type RaKind = 'head_office' | 'branch'
 
 export const RA_LEVELS = ['Low', 'Medium', 'High'] as const
@@ -23,18 +25,59 @@ export const raCompletion = defineStatusScale({
 })
 
 /** An RA's status, in SCCA's words and colours (`sccaStatus`): Draft, In approval, Final. A
- *  returned RA is a draft again; its page says it was returned and why. */
+ *  returned RA is a draft again (status `draft`): Need revision until its assessor accepts the
+ *  return (it can't be edited before), then In revision. */
 export type RaStatus = 'draft' | 'in_signoff' | 'approved'
 export const RA_STATUSES: RaStatus[] = ['draft', 'in_signoff', 'approved']
-export const raStatus = defineStatusScale<RaStatus>({
+/** A returned draft: waiting for its assessor to accept the return, or accepted. */
+export type RaRevisionState = 'need_revision' | 'in_revision'
+/** What a status badge shows: the status, or Need revision / In revision for a returned draft. */
+export type RaStatusKey = RaStatus | RaRevisionState
+export const raStatus = defineStatusScale<RaStatusKey>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  need_revision: { label: 'Need revision', color: 'error', icon: 'i-lucide-undo-2' },
+  in_revision: { label: 'In revision', color: 'warning', icon: 'i-lucide-pencil-line' },
   in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
   approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
 })
 
-/** The scale key of an RA's status (a returned RA is a draft). */
-export function raStatusKey(item: { status: RaStatus }): RaStatus {
-  return item.status
+/** The scale key of an RA's status: Need revision / In revision for a returned draft. */
+export function raStatusKey(item: { status: RaStatus, is_returned?: boolean, revision_state?: RaRevisionState | null }): RaStatusKey {
+  if (item.status !== 'draft') return item.status
+  return item.revision_state ?? (item.is_returned ? 'in_revision' : 'draft')
+}
+
+/** As SCCA's New application: a New building's assessment date can be earlier than today (back
+ *  date), but not in an earlier year (no back year). The API says the same. */
+export function raNewBuildingDateProblem(reason: string | null | undefined, date: string | null | undefined, todayIso = raTodayIso()) {
+  if (reason !== 'new_building' || !date) return null
+  const year = todayIso.slice(0, 4)
+  return date.slice(0, 4) < year
+    ? `A new building's assessment date can be earlier this year, but not before 1 Jan ${year}.`
+    : null
+}
+
+export const RA_PHONE_EXAMPLE = '0813 1226 2739'
+
+/** The location incident team's mobile numbers (LIC, LICOM) are phone numbers, never a note
+ *  (the recovery team and call tree take notes instead): digits with spaces, brackets, dots or
+ *  dashes and an optional leading +, 8 to 15 digits. The API checks the same. */
+export function raPhoneProblem(value: string | null | undefined) {
+  const text = (value ?? '').trim()
+  if (!/^\+?[0-9 ().-]+$/.test(text)) return `Use digits only, e.g. ${RA_PHONE_EXAMPLE}. Spaces, + ( ) and - are allowed.`
+  const digits = text.replace(/\D/g, '').length
+  if (digits < 8 || digits > 15) return `A phone number has 8 to 15 digits, e.g. ${RA_PHONE_EXAMPLE}.`
+  return null
+}
+
+/** A number to prefill (a profile's mobile), or '' when it isn't a phone number ("-"). */
+export function raPhoneOrEmpty(value: string | null | undefined) {
+  return value && !raPhoneProblem(value) ? value.trim() : ''
+}
+
+/** Today in WIB, as YYYY-MM-DD. */
+export function raTodayIso() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
 }
 
 /** A status column: the badges centred under a centred header (as SCCA's lists). */
@@ -379,6 +422,9 @@ export const RA_RECOVERY_TEAMS = [
 ] as const
 export type RaRecoveryTeam = (typeof RA_RECOVERY_TEAMS)[number]['value']
 
+/** What a map legend (RaMapLegend) can list: the same symbols the map draws. */
+export type RaMapLegendItem = 'building' | 'branch' | 'waiting' | 'rejected' | 'crisis' | 'crisis_pending' | 'quake'
+
 /** LCP-Call Tree. */
 export const RA_CALL_TREE_LEVELS = [
   { value: 1, label: 'Level 1', description: 'The LICOM contacts the LIC, heads of division and the BCM facilitator.' },
@@ -674,6 +720,9 @@ export const BUILDINGS_GROUP = 'Location'
 export const LOCATIONS_PATH = '/locations'
 /** Import from Excel: a building and its RA from the HO or Cabang workbook. */
 export const LOCATION_IMPORT_PATH = '/locations/import'
+
+/** Where one file of Import from Excel stands (`RaImportFileCard`). */
+export type RaImportCardStatus = 'reading' | 'unreadable' | 'wrong_type' | 'ready' | 'importing' | 'imported' | 'failed'
 export const LOCATION_MAP_PATH = '/locations/map'
 export const CRISES_PATH = '/crises'
 export const GUIDEBOOK_PATH = '/crises/guidebook'
@@ -685,6 +734,47 @@ export function locationPath(id: number, tab?: string) {
 
 export function crisisPath(id: number) {
   return `${CRISES_PATH}/${id}`
+}
+
+/** An incident's print view. */
+export function crisisReportPath(id: number) {
+  return `${crisisPath(id)}/report`
+}
+
+/** Where an incident happened: its building or branch, or the pin's coordinates. */
+export function raCrisisPlaceName(crisis: RaCrisis) {
+  return crisis.location?.name ?? raFormatCoordinates({ lat: crisis.latitude, lng: crisis.longitude })
+}
+
+/** An incident's map: its point (unless it is at a building's pin, shown by the ring) and the
+ *  affected places, coloured by their residual risk for the hazard. */
+export function raCrisisMarkers(crisis: RaCrisis): RaMapMarker[] {
+  const atPin = crisis.affected.some((row) => row.distance_m === 0)
+  return [
+    ...(atPin
+      ? []
+      : [{
+          id: crisis.id,
+          lat: crisis.latitude,
+          lng: crisis.longitude,
+          label: `Incident point: ${raCrisisPlaceName(crisis)}`,
+          variant: 'crisis' as const,
+          pending: crisis.status === 'pending',
+        }]),
+    ...crisis.affected.map((row) => ({
+      id: row.location.id,
+      lat: row.location.latitude,
+      lng: row.location.longitude,
+      label: `${row.location.name} (${RA_PLACE_KIND_LABEL[row.location.kind]}), affected`,
+      level: row.assessment?.rating?.residual_level ?? (row.assessment ? 'na' as const : 'none' as const),
+      variant: row.location.kind === 'branch' ? 'branch' as const : 'location' as const,
+    })),
+  ]
+}
+
+/** An incident's affected area. */
+export function raCrisisCircles(crisis: RaCrisis) {
+  return [{ id: crisis.id, lat: crisis.latitude, lng: crisis.longitude, radiusM: crisis.radius_m, crisis: true, pending: crisis.status === 'pending' }]
 }
 
 /** The register's type badge: head office building or branch. */

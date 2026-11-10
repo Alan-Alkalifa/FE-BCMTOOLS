@@ -531,6 +531,7 @@ export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: Ac
   assessment_submitted: { label: 'Submitted for approval', icon: 'i-lucide-send', tone: 'info' },
   step_approved: { label: 'Step approved', icon: 'i-lucide-circle-check', tone: 'success' },
   assessment_returned: { label: 'Returned for changes', icon: 'i-lucide-undo-2', tone: 'warning' },
+  revision_accepted: { label: 'Accepted the revision', icon: 'i-lucide-check', tone: 'info' },
   signer_changed: { label: 'Signer changed by BCM', icon: 'i-lucide-user-round-cog', tone: 'warning' },
   approved_on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', tone: 'warning' },
   incident_declared: { label: 'Incident declared', icon: 'i-lucide-siren', tone: 'error' },

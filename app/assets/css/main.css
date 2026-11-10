@@ -96,6 +96,17 @@ body {
   .break-inside-avoid {
     break-inside: avoid;
   }
+
+  /* Maps and legends keep their colours on paper; the zoom buttons don't print. */
+  .ra-map,
+  [aria-label="Map legend"] {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .ra-map .leaflet-control-zoom {
+    display: none;
+  }
 }
 
 /* A map marker's approval badge (utils/ra-map-symbols.ts raPinHtml): on the map's markers and

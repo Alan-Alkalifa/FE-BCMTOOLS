@@ -19,6 +19,11 @@ const saving = useRaSaving()
 const formError = ref<string | null>(null)
 const snapshot = ref('')
 
+// A mobile number: required, and a phone number (raPhoneProblem), as the API checks.
+const phoneField = (message: string) => z.string().trim().min(1, message).superRefine((value, context) => {
+  const problem = value ? raPhoneProblem(value) : null
+  if (problem) context.addIssue({ code: 'custom', message: problem })
+})
 const schema = z.object({
   period_year: z.number('Enter the RA period.').int().min(2000).max(2100),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
@@ -26,10 +31,16 @@ const schema = z.object({
   reason: z.string('Choose the reason for this assessment.').nullable(),
   // The LIC is the assessor (who made the RA): shown, never picked or sent.
   lic_user_id: z.number().nullable(),
-  lic_phone: z.string().trim().min(1, 'Enter the LIC mobile number.'),
+  lic_phone: phoneField('Enter the LIC mobile number.'),
   licom_user_id: z.number('Choose the LICOM.'),
-  licom_phone: z.string().trim().min(1, 'Enter the LICOM mobile number.'),
+  licom_phone: phoneField('Enter the LICOM mobile number.'),
 }).superRefine((value, context) => {
+  // As SCCA's New application: a New building can be back-dated, not to an earlier year. Only
+  // when the date or the reason changes, so a draft kept from an earlier year still saves.
+  if (value.assessment_date !== (props.assessment.assessment_date ?? '') || value.reason !== (props.assessment.reason ?? null)) {
+    const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
+    if (backYear) context.addIssue({ code: 'custom', path: ['assessment_date'], message: backYear })
+  }
   // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {

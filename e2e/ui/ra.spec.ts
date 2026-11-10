@@ -712,35 +712,81 @@ test('a division that is not listed yet is added with its MTD and rating', async
   expect(sent.at(-1)).toMatchObject({ division_id: 202, unit_name: 'Treasury Operations', mtd: '12-24 hours' })
 })
 
-test('the recovery team needs every field but the home phone on a filled row', async ({ page }) => {
+test('the recovery team writes a role once for its people, takes notes and needs the role, name and mobile', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/1?tab=team')
   await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Add member to Core Support Team' }).click()
-  await page.getByRole('textbox', { name: 'Role, Core Support Team row 8' }).fill('Legal')
-  await page.getByRole('button', { name: 'Save recovery team' }).click()
-  await expect(page.getByText('Enter the name and mobile, or remove this row.')).toBeVisible()
+  // As in the workbook: SPAPM is written once, above its two people.
+  const spapm = page.getByRole('region', { name: 'Role 1, Damage Assessment Team (DAT)' })
+  await expect(spapm.getByRole('textbox', { name: 'Role 1, Damage Assessment Team (DAT)' })).toHaveValue('SPAPM')
+  await expect(spapm.getByRole('textbox', { name: /^Name,/ })).toHaveCount(2)
+  // Security has a note instead of a person.
+  const security = page.getByRole('region', { name: 'Role 6, Emergency Response Team (ERT)' })
+  await expect(security.getByRole('textbox', { name: /^Name,/ })).toHaveValue('(Sesuai Shift)')
 
-  await page.getByRole('textbox', { name: 'Name, Core Support Team row 8' }).fill('Dewi')
-  await page.getByRole('textbox', { name: 'Mobile, Core Support Team row 8' }).fill('0812 3456 7890')
+  await page.getByRole('button', { name: 'Add role to Core Support Team' }).click()
+  await page.getByRole('textbox', { name: 'Name, Core Support Team role 4 row 1' }).fill('Dewi')
+  await page.getByRole('button', { name: 'Save recovery team' }).click()
+  await expect(page.getByText('Enter the role, or remove it.')).toBeVisible()
+  expect(log.lists['recovery-team']).toBeUndefined()
+
+  await expect(page.getByText('Enter the mobile, or remove this row.')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Role 4, Core Support Team' }).fill('Legal')
+  // The mobile can be a note too.
+  await page.getByRole('textbox', { name: 'Mobile, Core Support Team role 4 row 1' }).fill('Sesuai dokumen BCP masing-masing')
+  await page.getByRole('button', { name: 'Add member for role 4, Core Support Team' }).click()
+  await page.getByRole('textbox', { name: 'Mobile, Core Support Team role 4 row 2' }).fill('Ext. 2101')
+  await page.getByRole('button', { name: 'Save recovery team' }).click()
+  await expect(page.getByText('Enter the name, or remove this row.')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Name, Core Support Team role 4 row 2' }).fill('(Sesuai jadwal piket)')
   await page.getByRole('button', { name: 'Save recovery team' }).click()
   await expect(page.getByText('Recovery team saved').first()).toBeVisible()
-  const members = log.lists['recovery-team']?.[0]?.members as { team: string, name: string }[]
-  expect(members).toHaveLength(26)
-  expect(members.at(-1)).toMatchObject({ team: 'core_support_team', role: 'Legal', name: 'Dewi', mobile: '0812 3456 7890', home_phone: null })
+  const members = log.lists['recovery-team']?.[0]?.members as Record<string, unknown>[]
+  expect(members).toHaveLength(27)
+  expect(members.slice(-2)).toEqual([
+    { team: 'core_support_team', role: 'Legal', name: 'Dewi', mobile: 'Sesuai dokumen BCP masing-masing', home_phone: null },
+    { team: 'core_support_team', role: 'Legal', name: '(Sesuai jadwal piket)', mobile: 'Ext. 2101', home_phone: null },
+  ])
+  expect(members.filter((member) => member.role === 'SPAPM' && member.team === 'damage_assessment_team')).toHaveLength(2)
 })
 
-test('the call tree saves each contact with its level', async ({ page }) => {
+test('the call tree writes a caller once for everyone they call and takes notes', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto('/locations/1?tab=calltree')
   await expect(page.getByRole('heading', { name: 'Level 3 call tree' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: 'Remove Level 1 call tree row 1', exact: true }).click()
+  // Level 1 has one caller for its ten contacts, written once.
+  const first = page.getByRole('region', { name: 'Caller 1, Level 1 call tree' })
+  await expect(first.getByRole('textbox', { name: 'Caller 1, Level 1 call tree' })).toHaveValue('Albert Suhandinata / Crispina Arumardi (Alt.)')
+  await expect(first.getByRole('textbox', { name: /^Contact,/ })).toHaveCount(10)
+  await expect(page.getByRole('region', { name: /, Level 1 call tree$/ })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Remove Level 1 call tree caller 1 row 1', exact: true }).click()
+
+  // A note as the contact and the mobile, under the Core Support Team caller of level 3.
+  await page.getByRole('button', { name: 'Add contact for caller 3, Level 3 call tree' }).click()
+  await page.getByRole('textbox', { name: 'Contact, Level 3 call tree caller 3 row 7' }).fill('Pihak Internal (diluar gedung)')
+  await page.getByRole('textbox', { name: 'Division or role, Level 3 call tree caller 3 row 7' }).fill('(Jika ada)')
+  await page.getByRole('button', { name: 'Save call tree' }).click()
+  await expect(page.getByText('Enter the mobile, or remove this row.')).toBeVisible()
+  expect(log.lists['call-tree']).toBeUndefined()
+  await page.getByRole('textbox', { name: 'Mobile, Level 3 call tree caller 3 row 7' }).fill('(Jika ada)')
+  // A caller with no one to call is refused.
+  await page.getByRole('button', { name: 'Add caller to Level 2 call tree' }).click()
+  await page.getByRole('textbox', { name: 'Caller 5, Level 2 call tree' }).fill('BCM')
+  await page.getByRole('button', { name: 'Remove Level 2 call tree caller 5 row 1' }).click()
+  await page.getByRole('button', { name: 'Save call tree' }).click()
+  await expect(page.getByText('Add a contact for this caller, or remove it.')).toBeVisible()
+  await page.getByRole('button', { name: 'Remove caller 5, Level 2 call tree' }).click()
+
   await page.getByRole('button', { name: 'Save call tree' }).click()
   await expect(page.getByText('Call tree saved').first()).toBeVisible()
-  const entries = log.lists['call-tree']?.[0]?.entries as { level: number, contact_name: string }[]
-  expect(entries).toHaveLength(38)
-  expect(entries[0]).toMatchObject({ level: 1, contact_name: 'D-1 Level TAJINDRA PAL SINGH' })
-  expect(entries.filter((entry) => entry.level === 3)).toHaveLength(17)
+  const entries = log.lists['call-tree']?.[0]?.entries as Record<string, unknown>[]
+  expect(entries).toHaveLength(39)
+  expect(entries[0]).toMatchObject({ level: 1, caller: 'Albert Suhandinata / Crispina Arumardi (Alt.)', contact_name: 'D-1 Level TAJINDRA PAL SINGH' })
+  const levelThree = entries.filter((entry) => entry.level === 3)
+  expect(levelThree).toHaveLength(18)
+  expect(levelThree.filter((entry) => entry.caller === 'Core Support Team').at(-1)).toEqual({
+    level: 3, caller: 'Core Support Team', contact_name: 'Pihak Internal (diluar gedung)', division: '(Jika ada)', mobile: '(Jika ada)', home_phone: null,
+  })
 })
 
 test('the recovery team and call tree tabs open their charts, also without edit rights', async ({ page }) => {
@@ -910,10 +956,22 @@ test('the location incident team is required', async ({ page }) => {
   await phone.fill('')
   await page.getByRole('button', { name: 'Save assessment' }).click()
   await expect(page.getByText('Enter the LIC mobile number.')).toBeVisible()
+  // A mobile number is a phone number, never text (unlike the call tree's).
+  await phone.fill('Sesuai dokumen BCP')
+  await expect(page.getByText('Use digits only, e.g. 0813 1226 2739. Spaces, + ( ) and - are allowed.')).toBeVisible()
+  await phone.fill('0812')
+  await expect(page.getByText('A phone number has 8 to 15 digits, e.g. 0813 1226 2739.')).toBeVisible()
+  await page.getByRole('button', { name: 'Save assessment' }).click()
   expect(saved).toBe(false)
+  await phone.fill('+62 812-0000-1111')
+  await expect(page.getByText('A phone number has 8 to 15 digits')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  await expect.poll(() => saved).toBe(true)
 })
 
 test('the assessment date is picked from a calendar; the renewal follows it', async ({ page }) => {
+  // The sample is a 2025 New building: picked in 2025, when it may still move within the year.
+  await page.clock.setFixedTime(new Date('2025-12-31T05:00:00Z'))
   await mockRa(page)
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
@@ -937,6 +995,71 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   const body = (await request).postDataJSON()
   expect(body).toMatchObject({ assessment_date: '2025-03-17', period_year: 2025, reason: 'new_building' })
   expect(body).not.toHaveProperty('due_date')
+})
+
+test('a new building can be back-dated this year, not to an earlier year, as SCCA\'s new application', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-06T05:00:00Z'))
+  await mockRa(page)
+  // On the Details tab: the 2025 New building moved to another 2025 date is refused.
+  await page.goto('/ra/manage/1')
+  const date = page.getByRole('button', { name: 'Assessment date' })
+  await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  await date.click()
+  await page.getByRole('gridcell', { name: /17/ }).first().click()
+  let saved = false
+  page.on('request', (r) => {
+    if (r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1')) saved = true
+  })
+  await page.getByRole('button', { name: 'Save assessment' }).click()
+  await expect(page.getByText('A new building\'s assessment date can be earlier this year, but not before 1 Jan 2026.')).toBeVisible()
+  expect(saved).toBe(false)
+
+  // On New assessment: the help says it, and the calendar starts on 1 January.
+  await page.goto('/ra/manage/new')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /New building/ }).click()
+  await expect(page.getByText('A new building can be dated earlier this year, not in an earlier year.')).toBeVisible()
+})
+
+test('a draft on an older configuration version moves to the active one, as SCCA\'s', async ({ page }) => {
+  const log = await mockRa(page, { oldVersion: true })
+  await page.goto('/ra/manage/1')
+  const note = page.getByTestId('move-version')
+  await expect(note).toContainText('This draft uses 2025-r4. 2025-r5 is the active version.', { timeout: 60_000 })
+  await note.getByRole('button', { name: 'Move to 2025-r5' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Move this draft to 2025-r5?' })
+  await expect(dialog).toContainText('hazards and their descriptions')
+  await dialog.getByRole('button', { name: 'Move to 2025-r5' }).click()
+  await expect(page.getByText('Now on 2025-r5').first()).toBeVisible()
+  await expect(page.getByText('Redo: Ratings of H33 (Kebakaran Besar).').first()).toBeVisible()
+  await expect(note).toHaveCount(0)
+  expect(log.workflow).toContain('move-version')
+
+  // Monitoring only reads: no move there.
+  await mockRa(page, { oldVersion: true })
+  await page.goto('/ra/monitoring/1')
+  await expect(page.getByText('Monitoring is read-only')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('move-version')).toHaveCount(0)
+})
+
+test('Monitoring splits returned RAs into Need revision and In revision', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/monitoring')
+  const need = page.getByRole('link', { name: /Need revision/ }).first()
+  await expect(need).toContainText('Returned, not accepted yet', { timeout: 60_000 })
+  await expect(need).toContainText('0')
+  const card = page.getByRole('link', { name: /In revision/ }).first()
+  await expect(card).toContainText('Accepted, being changed')
+  await expect(card).toContainText('1')
+  await card.click()
+  await expect(page).toHaveURL(/tab=register/)
+  await expect(page).toHaveURL(/state=in_revision/)
+  const row = page.getByRole('table').getByRole('row', { name: /Griya CIMB Niaga 2/ })
+  await expect(row.getByRole('link', { name: /: In revision$/ })).toBeVisible()
+  // Both are in the State filter.
+  await page.getByLabel('State', { exact: true }).click()
+  await expect(page.getByRole('option', { name: 'Need revision' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'In revision' })).toBeVisible()
 })
 
 test('picking the LICOM from the users makes them the Reviewed by signer', async ({ page }) => {
@@ -1200,8 +1323,19 @@ test('submitting, approving and returning an assessment', async ({ page }) => {
   await dialog.getByRole('textbox', { name: /Comment/ }).fill('Floor wardens are out of date.')
   await expect(dialog.getByText('Say what needs to change.')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Return to draft' }).click()
-  await expect(page.getByText(/Returned for changes by Test User/)).toBeVisible()
   expect(log.signoff.at(-1)).toEqual(['return', { comment: 'Floor wardens are out of date.' }])
+  // Need revision: locked until the assessor accepts the return.
+  const banner = page.getByTestId('revision-banner')
+  await expect(banner).toContainText('Need revision: returned by Test User')
+  await expect(banner).toContainText('Floor wardens are out of date.')
+  await expect(banner).toContainText('Accept the revision to make changes.')
+  await expect(page.getByRole('button', { name: 'Submit for approval' })).toHaveCount(0)
+  await banner.getByRole('button', { name: 'Accept revision' }).click()
+  await expect(page.getByText('Revision accepted').first()).toBeVisible()
+  expect(log.signoff.at(-1)).toEqual(['accept-revision', null])
+  await expect(banner).toContainText('In revision: returned by Test User')
+  await expect(banner).toContainText('Accepted by Test User')
+  await expect(page.getByText('Accepted the revision').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeEnabled()
 })
 
@@ -1324,9 +1458,10 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
   await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()
   await expect(table.getByRole('link', { name: 'RA-2025-0001' })).toHaveCount(0)
-  // Open RA: the status of the RA being worked on, in SCCA's words (a returned RA is a draft).
+  // Open RA: the status of the RA being worked on, in SCCA's words; a returned one the assessor
+  // accepted is In revision.
   const row = table.getByRole('row', { name: /Griya CIMB Niaga 2/ })
-  await expect(row.getByRole('link', { name: /: Draft$/ })).toHaveAttribute('href', '/ra/monitoring/99')
+  await expect(row.getByRole('link', { name: /: In revision$/ })).toHaveAttribute('href', '/ra/monitoring/99')
   await expect(row).not.toContainText('Returned')
   // The building's ID in its own column, as SCCA's Application code.
   await expect(row.getByText('RA-HQ-0001', { exact: true })).toBeVisible()

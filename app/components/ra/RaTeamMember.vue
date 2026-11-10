@@ -43,7 +43,7 @@ const help = computed(() =>
 function onPicked(picked: RaUserRef | null) {
   const changed = picked?.id !== user.value?.id
   user.value = picked
-  if (changed) phone.value = picked?.mobile_phone ?? ''
+  if (changed) phone.value = raPhoneOrEmpty(picked?.mobile_phone)
 }
 </script>
 

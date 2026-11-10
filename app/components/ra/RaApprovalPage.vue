@@ -106,9 +106,11 @@ function openReview(_event: Event, row: { original: { id: number } }) {
 
 // --- my history -----------------------------------------------------------------------------
 
-const ACTIONS: RaHistoryAction[] = ['approved', 'returned', 'submitted', 'on_behalf', 'reassigned']
-const action = computed<RaHistoryAction | 'all'>({
-  get: () => (ACTIONS.includes(route.query.action as RaHistoryAction) ? route.query.action as RaHistoryAction : 'all'),
+// The actions My history filters by (accepting a revision isn't one: it isn't a sign-off step).
+const ACTIONS = ['approved', 'returned', 'submitted', 'on_behalf', 'reassigned'] as const
+type HistoryFilter = (typeof ACTIONS)[number]
+const action = computed<HistoryFilter | 'all'>({
+  get: () => (ACTIONS.includes(route.query.action as HistoryFilter) ? route.query.action as HistoryFilter : 'all'),
   set: (value) => setQuery({ action: value === 'all' ? undefined : value, page: undefined }),
 })
 const historyPage = pageOf('history')
@@ -133,6 +135,7 @@ const raAction = defineStatusScale<RaHistoryAction>({
   returned: { label: 'Returned', color: 'warning', icon: 'i-lucide-undo-2' },
   submitted: { label: 'Submitted', color: 'info', icon: 'i-lucide-send' },
   reassigned: { label: 'Signer changed', color: 'warning', icon: 'i-lucide-user-round-cog' },
+  accepted: { label: 'Accepted the revision', color: 'info', icon: 'i-lucide-check' },
 })
 /** The row's badge: an approval BCM gave for someone shows as "Approved on behalf". */
 function historyKind(row: RaHistoryRow): RaHistoryAction {

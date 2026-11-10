@@ -274,8 +274,13 @@ async function onSubmit() {
               :selected="state.location_id ?? null"
               label="Map for the incident point. Click to drop the pin, or select a building or branch."
               height-class="h-72"
+              scroll-zoom
               @select="(id: number) => choosePlace(id)"
               @ready="showArea"
+            />
+            <RaMapLegend
+              :items="['building', 'branch', 'crisis']"
+              :labels="{ crisis: 'Incident point and its affected area' }"
             />
             <p class="text-sm text-muted">
               <template v-if="state.pin">

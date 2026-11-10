@@ -34,6 +34,9 @@ const quakes = computed(() => quakeList.value?.items ?? [])
 let quakeTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
+  // The map data is shared with the incident page (the same key): read it again on arrival, so
+  // an incident approved, rejected or closed meanwhile is shown as it stands now.
+  if (data.value) refresh()
 })
 onBeforeUnmount(() => clearInterval(quakeTimer))
 
@@ -48,9 +51,21 @@ function quakeLabel(quake: RaEarthquake) {
   return `Earthquake M${raFormatMagnitude(quake.magnitude)}, ${formatDateTime(quake.occurred_at)}: ${quake.region ?? 'BMKG'}`
 }
 
-function selectQuake(quake: RaEarthquake) {
+/** The map shows every place until the user picks an earthquake or a place: from then on it
+ *  stays where they put it, also when the selected ring changes or the earthquakes are read
+ *  again, instead of zooming back out to everything. */
+const autoFit = ref(true)
+
+/** Select an earthquake and zoom the map to it: its epicentre with the alert radius around it.
+ *  `scroll`: bring the map into view first (from the list under it, or the email's link). */
+function selectQuake(quake: RaEarthquake, scroll = false) {
+  autoFit.value = false
   showQuakes.value = true
   selectedQuakeId.value = quake.id
+  if (scroll) {
+    const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  }
   const radius = (quakeList.value?.alert_radius_km ?? 100) * 1000
   const dLat = radius / 111_320
   const dLng = radius / (111_320 * Math.cos((quake.latitude * Math.PI) / 180))
@@ -63,7 +78,7 @@ function selectQuake(quake: RaEarthquake) {
 // Opened from the email (?quake=3): show it once the list and the map are there.
 watch([quakes, mapRef], ([items, map]) => {
   const quake = items.find((item) => item.id === selectedQuakeId.value)
-  if (quake && map) nextTick(() => selectQuake(quake))
+  if (quake && map) nextTick(() => selectQuake(quake, true))
 }, { once: true })
 
 async function declareFromQuake(quake: RaEarthquake) {
@@ -118,6 +133,7 @@ const selectedId = computed<number | null>({
 const selected = computed(() => byId(selectedId.value))
 
 function select(id: number) {
+  autoFit.value = false
   selectedId.value = id
   const place = byId(id)
   if (place) mapRef.value?.focus(pinOf(place))
@@ -125,6 +141,7 @@ function select(id: number) {
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
   if (variant === 'crisis') return navigateTo(crisisPath(Number(id)))
+  autoFit.value = false
   if (variant === 'quake') {
     const quake = quakes.value.find((item) => item.id === id)
     if (quake) selectQuake(quake)
@@ -392,53 +409,20 @@ const canOpenRa = useCanOpenRa()
           </div>
 
           <RaMap
+            id="building-map"
             ref="map"
             :markers="markers"
             :circles="circles"
             :line="line"
             :selected="selectedId"
+            :auto-fit="autoFit"
             label="Map of the head office buildings and branches. Select a place for its details."
             height-class="h-[32rem]"
             :scroll-zoom="scrollZoom"
             @select="onMarker"
           />
 
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <!-- The same symbols the map draws (RaMapSymbol). -->
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="building"
-              class="text-muted"
-            /> Head office building</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="branch"
-              class="text-muted"
-            /> Branch</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="waiting"
-              class="mr-1 text-muted"
-            /> Waiting for approval (new, or to deactivate)</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="rejected"
-              class="mr-1 text-muted"
-            /> Rejected</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="crisis"
-              class="text-error"
-            /> Incident and its affected area</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="crisis"
-              class="text-warning"
-            /> Incident waiting for approval (dashed area)</span>
-            <span class="flex items-center gap-1"><RaMapSymbol
-              name="quake"
-              class="text-warning"
-            /> Earthquake (BMKG), red from M6.0; dotted: its alert radius</span>
-            <span>Colour: latest residual risk</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-error" />High</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-warning" />Medium</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-info" />Low</span>
-            <span class="flex items-center gap-1"><span class="size-2.5 rounded-full bg-muted ring-1 ring-default" />No RA yet</span>
-          </div>
+          <RaMapLegend />
 
           <p class="text-xs text-muted">
             Earthquake data: {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.
@@ -674,7 +658,7 @@ const canOpenRa = useCanOpenRa()
         :list="quakeList"
         :error="quakeError"
         :selected-id="selectedQuakeId"
-        @select="selectQuake"
+        @select="(quake) => selectQuake(quake, true)"
         @declare="declareFromQuake"
       />
 
