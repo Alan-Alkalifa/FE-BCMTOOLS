@@ -74,15 +74,28 @@ jobs:
       - name: Install Chromium
         # The browser comes from Playwright's CDN. Its system packages come from apt, whose Ubuntu
         # mirrors are sometimes unreachable from the runner ("Temporary failure resolving
-        # archive.ubuntu.com"); the runner image already ships Chrome's libraries, so after two
-        # tries the job goes on with a warning and the tests show if anything is really missing.
+        # archive.ubuntu.com"); the runner image already ships Chrome's libraries (only some fonts
+        # are missing), so the job goes on with a warning and the tests show if anything is really
+        # missing. With DNS down apt hangs for minutes instead of failing, so: skip apt outright
+        # when the mirror doesn't resolve, make apt give up fast, and cap each attempt with
+        # `timeout` so the fallback is always reached before the step's own timeout
+        # (worst case ~2 min download + 2 x 4 min + 20 s < 12 min).
         timeout-minutes: 12
         run: |
           npx playwright install chromium
+
+          if ! getent hosts archive.ubuntu.com >/dev/null; then
+            echo "::warning::Ubuntu mirrors unresolvable; skipped Chromium's system packages, using the runner image's."
+            exit 0
+          fi
+
+          printf 'Acquire::Retries "0";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99ci-fast-fail >/dev/null
+
           for attempt in 1 2; do
-            if npx playwright install-deps chromium; then exit 0; fi
-            echo "install-deps attempt $attempt failed"
-            sleep 30
+            if timeout --kill-after=15s 4m npx playwright install-deps chromium; then exit 0; fi
+            echo "install-deps attempt $attempt failed or timed out"
+            sleep 20
           done
           echo "::warning::Couldn't install Chromium's system packages (apt unreachable); using the runner image's."
       - run: npx playwright test --project=ui
