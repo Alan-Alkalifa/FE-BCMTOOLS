@@ -4,8 +4,10 @@ import type { RaLocationDetail } from '~/composables/useRa'
 /**
  * Building Data Entry: add a head office building or a branch. The type comes from the link
  * (`?type=branch`, e.g. from RA Branch > New assessment), otherwise the user picks it in the
- * form; every field follows it.
+ * form; every field follows it. `master`: opened from Administration › Master building, where the
+ * saved building then opens.
  */
+const props = defineProps<{ master?: boolean }>()
 const route = useRoute()
 
 /** RA and RA Branch are granted separately: someone who adds only branches (or only head office
@@ -29,7 +31,7 @@ const forAssessment = computed(() => route.query.then === 'assessment')
 function onSaved(location: RaLocationDetail) {
   return navigateTo(forAssessment.value
     ? { path: raPath(location.kind, 'manage', 'new'), query: { location_id: location.id } }
-    : locationPath(location.id, 'contacts'))
+    : buildingPath(location.id, props.master, 'contacts'))
 }
 </script>
 
@@ -38,8 +40,9 @@ function onSaved(location: RaLocationDetail) {
     title="Building Data Entry"
     icon="i-lucide-building"
     :crumbs="[
-      { label: BUILDINGS_GROUP },
-      { label: 'Buildings', to: LOCATIONS_PATH },
+      ...(props.master
+        ? [{ label: 'Administration' }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }]
+        : [{ label: BUILDINGS_GROUP }, { label: 'Buildings', to: LOCATIONS_PATH }]),
       { label: 'Building Data Entry' },
     ]"
   >
@@ -50,7 +53,7 @@ function onSaved(location: RaLocationDetail) {
       <RaLocationForm
         v-model:kind="chosen"
         :kind-locked="Boolean(fixedType)"
-        :cancel-to="forAssessment ? raPath(kind, 'manage', 'new') : LOCATIONS_PATH"
+        :cancel-to="forAssessment ? raPath(kind, 'manage', 'new') : props.master ? MASTER_BUILDINGS_PATH : LOCATIONS_PATH"
         @saved="onSaved"
       />
     </div>

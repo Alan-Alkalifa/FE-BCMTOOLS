@@ -106,10 +106,18 @@ function fromLocation(location?: RaLocationDetail): State {
     sub_directorate: location?.sub_directorate ?? '',
     org_group: location?.org_group ?? '',
     org_level: location?.org_level ?? '',
-    // Cleared while its deactivation waits for approval; ticking it again withdraws that.
-    is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
+    // Cleared while its deactivation waits for approval; ticking it again withdraws that. A new
+    // building waiting for approval isn't active yet: approving it ticks it.
+    is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate' && !isNewAndWaiting(location),
   }
 }
+
+/** A new building waiting for approval: Active stays unticked (and locked) until the building
+ *  approver signs its RA or someone approves it on the building page. */
+function isNewAndWaiting(location?: RaLocationDetail | null) {
+  return location?.approval?.status === 'pending' && location.approval.action !== 'deactivate'
+}
+const waitingApproval = computed(() => isNewAndWaiting(props.location))
 
 const state = reactive<State>(fromLocation(props.location))
 
@@ -205,9 +213,11 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, ...fields } = state
+    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, is_active: isActive, ...fields } = state
     const body = blankToNull({
       ...fields,
+      // Locked while a new building waits for approval: approving it makes it active.
+      ...(waitingApproval.value ? {} : { is_active: isActive }),
       name: state.name.trim(),
       // Cleared, the capacity is sent as null.
       onsite_capacity: state.onsite_capacity ?? null,
@@ -448,11 +458,14 @@ async function onSubmit() {
             <UFormField
               v-if="location"
               name="is_active"
-              :help="`Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history. Making it inactive waits for someone else's approval.`"
+              :help="waitingApproval
+                ? `A new ${ra.location.lower} becomes active once it is approved: when the building approver signs its RA, or someone approves it on this page.`
+                : `Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history. Making it inactive waits for someone else's approval.`"
             >
               <UCheckbox
                 v-model="state.is_active"
                 label="Active"
+                :disabled="waitingApproval"
               />
             </UFormField>
           </div>

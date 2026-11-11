@@ -48,6 +48,8 @@ export interface RaFormula {
   levels: RaLevel[]
   signoff_statement_en?: string | null
   risk_summary_note_en?: string | null
+  /** The building approver card on an RA whose building waits for approval. */
+  building_pending_note_en?: string | null
   hazard_intro?: string | null
   type_description?: string | null
   categories: RaCategory[]
@@ -242,7 +244,7 @@ export interface RaCallTreeEntry {
 
 export interface RaLocationRef {
   id: number
-  /** The building's permanent ID: RA-HQ-0001 (head office) or RA-BR-0001 (branch). */
+  /** The building's permanent ID: HO-0001 (head office) or BR-0001 (branch). */
   code?: string | null
   kind: RaKind
   name: string

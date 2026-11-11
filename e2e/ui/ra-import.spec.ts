@@ -10,7 +10,7 @@ const MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const WORKBOOK = { name: 'Griya.xlsx', mimeType: MIME, buffer: Buffer.from('PK workbook') }
 const workbook = (name: string) => ({ name, mimeType: MIME, buffer: Buffer.from(`PK ${name}`) })
 const REGISTERED = {
-  id: 7, code: 'RA-HQ-0007', name: 'Griya CIMB Niaga 2', address: 'Jl. Wahid Hasyim Blok B4 No.3', province: 'Banten',
+  id: 7, code: 'HO-0007', name: 'Griya CIMB Niaga 2', address: 'Jl. Wahid Hasyim Blok B4 No.3', province: 'Banten',
   city: 'Tangerang Selatan', district: 'Pondok Aren', zip_code: '15224', region: null, area: null, region_description: null,
   is_active: true, approval_status: 'approved', contacts: 3, occupants: 0, recovery_team: 0, call_tree: 1, has_period: false, has_final: true,
 }
@@ -37,7 +37,7 @@ async function mockImport(page: Page, preview: Preview | ((file: string) => Prev
     if (failure) return route.fulfill({ status: 422, json: { error: 'validation_failed', details: failure } })
     const id = 55 + sent.length - 1
     return route.fulfill({ status: 201, json: {
-      location: { id: 41, code: 'RA-HQ-0041', name: 'Griya CIMB Niaga 2', kind: 'head_office', created: true },
+      location: { id: 41, code: 'HO-0041', name: 'Griya CIMB Niaga 2', kind: 'head_office', created: true },
       assessment: { id, ref_no: `RA-2026-00${id}`, kind: 'head_office' },
       saved: { contacts: 8, occupants: 39, recovery_team: 25, call_tree: 39 },
       ratings: 33,
@@ -161,7 +161,7 @@ test('a registered building shows its own details locked; a Structural change pi
   const dialog = await openImport(page)
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
   const griya = card(page)
-  await expect(griya.getByText('Registered · RA-HQ-0007')).toBeVisible()
+  await expect(griya.getByText('Registered · HO-0007')).toBeVisible()
   await expect(griya.getByText('Already registered. Its details can\'t be changed here.')).toBeVisible()
   await expect(griya.getByRole('textbox', { name: 'Province' })).toHaveValue('Banten')
   await expect(griya.getByRole('textbox', { name: 'Province' })).toBeDisabled()
@@ -192,7 +192,7 @@ test('a registered building with an RA in that period says so before importing',
   const dialog = await openImport(page)
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
   const griya = card(page)
-  await expect(griya.getByText('Registered · RA-HQ-0007')).toBeVisible()
+  await expect(griya.getByText('Registered · HO-0007')).toBeVisible()
   await dialog.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(griya.getByText(/Griya CIMB Niaga 2 already has an RA for \d{4}\./)).toBeVisible()
   expect(sent).toHaveLength(0)

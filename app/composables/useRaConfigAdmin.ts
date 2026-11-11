@@ -28,6 +28,7 @@ export type RaConfigTextField
     | 'hazard_intro'
     | 'signoff_statement_en'
     | 'risk_summary_note_en'
+    | 'building_pending_note_en'
 
 export interface RaConfigVersion extends Omit<RaFormula, 'status'>, RaConfigVersionMeta {
   stored_texts: Record<RaConfigTextField, string | null>

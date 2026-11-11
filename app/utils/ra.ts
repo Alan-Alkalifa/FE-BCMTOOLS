@@ -168,7 +168,7 @@ export const RA_STEP_CONDITIONS: { value: RaStepCondition, label: string, descri
   {
     value: 'building_pending',
     label: 'Building waiting for approval',
-    description: 'Signs only an RA whose building is new and waiting for approval. Without such a step, that RA can\'t be submitted until the building is approved.',
+    description: 'Signs only an RA whose building is new and waiting for approval, always first, before the other steps. Without such a step, that RA can\'t be submitted until the building is approved.',
   },
 ]
 
@@ -768,6 +768,17 @@ export const GUIDEBOOK_PATH = '/disasters/guidebook'
 /** A location's profile, on a tab (`map`, `contacts`, ...) when given. */
 export function locationPath(id: number, tab?: string) {
   return `${LOCATIONS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
+}
+
+/** Administration › Master building, and a building's page there. */
+export const MASTER_BUILDINGS_PATH = '/admin/buildings'
+export function masterBuildingPath(id: number, tab?: string) {
+  return `${MASTER_BUILDINGS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
+}
+
+/** A building's page in Location › Buildings, or in Administration › Master building. */
+export function buildingPath(id: number, master?: boolean, tab?: string) {
+  return master ? masterBuildingPath(id, tab) : locationPath(id, tab)
 }
 
 export function crisisPath(id: number) {

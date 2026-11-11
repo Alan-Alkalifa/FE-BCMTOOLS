@@ -2,6 +2,7 @@
 import RaReturnModal from '~/components/ra/RaReturnModal.vue'
 import RaChangeSignerModal from '~/components/ra/RaChangeSignerModal.vue'
 import RaOnBehalfModal from '~/components/ra/RaOnBehalfModal.vue'
+import RaBuildingApproverCard from '~/components/ra/RaBuildingApproverCard.vue'
 import type { RaAssessment, RaFormula, RaSignoff, RaSignoffEvent, RaSignoffInput, RaUserRef } from '~/composables/useRa'
 
 /**
@@ -282,17 +283,11 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       :title="`This RA can't be submitted yet`"
       :description="assessment.location_problem ?? `Someone else approves a new ${ra.location.lower} first. Submit this RA once it is approved.`"
     />
-    <!-- A new building waiting for approval: the building approver signs this RA too. -->
-    <UAlert
-      v-else-if="assessment.building_pending && assessment.status !== 'approved'"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-hourglass"
-      :title="`The ${ra.location.lower} is waiting for approval`"
-      :description="assessment.status === 'draft'
-        ? `This RA can be submitted now. While the ${ra.location.lower} waits, the building approver signs it too, after the other steps.`
-        : `It was waiting for approval when this RA was submitted, so the building approver signs it too.`"
-      data-testid="building-pending-note"
+    <!-- A new building waiting for approval: the building approver signs this RA first. -->
+    <RaBuildingApproverCard
+      v-else
+      :assessment="assessment"
+      :formula="formula"
     />
     <UAlert
       v-if="assessment.status === 'draft' && !assessment.is_complete"

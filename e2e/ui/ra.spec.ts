@@ -1478,7 +1478,7 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await expect(row.getByRole('link', { name: /: In revision$/ })).toHaveAttribute('href', '/ra/monitoring/99')
   await expect(row).not.toContainText('Returned')
   // The building's ID in its own column, as SCCA's Application code.
-  await expect(row.getByText('RA-HQ-0001', { exact: true })).toBeVisible()
+  await expect(row.getByText('HO-0001', { exact: true })).toBeVisible()
   // A building without an RA: plain name, not final yet.
   await expect(table.getByRole('row', { name: /Graha CIMB Niaga/ })).toContainText('Not final yet')
   // RA(s): the count opens every RA of the building, newest first, as SCCA's SCCA(s).

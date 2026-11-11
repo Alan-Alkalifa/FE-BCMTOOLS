@@ -13,7 +13,7 @@ import type { RaLocation } from '~/composables/useRa'
  * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
  * building's page, not here.
  * Administration › Master building shows the same register (`master`), with its own title and
- * crumbs.
+ * crumbs; its buildings open there too (/admin/buildings/{id}), as does Input building data.
  */
 const props = defineProps<{ master?: boolean }>()
 const pageTitle = computed(() => (props.master ? 'Master building' : 'Buildings'))
@@ -170,14 +170,19 @@ function noun(location: RaLocation) {
   return RA_MODULES[location.kind].location.lower
 }
 
+/** The building's page: in Master building when the register is opened there. */
+function pathOf(location: RaLocation) {
+  return buildingPath(location.id, props.master)
+}
+
 function openRow(_event: Event, row: { original: RaLocation }) {
-  navigateTo(locationPath(row.original.id))
+  navigateTo(pathOf(row.original))
 }
 
 const addTo = computed(() => {
   const only = editKinds.value.length === 1 ? editKinds.value[0] : undefined
   const kind = type.value === 'all' ? only : type.value
-  return { path: `${LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
+  return { path: `${props.master ? MASTER_BUILDINGS_PATH : LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
 })
 </script>
 
@@ -342,7 +347,7 @@ const addTo = computed(() => {
         </template>
         <template #name-cell="{ row }">
           <NuxtLink
-            :to="locationPath(row.original.id)"
+            :to="pathOf(row.original)"
             class="font-medium text-primary hover:underline"
           >
             {{ row.original.name }}
@@ -477,7 +482,7 @@ const addTo = computed(() => {
           <div class="flex items-center justify-end gap-1">
             <UTooltip :text="canEditRow(row.original) ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
-                :to="locationPath(row.original.id)"
+                :to="pathOf(row.original)"
                 color="neutral"
                 variant="ghost"
                 size="sm"

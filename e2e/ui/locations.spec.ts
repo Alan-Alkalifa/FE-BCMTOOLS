@@ -11,7 +11,7 @@ test('one register lists head office buildings and branches', async ({ page }) =
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toBeVisible()
   await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('Head office')
   // The building ID in grey under the name.
-  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('RA-HQ-0001')
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('HO-0001')
   await expect(table.getByRole('row', { name: /KCP Bogor Pajajaran/ })).toContainText('Branch')
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/locations/${BRANCH_ID}`)
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('kind')).toBe('all')
@@ -152,12 +152,19 @@ test('rejecting a building needs a reason', async ({ page }) => {
   expect(log.approvals).toEqual([['reject', { note: 'Add the full address.' }]])
 })
 
-test('an RA of a building waiting for approval is signed by the building approver too', async ({ page }) => {
+test('an RA of a building waiting for approval is signed by the building approver first', async ({ page }) => {
   await mockRa(page, { pendingLocation: true, ready: true })
   await page.goto('/ra/manage/1?tab=signoff')
-  await expect(page.getByTestId('building-pending-note')).toContainText('The building is waiting for approval', { timeout: 60_000 })
-  await expect(page.getByTestId('building-pending-note')).toContainText('the building approver signs it too')
-  await expect(page.getByText('Building approved by').first()).toBeVisible()
+  // The card: its heading names the step's signer, its text comes from RA configuration.
+  const card = page.getByTestId('building-approver-card')
+  await expect(card).toContainText('The building is waiting for approval', { timeout: 60_000 })
+  await expect(card.getByRole('heading', { name: 'Must be signed by the Building approver first' })).toBeVisible()
+  await expect(card).toContainText('this assessment must be signed by the Building approver first, before the other signers.')
+  await expect(card).toContainText('Building approved by')
+  // The building approver is step 1, before the other four.
+  const first = page.getByRole('listitem').filter({ hasText: 'Step 1 of 5' })
+  await expect(first).toContainText('Building approved by')
+  await expect(page.getByRole('listitem').filter({ hasText: 'Step 2 of 5' })).toContainText('Prepared by')
 })
 
 test('without a building approver step, an RA of a building waiting for approval can\'t be submitted yet', async ({ page }) => {
@@ -179,6 +186,28 @@ test('Building map and Input building data sit in the top bar', async ({ page })
   await expect(main.getByRole('link', { name: 'Input building data' })).toHaveCount(0)
   const button = await add.boundingBox()
   expect(button!.y + button!.height).toBeLessThanOrEqual((await main.boundingBox())!.y)
+})
+
+test('a new building waiting for approval isn\'t active yet: Active stays unticked until it is approved', async ({ page }) => {
+  await mockRa(page, { pendingLocation: true })
+  await page.goto('/locations/1')
+  const active = page.getByRole('checkbox', { name: 'Active' })
+  await expect(active).not.toBeChecked({ timeout: 60_000 })
+  await expect(active).toBeDisabled()
+  await expect(page.getByText('A new building becomes active once it is approved: when the building approver signs its RA, or someone approves it on this page.')).toBeVisible()
+  // Saving leaves it as it is: Active isn't sent.
+  await page.getByRole('textbox', { name: 'Name' }).fill('Griya CIMB Niaga 2A')
+  const saved = page.waitForRequest((request) => request.method() === 'PUT' && /\/api\/ra\/locations\/1$/.test(request.url()))
+  await page.getByRole('button', { name: 'Save building' }).click()
+  expect((await saved).postDataJSON()).not.toHaveProperty('is_active')
+})
+
+test('an approved building shows Active ticked', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/locations/1')
+  const active = page.getByRole('checkbox', { name: 'Active' })
+  await expect(active).toBeChecked({ timeout: 60_000 })
+  await expect(active).toBeEnabled()
 })
 
 test('a building waiting for approval is approved on its page, not in the Buildings list', async ({ page }) => {
@@ -234,7 +263,7 @@ test('the Buildings list shows the latest Risk Assessment ID and its residual ap
     ...BRANCH_LOCATION,
     id: 41 + index,
     name,
-    code: `RA-BR-00${41 + index}`,
+    code: `BR-00${41 + index}`,
     latest_assessment: { ...latest, ...assessment, id: 51 + index, highest_residual_level: level },
   }))
   // Registered after mockRa, so it answers the register's paged request first.
@@ -310,4 +339,27 @@ test('Administration › Master building shows the Buildings register', async ({
   await expect(page.getByRole('heading', { name: 'Master building', level: 1 })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Administration')
   await expect(page.getByRole('table').getByRole('columnheader', { name: 'Risk Assessment ID' })).toBeVisible()
+})
+
+test('a building opened from Master building stays in Master building', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/admin/buildings')
+  const row = page.getByRole('row', { name: /Griya CIMB Niaga 2/ })
+  await expect(row).toContainText('HO-0001', { timeout: 60_000 })
+  await expect(row.getByRole('link', { name: 'Edit Griya CIMB Niaga 2' })).toHaveAttribute('href', '/admin/buildings/1')
+  await row.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/buildings\/1$/)
+  const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(crumbs).toContainText('Master building')
+  await expect(crumbs).not.toContainText('Buildings')
+  await expect(page.getByRole('heading', { name: 'Griya CIMB Niaga 2', level: 1 })).toBeVisible()
+  // Its tabs stay there too, and the crumb goes back to Master building.
+  await page.getByRole('tab', { name: 'Map' }).click()
+  await expect(page).toHaveURL(/\/admin\/buildings\/1\?tab=map$/)
+  await crumbs.getByRole('link', { name: 'Master building' }).click()
+  await expect(page).toHaveURL(/\/admin\/buildings$/)
+  // Input building data opens Building Data Entry inside Master building.
+  await page.getByRole('link', { name: 'Input building data' }).click()
+  await expect(page).toHaveURL(/\/admin\/buildings\/new/)
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Master building')
 })

@@ -89,6 +89,7 @@ export function withTexts<T extends { kind: string }>(formula: T) {
     hazard_intro: HAZARD_INTRO,
     signoff_statement_en: STATEMENT_EN,
     risk_summary_note_en: CIM_NOTE_EN,
+    building_pending_note_en: `This ${formula.kind === 'branch' ? 'branch' : 'building'} is waiting for approval, so this assessment must be signed by the Building approver first, before the other signers. Their signature also approves the ${formula.kind === 'branch' ? 'branch' : 'building'}, which then becomes active.`,
     type_description: formula.kind === 'branch' ? 'The branch that is assessed each RA cycle.' : 'The building or work location that is assessed each RA cycle.',
     signoff_steps: SIGNOFF_STEPS[formula.kind as keyof typeof SIGNOFF_STEPS],
   }
@@ -107,7 +108,7 @@ export const DIVISIONS = [
 export const LOCATIONS = [
   {
     id: 1,
-    code: 'RA-HQ-0001',
+    code: 'HO-0001',
     kind: 'head_office',
     name: 'Griya CIMB Niaga 2',
     region: null,
@@ -122,7 +123,7 @@ export const LOCATIONS = [
   },
   {
     id: 2,
-    code: 'RA-HQ-0002',
+    code: 'HO-0002',
     kind: 'head_office',
     name: 'Graha CIMB Niaga',
     region: null,
@@ -159,7 +160,7 @@ export const SUMMARY = {
   assessment_date: '2025-03-10',
   due_date: '2026-03-10',
   reason: 'new_building',
-  location: { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
+  location: { id: 1, code: 'HO-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null },
   rated_count: 32,
   hazard_count: 33,
   highest_gross_level: 'High',
@@ -423,9 +424,9 @@ export async function mockRa(
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
     const formula = withTexts(branch ? BRANCH_FORMULA : FORMULA)
     if (!branch && options.steps) Object.assign(formula, { signoff_steps: options.steps, signoff_roles: options.steps.map((row) => row.code) })
-    // The default steps end with the building approver (texts.pending_step).
+    // The default steps start with the building approver (texts.pending_step): it signs first.
     if (!branch && !options.steps && !options.noPendingStep) {
-      const withApprover = [...formula.signoff_steps, BUILDING_APPROVER_STEP]
+      const withApprover = [BUILDING_APPROVER_STEP, ...formula.signoff_steps]
       Object.assign(formula, { signoff_steps: withApprover, signoff_roles: withApprover.map((row) => row.code) })
     }
     return route.fulfill({ json: formula })
@@ -461,13 +462,13 @@ export async function mockRa(
   if (options.pendingLocation) {
     location.approval = { ...PENDING_APPROVAL }
     location.approval_can = { ...NO_APPROVAL_ACTIONS, approve: true, reject: true }
-    // Its RA can be submitted, and the building approver signs it too; without that step in
+    // Its RA can be submitted, and the building approver signs it first; without that step in
     // the version it waits for the building's approval.
     current.building_pending = true
     current.location_approved = !options.noPendingStep
     current.signoff_step_codes = [
-      ...SIGNOFF_STEPS.head_office.map((row) => row.code),
       ...(options.noPendingStep ? [] : [BUILDING_APPROVER_STEP.code]),
+      ...SIGNOFF_STEPS.head_office.map((row) => row.code),
     ]
     if (options.noPendingStep) current.location_problem = 'The building is waiting for approval. Submit this RA once someone approves it.'
   } else if (!options.steps) {
@@ -730,11 +731,11 @@ function workflowRef(branch: boolean, status: string, role: string | null = null
 
 function workflowLocations(branch: boolean) {
   const first = branch
-    ? { id: BRANCH_ID, code: 'RA-BR-0001', kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
-    : { id: 1, code: 'RA-HQ-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
+    ? { id: BRANCH_ID, code: 'BR-0001', kind: 'branch', name: BRANCH_LOCATION.name, region: BRANCH_LOCATION.region ?? 'Jabodetabek' }
+    : { id: 1, code: 'HO-0001', kind: 'head_office', name: 'Griya CIMB Niaga 2', region: null }
   const second = branch
-    ? { id: 31, code: 'RA-BR-0002', kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
-    : { id: 2, code: 'RA-HQ-0002', kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
+    ? { id: 31, code: 'BR-0002', kind: 'branch', name: 'KCP Pondok Indah', region: 'Jabodetabek' }
+    : { id: 2, code: 'HO-0002', kind: 'head_office', name: 'Graha CIMB Niaga', region: null }
   const approved = workflowRef(branch, 'approved')
   // The 2026 cycle, returned for changes and accepted by its assessor: In revision.
   const open = { ...workflowRef(branch, 'draft'), id: 99, ref_no: branch ? 'RAB-2026-0002' : 'RA-2026-0002', period_year: 2026, assessment_date: '2026-03-02', is_returned: true, revision_state: 'in_revision' }
@@ -748,7 +749,7 @@ function workflowLocations(branch: boolean) {
 function renewable(branch: boolean) {
   const approved = { ...workflowRef(branch, 'approved'), id: 3, ref_no: branch ? 'RAB-2025-0003' : 'RA-2025-0003', approved_at: '2025-11-20T03:00:00Z' }
   return {
-    location: { id: 3, code: branch ? 'RA-BR-0003' : 'RA-HQ-0003', kind: branch ? 'branch' : 'head_office', name: 'Menara Sentraya', region: null, directorate: 'FIN' },
+    location: { id: 3, code: branch ? 'BR-0003' : 'HO-0003', kind: branch ? 'branch' : 'head_office', name: 'Menara Sentraya', region: null, directorate: 'FIN' },
     approved,
     open: null,
     assessment_count: 1,

@@ -424,7 +424,7 @@ async function onSubmit() {
             variant="subtle"
             icon="i-lucide-hourglass"
             :title="`This ${ra.location.lower} is waiting for approval`"
-            description="Its RA can be made now. Submitted while it waits, the RA is signed by the building approver too, after the other steps."
+            description="Its RA can be made now. Submitted while it waits, the RA is signed by the building approver first, before the other signers."
             data-testid="building-waiting-note"
           />
           <UFormField

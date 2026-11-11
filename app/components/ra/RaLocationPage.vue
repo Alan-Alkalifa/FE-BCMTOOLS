@@ -7,6 +7,9 @@ type Tab = (typeof TABS)[number]
 /** The LCP sheets are only in the HO workbook. */
 const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 
+/** `master`: opened from Administration › Master building, whose crumbs and links it keeps. */
+const props = defineProps<{ master?: boolean }>()
+
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
@@ -138,8 +141,9 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
     :title="location?.name ?? ra.location.single"
     :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
-      { label: BUILDINGS_GROUP },
-      { label: 'Buildings', to: LOCATIONS_PATH },
+      ...(props.master
+        ? [{ label: 'Administration' }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }]
+        : [{ label: BUILDINGS_GROUP }, { label: 'Buildings', to: LOCATIONS_PATH }]),
       ...(location ? [{ label: location.name }] : []),
     ]"
   >
@@ -286,6 +290,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
               <RaLocationForm
                 :key="`details-${formKey}`"
                 :location="location"
+                :cancel-to="props.master ? MASTER_BUILDINGS_PATH : undefined"
                 @saved="onSaved"
               />
               <UCard>

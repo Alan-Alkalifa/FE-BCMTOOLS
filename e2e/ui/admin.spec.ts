@@ -67,10 +67,10 @@ const scca = (id: number, event: string, actor: string | null, detail: Record<st
   created_at: `2026-10-20T0${Math.min(id, 9)}:00:00Z`,
 })
 const RA_ACTIVITY_ROWS = [
-  { id: 41, event: 'ra.building_call_tree_saved', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', rows: 5, before: 4 }, ip: null, created_at: '2026-10-30T03:00:00Z' },
-  { id: 40, event: 'ra.building_updated', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', fields: ['address', 'zip_code'] }, ip: null, created_at: '2026-10-30T02:30:00Z' },
+  { id: 41, event: 'ra.building_call_tree_saved', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'HO-0001', kind: 'head_office', rows: 5, before: 4 }, ip: null, created_at: '2026-10-30T03:00:00Z' },
+  { id: 40, event: 'ra.building_updated', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'HO-0001', kind: 'head_office', fields: ['address', 'zip_code'] }, ip: null, created_at: '2026-10-30T02:30:00Z' },
   { id: 39, event: 'ra.ratings_saved', username: 'rina@example.com', actor: 'Rina Kartika', target_type: 'ra_assessments', target_id: 9, detail: { ref_no: 'RA-2026-0009', building: 'Menara Sentraya', building_id: 3, kind: 'head_office', hazards: ['H01', 'H03'] }, ip: null, created_at: '2026-10-30T02:00:00Z' },
-  { id: 38, event: 'ra.approval_reminder_sent', username: null, actor: null, target_type: 'ra_locations', target_id: 3, detail: { building: 'Menara Sentraya', building_id: 3, code: 'RA-HQ-0003', kind: 'head_office', task: 'deactivate', waited: '3 working days' }, ip: null, created_at: '2026-10-30T01:00:00Z' },
+  { id: 38, event: 'ra.approval_reminder_sent', username: null, actor: null, target_type: 'ra_locations', target_id: 3, detail: { building: 'Menara Sentraya', building_id: 3, code: 'HO-0003', kind: 'head_office', task: 'deactivate', waited: '3 working days' }, ip: null, created_at: '2026-10-30T01:00:00Z' },
 ]
 
 const SCCA_ACTIVITY_ROWS = [

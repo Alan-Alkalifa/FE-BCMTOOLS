@@ -9,7 +9,8 @@ import type { RaConfigVersion, RaSignerStep } from '~/composables/useRaConfigAdm
  * fixed signer set here, or the LIC / LICOM of the Details tab), which roles may sign and which
  * box of the Excel report it fills, and when it signs: always, or only an RA whose building is
  * new and waiting for approval (the building approver; without such a step that RA can't be
- * submitted until the building is approved).
+ * submitted until the building is approved). Those steps always sign first: they stay at the
+ * top here, and the API stores them first too.
  */
 const props = defineProps<{ version: RaConfigVersion }>()
 const emit = defineEmits<{ saved: [version: RaConfigVersion] }>()
@@ -41,12 +42,27 @@ const boxItems = computed(() => [
   ...Array.from({ length: boxCount.value }, (_, index) => ({ label: `Box ${index + 1}`, value: index + 1 })),
 ])
 
-function move(index: number, by: -1 | 1) {
+const pendingFirst = (step: RaSignoffStep) => (step.condition === 'building_pending' ? 0 : 1)
+
+/** A step moves only among the steps that sign at the same time: the building_pending ones
+ *  always sign first. */
+function canMove(index: number, by: -1 | 1) {
   const rows = draft.value
-  const target = index + by
-  if (target < 0 || target >= rows.length) return
+  const target = rows[index + by]
+  return !!target && pendingFirst(target) === pendingFirst(rows[index]!)
+}
+
+function move(index: number, by: -1 | 1) {
+  if (!canMove(index, by)) return
+  const rows = draft.value
   const [row] = rows.splice(index, 1)
-  rows.splice(target, 0, row!)
+  rows.splice(index + by, 0, row!)
+}
+
+/** A step changed to sign while the building waits for approval goes to the top (and back). */
+function setCondition(index: number, condition: RaStepCondition) {
+  draft.value[index]!.condition = condition
+  draft.value = [...draft.value].sort((a, b) => pendingFirst(a) - pendingFirst(b))
 }
 
 function add() {
@@ -135,7 +151,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
           Sign-off steps
         </h2>
         <p class="mt-1 max-w-3xl text-sm text-muted">
-          Approvers sign in this order. The label heads the sign-off box and the title is who signs, as Monitoring, Approval and the reports show the step. An optional step without a signer is skipped ("Not required" on the reports). A step set to sign when the building is waiting for approval signs only the RAs of new buildings not approved yet. Pick the default or fixed signer under the step: it is saved at once and applies to every version.
+          Approvers sign in this order. The label heads the sign-off box and the title is who signs, as Monitoring, Approval and the reports show the step. An optional step without a signer is skipped ("Not required" on the reports). A step set to sign when the building is waiting for approval signs only the RAs of new buildings not approved yet, and always signs first, before the other steps. Pick the default or fixed signer under the step: it is saved at once and applies to every version.
         </p>
       </div>
       <div
@@ -197,7 +213,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-arrow-up"
-                :disabled="index === 0"
+                :disabled="!canMove(index, -1)"
                 :aria-label="`Move step ${index + 1} up`"
                 @click="move(index, -1)"
               />
@@ -206,7 +222,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-arrow-down"
-                :disabled="index === draft.length - 1"
+                :disabled="!canMove(index, 1)"
                 :aria-label="`Move step ${index + 1} down`"
                 @click="move(index, 1)"
               />
@@ -282,7 +298,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                     :items="conditionItems"
                     :aria-label="`When step ${index + 1} signs`"
                     class="w-full"
-                    @update:model-value="step.condition = $event as RaStepCondition"
+                    @update:model-value="setCondition(index, $event as RaStepCondition)"
                   />
                 </UFormField>
                 <UFormField

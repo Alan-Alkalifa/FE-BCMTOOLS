@@ -253,6 +253,32 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   expect(calls.find((call) => call.path.endsWith('/texts'))!.body).toMatchObject({ signoff_statement_en: 'I confirm this risk assessment is accurate.', hazard_intro: null })
 })
 
+test('a step that signs while the building waits for approval always goes first', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  await page.goto('/admin/ra-config?tab=steps')
+  await page.getByRole('button', { name: 'Add step' }).click({ timeout: 60_000 })
+  await page.getByRole('textbox', { name: 'Code of step 4' }).fill('building_check')
+  await page.getByRole('textbox', { name: 'Label of step 4' }).fill('Building approved by')
+  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Building approver')
+  await page.getByLabel('When step 4 signs', { exact: true }).click()
+  await page.getByRole('option', { name: /^Building waiting for approval/ }).click()
+  // It moves to the top, and can't be moved below the steps that always sign.
+  await expect(page.getByRole('textbox', { name: 'Code of step 1' })).toHaveValue('building_check')
+  await expect(page.getByRole('button', { name: 'Move step 1 down' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Move step 2 up' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Save steps' }).click()
+  await expect(page.getByText('Sign-off steps saved').first()).toBeVisible()
+  const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, condition: string }[] }).steps
+  expect(sent[0]).toMatchObject({ code: 'building_check', condition: 'building_pending' })
+
+  // The card's text is edited with the other statements.
+  await page.getByRole('tab', { name: 'Statements and notes' }).click()
+  await page.getByRole('textbox', { name: 'Building approver card' }).fill('Ask the building approver to sign first.')
+  await page.getByRole('button', { name: 'Save texts' }).click()
+  await expect(page.getByText('Statements and notes saved').first()).toBeVisible()
+  expect(calls.find((call) => call.path.endsWith('/texts'))!.body).toMatchObject({ building_pending_note_en: 'Ask the building approver to sign first.' })
+})
+
 test('RA Branch has its own versions; a retired or active version is read-only', async ({ page }) => {
   await mockRaConfig(page)
   await page.goto('/admin/ra-config')
