@@ -90,7 +90,20 @@ jobs:
           done
           echo "::error::$SITE doesn't serve $APP_VERSION after 6 minutes. After a Vercel rollback, production domains stay on the old deployment until it is promoted: vercel promote ${{ steps.deploy.outputs.url }}"
           exit 1
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium
+        # The browser comes from Playwright's CDN. Its system packages come from apt, whose Ubuntu
+        # mirrors are sometimes unreachable from the runner ("Temporary failure resolving
+        # archive.ubuntu.com"); the runner image already ships Chrome's libraries, so after two
+        # tries the job goes on with a warning and the tests show if anything is really missing.
+        timeout-minutes: 12
+        run: |
+          npx playwright install chromium
+          for attempt in 1 2; do
+            if npx playwright install-deps chromium; then exit 0; fi
+            echo "install-deps attempt $attempt failed"
+            sleep 30
+          done
+          echo "::warning::Couldn't install Chromium's system packages (apt unreachable); using the runner image's."
       - name: Smoke tests (real backend through the middleware)
         env:
           E2E_BASE_URL: ${{ inputs.url }}
