@@ -289,26 +289,22 @@ test('interdependencies are ticked in a table and take their values from the cur
   await page.getByRole('button', { name: 'Add applications' }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Add upstream applications' })
   await expect(dialog.getByText('SCCA-2025-0009 · 2 Nov 2025')).toBeVisible()
+  // Only an application with a final SCCA can be ticked.
+  await expect(dialog.getByRole('checkbox', { name: 'Add HR Portal' })).toBeDisabled()
+  await expect(dialog.getByText('HR · no final SCCA')).toBeVisible()
   await dialog.getByRole('checkbox', { name: 'Add Core Banking' }).click()
-  await dialog.getByRole('checkbox', { name: 'Add HR Portal' }).click()
-  await expect(dialog.getByText('2 selected')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Add 2 applications' }).click()
+  await expect(dialog.getByText('1 selected')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Add 1 application' }).click()
   await expect(dialog).toHaveCount(0)
 
-  // Core Banking has a final SCCA: its values are read-only; HR Portal has none: entered.
+  // Its category, RTO, RPO and DR capacity are the final SCCA's, read-only.
   await expect(page.getByText('Current SCCA SCCA-2025-0009, final 2 Nov 2025')).toBeVisible()
   await expect(page.getByLabel('RTO (hours) 1')).toHaveCount(0)
   await expect(page.getByLabel('Automatic gaps 1')).toContainText('RTO 12 h is longer than the committed RTO of 6 h.')
-  await expect(page.getByText('No final SCCA yet: enter the values.')).toBeVisible()
-  await expect(page.getByLabel('RTO (hours) 2')).toBeVisible()
 
   // Every field but workaround and gaps is required.
   await page.getByRole('button', { name: 'Save interdependencies' }).click()
   await expect(page.getByText('Upstream 1 (Core Banking): processing mode, dependency')).toBeVisible()
-  await expect(page.getByText('Upstream 2 (HR Portal): category, RTO (hours), RPO, DR capacity (%), processing mode, dependency')).toBeVisible()
-  await page.getByLabel('DR capacity (%) 2').fill('150')
-  await expect(page.getByLabel('DR capacity (%) 2')).toHaveValue('100')
-  await page.getByRole('button', { name: 'Remove HR Portal' }).click()
   await page.getByLabel('Processing mode 1').click()
   await page.getByRole('option', { name: 'Online' }).click()
   await page.getByLabel('Dependency 1').click()
@@ -343,7 +339,8 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toBeDisabled()
   await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toContainText('Hot DR')
   await expect(page.getByLabel('CIMBN recovery architecture standard Availability/SLA (%)')).toBeDisabled()
-  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard RPO' })).toBeEnabled()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard RPO' })).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard RPO' })).toContainText('LST')
   const committedRto = page.getByRole('combobox', { name: 'Current IT committed values RTO (hours)' })
   await expect(committedRto).toBeVisible()
   await committedRto.click()
@@ -384,7 +381,7 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
     }),
     expect.objectContaining({ kind: 'business', rto: '1', mtd: '4' }),
     expect.objectContaining({ kind: 'regulatory', rto: 'NA' }),
-    expect.objectContaining({ kind: 'cimbn_standard', availability_sla: '99.5', rto: '2', ha: 'Yes (Prod)', dr_capacity: '100', dr_type: 'Hot DR' }),
+    expect.objectContaining({ kind: 'cimbn_standard', availability_sla: '99.5', rto: '2', rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: '100', dr_type: 'Hot DR' }),
     expect.objectContaining({ kind: 'final', ha: 'Active - Active', dr_capacity: '50% - 50%' }),
   ]))
 })
@@ -536,7 +533,7 @@ test('recovery saves only the fields each block shows, clearing stale hidden val
   const rows = (await request).postDataJSON().recovery_values as { kind: string, [key: string]: string | null }[]
   const standard = rows.find((row) => row.kind === 'cimbn_standard')!
   // The standard's values for Critical replace what was stored; hidden fields are cleared.
-  expect(standard).toMatchObject({ availability_sla: '99.5', rto: '2', dr_type: 'Hot DR', mtd: null, instance_type: null })
+  expect(standard).toMatchObject({ availability_sla: '99.5', rto: '2', rpo: 'LST', dr_type: 'Hot DR', mtd: null, instance_type: null })
   expect(rows.find((row) => row.kind === 'regulatory')).toMatchObject({ availability_sla: null, ha: null })
 })
 

@@ -167,7 +167,7 @@ function fixed(row: FormRow, field: Filled) {
 /** Under the application's name: which SCCA its values come from. */
 function sourceNote(row: FormRow) {
   if (!row.application_id) return null
-  if (!row.source) return 'No final SCCA yet: enter the values.'
+  if (!row.source) return 'No final SCCA (listed before one was required): enter the values.'
   const when = row.source.finalised_at ? `, final ${formatDate(row.source.finalised_at)}` : ''
   return `Current SCCA ${row.source.ref_no ?? ''}${when}`.trim()
 }

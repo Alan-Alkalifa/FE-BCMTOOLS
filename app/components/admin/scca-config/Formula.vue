@@ -277,7 +277,7 @@ watch(() => props.version, () => {
         </template>
         <fieldset
           :disabled="!version.can.edit"
-          class="overflow-x-auto"
+          class="min-w-0 overflow-x-auto"
         >
           <table class="w-full text-sm">
             <caption class="sr-only">
@@ -340,7 +340,7 @@ watch(() => props.version, () => {
         </template>
         <fieldset
           :disabled="!version.can.edit"
-          class="overflow-x-auto"
+          class="min-w-0 overflow-x-auto"
         >
           <table class="text-sm">
             <caption class="sr-only">
@@ -397,12 +397,12 @@ watch(() => props.version, () => {
           </h2>
           <p class="mt-1 text-sm text-muted">
             The text shows on the Recovery tab and the reports. The gap checks use the hours and the minimum availability/SLA (empty: no limit).
-            An SCCA's CIMBN block is filled from its final category's row and can't be changed there: availability/SLA, RTO, HA (Prod / DR), DR capacity and DR type. A value left empty is entered by the assessor.
+            An SCCA's CIMBN block is its final category's row and can't be changed there: availability/SLA, RTO, RPO, HA (Prod / DR), DR capacity and DR type. A value left empty shows as not set.
           </p>
         </template>
         <fieldset
           :disabled="!version.can.edit"
-          class="overflow-x-auto"
+          class="min-w-0 overflow-x-auto"
         >
           <table class="w-full text-sm">
             <caption class="sr-only">
@@ -430,6 +430,9 @@ watch(() => props.version, () => {
                 </th>
                 <th class="px-3 py-2">
                   Availability/SLA at least (%)
+                </th>
+                <th class="px-3 py-2">
+                  RPO
                 </th>
                 <th class="px-3 py-2">
                   HA (Prod / DR)
@@ -504,6 +507,18 @@ watch(() => props.version, () => {
                     class="w-24"
                     :aria-label="`${standard.category} uptime at least`"
                     @update:model-value="standard.uptime_min_pct = $event ?? null"
+                  />
+                </td>
+                <td class="px-3 py-2">
+                  <USelect
+                    :model-value="standard.rpo ?? NOT_SET"
+                    :items="[{ label: 'Not set', value: NOT_SET }, ...sccaListOptions(version, 'rpo', standard.rpo)]"
+                    value-key="value"
+                    label-key="label"
+                    class="min-w-36"
+                    placeholder="Not set"
+                    :aria-label="`${standard.category} RPO`"
+                    @update:model-value="standard.rpo = $event === NOT_SET ? null : $event"
                   />
                 </td>
                 <td class="px-3 py-2">

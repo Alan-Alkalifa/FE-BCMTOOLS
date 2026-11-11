@@ -125,21 +125,21 @@ function numberText(value: number | null | undefined) {
   return value == null ? null : String(value)
 }
 
-/** What the CIMBN block takes from the standard of the final category (as the API sets it);
- *  a field the configuration leaves empty is null and stays the assessor's to enter. */
+/** The CIMBN block is the standard of the final category (as the API sets it), read-only; a
+ *  value the configuration leaves empty is null. No category yet: every value is null. */
 const standardValues = computed<Partial<Record<SccaRecoveryField, string | null>>>(() => {
   const standard = currentStandard.value
-  if (!standard) return {}
   return {
-    availability_sla: numberText(standard.uptime_min_pct),
-    rto: numberText(standard.rto_to_h),
-    ha: standard.ha ?? null,
-    dr_capacity: numberText(standard.dr_capacity),
-    dr_type: standard.dr_type ?? null,
+    availability_sla: numberText(standard?.uptime_min_pct),
+    rto: numberText(standard?.rto_to_h),
+    rpo: standard?.rpo ?? null,
+    ha: standard?.ha ?? null,
+    dr_capacity: numberText(standard?.dr_capacity),
+    dr_type: standard?.dr_type ?? null,
   }
 })
 
-/** Read-only in the CIMBN block: set by the configured standard. */
+/** Set by the configured standard (the CIMBN block is read-only either way). */
 function fromStandard(field: SccaRecoveryField) {
   return standardValues.value[field] != null
 }
@@ -147,9 +147,9 @@ function fromStandard(field: SccaRecoveryField) {
 /** A draft follows the standard (as the API does when it saves); a submitted or final SCCA
  *  shows what it stored. */
 function applyStandard() {
-  if (props.assessment.status !== 'draft') return
+  if (props.assessment.status !== 'draft' || !props.standards.length) return
   for (const [field, value] of Object.entries(standardValues.value)) {
-    if (value != null) state.cimbn_standard[field as SccaRecoveryField] = value
+    state.cimbn_standard[field as SccaRecoveryField] = value ?? ''
   }
 }
 // The standard arriving (or the category changing) is not an edit of the assessor's: an
@@ -289,6 +289,19 @@ async function onSubmit() {
                 </tr>
                 <tr>
                   <th class="px-3 py-2 text-left font-medium">
+                    RPO
+                  </th>
+                  <td
+                    v-for="row in visibleStandards"
+                    :key="`${row.category}-rpo`"
+                    class="px-3 py-2"
+                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
+                  >
+                    {{ sccaListLabel(config, 'rpo', row.rpo) || '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium">
                     HA (Prod / DR)
                   </th>
                   <td
@@ -392,10 +405,10 @@ async function onSubmit() {
             </h3>
             <p class="mt-1 text-sm text-muted">
               <template v-if="category">
-                From the standard for {{ sccaCategory[category]?.label ?? category }}.
+                From the recovery architecture standard (CIMB Niaga) for {{ sccaCategory[category]?.label ?? category }}. Read-only.
               </template>
               <template v-else>
-                Filled from the standard once the category is known.
+                Filled from the recovery architecture standard (CIMB Niaga) once the category is known. Read-only.
               </template>
             </p>
           </template>
@@ -404,14 +417,13 @@ async function onSubmit() {
               v-for="field in SCCA_RECOVERY_SECTIONS.cimbn_standard"
               :key="field.key"
               :label="field.label"
-              :help="fromStandard(field.key) ? 'From the standard' : field.key === 'rpo' ? undefined : 'Not set in the standard: enter it'"
-              required
+              :help="fromStandard(field.key) || !category ? undefined : 'Not set in SCCA configuration > Formula'"
             >
               <SccaRecoveryField
                 v-model="state.cimbn_standard[field.key]"
                 :control="field.control"
                 :label="`${kindLabel('cimbn_standard')} ${field.label}`"
-                :disabled="fromStandard(field.key)"
+                disabled
               />
             </UFormField>
             <UAlert

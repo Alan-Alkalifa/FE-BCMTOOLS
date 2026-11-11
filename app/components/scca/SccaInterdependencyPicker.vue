@@ -5,6 +5,7 @@ import type { Application } from '~/composables/useApplications'
  * A3 Interdependency > Add applications: the application list as a table, to tick several
  * applications at once (across pages and searches). Each row shows what the interdependency
  * will take from the application's current final SCCA: category, RTO, RPO and DR capacity.
+ * Only an application with a final SCCA can be ticked (the API checks it too).
  */
 const props = defineProps<{
   /** 'upstream' | 'downstream', for the title. */
@@ -71,7 +72,13 @@ watch(open, (value) => {
 })
 
 const takenIds = computed(() => new Set(props.taken))
-const selectable = computed(() => items.value.filter((row) => !takenIds.value.has(row.id)))
+/** Why a row can't be ticked, or null. */
+function blocked(row: Application) {
+  if (takenIds.value.has(row.id)) return 'already listed'
+  if (!row.characteristics?.final) return 'no final SCCA'
+  return null
+}
+const selectable = computed(() => items.value.filter((row) => !blocked(row)))
 const allOnPage = computed(() =>
   selectable.value.length > 0 && selectable.value.every((row) => picked.value.has(row.id)),
 )
@@ -108,7 +115,7 @@ function finalOf(row: Application) {
   <UModal
     v-model:open="open"
     :title="`Add ${directionLabel.toLowerCase()}`"
-    description="Tick the applications to add. Category, RTO, RPO and DR capacity come from each application's current final SCCA."
+    description="Tick the applications to add. Only an application with a final SCCA can be added: its category, RTO, RPO and DR capacity come from that SCCA."
     :ui="{ content: 'sm:max-w-5xl' }"
   >
     <template #body>
@@ -167,8 +174,8 @@ function finalOf(row: Application) {
               <tr
                 v-for="row in items"
                 :key="row.id"
-                :class="takenIds.has(row.id) ? 'opacity-60' : 'cursor-pointer hover:bg-elevated/50'"
-                @click="!takenIds.has(row.id) && toggle(row, !picked.has(row.id))"
+                :class="blocked(row) ? 'opacity-60' : 'cursor-pointer hover:bg-elevated/50'"
+                @click="!blocked(row) && toggle(row, !picked.has(row.id))"
               >
                 <td
                   class="px-3 py-2 align-top"
@@ -176,7 +183,7 @@ function finalOf(row: Application) {
                 >
                   <UCheckbox
                     :model-value="takenIds.has(row.id) || picked.has(row.id)"
-                    :disabled="takenIds.has(row.id)"
+                    :disabled="!!blocked(row)"
                     :aria-label="`Add ${row.application_name}`"
                     @update:model-value="toggle(row, $event)"
                   />
@@ -186,8 +193,8 @@ function finalOf(row: Application) {
                     {{ row.application_name }}
                   </p>
                   <p class="text-xs text-muted">
-                    {{ row.application_code }}<template v-if="takenIds.has(row.id)">
-                      · already listed
+                    {{ row.application_code }}<template v-if="blocked(row)">
+                      · {{ blocked(row) }}
                     </template>
                   </p>
                 </td>
@@ -219,8 +226,8 @@ function finalOf(row: Application) {
                   >{{ finalOf(row) }}</span>
                   <span
                     v-else
-                    class="text-warning"
-                  >No final SCCA: enter the values</span>
+                    class="text-muted"
+                  >No final SCCA: can't be added</span>
                 </td>
               </tr>
               <tr v-if="!loading && !items.length">

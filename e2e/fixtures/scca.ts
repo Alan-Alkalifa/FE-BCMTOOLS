@@ -90,7 +90,7 @@ export const FORMULA = {
 export const STANDARDS = {
   items: [
     // Critical sets the CIMBN block's values (read-only on the Recovery tab).
-    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%', rto_to_h: 2, uptime_min_pct: 99.5, ha: 'Yes (Prod)', dr_capacity: 100, dr_type: 'Hot DR' },
+    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%', rto_to_h: 2, uptime_min_pct: 99.5, rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: 100, dr_type: 'Hot DR' },
     { category: 'Very Important', mtd: '(4 - 12 jam)', rto: '( 2 - 6 jam)', uptime: '99%' },
     { category: 'Important', mtd: '(12 - 24 jam)', rto: '( 6 - 12 jam)', uptime: '98%' },
     { category: 'Necessary', mtd: '(24 - 48 jam)', rto: '(12 - 24 jam)', uptime: '95% atau kurang' },

@@ -70,8 +70,9 @@ export interface SccaConfigStandard {
   rto_from_h?: number | null
   rto_to_h?: number | null
   uptime_min_pct?: number | null
-  /** The CIMBN block of an SCCA takes these (read-only there): `ha` and `dr_type` list codes,
-   *  DR capacity in %. Null: not set, the assessor enters it. */
+  /** The CIMBN block of an SCCA is these (read-only there): `rpo`, `ha` and `dr_type` list
+   *  codes, `dr_capacity` a percentage; null = not set. */
+  rpo?: string | null
   ha?: string | null
   dr_capacity?: number | null
   dr_type?: string | null
