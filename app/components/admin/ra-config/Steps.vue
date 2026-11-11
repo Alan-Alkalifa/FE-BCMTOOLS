@@ -7,7 +7,9 @@ import type { RaConfigVersion, RaSignerStep } from '~/composables/useRaConfigAdm
  * and renamed. Each is required or optional (the last is always required), says who picks the
  * signer (chosen on the Sign-off tab, a default picked here that the assessor can change, a
  * fixed signer set here, or the LIC / LICOM of the Details tab), which roles may sign and which
- * box of the Excel report it fills.
+ * box of the Excel report it fills, and when it signs: always, or only an RA whose building is
+ * new and waiting for approval (the building approver; without such a step that RA can't be
+ * submitted until the building is approved).
  */
 const props = defineProps<{ version: RaConfigVersion }>()
 const emit = defineEmits<{ saved: [version: RaConfigVersion] }>()
@@ -21,6 +23,11 @@ const part = useRaConfigPart<RaSignoffStep[]>(
 )
 const { draft, error, busy, dirty, submit, reset } = part
 const editable = computed(() => props.version.can.edit)
+
+const conditionItems = RA_STEP_CONDITIONS.map(({ value, label, description }) => ({ value, label, description }))
+function conditionHelp(value: RaStepCondition | undefined) {
+  return RA_STEP_CONDITIONS.find((item) => item.value === (value ?? 'always'))!.description
+}
 
 const modeItems = (Object.keys(raSignerModes) as RaSignerMode[]).map((value) => ({
   label: raSignerModes[value].label,
@@ -51,6 +58,7 @@ function add() {
     signer_mode: 'chosen',
     signer_roles: [],
     report_box: null,
+    condition: 'always',
   })
 }
 
@@ -127,7 +135,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
           Sign-off steps
         </h2>
         <p class="mt-1 max-w-3xl text-sm text-muted">
-          Approvers sign in this order. The label heads the sign-off box and the title is who signs, as Monitoring, Approval and the reports show the step. An optional step without a signer is skipped ("Not required" on the reports). Pick the default or fixed signer under the step: it is saved at once and applies to every version.
+          Approvers sign in this order. The label heads the sign-off box and the title is who signs, as Monitoring, Approval and the reports show the step. An optional step without a signer is skipped ("Not required" on the reports). A step set to sign when the building is waiting for approval signs only the RAs of new buildings not approved yet. Pick the default or fixed signer under the step: it is saved at once and applies to every version.
         </p>
       </div>
       <div
@@ -263,7 +271,20 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                   />
                 </UFormField>
               </div>
-              <div class="grid gap-4 md:grid-cols-3">
+              <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <UFormField
+                  label="Signs"
+                  :name="`steps.${index}.condition`"
+                  :help="conditionHelp(step.condition)"
+                >
+                  <USelect
+                    :model-value="step.condition ?? 'always'"
+                    :items="conditionItems"
+                    :aria-label="`When step ${index + 1} signs`"
+                    class="w-full"
+                    @update:model-value="step.condition = $event as RaStepCondition"
+                  />
+                </UFormField>
                 <UFormField
                   label="Signer"
                   :name="`steps.${index}.signer_mode`"

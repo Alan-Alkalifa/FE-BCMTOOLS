@@ -19,9 +19,9 @@ const PERMISSIONS = [
   { code: 'admin.settings.mail', module: 'admin', description: 'Edit the SMTP settings and send a test email' },
   { code: 'admin.audit.view', module: 'admin', description: 'Read the sign-in, admin and email logs' },
   { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
-  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close incidents on the location map' },
+  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close disasters on the location map' },
   { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
-  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the incident guidebook' },
+  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the disaster guidebook' },
   { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
   { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
   { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
@@ -333,7 +333,7 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
   const order = calls.find((call) => call.url === '/api/admin/menus/order')!.body as { items: { id: number }[] }
-  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26])
+  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26, 28])
   await expect(page.getByRole('button', { name: 'Home is built in' })).toBeDisabled()
 })
 
@@ -450,7 +450,7 @@ test('administrators see who did what on each SCCA', async ({ page }) => {
   await expect(table.getByText('Rejected', { exact: true })).toBeVisible()
 })
 
-test('RA activity shows every edit of a building, its profile, its RAs and incidents', async ({ page }) => {
+test('RA activity shows every edit of a building, its profile, its RAs and disasters', async ({ page }) => {
   const { calls } = await mockAdmin(page)
   await page.goto('/admin/audit?tab=ra')
   const table = page.getByRole('table')

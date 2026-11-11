@@ -20,7 +20,7 @@ const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 const ra = useRaModule()
 /** The steps of the assessment's configuration version: labels, titles, who picks the signer
  *  and whether the step is required. */
-const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles))
+const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles, props.assessment.signoff_step_codes ?? null))
 const toast = useToast()
 const dirty = useRaDirty()
 const saving = useRaSaving()
@@ -279,8 +279,20 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
       color="warning"
       variant="subtle"
       icon="i-lucide-hourglass"
-      :title="`The ${ra.location.lower} isn't approved yet`"
-      :description="`Someone else approves a new ${ra.location.lower} first. You can rate the hazards and choose the signers now, and submit once it is approved.`"
+      :title="`This RA can't be submitted yet`"
+      :description="assessment.location_problem ?? `Someone else approves a new ${ra.location.lower} first. Submit this RA once it is approved.`"
+    />
+    <!-- A new building waiting for approval: the building approver signs this RA too. -->
+    <UAlert
+      v-else-if="assessment.building_pending && assessment.status !== 'approved'"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-hourglass"
+      :title="`The ${ra.location.lower} is waiting for approval`"
+      :description="assessment.status === 'draft'
+        ? `This RA can be submitted now. While the ${ra.location.lower} waits, the building approver signs it too, after the other steps.`
+        : `It was waiting for approval when this RA was submitted, so the building approver signs it too.`"
+      data-testid="building-pending-note"
     />
     <UAlert
       v-if="assessment.status === 'draft' && !assessment.is_complete"

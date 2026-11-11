@@ -4,8 +4,8 @@ import type { RaEarthquake, RaEarthquakeList } from '~/composables/useRa'
 /**
  * The building map's "Recent earthquakes (BMKG)": BMKG's earthquakes of the last days that are
  * of magnitude 5.0 or more or felt, newest first, each with the buildings and branches within
- * the alert radius, the shakemap, and either the incidents declared from it or "Declare
- * incident". It says when BMKG was last read, warns when that is long ago, and always credits
+ * the alert radius, the shakemap, and either the disasters declared from it or "Declare
+ * disaster". It says when BMKG was last read, warns when that is long ago, and always credits
  * BMKG as the source (BMKG's terms).
  */
 const props = defineProps<{
@@ -113,7 +113,9 @@ function nearText(quake: RaEarthquake) {
               <span class="text-muted">Felt:</span> {{ quake.felt }}
             </p>
             <p v-if="quake.tsunami">
-              <span class="text-muted">Tsunami:</span> {{ quake.tsunami }}
+              <!-- BMKG's latest earthquake (autogempa, the one with a shakemap) words its Potensi
+                   more widely, e.g. "felt, to be passed on to the public": Potential. -->
+              <span class="text-muted">{{ quake.shakemap_url ? 'Potential' : 'Tsunami' }}:</span> {{ quake.tsunami }}
             </p>
             <p :class="quake.nearby.length ? 'text-highlighted' : 'text-muted'">
               <UIcon
@@ -161,7 +163,7 @@ function nearText(quake: RaEarthquake) {
               variant="outline"
               size="sm"
               icon="i-lucide-siren"
-              label="Declare incident"
+              label="Declare Disaster"
               @click="emit('declare', quake)"
             />
           </div>

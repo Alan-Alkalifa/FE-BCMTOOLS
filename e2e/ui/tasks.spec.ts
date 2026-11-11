@@ -14,7 +14,7 @@ const TASKS = [
   { ...BASE, key: 'scca_signoff-5', module: 'scca', type: 'signoff', id: 5, title: 'Core Banking', ref: 'SCCA-2026-0005', detail: 'Reviewed by BCM Reviewer', assignee: 'Dewi Lestari', working_days_waiting: 9, level: 'escalated', escalated: true, reminders_sent: 2, url: '/scca/5' },
   { ...BASE, key: 'ra_signoff-9', module: 'ra', type: 'signoff', id: 9, title: 'Griya CIMB Niaga 2', ref: 'RA-2026-0009', detail: 'Business Continuity Management Head', assignee: 'Test User', working_days_waiting: 8, level: 'escalated', escalated: true, mine: true, url: '/ra/manage/9?tab=signoff' },
   { ...BASE, key: 'ra_renewal-3', module: 'ra_branch', type: 'renewal', id: 3, title: 'KCP Bintaro', ref: 'RAB-2025-0003', detail: 'Renewal not started', assignee: 'Budi', due_date: '2026-10-01', days_left: -32, level: 'overdue', mine: true, url: '/locations/3' },
-  { ...BASE, key: 'incident-7', module: 'location', type: 'incident', id: 7, title: 'Incident CR-2026-0007 at Menara Sentraya', ref: 'CR-2026-0007', detail: 'Flood/ Flash Flood', assignee: 'Approvers', requested_by: 'Rina Kartika', hours_waiting: 5.2, reminders_sent: 3, level: 'escalated', escalated: true, mine: true, url: '/crises/7' },
+  { ...BASE, key: 'incident-7', module: 'location', type: 'incident', id: 7, title: 'Disaster CR-2026-0007 at Menara Sentraya', ref: 'CR-2026-0007', detail: 'Flood/ Flash Flood', assignee: 'Approvers', requested_by: 'Rina Kartika', hours_waiting: 5.2, reminders_sent: 3, level: 'escalated', escalated: true, mine: true, url: '/disasters/7' },
   { ...BASE, key: 'building-12', module: 'location', type: 'building', id: 12, title: 'New building: Menara Sentraya', ref: 'RA-HQ-0012', detail: 'New', kind: 'head_office', assignee: 'Approvers', requested_by: 'Rina Kartika', working_days_waiting: 1, mine: true, url: '/locations/12' },
 ]
 
@@ -73,7 +73,7 @@ test('Home shows each module at a glance, by role, each card opening its Task Ma
   await expect(scca.getByRole('link', { name: 'Overdue renewals: 0' })).toBeVisible()
   const location = overview.getByRole('region', { name: 'Location at a glance' })
   await expect(location.getByRole('link', { name: 'Buildings waiting: 1' })).toHaveAttribute('href', '/tasks?module=location&type=building')
-  await expect(location.getByRole('link', { name: 'Incidents waiting: 1' })).toBeVisible()
+  await expect(location.getByRole('link', { name: 'Disasters waiting: 1' })).toBeVisible()
 
   await scca.getByRole('link', { name: 'Stuck sign-offs: 1' }).click()
   await expect(page).toHaveURL(/\/tasks\?module=scca&type=signoff&level=stuck/)
@@ -126,17 +126,17 @@ test('Task Management has one tab per module, no My tasks / Everything, and noth
   await expect(renewal.getByText('32 days overdue')).toBeVisible()
   await expect(renewal.getByRole('link', { name: 'Renew: KCP Bintaro' })).toHaveAttribute('href', '/locations/3')
 
-  // Location: buildings and incidents waiting for approval, never reminded from here.
+  // Location: buildings and disasters waiting for approval, never reminded from here.
   await page.getByRole('tab', { name: /Location/ }).click()
   await expect(page).toHaveURL(/module=location/)
   await expect(page.getByRole('link', { name: 'Buildings: 1' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Incidents: 1' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Disasters: 1' })).toBeVisible()
   const incident = table.getByRole('row', { name: /CR-2026-0007/ })
   await expect(incident.getByText('5 hours')).toBeVisible()
-  await expect(incident.getByRole('link', { name: 'Review: Incident CR-2026-0007 at Menara Sentraya' })).toHaveAttribute('href', '/crises/7')
+  await expect(incident.getByRole('link', { name: 'Review: Disaster CR-2026-0007 at Menara Sentraya' })).toHaveAttribute('href', '/disasters/7')
   await expect(table.getByRole('row', { name: /New building: Menara Sentraya/ }).getByText('RA-HQ-0012 · New · Head office')).toBeVisible()
   await expect(page.getByRole('button', { name: /Remind/ })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Incidents: 1' }).click()
+  await page.getByRole('link', { name: 'Disasters: 1' }).click()
   await expect(page).toHaveURL(/module=location.*type=incident|type=incident.*module=location/)
   await expect(table.getByRole('row', { name: /New building/ })).toHaveCount(0)
   expect(calls.some((call) => call.includes('/remind'))).toBe(false)

@@ -19,7 +19,7 @@ const confirm = useConfirm()
 const form = useTemplateRef('form')
 const formError = ref<string | null>(null)
 
-const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, active: true }))
+const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, assessable: true }))
 /** 1 January this year (WIB): the earliest date a New building can have. */
 const yearStart = parseDate(`${raTodayIso().slice(0, 4)}-01-01`)
 
@@ -247,6 +247,12 @@ watch(() => state.reason, async (reason, before) => {
   state.location_id = undefined as unknown as number
 })
 
+/** A new building waiting for approval: its RA can be made, and the building approver signs it
+ *  too (when RA configuration has that step). */
+const pickedWaiting = computed(() => Boolean(
+  detail.value && detail.value.approval?.status === 'pending' && detail.value.approval.action !== 'deactivate',
+))
+
 /** What the picked building already has, as SCCA's note on the picked application. */
 const pickedNote = computed(() => {
   if (!state.location_id || !detail.value) return null
@@ -410,6 +416,16 @@ async function onSubmit() {
             :title="pickedNote.title"
             :description="pickedNote.description"
             data-testid="building-note"
+          />
+          <UAlert
+            v-if="pickedWaiting"
+            class="sm:col-span-2"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-hourglass"
+            :title="`This ${ra.location.lower} is waiting for approval`"
+            description="Its RA can be made now. Submitted while it waits, the RA is signed by the building approver too, after the other steps."
+            data-testid="building-waiting-note"
           />
           <UFormField
             label="Assessment date"

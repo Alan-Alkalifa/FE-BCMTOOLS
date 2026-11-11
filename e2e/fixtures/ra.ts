@@ -69,6 +69,19 @@ export const SIGNOFF_STEPS = {
   ]),
 }
 
+/** The building approver: signs only an RA whose building is new and waiting for approval. */
+export const BUILDING_APPROVER_STEP = {
+  code: 'building_approval',
+  role: 'building_approval',
+  label: 'Building approved by',
+  title: 'Building approver (the building waits for approval)',
+  mandatory: true,
+  signer_mode: 'default' as Mode,
+  signer_roles: [] as string[],
+  report_box: null as number | null,
+  condition: 'building_pending',
+}
+
 export function withTexts<T extends { kind: string }>(formula: T) {
   return {
     ...formula,
@@ -221,6 +234,9 @@ type MockAssessment = {
   returned_at: string | null
   approved_at: string | null
   location_approved?: boolean
+  location_problem?: string | null
+  building_pending?: boolean
+  signoff_step_codes?: string[]
   signoff_history: MockEvent[]
 }
 
@@ -363,6 +379,9 @@ export async function mockRa(
     scopeProblems?: Partial<Record<'annual_review' | 'structural_change', Record<string, string>>>
     /** The draft is on 2025-r4 while 2025-r5 is active: it can move (as SCCA's). */
     oldVersion?: boolean
+    /** With `pendingLocation`: the version has no building approver step, so the RA waits for
+     *  the building's approval (default: it has one, and the RA can be submitted). */
+    noPendingStep?: boolean
   } = {},
 ) {
   const log: RaMockLog = { ratings: [], created: [], signoff: [], lists: {}, deletedLocations: [], workflow: [], generated: [], locationQueries: [], approvals: [] }
@@ -404,6 +423,11 @@ export async function mockRa(
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
     const formula = withTexts(branch ? BRANCH_FORMULA : FORMULA)
     if (!branch && options.steps) Object.assign(formula, { signoff_steps: options.steps, signoff_roles: options.steps.map((row) => row.code) })
+    // The default steps end with the building approver (texts.pending_step).
+    if (!branch && !options.steps && !options.noPendingStep) {
+      const withApprover = [...formula.signoff_steps, BUILDING_APPROVER_STEP]
+      Object.assign(formula, { signoff_steps: withApprover, signoff_roles: withApprover.map((row) => row.code) })
+    }
     return route.fulfill({ json: formula })
   })
   await page.route('**/api/ra/building-types', (route) => route.fulfill({ json: { items: BUILDING_TYPES } }))
@@ -437,7 +461,18 @@ export async function mockRa(
   if (options.pendingLocation) {
     location.approval = { ...PENDING_APPROVAL }
     location.approval_can = { ...NO_APPROVAL_ACTIONS, approve: true, reject: true }
-    current.location_approved = false
+    // Its RA can be submitted, and the building approver signs it too; without that step in
+    // the version it waits for the building's approval.
+    current.building_pending = true
+    current.location_approved = !options.noPendingStep
+    current.signoff_step_codes = [
+      ...SIGNOFF_STEPS.head_office.map((row) => row.code),
+      ...(options.noPendingStep ? [] : [BUILDING_APPROVER_STEP.code]),
+    ]
+    if (options.noPendingStep) current.location_problem = 'The building is waiting for approval. Submit this RA once someone approves it.'
+  } else if (!options.steps) {
+    // The building approver signs only an RA whose building waits for approval.
+    current.signoff_step_codes = SIGNOFF_STEPS.head_office.map((row) => row.code)
   }
   /** Any other id: the location added last (EMPTY_LOCATION until one is added). */
   let added: Record<string, unknown> = EMPTY_LOCATION
@@ -516,6 +551,10 @@ export async function mockRa(
       .filter((row) => !params.get('region') || row.region === params.get('region'))
       .filter((row) => !params.get('province') || row.province === params.get('province'))
       .filter((row) => !params.get('active') || String(row.is_active) === params.get('active'))
+      // New assessment's picker: active and not rejected.
+      .filter((row) => !params.get('assessable') || String(row.is_active && (row as { approval?: { status?: string } }).approval?.status !== 'rejected') === params.get('assessable'))
+      // The register's Active / Inactive filter: these buildings are approved, so in service when active.
+      .filter((row) => !params.get('in_service') || String(row.is_active) === params.get('in_service'))
       .sort((a, b) => a.name.localeCompare(b.name))
       // Building 1 carries its approval (pending with `pendingLocation`).
       .map((row) => (row.id === 1 ? { ...row, approval: location.approval, approval_can: location.approval_can } : row))
@@ -878,7 +917,7 @@ export const BMKG_QUAKES = [
     latitude: -1.14,
     longitude: 120.15,
     region: 'Pusat gempa berada di darat 40 km TimurLaut Sigi',
-    tsunami: null,
+    tsunami: 'Tidak berpotensi tsunami',
     felt: 'III Sigi, II Palu',
     is_felt: true,
     shakemap_url: null,
@@ -889,12 +928,13 @@ export const BMKG_QUAKES = [
   },
 ]
 
-/** `unapproved`: a new building waiting for approval, a branch whose deactivation waits, and a
- *  rejected new building, also on the map. */
+/** `unapproved`: a new building waiting for approval, a branch whose deactivation waits (still
+ *  in service), a rejected new building and an inactive branch, also on the map. */
 export const UNAPPROVED_PLACES = [
-  { ...PLACE(3, 'head_office', 'Menara Baru', -6.2088, 106.8456), approval: { status: 'pending', action: 'register' } },
-  { ...PLACE(14, 'branch', 'KCP Depok Margonda', -6.3693, 106.8326, 'Low'), approval: { status: 'pending', action: 'deactivate' } },
-  { ...PLACE(4, 'head_office', 'Wisma Ditolak', -6.1951, 106.8231), approval: { status: 'rejected', action: 'register' } },
+  { ...PLACE(3, 'head_office', 'Menara Baru', -6.2088, 106.8456), approval: { status: 'pending', action: 'register' }, is_active: true, in_service: false },
+  { ...PLACE(14, 'branch', 'KCP Depok Margonda', -6.3693, 106.8326, 'Low'), approval: { status: 'pending', action: 'deactivate' }, is_active: true, in_service: true },
+  { ...PLACE(4, 'head_office', 'Wisma Ditolak', -6.1951, 106.8231), approval: { status: 'rejected', action: 'register' }, is_active: true, in_service: false },
+  { ...PLACE(15, 'branch', 'KCP Kemang Lama', -6.2607, 106.8136, 'Medium'), is_active: false, in_service: false },
 ]
 
 /** The location map: two buildings and three branches; Griya to KC Pondok Indah is 7,1 km. */
@@ -995,7 +1035,7 @@ export interface RaMapLog {
 }
 
 /**
- * Mocks the location map, incidents and the playbook. `crisis: false` starts with no open incident;
+ * Mocks the location map, disasters and the playbook. `crisis: false` starts with no open disaster;
  * `declare: false` signs in without ra.crisis.declare and ra.manage.
  */
 export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean, quakes?: boolean | 'stale' | 'off' } = {}) {

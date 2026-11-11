@@ -5,14 +5,16 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
  * Every head office building and branch with a map pin, on one map: measure the distance
- * between any two, see what is near a place, and declare an incident. Open incidents show for
+ * between any two, see what is near a place, and declare a disaster. Open disasters show for
  * everyone until they are closed. A place not approved yet (new, or to deactivate) carries an
- * hourglass badge, a rejected one a cross; the legend and the list say so too. The map zooms
- * with the scroll wheel while "Scroll to zoom" is on.
+ * hourglass badge, a rejected one a cross and an inactive one a pause sign; a place not in
+ * service (inactive, new and waiting, or rejected) is faded and no disaster affects it. The
+ * legend and the list say so too. The map zooms with the scroll wheel while "Scroll to zoom" is
+ * on.
  *
  * BMKG's recent earthquakes (magnitude 5.0 or more, or felt) show as rings at their epicentre
  * and in "Recent earthquakes (BMKG)" below the map, refreshed every 2 minutes; selecting one
- * (?quake=3) draws its alert radius, and an incident can be declared from it. BMKG is credited
+ * (?quake=3) draws its alert radius, and a disaster can be declared from it. BMKG is credited
  * as the source next to the map and the list (BMKG's terms).
  */
 definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
@@ -26,6 +28,8 @@ const mapRef = useTemplateRef<{ focus: (pin: RaPin) => void, fit: (pins: RaPin[]
 
 const showHeadOffice = ref(true)
 const showBranches = ref(true)
+/** Places not in service: inactive, new and waiting for approval, or rejected. */
+const showInactive = ref(true)
 const showQuakes = ref(true)
 
 // BMKG's recent earthquakes, read again every 2 minutes (the server polls BMKG as often).
@@ -34,8 +38,8 @@ const quakes = computed(() => quakeList.value?.items ?? [])
 let quakeTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
-  // The map data is shared with the incident page (the same key): read it again on arrival, so
-  // an incident approved, rejected or closed meanwhile is shown as it stands now.
+  // The map data is shared with the disaster page (the same key): read it again on arrival, so
+  // a disaster approved, rejected or closed meanwhile is shown as it stands now.
   if (data.value) refresh()
 })
 onBeforeUnmount(() => clearInterval(quakeTimer))
@@ -89,7 +93,7 @@ async function declareFromQuake(quake: RaEarthquake) {
     fromQuake: {
       earthquake: quake,
       hazardCode: list.hazard_code,
-      // The alert radius, within what an incident allows (200 km).
+      // The alert radius, within what a disaster allows (200 km).
       radiusM: Math.min(list.alert_radius_km * 1000, 200_000),
       source: list.source,
     },
@@ -100,21 +104,26 @@ async function declareFromQuake(quake: RaEarthquake) {
  *  outside the map). */
 const scrollZoom = ref(true)
 
-/** Where a place's approval stands, as the Buildings register says it. */
-function stateOf(place: RaMapPlace): RaBuildingState {
-  return raBuildingState({ is_active: true, approval: place.approval ?? null })
+/** A place's status badge as the Buildings register shows it, without "Active". */
+function badgesOf(place: RaMapPlace): RaBuildingState[] {
+  const state = raBuildingState(place)
+  return state === 'active' ? [] : [state]
 }
-const PIN_APPROVAL: Partial<Record<RaBuildingState, RaPinApproval>> = {
-  pending: 'waiting',
-  deactivating: 'waiting',
-  rejected: 'rejected',
+/** The marker's badge: its approval first, otherwise a pause sign when it is inactive. */
+function pinOfState(place: RaMapPlace): RaPinApproval | null {
+  const approval = raBuildingApproval(place)
+  if (approval === 'rejected') return 'rejected'
+  if (approval) return 'waiting'
+  return raInService(place) ? null : 'inactive'
 }
 const places = computed(() => data.value?.places ?? [])
 const visible = computed(() => places.value.filter((place) =>
-  place.kind === 'branch' ? showBranches.value : showHeadOffice.value))
+  (place.kind === 'branch' ? showBranches.value : showHeadOffice.value)
+  && (showInactive.value || raInService(place))))
 const counts = computed(() => ({
   head_office: places.value.filter((place) => place.kind === 'head_office').length,
   branch: places.value.filter((place) => place.kind === 'branch').length,
+  inactive: places.value.filter((place) => !raInService(place)).length,
 }))
 
 function byId(id: number | null | undefined) {
@@ -162,6 +171,12 @@ function swap() {
   [fromId.value, toId.value] = [toId.value, fromId.value]
 }
 
+/** Empty both places: the measured line and the From column go. */
+function clearMeasure() {
+  fromId.value = undefined
+  toId.value = undefined
+}
+
 function measureFrom(id: number) {
   fromId.value = id
   if (toId.value === id) toId.value = undefined
@@ -198,22 +213,23 @@ const nearby = computed(() => {
 
 const markers = computed<RaMapMarker[]>(() => [
   ...visible.value.map((place) => {
-    const state = stateOf(place)
+    const badges = badgesOf(place)
     return {
       id: place.id,
       lat: place.latitude,
       lng: place.longitude,
-      label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})${PIN_APPROVAL[state] ? `: ${raBuildingStatus[state].label}` : ''}`,
+      label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]})${badges.length ? `: ${badges.map((state) => raBuildingStatus[state].label).join(', ')}` : ''}`,
       level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
       variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
-      approval: PIN_APPROVAL[state] ?? null,
+      approval: pinOfState(place),
+      outOfService: !raInService(place),
     }
   }),
   ...(data.value?.crises ?? []).map((crisis) => ({
     id: crisis.id,
     lat: crisis.latitude,
     lng: crisis.longitude,
-    label: `${crisis.status === 'pending' ? 'Pending approval: incident' : 'Incident'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
+    label: `${crisis.status === 'pending' ? 'Pending approval: Disaster' : 'Disaster'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
     pending: crisis.status === 'pending',
   })),
@@ -312,12 +328,12 @@ const canOpenRa = useCanOpenRa()
         color="neutral"
         variant="outline"
         icon="i-lucide-history"
-        label="Incident history"
+        label="Disaster history"
       />
       <UButton
         v-if="data?.can_declare"
         icon="i-lucide-siren"
-        label="Declare incident"
+        label="Declare Disaster"
         @click="declare(selected?.id)"
       />
     </template>
@@ -351,7 +367,7 @@ const canOpenRa = useCanOpenRa()
     <template v-else-if="data">
       <section
         v-if="data.crises.length"
-        aria-label="Open and pending incidents"
+        aria-label="Open and pending disasters"
         class="space-y-2"
       >
         <UAlert
@@ -385,6 +401,13 @@ const canOpenRa = useCanOpenRa()
             <UCheckbox
               v-model="showBranches"
               :label="`Branches (${counts.branch})`"
+            />
+            <UCheckbox
+              v-if="counts.inactive"
+              v-model="showInactive"
+              :label="`Inactive (${counts.inactive})`"
+              description="Not in service: inactive, new and waiting for approval, or rejected."
+              :ui="{ description: 'sr-only' }"
             />
             <UCheckbox
               v-model="showQuakes"
@@ -463,10 +486,12 @@ const canOpenRa = useCanOpenRa()
                   :items="placeItems"
                   value-key="value"
                   placeholder="Choose a place"
+                  :clear="{ 'aria-label': 'Clear From' }"
                   class="w-full"
+                  @clear="fromId = undefined"
                 />
               </UFormField>
-              <div class="flex justify-center">
+              <div class="flex justify-center gap-2">
                 <UButton
                   color="neutral"
                   variant="ghost"
@@ -476,6 +501,15 @@ const canOpenRa = useCanOpenRa()
                   :disabled="!fromId && !toId"
                   @click="swap"
                 />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-x"
+                  label="Clear"
+                  :disabled="!fromId && !toId"
+                  @click="clearMeasure"
+                />
               </div>
               <UFormField label="To">
                 <USelectMenu
@@ -483,7 +517,9 @@ const canOpenRa = useCanOpenRa()
                   :items="placeItems"
                   value-key="value"
                   placeholder="Choose a place"
+                  :clear="{ 'aria-label': 'Clear To' }"
                   class="w-full"
+                  @clear="toId = undefined"
                 />
               </UFormField>
               <div
@@ -520,13 +556,18 @@ const canOpenRa = useCanOpenRa()
                   <p class="text-sm text-muted">
                     {{ [RA_PLACE_KIND_LABEL[selected.kind], selected.region].filter(Boolean).join(' · ') }}
                   </p>
-                  <StatusBadge
-                    v-if="PIN_APPROVAL[stateOf(selected)]"
-                    :scale="raBuildingStatus"
-                    :value="stateOf(selected)"
-                    size="sm"
-                    class="mt-1"
-                  />
+                  <div
+                    v-if="badgesOf(selected).length"
+                    class="mt-1 flex flex-wrap gap-1"
+                  >
+                    <StatusBadge
+                      v-for="state in badgesOf(selected)"
+                      :key="state"
+                      :scale="raBuildingStatus"
+                      :value="state"
+                      size="sm"
+                    />
+                  </div>
                 </div>
                 <UTooltip text="Clear the selection">
                   <UButton
@@ -588,7 +629,7 @@ const canOpenRa = useCanOpenRa()
                   variant="outline"
                   size="sm"
                   icon="i-lucide-siren"
-                  label="Declare incident here"
+                  label="Declare Disaster here"
                   @click="declare(selected.id)"
                 />
               </div>
@@ -692,9 +733,10 @@ const canOpenRa = useCanOpenRa()
                 @click="select(row.original.id)"
               />
               <StatusBadge
-                v-if="PIN_APPROVAL[stateOf(row.original)]"
+                v-for="state in badgesOf(row.original)"
+                :key="state"
                 :scale="raBuildingStatus"
-                :value="stateOf(row.original)"
+                :value="state"
                 size="sm"
               />
             </div>

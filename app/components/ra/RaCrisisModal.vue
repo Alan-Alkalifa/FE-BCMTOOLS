@@ -4,13 +4,15 @@ import { z } from 'zod'
 import type { RaCrisis, RaCrisisInput, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
- * Declares an incident, or updates one that is open or waiting for approval: the hazard, where it
+ * Declares a disaster, or updates one that is open or waiting for approval: the hazard, where it
  * happens, the affected radius and when it started (WIB). An update needs its message (what is
- * happening now, or why it changed), kept in the history. Closes with the saved incident, or
+ * happening now, or why it changed), kept in the history. Closes with the saved disaster, or
  * false.
  *
  * Where is always a pin on the map: drop it by clicking the map, drag it, or pick a building or
  * branch (from the list or its marker) to put the pin on it. The ring shows the affected area.
+ * Only places in service are offered and counted: an inactive place, a new one waiting for
+ * approval and a rejected one can't be affected (an update keeps the disaster's own place).
  */
 const props = withDefaults(defineProps<{
   places: RaMapPlace[]
@@ -18,7 +20,7 @@ const props = withDefaults(defineProps<{
   /** Preselects the place when declaring from a place on the map. */
   locationId?: number | null
   /** Declaring from a BMKG earthquake: the hazard, the epicentre, the radius, the time and the
-   *  description are filled in, and the incident is linked to the earthquake. */
+   *  description are filled in, and the disaster is linked to the earthquake. */
   fromQuake?: { earthquake: RaEarthquake, hazardCode: string, radiusM: number, source: string } | null
 }>(), { crisis: null, locationId: null, fromQuake: null })
 const emit = defineEmits<{ close: [crisis: RaCrisis | false] }>()
@@ -31,7 +33,10 @@ const hazardItems = computed(() => (formula.value?.categories ?? []).map((catego
   ...category.hazards.map((hazard) => ({ label: `${hazard.short_name}`, value: hazard.code, description: hazard.code })),
 ]))
 
-const placeItems = computed(() => props.places.map((place) => ({
+const ownPlaceId = props.crisis?.location?.id ?? null
+const places = computed(() => props.places.filter((place) => raInService(place) || place.id === ownPlaceId))
+
+const placeItems = computed(() => places.value.map((place) => ({
   label: place.name,
   value: place.id,
   description: [RA_PLACE_KIND_LABEL[place.kind], place.region].filter(Boolean).join(' · '),
@@ -40,9 +45,9 @@ const placeItems = computed(() => props.places.map((place) => ({
 
 const quake = props.crisis ? null : props.fromQuake
 const startedAt = raWibParts(props.crisis?.started_at ?? quake?.earthquake.occurred_at ?? new Date())
-const initialPlace = props.places.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
+const initialPlace = places.value.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
 
-/** What BMKG says about the earthquake, as the incident's description. */
+/** What BMKG says about the earthquake, as the disaster's description. */
 function quakeDescription(item: RaEarthquake) {
   return [
     `Earthquake M${raFormatMagnitude(item.magnitude)} (BMKG)${item.depth_km !== null ? `, ${item.depth_km} km deep` : ''}.`,
@@ -101,7 +106,7 @@ function showArea() {
 /** Picking a building or branch puts the pin on it. */
 function choosePlace(id: number | undefined) {
   state.location_id = id
-  const place = props.places.find((item) => item.id === id)
+  const place = places.value.find((item) => item.id === id)
   if (place) {
     state.pin = placePin(place)
     nextTick(showArea)
@@ -110,15 +115,15 @@ function choosePlace(id: number | undefined) {
 
 // A pin moved off the chosen place is a point of its own, not that building or branch.
 watch(() => state.pin, (pin) => {
-  const place = props.places.find((item) => item.id === state.location_id)
+  const place = places.value.find((item) => item.id === state.location_id)
   if (place && (!pin || pin.lat !== place.latitude || pin.lng !== place.longitude)) state.location_id = undefined
 })
 
-const markers = computed<RaMapMarker[]>(() => props.places.map((place) => ({
+const markers = computed<RaMapMarker[]>(() => places.value.map((place) => ({
   id: place.id,
   lat: place.latitude,
   lng: place.longitude,
-  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the incident here.`,
+  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the disaster here.`,
   level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
   variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
 })))
@@ -126,11 +131,11 @@ const circles = computed(() => (state.pin && state.radius_km > 0
   ? [{ id: 0, ...state.pin, radiusM: state.radius_km * 1000, crisis: true }]
   : []))
 
-/** The places inside the ring, nearest first: what the incident will affect. */
+/** The places inside the ring, nearest first: what the disaster will affect. */
 const affected = computed(() => {
   const pin = state.pin
   if (!pin) return []
-  return props.places
+  return places.value
     .map((place) => ({ place, distanceM: raDistanceKm(pin, placePin(place)) * 1000 }))
     .filter((row) => row.distanceM <= state.radius_km * 1000)
     .sort((a, b) => a.distanceM - b.distanceM)
@@ -179,9 +184,9 @@ async function onSubmit() {
 
 <template>
   <UModal
-    :title="editing ? `Update ${crisis!.ref_no}` : 'Declare an incident'"
+    :title="editing ? `Update ${crisis!.ref_no}` : 'Declare Disaster'"
     :description="editing
-      ? 'Change the radius or anything else, and say what is happening now. Both go into the incident history.'
+      ? 'Change the radius or anything else, and say what is happening now. Both go into the disaster history.'
       : 'It shows on the building map as pending until someone else with the approve permission confirms it. Then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
@@ -199,7 +204,7 @@ async function onSubmit() {
           color="error"
           variant="subtle"
           icon="i-lucide-circle-alert"
-          :title="editing ? 'Couldn\'t update the incident' : 'Couldn\'t declare the incident'"
+          :title="editing ? 'Couldn\'t update the disaster' : 'Couldn\'t declare the disaster'"
           :description="formError"
         />
 
@@ -217,7 +222,7 @@ async function onSubmit() {
           label="Update"
           name="note"
           required
-          help="What is happening now, or why it changed. Kept in the history with what changed, and seen by everyone following the incident."
+          help="What is happening now, or why it changed. Kept in the history with what changed, and seen by everyone following the disaster."
           :error="fieldErrors.note"
         >
           <UTextarea
@@ -272,7 +277,7 @@ async function onSubmit() {
               :markers="markers"
               :circles="circles"
               :selected="state.location_id ?? null"
-              label="Map for the incident point. Click to drop the pin, or select a building or branch."
+              label="Map for the disaster point. Click to drop the pin, or select a building or branch."
               height-class="h-72"
               scroll-zoom
               @select="(id: number) => choosePlace(id)"
@@ -280,7 +285,7 @@ async function onSubmit() {
             />
             <RaMapLegend
               :items="['building', 'branch', 'crisis']"
-              :labels="{ crisis: 'Incident point and its affected area' }"
+              :labels="{ crisis: 'Disaster point and its affected area' }"
             />
             <p class="text-sm text-muted">
               <template v-if="state.pin">
@@ -361,7 +366,7 @@ async function onSubmit() {
         <UFormField
           label="What is happening"
           name="description"
-          help="Optional. Shown with the incident, e.g. the water level or the affected floors."
+          help="Optional. Shown with the disaster, e.g. the water level or the affected floors."
         >
           <UTextarea
             v-model="state.description"
@@ -384,7 +389,7 @@ async function onSubmit() {
           type="submit"
           form="ra-crisis-form"
           :icon="editing ? undefined : 'i-lucide-siren'"
-          :label="editing ? 'Save update' : 'Submit disaster/incident'"
+          :label="editing ? 'Save update' : 'Submit'"
           :loading="saving"
         />
       </div>

@@ -40,7 +40,7 @@ const sccaQuery = computed(() => ({
 watch([sccaSearch, sccaAction, sccaAssessment, sccaPerPage], () => (sccaPage.value = 1))
 
 // RA activity; ?building=ID (from a building's page) shows that building with its RAs and
-// incidents.
+// disasters.
 const raSearch = ref('')
 const raGroup = ref('all')
 const raPage = ref(1)
@@ -160,7 +160,7 @@ const tabs = [
   <AppPage
     title="Audit log"
     icon="i-lucide-scroll-text"
-    description="Who signed in, what administrators changed, who did what on each SCCA and in RA (buildings, RAs, incidents), and every email BCM Tools sent."
+    description="Who signed in, what administrators changed, who did what on each SCCA and in RA (buildings, RAs, disasters), and every email BCM Tools sent."
     :crumbs="[{ label: 'Administration' }, { label: 'Audit log' }]"
   >
     <UTabs
@@ -371,7 +371,7 @@ const tabs = [
             <UInput
               v-model="raSearch"
               icon="i-lucide-search"
-              placeholder="Building, building ID, RA or incident ref., or user"
+              placeholder="Building, building ID, RA or disaster ref., or user"
               aria-label="Search RA activity"
               class="w-full sm:w-96"
             />

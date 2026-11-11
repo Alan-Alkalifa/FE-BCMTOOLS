@@ -145,7 +145,7 @@ async function save() {
             How it runs
           </p>
           <p class="text-muted">
-            The server reads BMKG every 2 minutes (<code>flask ra poll-bmkg</code>): the latest earthquake, the last 15 of magnitude 5,0 or more and the last 15 felt. A new one near a building or branch is emailed once to everyone who may declare incidents; nothing is declared automatically.
+            The server reads BMKG every 2 minutes (<code>flask ra poll-bmkg</code>): the latest earthquake, the last 15 of magnitude 5,0 or more and the last 15 felt. A new one near a building or branch is emailed once to everyone who may declare disasters; nothing is declared automatically.
           </p>
           <p
             v-if="data"

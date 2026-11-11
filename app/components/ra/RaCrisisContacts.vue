@@ -3,7 +3,7 @@ import type { RaCrisisPlace } from '~/composables/useRa'
 
 /**
  * Who to call for one affected place, as tables: its emergency contacts, call tree and recovery
- * team. Used on the incident page (phones dial, with the team charts and a link to add missing
+ * team. Used on the disaster page (phones dial, with the team charts and a link to add missing
  * contacts) and in its print view (`print`: plain text, nothing to click).
  */
 const props = defineProps<{ place: RaCrisisPlace, print?: boolean }>()

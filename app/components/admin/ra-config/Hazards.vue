@@ -2,8 +2,8 @@
 import type { RaConfigVersion, RaHazardsInput } from '~/composables/useRaConfigAdmin'
 
 /**
- * The hazard groups and the Type of Hazard in each, in order. Codes are kept (incidents and the
- * incident guidebook refer to them); a new hazard or group gets the next free code when saved;
+ * The hazard groups and the Type of Hazard in each, in order. Codes are kept (disasters and the
+ * disaster guidebook refer to them); a new hazard or group gets the next free code when saved;
  * a hazard left out is removed from this version only.
  */
 const props = defineProps<{ version: RaConfigVersion }>()

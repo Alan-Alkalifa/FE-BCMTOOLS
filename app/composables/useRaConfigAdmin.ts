@@ -79,7 +79,7 @@ export interface RaSettings {
   overdue_repeat_days: number
   window_start_hour: number
   window_end_hour: number
-  /** A declared incident waiting for approval: remind every N hours, escalate after M. */
+  /** A declared disaster waiting for approval: remind every N hours, escalate after M. */
   incident_reminder_hours: number
   incident_escalate_hours: number
   updated_at?: string | null

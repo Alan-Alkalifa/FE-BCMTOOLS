@@ -1,8 +1,8 @@
 import RaCrisisNoteModal from '~/components/ra/RaCrisisNoteModal.vue'
 
 /**
- * The approve / reject dialogs of the four-eyes approval of buildings and incidents, shared by
- * the banner on their pages and the Approve / Reject buttons in the Buildings and Incidents
+ * The approve / reject dialogs of the four-eyes approval of buildings and disasters, shared by
+ * the banner on their pages and the Approve / Reject buttons in the Buildings and Disasters
  * lists. Each resolves to the note ('' without one) or false when cancelled.
  */
 export function useRaApprovalDialogs() {
@@ -13,9 +13,9 @@ export function useRaApprovalDialogs() {
       title: action === 'deactivate' ? `Make this ${noun} inactive?` : `Approve this ${noun}?`,
       description: action === 'deactivate'
         ? `It leaves the ${noun} lists, the map and New assessment. Its RAs are kept.`
-        : noun === 'incident'
+        : noun === 'disaster'
           ? 'It opens: everyone affected sees it on the building map with their instructions.'
-          : 'Its RAs can then be submitted for sign-off.',
+          : 'It becomes active: disasters and earthquakes then affect it.',
       confirmLabel: 'Approve',
       noteLabel: 'Comment',
       help: 'Optional. Kept with the approval.',
@@ -27,7 +27,7 @@ export function useRaApprovalDialogs() {
       title: `Reject ${action === 'deactivate' ? 'the deactivation' : `this ${noun}`}?`,
       description: action === 'deactivate'
         ? `The ${noun} stays active. The reason is shown to who asked.`
-        : noun === 'incident'
+        : noun === 'disaster'
           ? 'It leaves the map and stays in the list as rejected, with the reason.'
           : `Who added it sees the reason, fixes the ${noun} and submits it again.`,
       confirmLabel: 'Reject',

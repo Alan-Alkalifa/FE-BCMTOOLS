@@ -29,7 +29,7 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await expect(page.getByRole('cell', { name: 'New building' })).toBeVisible()
   const byReason = page.waitForRequest((r) => r.url().includes('reason=structural_change'))
   await page.getByLabel('Reason for assessment').click()
-  await expect(page.getByRole('option', { name: 'After an incident' })).toHaveCount(0)
+  await expect(page.getByRole('option', { name: 'After a disaster' })).toHaveCount(0)
   await page.getByRole('option', { name: 'Structural change' }).click()
   await byReason
   await expect(page).toHaveURL(/reason=structural_change/)
@@ -344,7 +344,7 @@ test('old links land in the right section', async ({ page }) => {
 
 /** The building picker's list, with Griya's earlier RA final (so Annual review can renew it). */
 async function griyaHasAFinalRa(page: import('@playwright/test').Page) {
-  await page.route(/\/api\/ra\/locations\?kind=head_office&active=true$/, (route) => route.fulfill({
+  await page.route(/\/api\/ra\/locations\?kind=head_office&assessable=true$/, (route) => route.fulfill({
     json: { items: LOCATIONS.map((row) => (row.id === 1 ? { ...row, final_assessment: { ...SUMMARY, status: 'approved' } } : row)) },
   }))
 }

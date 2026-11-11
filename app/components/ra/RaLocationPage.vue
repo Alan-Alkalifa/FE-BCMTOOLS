@@ -153,7 +153,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
         label="Activity"
       />
       <UButton
-        v-if="location?.is_active && canEdit"
+        v-if="location && (location.assessable ?? location.is_active) && canEdit"
         :to="{ path: raPath(ra.kind, 'manage', 'new'), query: { location_id: location.id } }"
         icon="i-lucide-plus"
         label="New assessment"

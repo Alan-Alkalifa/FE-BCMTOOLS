@@ -4,7 +4,7 @@ import type { Task, TaskLevelFilter, TaskModule, TaskType } from '~/composables/
 
 /**
  * Task Management: one tab per module the user's roles open — SCCA, RA HO, RA Branch, and
- * Location (buildings and incidents waiting for approval, for their approvers). In a tab the
+ * Location (buildings and disasters waiting for approval, for their approvers). In a tab the
  * module's BCM sees every task; everyone else what waits for them: the approvals and sign-off
  * steps they sign and the renewals of what they look after. Each task is done on its own page.
  * Nothing is reminded from here.
@@ -79,7 +79,7 @@ const typeFilter = computed({
   get: () => query.value.type ?? 'all',
   set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, level: undefined }),
 })
-const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', incident: 'Incidents' }
+const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', incident: 'Disasters' }
 const moduleTypes = computed(() => module.value ? TASK_MODULE_TYPES[module.value] : TYPES)
 const typeItems = computed(() => [
   { label: 'Every task', value: 'all' },

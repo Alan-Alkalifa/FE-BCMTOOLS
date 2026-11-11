@@ -109,8 +109,9 @@ body {
   }
 }
 
-/* A map marker's approval badge (utils/ra-map-symbols.ts raPinHtml): on the map's markers and
-   in its legend. Waiting is orange (an hourglass), rejected red (a cross). */
+/* A map marker's badge (utils/ra-map-symbols.ts raPinHtml): on the map's markers and in its
+   legend. Waiting is orange (an hourglass), rejected red (a cross), inactive grey (a pause). A
+   place not in service (inactive, new and waiting for approval, or rejected) is faded. */
 .ra-pin-stack {
   position: relative;
   display: block;
@@ -142,4 +143,12 @@ body {
 
 .ra-pin-badge-rejected {
   color: var(--ui-error);
+}
+
+.ra-pin-badge-inactive {
+  color: var(--ui-color-neutral-500);
+}
+
+.ra-pin-out > svg {
+  opacity: 0.5;
 }

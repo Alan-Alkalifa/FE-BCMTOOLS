@@ -161,6 +161,16 @@ export type RaSignoffRole = string
  *  filled in on a new RA, a fixed signer put on the step at Submit, or the LIC / LICOM of the
  *  Details tab. */
 export type RaSignerMode = 'chosen' | 'default' | 'fixed' | 'lic' | 'licom'
+/** When a step signs: always, or only on an RA whose building is new and waiting for approval. */
+export type RaStepCondition = 'always' | 'building_pending'
+export const RA_STEP_CONDITIONS: { value: RaStepCondition, label: string, description: string }[] = [
+  { value: 'always', label: 'Always', description: 'Signs every RA.' },
+  {
+    value: 'building_pending',
+    label: 'Building waiting for approval',
+    description: 'Signs only an RA whose building is new and waiting for approval. Without such a step, that RA can\'t be submitted until the building is approved.',
+  },
+]
 
 export interface RaSignoffRoleOption {
   value: RaSignoffRole
@@ -194,7 +204,7 @@ export interface RaModule {
   perm: { access: string, edit: string, manage: string }
 }
 
-/** Either side opens the shared Location pages (buildings, map, incidents, guidebook). */
+/** Either side opens the shared Location pages (buildings, map, disasters, guidebook). */
 export const RA_ANY_ACCESS = ['ra.access', 'ra_branch.access']
 export const RA_ANY_EDIT = ['ra.edit', 'ra_branch.edit']
 export const RA_ANY_MANAGE = ['ra.manage', 'ra_branch.manage']
@@ -383,16 +393,21 @@ export function raStepTitle(role: string | null | undefined, roles: readonly RaS
 }
 
 /** The sign-off steps of a configuration version (as RA configuration sets them), or the
- *  module's defaults. */
+ *  module's defaults. With `codes` (an assessment's `signoff_step_codes`), only the steps that
+ *  sign that RA: the building approver only while its building waits for approval. `null`
+ *  (an assessment without the list) leaves the building approver out. */
 export function raRoleOptions(
-  formula: { signoff_steps?: { code: RaSignoffRole, label: string, title: string, signer_mode?: RaSignerMode, mandatory?: boolean }[] } | null | undefined,
+  formula: { signoff_steps?: { code: RaSignoffRole, label: string, title: string, signer_mode?: RaSignerMode, mandatory?: boolean, condition?: RaStepCondition }[] } | null | undefined,
   fallback: readonly RaSignoffRoleOption[],
+  codes?: readonly string[] | null,
 ): RaSignoffRoleOption[] {
   const rows = formula?.signoff_steps
   if (!rows?.length) {
     return fallback.map((row) => ({ ...row, mode: RA_DEFAULT_SIGNER_MODES[row.value] ?? 'chosen', mandatory: true }))
   }
-  return rows.map((row) => ({
+  const signs = (row: { code: string, condition?: RaStepCondition }) =>
+    codes ? codes.includes(row.code) : codes === null ? (row.condition ?? 'always') === 'always' : true
+  return rows.filter(signs).map((row) => ({
     value: row.code,
     label: row.label,
     hint: row.title,
@@ -423,7 +438,7 @@ export const RA_RECOVERY_TEAMS = [
 export type RaRecoveryTeam = (typeof RA_RECOVERY_TEAMS)[number]['value']
 
 /** What a map legend (RaMapLegend) can list: the same symbols the map draws. */
-export type RaMapLegendItem = 'building' | 'branch' | 'waiting' | 'rejected' | 'crisis' | 'crisis_pending' | 'quake'
+export type RaMapLegendItem = 'building' | 'branch' | 'waiting' | 'rejected' | 'inactive' | 'crisis' | 'crisis_pending' | 'quake'
 
 /** LCP-Call Tree. */
 export const RA_CALL_TREE_LEVELS = [
@@ -446,7 +461,7 @@ export const RA_DIAGRAMS = {
   call_tree: {
     label: 'Location call tree',
     button: 'View call tree chart',
-    description: 'Who calls whom at levels one to three when an incident happens.',
+    description: 'Who calls whom at levels one to three when a disaster happens.',
   },
 } as const
 export type RaDiagram = keyof typeof RA_DIAGRAMS
@@ -547,14 +562,37 @@ export const raBuildingStatus = defineStatusScale<RaBuildingState>({
   inactive: { label: 'Inactive', color: 'neutral', icon: 'i-lucide-circle-pause' },
 })
 
-export function raBuildingState(location: {
-  is_active: boolean
+interface RaBuildingLike {
+  is_active?: boolean
+  in_service?: boolean
   approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
-}): RaBuildingState {
+}
+
+/**
+ * In service: active and approved as a building, the API's `in_service`. A deactivation
+ * waiting for approval still counts. An inactive building, a new one waiting for approval and a
+ * rejected one are not in service: the register shows them as Inactive, the map fades them,
+ * and no disaster affects them.
+ */
+export function raInService(location: RaBuildingLike): boolean {
+  if (typeof location.in_service === 'boolean') return location.in_service
+  const approval = location.approval
+  return (location.is_active ?? true) && (!approval || approval.status === 'approved' || approval.action === 'deactivate')
+}
+
+/** Where its approval stands when it waits or was rejected, otherwise null. */
+export function raBuildingApproval(location: RaBuildingLike): RaBuildingState | null {
   const approval = location.approval
   if (approval?.status === 'rejected') return 'rejected'
   if (approval?.status === 'pending') return approval.action === 'deactivate' ? 'deactivating' : 'pending'
-  return location.is_active ? 'active' : 'inactive'
+  return null
+}
+
+/** A building's status, one badge: Waiting for approval (new), Deactivation requested,
+ *  Rejected, otherwise Active or Inactive (its own switch). Filters and the map still count a
+ *  new building waiting and a rejected one as not in service (raInService). */
+export function raBuildingState(location: RaBuildingLike): RaBuildingState {
+  return raBuildingApproval(location) ?? ((location.is_active ?? true) ? 'active' : 'inactive')
 }
 
 export const raPlaybookReview = defineStatusScale<'reviewed' | 'starter'>({
@@ -622,7 +660,7 @@ export function raReportPath(kind: RaKind, section: RaSection, id: number) {
   return `${raPath(kind, section, id)}/report`
 }
 
-/** Where an assessment opens from elsewhere (a location, the map, an incident): a draft in Manage
+/** Where an assessment opens from elsewhere (a location, the map, a disaster): a draft in Manage
  *  to work on it, anything else in Monitoring to read it. */
 export function raRecordPath(kind: RaKind, assessment: { id: number, status?: RaStatus | null }) {
   return raPath(kind, assessment.status === 'draft' ? 'manage' : 'monitoring', assessment.id)
@@ -714,7 +752,7 @@ export const raWaitLevel = defineStatusScale<RaWaitLevel>({
 })
 
 /** The first crumb of the pages in the Location menu group (the register of head office
- *  buildings and branches, the building map, incidents and the guidebook): Home › Location ›
+ *  buildings and branches, the building map, disasters and the guidebook): Home › Location ›
  *  Buildings. The routes keep their /locations names. */
 export const BUILDINGS_GROUP = 'Location'
 export const LOCATIONS_PATH = '/locations'
@@ -724,8 +762,8 @@ export const LOCATION_IMPORT_PATH = '/locations/import'
 /** Where one file of Import from Excel stands (`RaImportFileCard`). */
 export type RaImportCardStatus = 'reading' | 'unreadable' | 'wrong_type' | 'ready' | 'importing' | 'imported' | 'failed'
 export const LOCATION_MAP_PATH = '/locations/map'
-export const CRISES_PATH = '/crises'
-export const GUIDEBOOK_PATH = '/crises/guidebook'
+export const CRISES_PATH = '/disasters'
+export const GUIDEBOOK_PATH = '/disasters/guidebook'
 
 /** A location's profile, on a tab (`map`, `contacts`, ...) when given. */
 export function locationPath(id: number, tab?: string) {
@@ -736,17 +774,17 @@ export function crisisPath(id: number) {
   return `${CRISES_PATH}/${id}`
 }
 
-/** An incident's print view. */
+/** A disaster's print view. */
 export function crisisReportPath(id: number) {
   return `${crisisPath(id)}/report`
 }
 
-/** Where an incident happened: its building or branch, or the pin's coordinates. */
+/** Where a disaster happened: its building or branch, or the pin's coordinates. */
 export function raCrisisPlaceName(crisis: RaCrisis) {
   return crisis.location?.name ?? raFormatCoordinates({ lat: crisis.latitude, lng: crisis.longitude })
 }
 
-/** An incident's map: its point (unless it is at a building's pin, shown by the ring) and the
+/** A disaster's map: its point (unless it is at a building's pin, shown by the ring) and the
  *  affected places, coloured by their residual risk for the hazard. */
 export function raCrisisMarkers(crisis: RaCrisis): RaMapMarker[] {
   const atPin = crisis.affected.some((row) => row.distance_m === 0)
@@ -757,7 +795,7 @@ export function raCrisisMarkers(crisis: RaCrisis): RaMapMarker[] {
           id: crisis.id,
           lat: crisis.latitude,
           lng: crisis.longitude,
-          label: `Incident point: ${raCrisisPlaceName(crisis)}`,
+          label: `Disaster point: ${raCrisisPlaceName(crisis)}`,
           variant: 'crisis' as const,
           pending: crisis.status === 'pending',
         }]),
@@ -772,7 +810,7 @@ export function raCrisisMarkers(crisis: RaCrisis): RaMapMarker[] {
   ]
 }
 
-/** An incident's affected area. */
+/** A disaster's affected area. */
 export function raCrisisCircles(crisis: RaCrisis) {
   return [{ id: crisis.id, lat: crisis.latitude, lng: crisis.longitude, radiusM: crisis.radius_m, crisis: true, pending: crisis.status === 'pending' }]
 }

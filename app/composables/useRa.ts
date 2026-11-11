@@ -21,7 +21,7 @@ export interface RaGuide {
 }
 
 /** A sign-off step as RA configuration sets it: "Prepared by" signed by the "Location
- *  Incident Coordinator (LIC)", in approval order. `role` repeats `code`. */
+ *  Disaster Coordinator (LIC)", in approval order. `role` repeats `code`. */
 export interface RaSignoffStep {
   code: RaSignoffRole
   role?: RaSignoffRole
@@ -32,6 +32,8 @@ export interface RaSignoffStep {
   signer_roles: string[]
   /** Its box on the Excel report (1–4, RA Branch 1–3), or null when it is not on the form. */
   report_box: number | null
+  /** always, or building_pending: signs only an RA whose building is new and waiting. */
+  condition?: RaStepCondition
 }
 
 export interface RaFormula {
@@ -159,8 +161,15 @@ export interface RaWorkflow {
   awaiting_signer: RaUserRef | null
   can_edit: boolean
   can_submit: boolean
-  /** False while the building waits for approval (or was rejected): it can't be submitted. */
+  /** False while the building stops it being submitted (inactive, rejected, or new and waiting
+   *  for approval without a building approver step in its version); why in location_problem. */
   location_approved?: boolean
+  location_problem?: string | null
+  /** The steps that sign this RA, in order (the building approver only while its building is
+   *  new and waiting for approval). */
+  signoff_step_codes?: string[]
+  /** Its building is new and waiting for approval: the building approver signs too. */
+  building_pending?: boolean
   can_approve: boolean
   can_return: boolean
   /** BCM (ra.manage): change the signer of the waiting step or approve it on their behalf. */
@@ -276,14 +285,17 @@ export interface RaMapMarker extends RaPin {
   label: string
   /** Pin colour: the latest highest residual level, "na", or "none" without an assessment. */
   level?: RaLevel | 'na' | 'none' | null
-  /** A head office building (pin), a branch (square), an incident point (siren), or a BMKG
+  /** A head office building (pin), a branch (square), a disaster point (siren), or a BMKG
    *  earthquake (rings). */
   variant?: 'location' | 'branch' | 'crisis' | 'quake'
-  /** An incident waiting for approval: its point is orange. */
+  /** A disaster waiting for approval: its point is orange. */
   pending?: boolean
-  /** A building or branch waiting for approval (new, or to deactivate), or rejected: a badge
-   *  on its marker. */
+  /** A building or branch waiting for approval (new, or to deactivate), rejected, or
+   *  inactive: a badge on its marker. */
   approval?: RaPinApproval | null
+  /** Not in service (inactive, new and waiting for approval, or rejected): the marker is
+   *  faded. */
+  outOfService?: boolean
   /** An earthquake of magnitude 6.0 or more: its marker is red (orange below). */
   strong?: boolean
 }
@@ -292,9 +304,9 @@ export interface RaMapCircle extends RaPin {
   id: number
   radiusM: number
   active?: boolean
-  /** An incident's affected area (error colour) rather than a distance ring. */
+  /** A disaster's affected area (error colour) rather than a distance ring. */
   crisis?: boolean
-  /** An incident waiting for approval: its area is orange and dashed. */
+  /** A disaster waiting for approval: its area is orange and dashed. */
   pending?: boolean
   /** A BMKG earthquake's alert radius: orange and dotted. */
   quake?: boolean
@@ -312,6 +324,10 @@ export interface RaPlace {
 }
 
 export interface RaMapPlace extends RaPlace {
+  /** The building's own switch. */
+  is_active?: boolean
+  /** Active and approved (a deactivation waiting still counts): see raInService. */
+  in_service?: boolean
   latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
   /** Where its four-eyes approval stands: a new building waiting (pending, register), a
    *  deactivation waiting (pending, deactivate), rejected or approved. */
@@ -329,7 +345,7 @@ export interface RaHazardRef {
 /** pending: declared, waiting for someone else's approval; rejected: not confirmed. */
 export type RaCrisisStatus = 'pending' | 'open' | 'closed' | 'rejected'
 
-/** What the current user can do with a pending approval (building or incident). */
+/** What the current user can do with a pending approval (building or disaster). */
 export interface RaApprovalCan {
   approve: boolean
   reject: boolean
@@ -382,7 +398,8 @@ export interface RaEarthquake {
   longitude: number
   /** BMKG's Wilayah: where the epicentre is. */
   region: string | null
-  /** BMKG's Potensi: the tsunami potential. */
+  /** BMKG's Potensi: shown as Tsunami, or as Potential for the latest earthquake (autogempa,
+   *  the one with a shakemap), whose Potensi may be e.g. felt and to be passed on to the public. */
   tsunami: string | null
   /** BMKG's Dirasakan: where it was felt, e.g. "IV Bogor, III Jakarta". */
   felt: string | null
@@ -484,9 +501,19 @@ export interface RaLocation extends RaLocationRef {
   city?: string | null
   district?: string | null
   zip_code?: string | null
+  /** How many people the building can hold on site. */
+  onsite_capacity?: number | null
+  /** The occupants' employees (null without occupants). */
+  onsite_employees?: number | null
   latitude: number | null
   longitude: number | null
+  /** The building's own switch (a new building waiting for approval is active here). */
   is_active: boolean
+  /** Active and approved (a deactivation waiting still counts): see raInService. */
+  in_service?: boolean
+  /** A new RA can be made for it: active and not rejected (a new building waiting for
+   *  approval can, and signs with the building approver). */
+  assessable?: boolean
   /** Four-eyes approval: a new building and its deactivation wait for someone else. */
   approval?: RaLocationApproval
   approval_can?: RaApprovalCan
@@ -779,10 +806,11 @@ export interface RaLocationRegisterQuery {
   q?: string
   region?: string
   province?: string
-  active?: boolean
+  /** Active and approved (true), or inactive, new and waiting, or rejected (false). */
+  in_service?: boolean
   approval?: RaLocationApprovalStatus
   /** Column to sort by; the newest change first (updated_at desc) by default. */
-  sort?: 'name' | 'kind' | 'province' | 'assessments' | 'updated_at'
+  sort?: 'name' | 'kind' | 'province' | 'city' | 'district' | 'assessments' | 'updated_at'
   dir?: 'asc' | 'desc'
   page: number
   per_page: number
@@ -796,7 +824,7 @@ export function useRaLocationRegister(query: MaybeRefOrGetter<RaLocationRegister
   })
 }
 
-export function useRaLocations(query: MaybeRefOrGetter<{ kind: RaKind, q?: string, active?: boolean }>) {
+export function useRaLocations(query: MaybeRefOrGetter<{ kind: RaKind, q?: string, active?: boolean, assessable?: boolean }>) {
   return useFetch<{ items: RaLocation[] }>('/api/ra/locations', {
     key: computed(() => `ra-locations-${JSON.stringify(toValue(query))}`),
     query: computed(() => toValue(query)),

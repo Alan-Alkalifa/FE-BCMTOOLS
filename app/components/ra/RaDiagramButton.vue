@@ -7,7 +7,7 @@
 const props = defineProps<{
   kind: RaKind
   diagram: RaDiagram
-  /** A small link-style button, for lists such as an incident's affected places. */
+  /** A small link-style button, for lists such as a disaster's affected places. */
   compact?: boolean
 }>()
 

@@ -49,7 +49,10 @@ test('the register filters by type, province, status and search, in the URL', as
   await page.getByRole('option', { name: 'Inactive', exact: true }).click()
   await expect(page).toHaveURL(/status=inactive/)
   await expect(page.getByText('No buildings match these filters.')).toBeVisible()
-  expect(new URLSearchParams(log.locationQueries.at(-1)).get('active')).toBe('false')
+  // Inactive means not in service: inactive, new and waiting for approval, or rejected.
+  const inactive = new URLSearchParams(log.locationQueries.at(-1))
+  expect(inactive.get('in_service')).toBe('false')
+  expect(inactive.get('active')).toBeNull()
 
   // The province filter works for head office buildings too.
   await page.goto('/locations?type=head_office&province=DKI+Jakarta&q=graha')
@@ -105,9 +108,19 @@ test('old RA links open the new pages', async ({ page }) => {
   await page.goto('/ra/map')
   await expect(page).toHaveURL(/\/locations\/map$/)
   await page.goto('/ra/crises/7')
-  await expect(page).toHaveURL(/\/crises\/7$/)
+  await expect(page).toHaveURL(/\/disasters\/7$/)
   await page.goto('/ra/guidebook')
-  await expect(page).toHaveURL(/\/crises\/guidebook$/)
+  await expect(page).toHaveURL(/\/disasters\/guidebook$/)
+
+  // Disasters moved from /crises to /disasters: old links (emails, bookmarks) keep working.
+  await page.goto('/crises?status=open')
+  await expect(page).toHaveURL(/\/disasters\?status=open$/)
+  await page.goto('/crises/7')
+  await expect(page).toHaveURL(/\/disasters\/7$/)
+  await page.goto('/crises/7/report')
+  await expect(page).toHaveURL(/\/disasters\/7\/report$/)
+  await page.goto('/crises/guidebook')
+  await expect(page).toHaveURL(/\/disasters\/guidebook$/)
 })
 
 test('a building someone else added is approved, like an RA configuration publish', async ({ page }) => {
@@ -139,10 +152,20 @@ test('rejecting a building needs a reason', async ({ page }) => {
   expect(log.approvals).toEqual([['reject', { note: 'Add the full address.' }]])
 })
 
-test('an RA of a building waiting for approval can\'t be submitted yet', async ({ page }) => {
+test('an RA of a building waiting for approval is signed by the building approver too', async ({ page }) => {
   await mockRa(page, { pendingLocation: true, ready: true })
   await page.goto('/ra/manage/1?tab=signoff')
-  await expect(page.getByText('The building isn\'t approved yet')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('building-pending-note')).toContainText('The building is waiting for approval', { timeout: 60_000 })
+  await expect(page.getByTestId('building-pending-note')).toContainText('the building approver signs it too')
+  await expect(page.getByText('Building approved by').first()).toBeVisible()
+})
+
+test('without a building approver step, an RA of a building waiting for approval can\'t be submitted yet', async ({ page }) => {
+  await mockRa(page, { pendingLocation: true, ready: true, noPendingStep: true })
+  await page.goto('/ra/manage/1?tab=signoff')
+  await expect(page.getByText('This RA can\'t be submitted yet')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('The building is waiting for approval. Submit this RA once someone approves it.')).toBeVisible()
+  await expect(page.getByText('Building approved by')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
 })
 
@@ -163,6 +186,8 @@ test('a building waiting for approval is approved on its page, not in the Buildi
   await page.goto('/locations')
   const row = page.getByRole('row', { name: /Griya CIMB Niaga 2/ })
   await expect(row).toContainText('Waiting for approval', { timeout: 60_000 })
+  // One status badge: Waiting for approval, without Active or Inactive beside it.
+  await expect(row).not.toContainText(/\b(Active|Inactive)\b/)
   await expect(row.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
   await row.getByRole('link', { name: 'Edit Griya CIMB Niaga 2' }).click()
   await expect(page).toHaveURL(/\/locations\/1$/)
@@ -198,7 +223,7 @@ test('the Buildings list shows the last update and sorts by a column, newest cha
   await expect(page).not.toHaveURL(/sort=/)
 })
 
-test('the Buildings list shows the latest assessment and its residual apart, and its status as Draft, In approval or Approved', async ({ page }) => {
+test('the Buildings list shows the latest Risk Assessment ID and its residual apart, and its status as Draft, In approval or Approved', async ({ page }) => {
   await mockRa(page)
   const latest = BRANCH_LOCATION.latest_assessment
   const rows = [
@@ -218,8 +243,8 @@ test('the Buildings list shows the latest assessment and its residual apart, and
   )
   await page.goto('/locations')
   const table = page.getByRole('table')
-  await expect(table.getByRole('columnheader', { name: 'Latest assessment' })).toBeVisible({ timeout: 60_000 })
-  await expect(table.getByRole('columnheader', { name: 'Latest residual' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Risk Assessment ID' })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Residual Risk' })).toBeVisible()
 
   const returned = table.getByRole('row', { name: /KCP Cibubur/ })
   // The code and the residual level sit in their own cells.
@@ -241,7 +266,7 @@ test('the Location permission alone opens the Location module read-only, RAs nam
   await mockRa(page, { permissions: ['scca.access', 'location.access'] })
   await page.goto('/')
   const sidebar = page.getByRole('navigation', { name: 'Main' })
-  for (const name of ['Buildings', 'Building map', 'Incidents', 'Incident guidebook']) {
+  for (const name of ['Buildings', 'Building map', 'Disasters', 'Disaster guidebook']) {
     await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible({ timeout: 60_000 })
   }
   await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
@@ -256,4 +281,33 @@ test('the Location permission alone opens the Location module read-only, RAs nam
   await expect(page.getByRole('heading', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: /^RA-2025-/ })).toHaveCount(0)
+})
+
+test('the Buildings list has the columns of the BCM Tools building list', async ({ page }) => {
+  await mockRa(page)
+  const row = { ...BRANCH_LOCATION, id: 61, name: 'KCP Depok Margonda', city: 'Depok', district: 'Beji', onsite_employees: 80, onsite_capacity: 100 }
+  await page.route(/\/api\/ra\/locations\?.*page=/, (route) =>
+    route.fulfill({ json: { items: [row], page: 1, per_page: 25, total: 1, pages: 1 } }),
+  )
+  await page.goto('/locations')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader').first()).toBeVisible({ timeout: 60_000 })
+  const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim()).filter(Boolean)
+  expect(headers).toEqual([
+    'Name', 'Type', 'Province', 'City', 'District', 'Address', 'Status Building', 'On-site Employees',
+    'On-site Capacity', 'Residual Risk', 'Status Risk Assessment', 'Last updated', 'Risk Assessments', 'Risk Assessment ID',
+  ])
+  const cells = table.getByRole('row', { name: /KCP Depok Margonda/ })
+  await expect(cells).toContainText('Depok')
+  await expect(cells).toContainText('Beji')
+  await expect(cells.getByRole('cell', { name: '80', exact: true })).toHaveCount(1)
+  await expect(cells.getByRole('cell', { name: '100', exact: true })).toHaveCount(1)
+})
+
+test('Administration › Master building shows the Buildings register', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/admin/buildings')
+  await expect(page.getByRole('heading', { name: 'Master building', level: 1 })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Administration')
+  await expect(page.getByRole('table').getByRole('columnheader', { name: 'Risk Assessment ID' })).toBeVisible()
 })

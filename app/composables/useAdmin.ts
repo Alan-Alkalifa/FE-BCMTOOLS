@@ -534,14 +534,14 @@ export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: Ac
   revision_accepted: { label: 'Accepted the revision', icon: 'i-lucide-check', tone: 'info' },
   signer_changed: { label: 'Signer changed by BCM', icon: 'i-lucide-user-round-cog', tone: 'warning' },
   approved_on_behalf: { label: 'Approved on behalf', icon: 'i-lucide-badge-check', tone: 'warning' },
-  incident_declared: { label: 'Incident declared', icon: 'i-lucide-siren', tone: 'error' },
-  incident_approved: { label: 'Incident approved', icon: 'i-lucide-circle-check', tone: 'success' },
-  incident_rejected: { label: 'Incident rejected', icon: 'i-lucide-circle-x', tone: 'neutral' },
-  incident_updated: { label: 'Incident updated', icon: 'i-lucide-pencil', tone: 'neutral' },
-  incident_note_added: { label: 'Incident update added', icon: 'i-lucide-message-square', tone: 'neutral' },
-  incident_closed: { label: 'Incident closed', icon: 'i-lucide-circle-check-big', tone: 'success' },
-  incident_reopened: { label: 'Incident reopened', icon: 'i-lucide-rotate-ccw', tone: 'warning' },
-  incident_deleted: { label: 'Incident deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
+  incident_declared: { label: 'Disaster declared', icon: 'i-lucide-siren', tone: 'error' },
+  incident_approved: { label: 'Disaster approved', icon: 'i-lucide-circle-check', tone: 'success' },
+  incident_rejected: { label: 'Disaster rejected', icon: 'i-lucide-circle-x', tone: 'neutral' },
+  incident_updated: { label: 'Disaster updated', icon: 'i-lucide-pencil', tone: 'neutral' },
+  incident_note_added: { label: 'Disaster update added', icon: 'i-lucide-message-square', tone: 'neutral' },
+  incident_closed: { label: 'Disaster closed', icon: 'i-lucide-circle-check-big', tone: 'success' },
+  incident_reopened: { label: 'Disaster reopened', icon: 'i-lucide-rotate-ccw', tone: 'warning' },
+  incident_deleted: { label: 'Disaster deleted', icon: 'i-lucide-trash-2', tone: 'warning' },
   approval_notice_sent: { label: 'Approvers told', icon: 'i-lucide-mail', tone: 'neutral' },
   approval_reminder_sent: { label: 'Approvers reminded', icon: 'i-lucide-bell-ring', tone: 'info' },
   approval_escalated: { label: 'Approval escalated to BCM', icon: 'i-lucide-siren', tone: 'error' },
@@ -567,7 +567,7 @@ export const RA_ACTIVITY_GROUPS = [
   { label: 'Buildings and their profile', value: 'buildings' },
   { label: 'RAs', value: 'assessments' },
   { label: 'Sign-off', value: 'signoff' },
-  { label: 'Incidents', value: 'incidents' },
+  { label: 'Disasters', value: 'incidents' },
   { label: 'Approvals and reminders', value: 'approvals' },
   { label: 'RA configuration and guidebook', value: 'configuration' },
 ]
@@ -590,13 +590,13 @@ function raField(name: string) {
   return RA_FIELD_NAMES[name] ?? name.replaceAll('_', ' ')
 }
 
-/** The record an RA event is about: the building, and the RA or incident reference. */
+/** The record an RA event is about: the building, and the RA or disaster reference. */
 export function raActivityRecord(row: AuditEvent): { label: string, ref: string | null, to: string | null } {
   const detail = (row.detail ?? {}) as Record<string, unknown>
   const building = typeof detail.building === 'string' ? detail.building : null
   const ref = typeof detail.ref_no === 'string' ? detail.ref_no : typeof detail.code === 'string' ? detail.code : null
   if (row.target_type === 'ra_crisis_events' && row.target_id) {
-    return { label: building ?? 'Incident', ref, to: `/crises/${row.target_id}` }
+    return { label: building ?? 'Disaster', ref, to: `/disasters/${row.target_id}` }
   }
   if (row.target_type === 'ra_assessments' && row.target_id) {
     const kind = detail.kind === 'branch' ? 'ra-branch' : 'ra'
@@ -605,7 +605,7 @@ export function raActivityRecord(row: AuditEvent): { label: string, ref: string 
   if (row.target_type === 'ra_locations' && row.target_id) {
     return { label: building ?? (detail.name as string | undefined) ?? 'Building', ref, to: row.event === 'ra.building_deleted' ? null : `/locations/${row.target_id}` }
   }
-  if (row.target_type === 'ra_playbooks') return { label: 'Incident guidebook', ref: (detail.hazard as string | undefined) ?? null, to: '/crises/guidebook' }
+  if (row.target_type === 'ra_playbooks') return { label: 'Disaster guidebook', ref: (detail.hazard as string | undefined) ?? null, to: '/disasters/guidebook' }
   if (row.target_type === 'ra_diagrams') {
     const kind = detail.kind === 'branch' ? 'branch' : undefined
     return { label: 'RA configuration', ref: null, to: `/admin/ra-config?tab=diagrams${kind ? `&kind=${kind}` : ''}` }
@@ -627,7 +627,7 @@ export function raActivityDetail(row: AuditEvent): string {
   if (detail.final) parts.push('Final')
   if (action === 'signer_changed' && (detail.from || detail.to)) parts.push(`${detail.from ?? '—'} → ${detail.to ?? '—'}`)
   if (action === 'approved_on_behalf' && detail.signer) parts.push(`for ${detail.signer}`)
-  if (detail.task) parts.push(detail.task === 'deactivate' ? 'Make inactive' : detail.task === 'declare' ? 'Incident' : 'New')
+  if (detail.task) parts.push(detail.task === 'deactivate' ? 'Make inactive' : detail.task === 'declare' ? 'Disaster' : 'New')
   if (detail.waited) parts.push(`waited ${detail.waited}`)
   if (action === 'building_approval_requested' && detail.action) parts.push(detail.action === 'deactivate' ? 'Make inactive' : detail.again ? 'Sent again' : 'New')
   if (Array.isArray(detail.changes) && detail.changes.length) parts.push(detail.changes.join('. '))

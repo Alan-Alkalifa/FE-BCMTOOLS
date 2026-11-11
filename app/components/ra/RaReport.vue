@@ -72,7 +72,7 @@ function rating(value: number | null | undefined) {
 }
 
 /** The steps of the RA's configuration version with who signed (or signs) each. */
-const steps = computed(() => raRoleOptions(formula.value, ra.value.signoffRoles).map((role) => ({
+const steps = computed(() => raRoleOptions(formula.value, ra.value.signoffRoles, assessment.value?.signoff_step_codes ?? null).map((role) => ({
   ...role,
   signoff: assessment.value?.signoffs.find((row) => row.role === role.value),
 })))

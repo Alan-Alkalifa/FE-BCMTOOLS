@@ -3,16 +3,16 @@ import type { RaApprovalCan } from '~/composables/useRa'
 
 /**
  * Four-eyes approval of a building (a new one, or making it inactive) or of a declared
- * incident, like publishing an RA configuration version: one person asks, someone else with
+ * disaster, like publishing an RA configuration version: one person asks, someone else with
  * ra.location.approve approves or rejects it with a reason. Shows where it stands and the
  * buttons the current user may use; the parent does the request and refreshes.
  */
 const props = defineProps<{
-  /** "building", "branch" or "incident". */
+  /** "building", "branch" or "disaster". */
   noun: string
   /** pending / rejected (approved shows nothing, unless a decision note is worth showing). */
   status: 'pending' | 'approved' | 'rejected' | 'open' | 'closed'
-  /** register (a new building) or deactivate; null for an incident. */
+  /** register (a new building) or deactivate; null for a disaster. */
   action?: 'register' | 'deactivate' | null
   requestedBy: string | null
   requestedAt: string | null
@@ -35,16 +35,16 @@ const what = computed(() => (props.action === 'deactivate' ? `Making this ${prop
 const asked = computed(() => {
   const when = props.requestedAt ? ` on ${formatDateTime(props.requestedAt)}` : ''
   if (props.action === 'deactivate') return `${props.requestedBy ?? 'Someone'} asked to make this ${props.noun} inactive${when}.`
-  if (props.noun === 'incident') return `${props.requestedBy ?? 'Someone'} declared this incident${when}.`
+  if (props.noun === 'disaster') return `${props.requestedBy ?? 'Someone'} declared this disaster${when}.`
   return `${props.requestedBy ?? 'Someone'} added this ${props.noun}${when}.`
 })
 const waiting = computed(() => {
   if (props.can?.approve) return 'Please review the details, then approve or reject this request. A reason is required for a rejection.'
-  const until = props.noun === 'incident'
-    ? 'Until then, the incident is shown on the map as pending and cannot be updated or closed.'
+  const until = props.noun === 'disaster'
+    ? 'Until then, the disaster is shown on the map as pending and cannot be updated or closed.'
     : props.action === 'deactivate'
       ? `The ${props.noun} remains active until the request is approved.`
-      : 'Risk assessments may be drafted in the meantime, but cannot be submitted for sign-off until it is approved.'
+      : 'Its risk assessments can be made and submitted in the meantime. While it waits, the building approver signs them too.'
   return `This request requires approval by another user with approval rights (BCM Admin or BCM Management). ${until}`
 })
 
@@ -124,7 +124,7 @@ async function onReject() {
       variant="subtle"
       icon="i-lucide-circle-x"
       :title="`Rejected by ${decidedBy ?? 'an approver'}${decidedAt ? ` on ${formatDateTime(decidedAt)}` : ''}.`"
-      :description="noun === 'incident'
+      :description="noun === 'disaster'
         ? (note ?? undefined)
         : `${note ? `Reason: ${note}\n` : ''}Fix the ${noun} on its tabs, then submit it for approval again.`"
       :ui="{ description: 'whitespace-pre-line' }"

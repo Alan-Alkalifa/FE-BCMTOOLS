@@ -70,6 +70,7 @@ const schema = computed(() => z.object({
   city: z.string().trim().min(1, 'Enter the city.'),
   district: z.string().trim().min(1, 'Enter the district.'),
   zip_code: z.string().trim().min(1, 'Enter the zip code.').max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.'),
+  onsite_capacity: z.number().int('Enter a whole number.').min(0, 'Enter 0 or more.').max(100000, 'At most 100,000.').nullish(),
   is_active: z.boolean(),
   region: z.string(),
   area: z.string(),
@@ -97,6 +98,7 @@ function fromLocation(location?: RaLocationDetail): State {
     city: location?.city ?? '',
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
+    onsite_capacity: location?.onsite_capacity ?? null,
     region: location?.region ?? '',
     area: location?.area ?? '',
     region_description: location?.region_description ?? '',
@@ -207,6 +209,8 @@ async function onSubmit() {
     const body = blankToNull({
       ...fields,
       name: state.name.trim(),
+      // Cleared, the capacity is sent as null.
+      onsite_capacity: state.onsite_capacity ?? null,
       // With the region directory, a branch sends its region and area: its Sub Directorate and
       // Group follow them and its Directorate comes from there (the backend sets them). Without
       // it, the Sub Directorate and Group are sent and the region and area follow them.
@@ -423,6 +427,20 @@ async function onSubmit() {
                   v-model="state.zip_code"
                   inputmode="numeric"
                   placeholder="e.g. 12920"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="On-site capacity"
+                name="onsite_capacity"
+                help="How many people the building can hold on site."
+              >
+                <UInputNumber
+                  v-model="state.onsite_capacity"
+                  :min="0"
+                  :max="100000"
+                  :step="1"
+                  placeholder="e.g. 200"
                   class="w-full"
                 />
               </UFormField>

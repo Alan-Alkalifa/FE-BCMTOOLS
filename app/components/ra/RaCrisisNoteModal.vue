@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * A note for the history: closing or reopening an incident, approving or rejecting a building or
- * an incident. Closes with the note ('' without one), or false. `required` (rejecting) needs a
+ * A note for the history: closing or reopening a disaster, approving or rejecting a building or
+ * a disaster. Closes with the note ('' without one), or false. `required` (rejecting) needs a
  * note; `destructive` makes the confirm button the destructive one.
  */
 const props = defineProps<{
@@ -38,7 +38,7 @@ function confirm() {
       <UFormField
         :label="props.noteLabel"
         :required="props.required"
-        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the incident history.')"
+        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the disaster history.')"
         :error="missing && !note.trim() ? (props.requiredMessage ?? 'Enter the reason.') : undefined"
       >
         <UTextarea

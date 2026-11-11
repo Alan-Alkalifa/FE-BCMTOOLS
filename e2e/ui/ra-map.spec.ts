@@ -3,7 +3,7 @@ import { mockRaMap } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
-test('the building map shows every place, the open incident, and measures a distance', async ({ page }) => {
+test('the building map shows every place, the open disaster, and measures a distance', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/locations/map')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
@@ -33,21 +33,28 @@ test('the building map shows every place, the open incident, and measures a dist
   )
   // The table gains the distance from the measured place.
   await expect(table.getByRole('columnheader', { name: 'From Griya CIMB Niaga 2' })).toBeVisible()
+  // Each place empties on its own (x), and Clear empties both.
+  await page.getByLabel('Clear To').click()
+  await expect(page.getByText('Straight line from')).toHaveCount(0)
+  await expect(table.getByRole('columnheader', { name: 'From Griya CIMB Niaga 2' })).toBeVisible()
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await expect(table.getByRole('columnheader', { name: /^From / })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled()
 
   // Hiding the branches leaves the buildings.
   await page.getByLabel('Branches (3)').uncheck()
   await expect(table.locator('tbody tr')).toHaveCount(2)
 })
 
-test('declaring an incident at a building sends the hazard, place, radius and WIB time', async ({ page }) => {
+test('declaring a disaster at a building sends the hazard, place, radius and WIB time', async ({ page }) => {
   const log = await mockRaMap(page, { crisis: false })
   await page.goto('/locations/map?place=1')
-  await page.getByRole('button', { name: 'Declare incident here' }).click({ timeout: 30_000 })
-  const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
+  await page.getByRole('button', { name: 'Declare Disaster here' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
   // Declaring from a place puts the pin on it; the text says what the ring covers.
-  await expect(dialog.getByRole('button', { name: 'Incident point' })).toBeVisible({ timeout: 30_000 })
+  await expect(dialog.getByRole('button', { name: 'Disaster point' })).toBeVisible({ timeout: 30_000 })
   await expect(dialog.getByText('-6.271633, 106.719358 · 1 place in the area: Griya CIMB Niaga 2')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(dialog.getByText('Choose the hazard.')).toBeVisible()
 
   await dialog.getByText('Choose one of the 33 RA hazards').click()
@@ -56,9 +63,9 @@ test('declaring an incident at a building sends the hazard, place, radius and WI
   await expect(dialog.getByText(/^-6\.271633, 106\.719358 · 2 places in the area: Griya CIMB Niaga 2, KCP Bintaro Sektor 9$/)).toBeVisible()
   await dialog.getByLabel('Time (WIB)').fill('14:30')
   await dialog.getByLabel('What is happening').fill('Basement flooded.')
-  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
 
-  await expect(page).toHaveURL(/\/crises\/7$/)
+  await expect(page).toHaveURL(/\/disasters\/7$/)
   expect(log.declared).toHaveLength(1)
   expect(log.declared[0]).toMatchObject({
     hazard_code: 'H01',
@@ -71,16 +78,16 @@ test('declaring an incident at a building sends the hazard, place, radius and WI
   expect(log.declared[0]!.started_at).toMatch(/^\d{4}-\d{2}-\d{2}T14:30:00\+07:00$/)
 })
 
-test('the incident point is a pin dropped on the map or put on a place', async ({ page }) => {
+test('the disaster point is a pin dropped on the map or put on a place', async ({ page }) => {
   const log = await mockRaMap(page, { crisis: false })
   await page.goto('/locations/map')
-  await page.getByRole('button', { name: 'Declare incident', exact: true }).click({ timeout: 30_000 })
-  const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
-  await expect(dialog.getByRole('group', { name: 'Map legend' })).toContainText('Incident point and its affected area', { timeout: 30_000 })
+  await page.getByRole('button', { name: 'Declare Disaster', exact: true }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
+  await expect(dialog.getByRole('group', { name: 'Map legend' })).toContainText('Disaster point and its affected area', { timeout: 30_000 })
   await dialog.getByText('Choose one of the 33 RA hazards').click()
   await page.getByRole('option', { name: /Banjir/ }).first().click()
   await expect(dialog.getByText('No pin yet.')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(dialog.getByText('Click the map to drop the pin, or choose a building or branch.')).toBeVisible()
 
   // The list puts the pin on a place; its marker does the same.
@@ -89,21 +96,21 @@ test('the incident point is a pin dropped on the map or put on a place', async (
   await expect(dialog.getByText(/^-6\.265200, 106\.783700 · 1 place in the area: KC Pondok Indah$/)).toBeVisible()
 
   // Clicking the map drops the pin there instead: no longer that branch, just a point.
-  const map = dialog.getByRole('region', { name: /Map for the incident point/ })
+  const map = dialog.getByRole('region', { name: /Map for the disaster point/ })
   const box = (await map.boundingBox())!
   await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.6)
   await expect(dialog.getByText(/^-6\.265200, 106\.783700/)).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
-  await expect(page).toHaveURL(/\/crises\/7$/)
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
+  await expect(page).toHaveURL(/\/disasters\/7$/)
   const body = log.declared[0]!
   expect(body.location_id).toBeNull()
   expect(typeof body.latitude).toBe('number')
   expect(body.latitude).not.toBe(-6.2652)
 })
 
-test('an incident gives each affected place its instructions and keeps a history', async ({ page }) => {
+test('a disaster gives each affected place its instructions and keeps a history', async ({ page }) => {
   const log = await mockRaMap(page)
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   await expect(page.getByRole('heading', { name: 'Banjir/ Banjir Bandang at Griya CIMB Niaga 2' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('These are the starter steps')).toBeVisible()
   await expect(page.getByText('Move people, documents and equipment to upper floors.')).toBeVisible()
@@ -119,7 +126,7 @@ test('an incident gives each affected place its instructions and keeps a history
   await expect(page.getByRole('dialog', { name: 'Location call tree (RA HO)' }).getByRole('img'))
     .toHaveAttribute('src', '/api/ra/diagrams/call_tree?kind=head_office')
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: 'KCP Bintaro Sektor 9 Branch · 2 km from the incident point' }).click()
+  await page.getByRole('button', { name: 'KCP Bintaro Sektor 9 Branch · 2 km from the disaster point' }).click()
   await expect(page.getByText('No RA for this place yet.')).toBeVisible()
 
   // Add update opens the update dialog: the radius and the rest, with the update (required).
@@ -137,18 +144,18 @@ test('an incident gives each affected place its instructions and keeps a history
   expect(log.updates).toEqual([expect.objectContaining({ radius_m: 10000, note: 'Floor wardens evacuated level 1.' })])
   expect(log.notes).toEqual([])
 
-  await page.getByRole('button', { name: 'Close incident' }).click()
+  await page.getByRole('button', { name: 'Close disaster' }).click()
   const dialog = page.getByRole('dialog', { name: 'Close CR-2026-0001?' })
   await dialog.getByLabel('How it ended').fill('Water receded.')
-  await dialog.getByRole('button', { name: 'Close incident' }).click()
+  await dialog.getByRole('button', { name: 'Close disaster' }).click()
   await expect(page.getByText('Closed', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Reopen incident' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reopen disaster' })).toBeVisible()
   expect(log.closed).toEqual([{ note: 'Water receded.' }])
 })
 
-test('the incident map has a legend and zooms with the scroll wheel; who to call is in tables', async ({ page }) => {
+test('the disaster map has a legend and zooms with the scroll wheel; who to call is in tables', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   await expect(page.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible({ timeout: 30_000 })
   const legend = page.getByRole('group', { name: 'Map legend' })
   await expect(legend).toContainText('Affected head office building')
@@ -174,16 +181,16 @@ test('the incident map has a legend and zooms with the scroll wheel; who to call
   await expect(callTree.getByRole('link', { name: '0812-1111-2222' })).toBeVisible()
 })
 
-test('the incident has a print view with every place and its contacts', async ({ page }) => {
+test('the disaster has a print view with every place and its contacts', async ({ page }) => {
   await mockRaMap(page)
   await page.addInitScript(() => {
     window.print = () => {
       (window as unknown as { printed: number }).printed = ((window as unknown as { printed?: number }).printed ?? 0) + 1
     }
   })
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   await page.getByRole('link', { name: 'Print view' }).click({ timeout: 30_000 })
-  await expect(page).toHaveURL(/\/crises\/7\/report$/)
+  await expect(page).toHaveURL(/\/disasters\/7\/report$/)
   const report = page.getByTestId('crisis-report')
   await expect(report.getByRole('heading', { name: 'Banjir/ Banjir Bandang at Griya CIMB Niaga 2' })).toBeVisible({ timeout: 30_000 })
   await expect(report.getByRole('group', { name: 'Map legend' })).toBeVisible()
@@ -201,16 +208,16 @@ test('the incident has a print view with every place and its contacts', async ({
   expect(await page.evaluate(() => (window as unknown as { printed?: number }).printed)).toBe(1)
 })
 
-test('without the declare permission the map and incident are read-only', async ({ page }) => {
+test('without the declare permission the map and disaster are read-only', async ({ page }) => {
   const log = await mockRaMap(page, { declare: false })
   await page.goto('/locations/map?place=1')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Measure from here' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Declare crisis/ })).toHaveCount(0)
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   await expect(page.getByRole('heading', { name: 'Affected places (2)' })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Update incident' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Close disaster' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update disaster' })).toHaveCount(0)
   // Without the right to manage it, Add update adds a note (required).
   await page.getByRole('button', { name: 'Add update' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add an update to CR-2026-0001' })
@@ -222,9 +229,9 @@ test('without the declare permission the map and incident are read-only', async 
   expect(log.notes).toEqual([{ note: 'Seen from the branch: the road is flooded.' }])
 })
 
-test('the incident history lists incidents with their status', async ({ page }) => {
+test('the disaster history lists disasters with their status', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/crises')
+  await page.goto('/disasters')
   const row = page.getByRole('row', { name: /CR-2026-0001/ })
   await expect(row).toContainText('Banjir/ Banjir Bandang', { timeout: 30_000 })
   await expect(row).toContainText('Griya CIMB Niaga 2')
@@ -236,8 +243,8 @@ test('the guidebook is edited per hazard, one step per line', async ({ page }) =
   const log = await mockRaMap(page)
   await page.goto('/ra/playbook')
   // The old addresses open the guidebook.
-  await expect(page).toHaveURL(/\/crises\/guidebook$/, { timeout: 30_000 })
-  await expect(page.getByRole('heading', { name: 'Incident guidebook' })).toBeVisible()
+  await expect(page).toHaveURL(/\/disasters\/guidebook$/, { timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Disaster guidebook' })).toBeVisible()
   // No review status on the guidebook: no count, no badge, no icons in the list.
   await expect(page.getByText(/reviewed by BCM/)).toHaveCount(0)
   // Hazards are grouped; every group starts closed and opens on click.
@@ -277,8 +284,8 @@ test('the sidebar marks only the section of the page as current', async ({ page 
   await expect(map).not.toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: 'Monitoring' }).first()).not.toHaveAttribute('aria-current', 'page')
   // Buildings has its own group, outside RA: RA keeps Monitoring, Manage and Approval.
-  await expect(nav.getByRole('link', { name: 'Incidents' })).toHaveAttribute('href', '/crises')
-  await expect(nav.getByRole('link', { name: 'Incident guidebook' })).toHaveAttribute('href', '/crises/guidebook')
+  await expect(nav.getByRole('link', { name: 'Disasters' })).toHaveAttribute('href', '/disasters')
+  await expect(nav.getByRole('link', { name: 'Disaster guidebook' })).toHaveAttribute('href', '/disasters/guidebook')
   await expect(nav.getByRole('link', { name: 'Branches' })).toHaveCount(0)
 
   await map.click()
@@ -287,31 +294,31 @@ test('the sidebar marks only the section of the page as current', async ({ page 
   await expect(register).not.toHaveAttribute('aria-current', 'page')
 })
 
-test('a declared incident waits for someone else\'s approval', async ({ page }) => {
+test('a declared disaster waits for someone else\'s approval', async ({ page }) => {
   const log = await mockRaMap(page, { pending: true })
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   const banner = page.getByTestId('approval-banner')
-  await expect(banner).toContainText('Waiting for approval. Rina declared this incident', { timeout: 30_000 })
+  await expect(banner).toContainText('Waiting for approval. Rina declared this disaster', { timeout: 30_000 })
   // It can't be closed yet, but it can be updated (its approver approves it as it stands).
-  await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Update incident' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close disaster' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update disaster' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add update' })).toBeVisible()
   await banner.getByRole('button', { name: 'Approve' }).click()
-  await page.getByRole('dialog', { name: 'Approve this incident?' }).getByRole('button', { name: 'Approve' }).click()
-  await expect(page.getByText('This incident is approved').first()).toBeVisible()
+  await page.getByRole('dialog', { name: 'Approve this disaster?' }).getByRole('button', { name: 'Approve' }).click()
+  await expect(page.getByText('This disaster is approved').first()).toBeVisible()
   expect(log.decisions).toEqual([['approve', { note: null }]])
-  await expect(page.getByRole('button', { name: 'Close incident' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close disaster' })).toBeVisible()
 })
 
-test('a rejected incident leaves the building map at once', async ({ page }) => {
+test('a rejected disaster leaves the building map at once', async ({ page }) => {
   await mockRaMap(page, { pending: true })
   await page.goto('/locations/map')
   await expect(page.locator('path.ra-radius-pending')).toHaveCount(1, { timeout: 30_000 })
   // Opened from the map and rejected there, then back to the map without reloading the app.
   await page.getByRole('link', { name: 'View instructions' }).click()
-  await expect(page).toHaveURL(/\/crises\/7$/)
+  await expect(page).toHaveURL(/\/disasters\/7$/)
   await page.getByTestId('approval-banner').getByRole('button', { name: 'Reject' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Reject this incident?' })
+  const dialog = page.getByRole('dialog', { name: 'Reject this disaster?' })
   await dialog.getByLabel('Reason').fill('A drill, not a flood.')
   await dialog.getByRole('button', { name: 'Reject' }).click()
   await expect(dialog).toBeHidden()
@@ -323,10 +330,10 @@ test('a rejected incident leaves the building map at once', async ({ page }) => 
   await expect(page.getByText(/^Pending approval: Banjir/)).toHaveCount(0)
 })
 
-test('updating an incident opens its map on the incident, not zoomed out', async ({ page }) => {
+test('updating a disaster opens its map on the disaster, not zoomed out', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/crises/7')
-  await page.getByRole('button', { name: 'Update incident' }).click({ timeout: 30_000 })
+  await page.goto('/disasters/7')
+  await page.getByRole('button', { name: 'Update disaster' }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Update CR-2026-0001' })
   const map = dialog.locator('.leaflet-container')
   const ring = dialog.locator('path.ra-radius-crisis')
@@ -341,7 +348,7 @@ test('updating an incident opens its map on the incident, not zoomed out', async
   }, { timeout: 10_000 }).toBe(true)
 })
 
-test('the map flags an incident waiting for approval, with an orange area', async ({ page }) => {
+test('the map flags a disaster waiting for approval, with an orange area', async ({ page }) => {
   await mockRaMap(page, { pending: true })
   await page.goto('/locations/map')
   await expect(page.getByText(/^Pending approval: Banjir/)).toBeVisible({ timeout: 30_000 })
@@ -354,39 +361,72 @@ test('the map flags an incident waiting for approval, with an orange area', asyn
 test('the map legend shows the symbols the map draws', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/locations/map')
-  await expect(page.getByText('Incident and its affected area')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Disaster and its affected area')).toBeVisible({ timeout: 30_000 })
   const symbols = page.getByTestId('ra-map-symbol')
-  await expect(symbols).toHaveCount(7)
+  await expect(symbols).toHaveCount(8)
   // The branch in the legend is the map's branch marker (a rounded square with a bank).
   const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
   await expect(branch).toHaveCount(1)
   await expect(page.locator('path.ra-radius-crisis')).toHaveCount(1)
 })
 
-test('a place not approved yet is marked on the map, in the legend and in the list', async ({ page }) => {
+test('a place not approved yet, rejected or inactive is marked on the map, in the legend and in the list', async ({ page }) => {
   await mockRaMap(page, { unapproved: true })
   await page.goto('/locations/map')
-  const legend = page.getByText('Waiting for approval (new, or to deactivate)')
-  await expect(legend).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Rejected', { exact: true }).first()).toBeVisible()
+  const legend = page.getByRole('group', { name: 'Map legend' })
+  await expect(legend.getByText('Waiting for approval (new, or to deactivate)')).toBeVisible({ timeout: 30_000 })
+  await expect(legend.getByText('Rejected', { exact: true })).toBeVisible()
+  await expect(legend.getByText('Inactive', { exact: true })).toBeVisible()
+  await expect(legend).toContainText('Faded: not in service (inactive, new and waiting for approval, or rejected). No disaster affects it.')
   await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="waiting"] .ra-pin-badge-waiting')).toHaveCount(1)
+  await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="inactive"] .ra-pin-out .ra-pin-badge-inactive')).toHaveCount(1)
 
   // On the map: the new building and the branch being deactivated carry the hourglass badge,
-  // the rejected building the cross; the others none. Their names say it too.
+  // the rejected building the cross and the inactive branch a pause sign; the others none.
+  // The ones not in service (new, rejected, inactive) are faded. Their names say it too.
   await expect(page.locator('.leaflet-marker-icon.ra-pin-waiting')).toHaveCount(2)
   await expect(page.locator('.leaflet-marker-icon.ra-pin-rejected')).toHaveCount(1)
-  await expect(page.locator('.leaflet-marker-icon .ra-pin-badge')).toHaveCount(3)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-inactive')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-badge')).toHaveCount(4)
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-out')).toHaveCount(3)
   await expect(page.locator('.leaflet-marker-icon[title="Menara Baru (Head office building): Waiting for approval"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="Wisma Ditolak (Head office building): Rejected"]')).toHaveCount(1)
+  await expect(page.locator('.leaflet-marker-icon[title="KCP Kemang Lama (Branch): Inactive"]')).toHaveCount(1)
   await expect(page.locator('.leaflet-marker-icon[title="KCP Depok Margonda (Branch): Deactivation requested"]')).toHaveCount(1)
   await expect(page.locator('.leaflet-marker-icon[title="Griya CIMB Niaga 2 (Head office building)"]')).toHaveCount(1)
 
   // In the list and on the selected place.
   const table = page.getByRole('table')
+  // One status badge, as the Buildings register shows it.
   await expect(table.getByRole('row', { name: /Menara Baru/ })).toContainText('Waiting for approval')
+  await expect(table.getByRole('row', { name: /Menara Baru/ })).not.toContainText('Inactive')
   await expect(table.getByRole('row', { name: /Wisma Ditolak/ })).toContainText('Rejected')
-  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).not.toContainText('approval')
+  await expect(table.getByRole('row', { name: /KCP Kemang Lama/ })).toContainText('Inactive')
+  await expect(table.getByRole('row', { name: /KCP Depok Margonda/ })).not.toContainText('Inactive')
+  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).not.toContainText(/approval|Inactive/)
   await table.getByRole('button', { name: 'Menara Baru' }).click()
   await expect(page.getByRole('heading', { name: 'Menara Baru', level: 2 }).locator('..')).toContainText('Waiting for approval')
+
+  // They can be hidden.
+  await page.getByRole('checkbox', { name: 'Inactive (3)' }).click()
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-out')).toHaveCount(0)
+  await expect(page.locator('.leaflet-marker-icon.ra-pin-waiting')).toHaveCount(1)
+  await expect(table.getByRole('row', { name: /KCP Kemang Lama/ })).toHaveCount(0)
+})
+
+test('a disaster offers and counts only the places in service', async ({ page }) => {
+  await mockRaMap(page, { unapproved: true })
+  await page.goto('/locations/map')
+  await expect(page.locator('.leaflet-marker-icon .ra-pin-out')).toHaveCount(3, { timeout: 30_000 })
+  await page.getByRole('button', { name: 'Declare Disaster' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
+  // The branch being deactivated is still in service; the new, rejected and inactive ones aren't.
+  await expect(dialog.locator('.leaflet-marker-icon[title^="KCP Depok Margonda"]')).toHaveCount(1)
+  for (const name of ['Menara Baru', 'Wisma Ditolak', 'KCP Kemang Lama']) {
+    await expect(dialog.locator(`.leaflet-marker-icon[title^="${name}"]`)).toHaveCount(0)
+  }
+  await expect(dialog.locator('.leaflet-marker-icon .ra-pin-badge')).toHaveCount(0)
 })
 
 test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ page }) => {
@@ -439,11 +479,14 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(strong).toContainText('Felt: IV Tangerang Selatan, III Jakarta')
   await expect(strong).toContainText('KCP Bintaro Sektor 9, 1,5 km from the epicentre and 1 more.')
   await expect(strong.getByRole('link', { name: 'Shakemap' })).toHaveAttribute('href', 'https://static.bmkg.go.id/20261106134210.mmi.jpg')
-  // The far one was declared already: its incident instead of the button.
+  // The latest earthquake (autogempa, with a shakemap) labels BMKG's Potensi as Potential; the others as Tsunami.
+  await expect(strong).toContainText('Potential: Tidak berpotensi tsunami')
+  await expect(list.locator('[data-quake="2"]')).toContainText('Tsunami: Tidak berpotensi tsunami')
+  // The far one was declared already: its disaster instead of the button.
   const far = list.locator('[data-quake="2"]')
   await expect(far).toContainText('No building or branch within 100 km.')
-  await expect(far.getByRole('link', { name: 'CR-2026-0001' })).toHaveAttribute('href', '/crises/7')
-  await expect(far.getByRole('button', { name: 'Declare incident' })).toHaveCount(0)
+  await expect(far.getByRole('link', { name: 'CR-2026-0001' })).toHaveAttribute('href', '/disasters/7')
+  await expect(far.getByRole('button', { name: 'Declare Disaster' })).toHaveCount(0)
 
   // On the map: two epicentres (orange below M6.0); selecting one draws its alert radius.
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(2)
@@ -486,18 +529,18 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
 })
 
-test('an incident is declared from an earthquake, filled in from BMKG', async ({ page }) => {
+test('a disaster is declared from an earthquake, filled in from BMKG', async ({ page }) => {
   const log = await mockRaMap(page, { quakes: true, crisis: false })
   await page.goto('/locations/map?quake=3')
   const list = page.getByTestId('ra-earthquakes')
-  await list.locator('[data-quake="3"]').getByRole('button', { name: 'Declare incident' }).click({ timeout: 30_000 })
-  const dialog = page.getByRole('dialog', { name: 'Declare an incident' })
+  await list.locator('[data-quake="3"]').getByRole('button', { name: 'Declare Disaster' }).click({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
   await expect(dialog.getByText('From the BMKG earthquake M5,6 on 6 Nov 2026, 13:42 WIB')).toBeVisible({ timeout: 30_000 })
   await expect(dialog.getByLabel('What is happening')).toHaveValue(
     'Earthquake M5,6 (BMKG), 10 km deep. Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan. Felt: IV Tangerang Selatan, III Jakarta. Tidak berpotensi tsunami',
   )
   await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
-  await dialog.getByRole('button', { name: 'Submit disaster/incident' }).click()
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect.poll(() => log.declared.length).toBe(1)
   expect(log.declared[0]).toMatchObject({
     hazard_code: 'H03',
@@ -521,26 +564,26 @@ test('the earthquake list says when BMKG is old news or switched off', async ({ 
   await expect(list.getByText('Earthquakes from BMKG are switched off')).toBeVisible({ timeout: 30_000 })
 })
 
-test('an incident is approved or rejected on its page, not in the Incidents list', async ({ page }) => {
+test('a disaster is approved or rejected on its page, not in the Disasters list', async ({ page }) => {
   const log = await mockRaMap(page, { pending: true })
-  await page.goto('/crises')
+  await page.goto('/disasters')
   const row = page.getByRole('row', { name: /CR-2026-0001/ })
   await expect(row).toContainText('Pending approval', { timeout: 30_000 })
   await expect(row.getByRole('button')).toHaveCount(0)
   await row.getByRole('link', { name: 'CR-2026-0001' }).click()
-  await expect(page).toHaveURL(/\/crises\/7$/)
+  await expect(page).toHaveURL(/\/disasters\/7$/)
   await page.getByTestId('approval-banner').getByRole('button', { name: 'Reject' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Reject this incident?' })
+  const dialog = page.getByRole('dialog', { name: 'Reject this disaster?' })
   await dialog.getByLabel('Reason').fill('A drill, not a flood.')
   await dialog.getByRole('button', { name: 'Reject' }).click()
   await expect.poll(() => log.decisions).toEqual([['reject', { note: 'A drill, not a flood.' }]])
-  // No Delete button: an incident declared by mistake is rejected (or closed).
+  // No Delete button: a disaster declared by mistake is rejected (or closed).
   await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
 })
 
-test('who declared an incident is told someone else approves it', async ({ page }) => {
+test('who declared a disaster is told someone else approves it', async ({ page }) => {
   await mockRaMap(page, { pending: true, own: true })
-  await page.goto('/crises/7')
+  await page.goto('/disasters/7')
   const banner = page.getByTestId('approval-banner')
   await expect(banner).toContainText('This request requires approval by another user with approval rights (BCM Admin or BCM Management).', { timeout: 30_000 })
   await expect(banner.getByRole('button', { name: 'Approve' })).toHaveCount(0)

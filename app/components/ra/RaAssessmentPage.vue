@@ -77,7 +77,7 @@ const title = computed(() =>
 /** Manage, a draft: each tab shows how much is still needed before Submit (as SCCA's). */
 const missing = computed(() =>
   props.section === 'manage' && assessment.value?.status === 'draft' && assessment.value.can_edit && formula.value
-    ? raMissing(assessment.value, raRoleOptions(formula.value, ra.value.signoffRoles))
+    ? raMissing(assessment.value, raRoleOptions(formula.value, ra.value.signoffRoles, assessment.value.signoff_step_codes ?? null))
     : null,
 )
 const TAB_ITEMS = [
