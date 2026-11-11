@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import type { SccaApplication, SccaAssessment, SccaInterdependency } from '~/composables/useScca'
+import type { Application } from '~/composables/useApplications'
+import type { SccaAssessment, SccaInterdependency } from '~/composables/useScca'
 
 /**
- * A3 Interdependency: the upstream and downstream applications, picked from the application
- * master. Picking one fills its category, RTO, RPO and DR capacity from its latest final SCCA
- * (still editable). Every field is required except the workaround and the gap notes; the
- * automatic gap checks show next to the assessor's own notes.
+ * A3 Interdependency: the upstream and downstream applications, ticked in a table of the
+ * application master (several at once). Category, RTO, RPO and DR capacity come from each
+ * application's current final SCCA and are read-only (the server stores them on the row with
+ * that SCCA); an application without a final SCCA takes what the assessor enters. Every field
+ * is required except the workaround and the gap notes; the automatic gap checks show next to
+ * the assessor's own notes.
  */
 const props = defineProps<{ assessment: SccaAssessment }>()
 const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
@@ -40,8 +43,9 @@ type FormRow = {
   dependency: SccaDependency | undefined
   workaround: string
   gaps_note: string
-  /** Where the autofilled values came from, and which of them were changed since. */
-  filledFrom: { ref_no: string, finalised_at: string | null } | null
+  /** The final SCCA the values come from (read-only), or null: entered by the assessor. */
+  source: { ref_no: string | null, finalised_at: string | null } | null
+  /** The values the source gave (read-only); a field it left empty stays editable. */
   filled: Filled[]
 }
 
@@ -59,16 +63,17 @@ function emptyRow(direction: SccaDirection): FormRow {
     dependency: undefined,
     workaround: '',
     gaps_note: '',
-    filledFrom: null,
+    source: null,
     filled: [],
   }
 }
 
 function toFormRow(row: SccaInterdependency): FormRow {
+  const source = row.source ? { ref_no: row.source.ref_no, finalised_at: row.source.finalised_at } : null
   return {
     direction: row.direction,
     application_id: row.application_id ?? null,
-    application_code: null,
+    application_code: row.application_code ?? null,
     system_name: row.system_name,
     criticality_category: row.criticality_category ?? undefined,
     rto: row.rto ?? '',
@@ -78,8 +83,8 @@ function toFormRow(row: SccaInterdependency): FormRow {
     dependency: row.dependency ?? undefined,
     workaround: row.workaround ?? '',
     gaps_note: row.gaps_note ?? '',
-    filledFrom: null,
-    filled: [],
+    source,
+    filled: source ? FILLED.filter((field) => !!row[field]) : [],
   }
 }
 
@@ -98,7 +103,7 @@ const state = reactive(fromAssessment())
 
 /** What counts as a change (not the autofill bookkeeping). */
 function comparable() {
-  const strip = (rows: FormRow[]) => rows.map(({ filledFrom: _from, filled: _filled, application_code: _code, ...row }) => row)
+  const strip = (rows: FormRow[]) => rows.map(({ source: _source, filled: _filled, application_code: _code, ...row }) => row)
   return JSON.stringify({ upstream: strip(state.upstream), downstream: strip(state.downstream) })
 }
 
@@ -117,8 +122,33 @@ watch(state, () => {
 }, { deep: true })
 onMounted(reset)
 
-function add(direction: SccaDirection) {
-  state[direction].push(emptyRow(direction))
+const picker = reactive<{ open: boolean, direction: SccaDirection }>({ open: false, direction: 'upstream' })
+
+function openPicker(direction: SccaDirection) {
+  picker.direction = direction
+  picker.open = true
+}
+
+/** One row per ticked application, filled from its current final SCCA. */
+function addApplications(applications: Application[]) {
+  const rows = state[picker.direction]
+  for (const application of applications) {
+    if (rows.some((row) => row.application_id === application.id)) continue
+    const row = emptyRow(picker.direction)
+    row.application_id = application.id
+    row.application_code = application.application_code
+    row.system_name = application.application_name
+    const values = application.characteristics
+    if (values) {
+      row.criticality_category = (values.criticality_category ?? undefined) as SccaCategory | undefined
+      row.rto = values.rto ?? ''
+      row.rpo = values.rpo ?? ''
+      row.dr_capacity = values.dr_capacity ?? ''
+      row.source = values.final ? { ref_no: values.final.ref_no, finalised_at: values.final.finalised_at } : null
+      row.filled = values.final ? FILLED.filter((field) => !!row[field]) : []
+    }
+    rows.push(row)
+  }
 }
 
 function remove(direction: SccaDirection, index: number) {
@@ -129,41 +159,23 @@ function taken(direction: SccaDirection) {
   return state[direction].map((row) => row.application_id).filter((id): id is number => !!id)
 }
 
-function pick(row: FormRow, application: SccaApplication | null) {
-  if (!application) {
-    Object.assign(row, { application_id: null, application_code: null, system_name: '', filledFrom: null, filled: [] })
-    return
-  }
-  row.application_id = application.application_id
-  row.application_code = application.application_code
-  row.system_name = application.application_name
-  const values = application.characteristics
-  row.criticality_category = (values.criticality_category ?? undefined) as SccaCategory | undefined
-  row.rto = values.rto ?? ''
-  row.rpo = values.rpo ?? ''
-  row.dr_capacity = values.dr_capacity ?? ''
-  row.filledFrom = values.final ? { ref_no: values.final.ref_no, finalised_at: values.final.finalised_at } : null
-  row.filled = values.final ? FILLED.filter((field) => !!row[field]) : []
+/** Read-only: the value came from the application's current final SCCA. */
+function fixed(row: FormRow, field: Filled) {
+  return !!row.source && row.filled.includes(field)
 }
 
-function edited(row: FormRow, field: Filled) {
-  row.filled = row.filled.filter((item) => item !== field)
-}
-
-function fillNote(row: FormRow) {
+/** Under the application's name: which SCCA its values come from. */
+function sourceNote(row: FormRow) {
   if (!row.application_id) return null
-  if (!row.filledFrom) return row.application_code ? `No final SCCA for ${row.application_code} yet: enter the values.` : null
-  const when = row.filledFrom.finalised_at ? ` (${formatDate(row.filledFrom.finalised_at)})` : ''
-  if (!row.filled.length) return `Edited after filling from ${row.filledFrom.ref_no}${when}.`
-  const changed = FILLED.length - row.filled.length
-  return `Filled from final SCCA ${row.filledFrom.ref_no}${when}${changed ? `; ${changed} value(s) edited` : ''}.`
+  if (!row.source) return 'No final SCCA yet: enter the values.'
+  const when = row.source.finalised_at ? `, final ${formatDate(row.source.finalised_at)}` : ''
+  return `Current SCCA ${row.source.ref_no ?? ''}${when}`.trim()
 }
 
 /** Keep DR capacity within 0–100. The typed value is set first, so a value clamped back to
  * what was there before (150 over 100) still redraws the field. */
 function setCapacity(row: FormRow, value: string | number | null | undefined) {
   row.dr_capacity = String(value ?? '')
-  edited(row, 'dr_capacity')
   nextTick(() => {
     row.dr_capacity = clampPercent(row.dr_capacity)
   })
@@ -276,8 +288,8 @@ function hourChoices(current: string) {
       </h2>
       <div class="mt-2 space-y-2 text-sm text-muted">
         <p>
-          Applications that feed this application or depend on its output, picked from the application list.
-          Picking one fills its category, RTO, RPO and DR capacity from its latest final SCCA; change them if they differ now.
+          Applications that feed this application or depend on its output. Use <span class="font-medium">Add applications</span> to tick several at once.
+          Their category, RTO, RPO and DR capacity come from each application's current final SCCA and can't be changed here; an application without a final SCCA needs them entered.
         </p>
         <p>
           Full: no workaround when the other application is down. Partial: a manual workaround exists (describe it). No: the application continues with the last data received.
@@ -305,9 +317,9 @@ function hourChoices(current: string) {
           <UButton
             color="neutral"
             variant="outline"
-            icon="i-lucide-plus"
-            label="Add application"
-            @click="add(group.value)"
+            icon="i-lucide-list-plus"
+            label="Add applications"
+            @click="openPicker(group.value)"
           />
         </div>
       </template>
@@ -370,31 +382,36 @@ function hourChoices(current: string) {
                 {{ index + 1 }}
               </td>
               <td class="min-w-64 px-3 py-2 align-top">
-                <SccaApplicationSearch
-                  v-model="row.application_id"
-                  :selected="row.application_id ? { code: row.application_code, name: row.system_name } : null"
-                  :exclude="assessment.application_id ?? null"
-                  :taken="taken(group.value)"
-                  :aria-label="`Application name ${index + 1}`"
-                  :class="invalid(row, 'application_id') ? 'ring ring-error rounded-md' : ''"
-                  @pick="pick(row, $event)"
-                />
-                <p
-                  v-if="row.system_name"
-                  class="mt-1 text-xs text-muted"
-                >
+                <p class="font-medium">
                   {{ row.system_name }}
                 </p>
                 <p
-                  v-if="fillNote(row)"
-                  class="mt-1 text-xs"
-                  :class="row.filledFrom ? 'text-info' : 'text-warning'"
+                  v-if="row.application_code"
+                  class="text-xs text-muted"
                 >
-                  {{ fillNote(row) }}
+                  {{ row.application_code }}
+                </p>
+                <p
+                  v-if="sourceNote(row)"
+                  class="mt-1 flex items-center gap-1 text-xs"
+                  :class="row.source ? 'text-info' : 'text-warning'"
+                >
+                  <UIcon
+                    :name="row.source ? 'i-lucide-link' : 'i-lucide-pencil-line'"
+                    class="size-3.5 shrink-0"
+                  />
+                  {{ sourceNote(row) }}
                 </p>
               </td>
               <td class="px-3 py-2 align-top">
+                <StatusBadge
+                  v-if="fixed(row, 'criticality_category')"
+                  :scale="sccaCategory"
+                  :value="row.criticality_category"
+                  size="sm"
+                />
                 <USelect
+                  v-else
                   v-model="row.criticality_category"
                   :items="categoryItems"
                   value-key="value"
@@ -404,11 +421,15 @@ function hourChoices(current: string) {
                   :color="invalid(row, 'criticality_category') ? 'error' : undefined"
                   :highlight="invalid(row, 'criticality_category')"
                   :aria-label="`Category ${index + 1}`"
-                  @update:model-value="edited(row, 'criticality_category')"
                 />
               </td>
               <td class="px-3 py-2 align-top">
+                <span
+                  v-if="fixed(row, 'rto')"
+                  class="tabular-nums"
+                >{{ sccaListLabel(config, 'hours', row.rto) || row.rto }}</span>
                 <USelect
+                  v-else
                   v-model="row.rto"
                   :items="hourChoices(row.rto)"
                   value-key="value"
@@ -418,11 +439,12 @@ function hourChoices(current: string) {
                   :color="invalid(row, 'rto') ? 'error' : undefined"
                   :highlight="invalid(row, 'rto')"
                   :aria-label="`RTO (hours) ${index + 1}`"
-                  @update:model-value="edited(row, 'rto')"
                 />
               </td>
               <td class="px-3 py-2 align-top">
+                <span v-if="fixed(row, 'rpo')">{{ sccaListLabel(config, 'rpo', row.rpo) || row.rpo }}</span>
                 <USelect
+                  v-else
                   v-model="row.rpo"
                   :items="choices('rpo', row.rpo, SCCA_RPO_OPTIONS)"
                   value-key="value"
@@ -432,11 +454,15 @@ function hourChoices(current: string) {
                   :color="invalid(row, 'rpo') ? 'error' : undefined"
                   :highlight="invalid(row, 'rpo')"
                   :aria-label="`RPO ${index + 1}`"
-                  @update:model-value="edited(row, 'rpo')"
                 />
               </td>
               <td class="px-3 py-2 align-top">
+                <span
+                  v-if="fixed(row, 'dr_capacity')"
+                  class="tabular-nums"
+                >{{ row.dr_capacity }}%</span>
                 <UInput
+                  v-else
                   :model-value="row.dr_capacity"
                   type="number"
                   min="0"
@@ -543,5 +569,13 @@ function hourChoices(current: string) {
         </table>
       </div>
     </UCard>
+
+    <SccaInterdependencyPicker
+      v-model:open="picker.open"
+      :direction-label="SCCA_DIRECTIONS.find((item) => item.value === picker.direction)?.label ?? ''"
+      :exclude="assessment.application_id ?? null"
+      :taken="taken(picker.direction)"
+      @add="addApplications"
+    />
   </form>
 </template>

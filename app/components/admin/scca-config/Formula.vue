@@ -27,6 +27,8 @@ const part = useConfigPart(
 const { draft, error, busy, dirty, submit, reset } = part
 
 const LEVELS = [1, 2, 3, 4, 5]
+/** A select item can't have an empty value: this one stands for "not set in the standard". */
+const NOT_SET = '__not_set__'
 const DIMENSION_NAMES: Record<string, string> = { C: 'Confidentiality', I: 'Integrity', A: 'Availability', P: 'Potential Loss' }
 
 function scopeTitle(scope: string) {
@@ -395,6 +397,7 @@ watch(() => props.version, () => {
           </h2>
           <p class="mt-1 text-sm text-muted">
             The text shows on the Recovery tab and the reports. The gap checks use the hours and the minimum availability/SLA (empty: no limit).
+            An SCCA's CIMBN block is filled from its final category's row and can't be changed there: availability/SLA, RTO, HA (Prod / DR), DR capacity and DR type. A value left empty is entered by the assessor.
           </p>
         </template>
         <fieldset
@@ -425,8 +428,17 @@ watch(() => props.version, () => {
                 <th class="px-3 py-2">
                   Availability/SLA (per year)
                 </th>
-                <th class="px-3 py-2 pe-4">
+                <th class="px-3 py-2">
                   Availability/SLA at least (%)
+                </th>
+                <th class="px-3 py-2">
+                  HA (Prod / DR)
+                </th>
+                <th class="px-3 py-2">
+                  DR capacity (%)
+                </th>
+                <th class="px-3 py-2 pe-4">
+                  DR type
                 </th>
               </tr>
             </thead>
@@ -483,7 +495,7 @@ watch(() => props.version, () => {
                     @update:model-value="standard.uptime = String($event) || null"
                   />
                 </td>
-                <td class="px-3 py-2 pe-4">
+                <td class="px-3 py-2">
                   <UInputNumber
                     :model-value="standard.uptime_min_pct ?? undefined"
                     :min="0"
@@ -492,6 +504,41 @@ watch(() => props.version, () => {
                     class="w-24"
                     :aria-label="`${standard.category} uptime at least`"
                     @update:model-value="standard.uptime_min_pct = $event ?? null"
+                  />
+                </td>
+                <td class="px-3 py-2">
+                  <USelect
+                    :model-value="standard.ha ?? NOT_SET"
+                    :items="[{ label: 'Not set', value: NOT_SET }, ...sccaListOptions(version, 'ha', standard.ha)]"
+                    value-key="value"
+                    label-key="label"
+                    class="min-w-36"
+                    placeholder="Not set"
+                    :aria-label="`${standard.category} HA (Prod / DR)`"
+                    @update:model-value="standard.ha = $event === NOT_SET ? null : $event"
+                  />
+                </td>
+                <td class="px-3 py-2">
+                  <UInputNumber
+                    :model-value="standard.dr_capacity ?? undefined"
+                    :min="0"
+                    :max="100"
+                    :step="1"
+                    class="w-24"
+                    :aria-label="`${standard.category} DR capacity`"
+                    @update:model-value="standard.dr_capacity = $event ?? null"
+                  />
+                </td>
+                <td class="px-3 py-2 pe-4">
+                  <USelect
+                    :model-value="standard.dr_type ?? NOT_SET"
+                    :items="[{ label: 'Not set', value: NOT_SET }, ...sccaListOptions(version, 'dr_type', standard.dr_type)]"
+                    value-key="value"
+                    label-key="label"
+                    class="min-w-32"
+                    placeholder="Not set"
+                    :aria-label="`${standard.category} DR type`"
+                    @update:model-value="standard.dr_type = $event === NOT_SET ? null : $event"
                   />
                 </td>
               </tr>
