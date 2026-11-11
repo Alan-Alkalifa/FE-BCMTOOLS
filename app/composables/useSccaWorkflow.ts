@@ -24,6 +24,8 @@ export interface SccaMonitorRef {
   id: number
   ref_no: string | null
   status: SccaStatus
+  /** A draft a signer rejected, not resubmitted yet: shown as In revision. */
+  in_revision?: boolean
   category: SccaCategory | null
   assessment_date: string | null
   finalised_at: string | null
@@ -64,7 +66,7 @@ export interface SccaRenewalRow {
   contributor_id: number | null
   owner: string | null
   renewal: SccaMonitorRef | null
-  renewal_status: 'not_started' | 'draft' | 'in_approval'
+  renewal_status: 'not_started' | 'draft' | 'in_revision' | 'in_approval'
   /** Generate annual review is allowed on this row (access scope, no open SCCA). */
   can_generate: boolean
 }

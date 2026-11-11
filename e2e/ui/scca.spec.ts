@@ -47,6 +47,8 @@ test('the list shows badges and keeps search and category in the URL', async ({ 
   await expect(page.getByRole('link', { name: 'CC Omni Channel' })).toHaveCount(0)
   await expect(page.getByText('Not rated yet')).toBeVisible()
   await expect(page.getByText('SCCA-2026-0002')).toBeVisible()
+  // Rejected and not resubmitted yet: In revision, as in Monitoring.
+  await expect(page.getByText('In revision', { exact: true })).toBeVisible()
   await page.getByLabel('Search by name, code, or ref. no.').fill('omni')
   await expect(page).toHaveURL(/q=omni/)
 
@@ -148,10 +150,11 @@ test('the assessment date is picked from a calendar and shown with the month nam
   expect(Math.abs(calendarBox.x - fieldBox.x)).toBeLessThan(2)
   // Under the field, or above it when there is no room below; never over it.
   expect(calendarBox.y >= fieldBox.y + fieldBox.height || calendarBox.y + calendarBox.height <= fieldBox.y).toBe(true)
-  await calendar.getByRole('button', { name: /\b15 [A-Z][a-z]+ \d{4}$/ }).first().click()
+  // The 1st of this month: back-dating within this year is allowed, the future is not.
+  await calendar.getByRole('button', { name: /\b1 [A-Z][a-z]+ \d{4}$/ }).first().click()
   await expect(calendar).toHaveCount(0)
-  await expect(field).toHaveText(/^15 \w{3} \d{4}$/)
-  await expect(page.getByText(/Renewal due 15 \w+ \d{4}, 2 years after this assessment/)).toBeVisible()
+  await expect(field).toHaveText(/^0?1 \w{3} \d{4}$/)
+  await expect(page.getByText(/Renewal due 0?1 \w+ \d{4}, 2 years after this assessment/)).toBeVisible()
   await expect(page.getByText('Enter the assessment date.')).toHaveCount(0)
 })
 
@@ -182,19 +185,21 @@ test('C1 only offers the ratings allowed by the formula', async ({ page }) => {
   expect(FORMULA.questions[0].options.map((option) => option.rating)).toEqual([5, 3, 1])
 })
 
-test('the guidance panel shows the selected rating', async ({ page }) => {
+test('the rating tab shows only the picked rating\'s guidance, above its justification', async ({ page }) => {
   test.setTimeout(120_000)
   await mockScca(page)
   await page.goto('/scca/1?tab=rating')
-  await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 90_000 })
-  await expect(page.getByText('84%').first()).toBeVisible()
-  const guidance = page.getByRole('heading', { name: 'Guidance' }).locator('xpath=ancestor::*[self::div][1]/..')
-  await expect(guidance.getByText('Guidance for C1 rating 5.')).toBeVisible()
-  await expect(guidance.getByText('Guidance for C1 rating 3.')).toBeVisible()
-  await expect(guidance.getByText('Guidance for C1 rating 1.')).toBeVisible()
-  await expect(guidance.getByText('C1 · Customer Information')).toHaveCount(0)
-  await page.getByRole('tab', { name: 'I', exact: true }).click()
-  await expect(guidance.getByText('Guidance for I1 rating 5.')).toBeVisible()
+  await expect(page.getByText('C1 · Customer Information').first()).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByRole('heading', { name: 'Summary' })).toHaveCount(0)
+  const c1 = page.locator('div.space-y-3', { has: page.getByText('C1 · Customer Information') }).first()
+  await expect(c1.getByText('Guidance for C1 rating 5.')).toBeVisible()
+  await expect(c1.getByText('Guidance for C1 rating 3.')).toHaveCount(0)
+  const guidance = await c1.getByText('Guidance for C1 rating 5.').boundingBox()
+  const justification = await c1.getByText('Justification', { exact: true }).boundingBox()
+  expect(guidance!.y).toBeLessThan(justification!.y)
+  await c1.getByRole('button', { name: 'Moderate', exact: true }).click()
+  await expect(c1.getByText('Guidance for C1 rating 3.')).toBeVisible()
+  await expect(c1.getByText('Guidance for C1 rating 5.')).toHaveCount(0)
 })
 
 test('a 422 from the server appears under the field', async ({ page }) => {
@@ -263,7 +268,7 @@ test('the result tab shows earlier gaps, sign-off and blocks submit until ready'
   await expect(page.getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
 })
 
-test('interdependency rows are picked from the application list and filled from its final SCCA', async ({ page }) => {
+test('interdependencies are ticked in a table and take their values from the current final SCCA', async ({ page }) => {
   const current = assessment({
     interdependencies: [],
     recovery_values: [{
@@ -281,11 +286,20 @@ test('interdependency rows are picked from the application list and filled from 
   await mockScca(page, current)
   await page.goto('/scca/1?tab=interdependencies')
   await expect(page.getByRole('heading', { name: 'A3 Interdependency' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('heading', { name: 'Upstream applications' })).toBeVisible()
-  await page.getByRole('button', { name: 'Add application' }).first().click()
-  await pickApplication(page, 'Application name 1', 'core', /^CBS/)
-  await expect(page.getByText('Filled from final SCCA SCCA-2025-0009 (2 Nov 2025).')).toBeVisible()
-  await expect(page.getByLabel('RTO (hours) 1')).toContainText('12')
+  await page.getByRole('button', { name: 'Add applications' }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Add upstream applications' })
+  await expect(dialog.getByText('SCCA-2025-0009 · 2 Nov 2025')).toBeVisible()
+  // Only an application with a final SCCA can be ticked.
+  await expect(dialog.getByRole('checkbox', { name: 'Add HR Portal' })).toBeDisabled()
+  await expect(dialog.getByText('HR · no final SCCA')).toBeVisible()
+  await dialog.getByRole('checkbox', { name: 'Add Core Banking' }).click()
+  await expect(dialog.getByText('1 selected')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Add 1 application' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // Its category, RTO, RPO and DR capacity are the final SCCA's, read-only.
+  await expect(page.getByText('Current SCCA SCCA-2025-0009, final 2 Nov 2025')).toBeVisible()
+  await expect(page.getByLabel('RTO (hours) 1')).toHaveCount(0)
   await expect(page.getByLabel('Automatic gaps 1')).toContainText('RTO 12 h is longer than the committed RTO of 6 h.')
 
   // Every field but workaround and gaps is required.
@@ -296,8 +310,6 @@ test('interdependency rows are picked from the application list and filled from 
   await page.getByLabel('Dependency 1').click()
   await page.getByRole('option', { name: 'No', exact: true }).click()
   await page.getByLabel('Gap notes 1').fill('Batch window overlaps.')
-  await page.getByLabel('DR capacity (%) 1').fill('150')
-  await expect(page.getByLabel('DR capacity (%) 1')).toHaveValue('100')
   await page.getByRole('button', { name: 'Save interdependencies' }).click()
   await expect(page.getByText('Interdependencies saved', { exact: true })).toBeVisible()
   await expect(current.interdependencies).toEqual([
@@ -322,7 +334,13 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await page.goto('/scca/1?tab=recovery')
   await expect(page.getByRole('heading', { name: 'Recovery architecture standard (CIMB Niaga)' })).toBeVisible({ timeout: 90_000 })
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
-  await expect(page.getByText('Not applicable')).toHaveCount(0)
+  // Every category, Other included; the CIMBN block follows Critical's standard (read-only).
+  await expect(page.getByText('Not applicable')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toContainText('Hot DR')
+  await expect(page.getByLabel('CIMBN recovery architecture standard Availability/SLA (%)')).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard RPO' })).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard RPO' })).toContainText('LST')
   const committedRto = page.getByRole('combobox', { name: 'Current IT committed values RTO (hours)' })
   await expect(committedRto).toBeVisible()
   await committedRto.click()
@@ -342,8 +360,6 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await page.getByRole('option', { name: 'Yes (Prod)', exact: true }).click()
   await page.getByRole('combobox', { name: 'Current IT committed values Instance (Shared / Different)' }).click()
   await page.getByRole('option', { name: 'Different', exact: true }).click()
-  await page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' }).click()
-  await page.getByRole('option', { name: 'Warm DR', exact: true }).click()
   await page.getByRole('combobox', { name: 'Final system characteristics HA (Prod / DR)' }).click()
   await page.getByRole('option', { name: 'Active - Active', exact: true }).click()
   await page.getByRole('combobox', { name: 'Final system characteristics DR capacity (%)' }).click()
@@ -365,7 +381,7 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
     }),
     expect.objectContaining({ kind: 'business', rto: '1', mtd: '4' }),
     expect.objectContaining({ kind: 'regulatory', rto: 'NA' }),
-    expect.objectContaining({ kind: 'cimbn_standard', dr_type: 'Warm DR' }),
+    expect.objectContaining({ kind: 'cimbn_standard', availability_sla: '99.5', rto: '2', rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: '100', dr_type: 'Hot DR' }),
     expect.objectContaining({ kind: 'final', ha: 'Active - Active', dr_capacity: '50% - 50%' }),
   ]))
 })
@@ -479,11 +495,13 @@ test('a final SCCA offers the PDF and Excel downloads on its report only', async
   await expect(page.getByRole('link', { name: 'Download Excel' })).toHaveAttribute('href', '/api/scca/assessments/1/report.xlsx')
 })
 
-test('the rating tab shows the workbook notes and the C, I, A scores', async ({ page }) => {
+test('the C, I, A scores show on the Recovery tab, not on the Rating tab', async ({ page }) => {
   await mockScca(page)
   await page.goto('/scca/1?tab=rating')
+  await expect(page.getByText('C1 · Customer Information').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Summary' })).toHaveCount(0)
+  await page.goto('/scca/1?tab=recovery')
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('Confidentiality', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('· 5-CIA').first()).toBeVisible()
 })
 
@@ -514,7 +532,8 @@ test('recovery saves only the fields each block shows, clearing stale hidden val
   await page.getByRole('button', { name: 'Save recovery' }).click()
   const rows = (await request).postDataJSON().recovery_values as { kind: string, [key: string]: string | null }[]
   const standard = rows.find((row) => row.kind === 'cimbn_standard')!
-  expect(standard).toMatchObject({ availability_sla: '100', rto: '24', dr_type: 'Cold DR', mtd: null, instance_type: null })
+  // The standard's values for Critical replace what was stored; hidden fields are cleared.
+  expect(standard).toMatchObject({ availability_sla: '99.5', rto: '2', rpo: 'LST', dr_type: 'Hot DR', mtd: null, instance_type: null })
   expect(rows.find((row) => row.kind === 'regulatory')).toMatchObject({ availability_sla: null, ha: null })
 })
 

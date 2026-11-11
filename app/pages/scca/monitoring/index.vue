@@ -642,7 +642,7 @@ function pageTo(next: number) {
               >
                 <StatusBadge
                   :scale="sccaStatus"
-                  :value="row.original.renewal.status"
+                  :value="sccaStatusKey(row.original.renewal)"
                   size="sm"
                 />
                 <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.renewal) }}</span>
@@ -747,7 +747,7 @@ function pageTo(next: number) {
               >
                 <StatusBadge
                   :scale="sccaStatus"
-                  :value="row.original.open.status"
+                  :value="sccaStatusKey(row.original.open)"
                   size="sm"
                 />
                 <p

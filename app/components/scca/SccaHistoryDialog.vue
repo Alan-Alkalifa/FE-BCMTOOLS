@@ -78,7 +78,7 @@ const columns: TableColumn<SccaHistoryItem>[] = [
           <template #status-cell="{ row: item }">
             <StatusBadge
               :scale="sccaStatus"
-              :value="item.original.status"
+              :value="sccaStatusKey(item.original)"
               size="sm"
             />
           </template>

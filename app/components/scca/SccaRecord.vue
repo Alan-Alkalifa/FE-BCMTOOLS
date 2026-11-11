@@ -266,7 +266,7 @@ function onSaved(saved: SccaAssessment) {
       <StatusBadge
         v-if="assessment"
         :scale="sccaStatus"
-        :value="assessment.status"
+        :value="sccaStatusKey(assessment)"
       />
       <UButton
         v-if="section === 'monitoring' && assessment?.can_renew"

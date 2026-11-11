@@ -57,13 +57,6 @@ const activeQuestion = computed(() =>
   props.formula.questions.find((question) => question.code === activeCode.value) ?? questions.value[0] ?? null,
 )
 
-const activeOption = computed(() => {
-  const question = activeQuestion.value
-  if (!question) return null
-  const rating = state.answers[question.code]?.rating
-  return question.options.find((option) => option.rating === rating) ?? null
-})
-
 /** Every question shows the five levels; a level its configuration does not allow is shown
  * disabled, so a missing button never reads as a missing level. */
 const LEVELS = [
@@ -94,22 +87,15 @@ function ratingName(label: string) {
   return label.replace(/^\d+\./, '')
 }
 
-/** Same figures as the workbook's SCC_Result: C, I, A and CIA with its level, then Potential Loss. */
-const summary = computed(() => {
-  const preview = livePreview?.value
-  const scores = preview ? preview.result : props.assessment.result
-  if (!scores || (scores.cia_score == null && scores.poloss_score == null)) return null
-  return {
-    c: scores.confidentiality_score,
-    i: scores.integrity_score,
-    a: scores.availability_score,
-    cia: scores.cia_score,
-    ciaLevel: sccaLevelLabel(scores.cia_level, 'CIA'),
-    poloss: scores.poloss_score,
-    polossLevel: sccaLevelLabel(scores.poloss_level, 'POLOSS'),
-    category: preview?.result ? preview.result.category : props.assessment.result.final_category,
-  }
-})
+/** The guidance of the rating picked for a question: only that level, shown above its
+ *  justification (nothing until a rating is picked). */
+function pickedGuidance(question: { code: string, options: { rating: number, label: string, guidance?: string | null }[] }) {
+  const rating = state.answers[question.code]?.rating
+  if (rating == null) return null
+  const option = question.options.find((item) => item.rating === rating)
+  if (!option) return null
+  return { label: ratingName(option.label), text: option.guidance?.trim() || 'No guidance is written for this rating.' }
+}
 
 /** The workbook's notes (V4.2: C1, A3 and I4; each configuration version has its own), shown
  * as warnings next to the question. */
@@ -209,140 +195,123 @@ async function onSubmit() {
     :state="state"
     @submit="onSubmit"
   >
-    <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <div class="min-w-0 space-y-6">
-        <UAlert
-          v-if="formError"
-          color="error"
-          variant="subtle"
-          icon="i-lucide-circle-alert"
-          title="Couldn't save the ratings"
-          :ui="{ description: 'whitespace-pre-line' }"
-          :description="formError"
-        />
+    <div class="min-w-0 space-y-6">
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Couldn't save the ratings"
+        :ui="{ description: 'whitespace-pre-line' }"
+        :description="formError"
+      />
 
-        <UTabs
-          v-model="dimension"
-          :items="dimensionItems"
-          :content="false"
-          variant="pill"
-          :ui="{ list: 'w-full' }"
-        />
+      <UTabs
+        v-model="dimension"
+        :items="dimensionItems"
+        :content="false"
+        variant="pill"
+        :ui="{ list: 'w-full' }"
+      />
 
-        <p class="text-sm text-muted">
-          {{ formatNumber(ratedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} rated ·
-          {{ formatNumber(justifiedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} justified.
-        </p>
+      <p class="text-sm text-muted">
+        {{ formatNumber(ratedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} rated ·
+        {{ formatNumber(justifiedCount, 0) }} of {{ formatNumber(formula.questions.length, 0) }} justified.
+      </p>
 
-        <fieldset
-          :disabled="locked"
-          class="min-w-0 space-y-8"
+      <fieldset
+        :disabled="locked"
+        class="min-w-0 space-y-8"
+      >
+        <h2 class="text-lg font-semibold">
+          {{ dimensionLabel }}
+        </h2>
+        <div
+          v-for="question in questions"
+          :key="question.code"
+          class="space-y-3 rounded-lg p-3"
+          :class="activeQuestion?.code === question.code ? 'ring-1 ring-primary' : ''"
+          @click="activeCode = question.code"
         >
-          <h2 class="text-lg font-semibold">
-            {{ dimensionLabel }}
-          </h2>
-          <div
-            v-for="question in questions"
-            :key="question.code"
-            class="space-y-3 rounded-lg p-3"
-            :class="activeQuestion?.code === question.code ? 'ring-1 ring-primary' : ''"
-            @click="activeCode = question.code"
+          <div>
+            <p class="font-medium">
+              {{ question.code }} · {{ question.label }}
+            </p>
+            <p class="mt-1 text-sm text-muted whitespace-pre-line">
+              {{ question.question.trim() }}
+            </p>
+          </div>
+          <UFormField
+            :name="`answers.${question.code}`"
+            :label="`Rating for ${question.code}`"
           >
-            <div>
-              <p class="font-medium">
-                {{ question.code }} · {{ question.label }}
-              </p>
-              <p class="mt-1 text-sm text-muted whitespace-pre-line">
-                {{ question.question.trim() }}
-              </p>
-            </div>
-            <UFormField
-              :name="`answers.${question.code}`"
-              :label="`Rating for ${question.code}`"
-            >
-              <div class="flex flex-wrap gap-2">
-                <UTooltip
-                  v-for="level in levelsOf(question)"
-                  :key="level.rating"
-                  :text="level.tooltip"
-                  :disabled="level.allowed"
-                >
-                  <UButton
-                    type="button"
-                    :label="level.label"
-                    :disabled="!level.allowed"
-                    :color="state.answers[question.code]!.rating === level.rating ? 'primary' : 'neutral'"
-                    :variant="state.answers[question.code]!.rating === level.rating ? 'solid' : 'outline'"
-                    :aria-pressed="state.answers[question.code]!.rating === level.rating"
-                    :class="level.allowed ? '' : 'line-through decoration-1'"
-                    @click="choose(question.code, level.rating)"
-                  />
-                </UTooltip>
-              </div>
-              <p
-                v-for="message in noteWarnings[question.code] ?? []"
-                :key="message"
-                class="mt-2 flex items-start gap-1.5 text-sm text-warning"
+            <div class="flex flex-wrap gap-2">
+              <UTooltip
+                v-for="level in levelsOf(question)"
+                :key="level.rating"
+                :text="level.tooltip"
+                :disabled="level.allowed"
               >
-                <UIcon
-                  name="i-lucide-triangle-alert"
-                  class="mt-0.5 size-4 shrink-0"
+                <UButton
+                  type="button"
+                  :label="level.label"
+                  :disabled="!level.allowed"
+                  :color="state.answers[question.code]!.rating === level.rating ? 'primary' : 'neutral'"
+                  :variant="state.answers[question.code]!.rating === level.rating ? 'solid' : 'outline'"
+                  :aria-pressed="state.answers[question.code]!.rating === level.rating"
+                  :class="level.allowed ? '' : 'line-through decoration-1'"
+                  @click="choose(question.code, level.rating)"
                 />
-                {{ message }}
-              </p>
-            </UFormField>
-            <UFormField
-              :name="`justification.${question.code}`"
-              label="Justification"
-              required
-              :error="!locked && state.answers[question.code]!.rating != null && !state.answers[question.code]!.justification.trim() ? 'Explain why this rating (needed to submit).' : undefined"
-            >
-              <template #hint>
-                <FieldCount
-                  :value="state.answers[question.code]!.justification"
-                  :max="TEXT_LIMITS.long"
-                />
-              </template>
-              <UTextarea
-                v-model="state.answers[question.code]!.justification"
-                :maxlength="TEXT_LIMITS.long"
-                class="w-full"
-                :rows="2"
-              />
-            </UFormField>
-          </div>
-        </fieldset>
-      </div>
-
-      <div class="space-y-6 lg:sticky lg:top-6">
-        <SccaScoreSummary :summary="summary" />
-
-        <UCard>
-          <template #header>
-            <h2 class="text-lg font-semibold">
-              Guidance
-            </h2>
-          </template>
-          <div
-            v-if="activeQuestion"
-            class="max-h-96 space-y-4 overflow-y-auto"
-          >
-            <div
-              v-for="option in activeQuestion.options"
-              :key="option.rating"
-              class="space-y-1"
-              :class="activeOption?.rating === option.rating ? 'rounded-md p-3 ring-1 ring-primary' : ''"
-            >
-              <p class="font-medium">
-                {{ ratingName(option.label) }}
-              </p>
-              <p class="text-sm whitespace-pre-line">
-                {{ option.guidance || 'No guidance is written for this rating.' }}
-              </p>
+              </UTooltip>
             </div>
+            <p
+              v-for="message in noteWarnings[question.code] ?? []"
+              :key="message"
+              class="mt-2 flex items-start gap-1.5 text-sm text-warning"
+            >
+              <UIcon
+                name="i-lucide-triangle-alert"
+                class="mt-0.5 size-4 shrink-0"
+              />
+              {{ message }}
+            </p>
+          </UFormField>
+          <div
+            v-if="pickedGuidance(question)"
+            class="space-y-1 rounded-md bg-elevated/60 p-3"
+          >
+            <p class="flex items-center gap-1.5 text-sm font-medium">
+              <UIcon
+                name="i-lucide-book-open"
+                class="size-4 shrink-0 text-muted"
+              />
+              Guidance · {{ pickedGuidance(question)!.label }}
+            </p>
+            <p class="text-sm whitespace-pre-line">
+              {{ pickedGuidance(question)!.text }}
+            </p>
           </div>
-        </UCard>
-      </div>
+          <UFormField
+            :name="`justification.${question.code}`"
+            label="Justification"
+            required
+            :error="!locked && state.answers[question.code]!.rating != null && !state.answers[question.code]!.justification.trim() ? 'Explain why this rating (needed to submit).' : undefined"
+          >
+            <template #hint>
+              <FieldCount
+                :value="state.answers[question.code]!.justification"
+                :max="TEXT_LIMITS.long"
+              />
+            </template>
+            <UTextarea
+              v-model="state.answers[question.code]!.justification"
+              :maxlength="TEXT_LIMITS.long"
+              class="w-full"
+              :rows="2"
+            />
+          </UFormField>
+        </div>
+      </fieldset>
     </div>
   </UForm>
 </template>

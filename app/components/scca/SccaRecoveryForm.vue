@@ -14,7 +14,8 @@ const formError = ref<string | null>(null)
 const snapshot = ref('')
 
 const EDITED_KINDS = ['current_it', 'business', 'regulatory', 'cimbn_standard', 'final'] as const
-const LEFT_KINDS = ['current_it', 'business', 'regulatory', 'cimbn_standard'] as const
+/** Edited by the assessor; the CIMBN block (on the side) follows the configured standard. */
+const LEFT_KINDS = ['current_it', 'business', 'regulatory', 'final'] as const
 
 type RecoveryDraft = Record<SccaRecoveryField, string>
 
@@ -61,15 +62,20 @@ function fromAssessment() {
 
 const state = reactive(fromAssessment())
 
+function comparableState() {
+  return JSON.stringify(state)
+}
+
 function reset() {
   Object.assign(state, fromAssessment())
-  snapshot.value = JSON.stringify(state)
+  applyStandard()
+  snapshot.value = comparableState()
   if (dirty) dirty.value = false
 }
 
 watch(() => props.assessment, reset)
 watch(state, () => {
-  if (dirty) dirty.value = JSON.stringify(state) !== snapshot.value
+  if (dirty) dirty.value = comparableState() !== snapshot.value
 }, { deep: true })
 onMounted(reset)
 
@@ -77,9 +83,8 @@ const category = computed(() =>
   props.assessment.result.final_category ?? props.assessment.result.computed_category,
 )
 
-const visibleStandards = computed(() =>
-  props.standards.filter((row) => row.category !== 'Other'),
-)
+/** Every category of the version's standard, Other included. */
+const visibleStandards = computed(() => props.standards)
 
 const currentStandard = computed(() =>
   props.standards.find((row) => row.category === category.value),
@@ -116,12 +121,47 @@ function kindLabel(kind: SccaRecoveryKind) {
   return SCCA_RECOVERY_KINDS.find((item) => item.value === kind)?.label ?? kind
 }
 
-function fillFromStandard() {
-  if (!currentStandard.value || currentStandard.value.category === 'Other') return
-  state.cimbn_standard.rto = standardHourValue(currentStandard.value.rto ?? '')
-  const uptime = currentStandard.value.uptime ?? ''
-  state.cimbn_standard.availability_sla = standardUptimeFloor(uptime) == null ? '' : clampPercent(uptime)
+function numberText(value: number | null | undefined) {
+  return value == null ? null : String(value)
 }
+
+/** The CIMBN block is the standard of the final category (as the API sets it), read-only; a
+ *  value the configuration leaves empty is null. No category yet: every value is null. */
+const standardValues = computed<Partial<Record<SccaRecoveryField, string | null>>>(() => {
+  const standard = currentStandard.value
+  return {
+    availability_sla: numberText(standard?.uptime_min_pct),
+    rto: numberText(standard?.rto_to_h),
+    rpo: standard?.rpo ?? null,
+    ha: standard?.ha ?? null,
+    dr_capacity: numberText(standard?.dr_capacity),
+    dr_type: standard?.dr_type ?? null,
+  }
+})
+
+/** Set by the configured standard (the CIMBN block is read-only either way). */
+function fromStandard(field: SccaRecoveryField) {
+  return standardValues.value[field] != null
+}
+
+/** A draft follows the standard (as the API does when it saves); a submitted or final SCCA
+ *  shows what it stored. */
+function applyStandard() {
+  if (props.assessment.status !== 'draft' || !props.standards.length) return
+  for (const [field, value] of Object.entries(standardValues.value)) {
+    state.cimbn_standard[field as SccaRecoveryField] = value ?? ''
+  }
+}
+// The standard arriving (or the category changing) is not an edit of the assessor's: an
+// unchanged form stays unchanged.
+watch(standardValues, () => {
+  const clean = comparableState() === snapshot.value
+  applyStandard()
+  if (clean) {
+    snapshot.value = comparableState()
+    if (dirty) dirty.value = false
+  }
+}, { immediate: true })
 
 /** Only the fields this block shows; the others are sent as null so stale hidden values are cleared. */
 function recoveryPayload(kind: (typeof EDITED_KINDS)[number]) {
@@ -180,7 +220,7 @@ async function onSubmit() {
             Recovery
           </h2>
           <p class="mt-1 text-sm text-muted">
-            IT committed values are checked against the business requirements, regulatory requirements, and the CIMBN recovery architecture standard for this application's category. Other is not part of the rigid check. Every field is required except Regulatory requirements.
+            IT committed values are checked against the business requirements, regulatory requirements, and the CIMBN recovery architecture standard for this application's category. Other is not part of the rigid check. The CIMBN block is filled from the standard (SCCA configuration > Formula). Every field is required except Regulatory requirements.
           </p>
         </div>
 
@@ -247,6 +287,58 @@ async function onSubmit() {
                     {{ row.uptime || '—' }}
                   </td>
                 </tr>
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium">
+                    RPO
+                  </th>
+                  <td
+                    v-for="row in visibleStandards"
+                    :key="`${row.category}-rpo`"
+                    class="px-3 py-2"
+                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
+                  >
+                    {{ sccaListLabel(config, 'rpo', row.rpo) || '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium">
+                    HA (Prod / DR)
+                  </th>
+                  <td
+                    v-for="row in visibleStandards"
+                    :key="`${row.category}-ha`"
+                    class="px-3 py-2"
+                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
+                  >
+                    {{ sccaListLabel(config, 'ha', row.ha) || '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium">
+                    DR capacity (%)
+                  </th>
+                  <td
+                    v-for="row in visibleStandards"
+                    :key="`${row.category}-dr-capacity`"
+                    class="px-3 py-2 tabular-nums"
+                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
+                  >
+                    {{ row.dr_capacity == null ? '—' : `${row.dr_capacity}%` }}
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium">
+                    DR type
+                  </th>
+                  <td
+                    v-for="row in visibleStandards"
+                    :key="`${row.category}-dr-type`"
+                    class="px-3 py-2"
+                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
+                  >
+                    {{ sccaListLabel(config, 'dr_type', row.dr_type) || '—' }}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -269,14 +361,6 @@ async function onSubmit() {
                   Leave blank if none.
                 </p>
               </div>
-              <UButton
-                v-if="kind === 'cimbn_standard'"
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-download"
-                label="Fill from standard"
-                @click="fillFromStandard"
-              />
             </div>
           </template>
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -317,20 +401,29 @@ async function onSubmit() {
         <UCard>
           <template #header>
             <h3 class="font-semibold">
-              {{ kindLabel('final') }}
+              {{ kindLabel('cimbn_standard') }}
             </h3>
+            <p class="mt-1 text-sm text-muted">
+              <template v-if="category">
+                From the recovery architecture standard (CIMB Niaga) for {{ sccaCategory[category]?.label ?? category }}. Read-only.
+              </template>
+              <template v-else>
+                Filled from the recovery architecture standard (CIMB Niaga) once the category is known. Read-only.
+              </template>
+            </p>
           </template>
           <div class="space-y-4">
             <UFormField
-              v-for="field in SCCA_RECOVERY_SECTIONS.final"
+              v-for="field in SCCA_RECOVERY_SECTIONS.cimbn_standard"
               :key="field.key"
               :label="field.label"
-              required
+              :help="fromStandard(field.key) || !category ? undefined : 'Not set in SCCA configuration > Formula'"
             >
               <SccaRecoveryField
-                v-model="state.final[field.key]"
+                v-model="state.cimbn_standard[field.key]"
                 :control="field.control"
-                :label="`${kindLabel('final')} ${field.label}`"
+                :label="`${kindLabel('cimbn_standard')} ${field.label}`"
+                disabled
               />
             </UFormField>
             <UAlert

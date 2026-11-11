@@ -73,6 +73,11 @@ const schema = z.object({
     if (!value.application_code) context.addIssue({ code: 'custom', path: ['application_code'], message: 'Enter an application code.' })
     if (!value.application_name) context.addIssue({ code: 'custom', path: ['application_name'], message: 'Enter an application name.' })
   }
+  // A draft kept from an earlier year still saves; a date someone picks follows the rule.
+  if (value.assessment_date !== (props.assessment?.assessment_date ?? '')) {
+    const problem = sccaAssessmentDateProblem(value.assessment_date)
+    if (problem) context.addIssue({ code: 'custom', path: ['assessment_date'], message: problem })
+  }
   if (!customDue(value.assessment_reason) || !value.assessment_date) return
   if (!value.due_date) {
     context.addIssue({ code: 'custom', path: ['due_date'], message: `Enter the renewal due date. It can be sooner than ${period.value}.` })
@@ -223,7 +228,7 @@ const pickedNote = computed(() => {
   if (last.status !== 'final') {
     return {
       color: 'warning' as const,
-      title: `This application already has an SCCA ${sccaStatus[last.status].label.toLowerCase()}`,
+      title: `This application already has an SCCA ${sccaStatus[sccaStatusKey(last)!].label.toLowerCase()}`,
       description: `${source} Check with its assessor before starting another one.`,
     }
   }
@@ -235,6 +240,10 @@ const pickedNote = computed(() => {
 })
 
 const standardDue = computed(() => state.assessment_date ? addMonths(state.assessment_date, renewalMonths.value) : null)
+
+/** A date can be back-dated within this year (WIB), not into an earlier year or the future. */
+const latestDate = computed(() => parseDate(sccaTodayIso()))
+const earliestDate = computed(() => parseDate(`${sccaTodayIso().slice(0, 4)}-01-01`))
 
 const assessmentDate = computed({
   get: () => state.assessment_date ? parseDate(state.assessment_date) : undefined,
@@ -526,9 +535,12 @@ async function onSubmit() {
             label="Assessment date"
             name="assessment_date"
             required
+            help="Can be earlier this year, not before 1 Jan and not in the future."
           >
             <DatePicker
               v-model="assessmentDate"
+              :min="earliestDate"
+              :max="latestDate"
             />
           </UFormField>
           <UFormField

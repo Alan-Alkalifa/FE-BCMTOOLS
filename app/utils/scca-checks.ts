@@ -41,8 +41,9 @@ const INTERDEPENDENCY_FIELDS: [string, string][] = [
   ['dependency', 'dependency'],
 ]
 
-/** Every recovery block is required at Submit except Regulatory requirements. */
-const REQUIRED_RECOVERY_KINDS = ['current_it', 'business', 'cimbn_standard', 'final'] as const
+/** The assessor's recovery blocks are required at Submit, except Regulatory requirements. The
+ *  CIMBN block comes from SCCA configuration > Formula, read-only. Matches the API. */
+const REQUIRED_RECOVERY_KINDS = ['current_it', 'business', 'final'] as const
 
 function empty(value: unknown) {
   return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')

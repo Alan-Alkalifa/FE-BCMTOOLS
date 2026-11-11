@@ -69,7 +69,7 @@ function describe(application: SccaApplication) {
     parts.push(`last final ${application.last_final.ref_no ?? ''}`.trim())
     if (application.renewal_status) parts.push(RENEWAL[application.renewal_status] ?? application.renewal_status)
   } else {
-    parts.push(last ? `last SCCA ${formatDate(last.assessment_date) ?? ''} · ${sccaStatus[last.status].label}`.trim() : 'no SCCA yet')
+    parts.push(last ? `last SCCA ${formatDate(last.assessment_date) ?? ''} · ${sccaStatus[sccaStatusKey(last)!].label}`.trim() : 'no SCCA yet')
   }
   return parts.join(' · ')
 }
