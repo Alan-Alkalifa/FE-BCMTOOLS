@@ -264,6 +264,14 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
             :value="sccaStatusKey(row.original)"
             size="sm"
           />
+          <UBadge
+            v-if="row.original.migrated"
+            class="ms-1"
+            label="Migrated"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+          />
         </template>
         <template #computed_category-cell="{ row }">
           <StatusBadge

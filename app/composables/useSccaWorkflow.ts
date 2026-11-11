@@ -26,6 +26,8 @@ export interface SccaMonitorRef {
   status: SccaStatus
   /** A draft a signer rejected, not resubmitted yet: shown as In revision. */
   in_revision?: boolean
+  /** Brought in by Administration > SCCA migration. */
+  migrated?: boolean
   category: SccaCategory | null
   assessment_date: string | null
   finalised_at: string | null

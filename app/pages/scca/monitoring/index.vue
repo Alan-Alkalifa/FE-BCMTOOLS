@@ -728,6 +728,14 @@ function pageTo(next: number) {
                 v-if="row.original.latest_final"
                 class="font-mono text-xs"
               >{{ refLabel(row.original.latest_final) }}</span>
+              <UBadge
+                v-if="row.original.latest_final?.migrated"
+                class="ms-1"
+                label="Migrated"
+                color="neutral"
+                variant="subtle"
+                size="sm"
+              />
               <span
                 v-else
                 class="text-muted"

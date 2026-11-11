@@ -130,6 +130,12 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
 const locked = computed(() => props.section !== 'manage' || !assessment.value?.permissions.can_edit)
 /** Manage: the open tab's Save is in the top bar, next to View report. */
 const canSave = computed(() => props.section === 'manage' && !!assessment.value?.permissions.can_edit)
+// Replace this draft from Excel: the forms start again from what the workbook saved.
+const uploading = ref(false)
+function onReplaced() {
+  dirty.value = false
+  reloadNuxtApp({ force: true })
+}
 const SAVE_LABELS: Record<Tab, string> = {
   details: 'Save application',
   rating: 'Save ratings',
@@ -268,6 +274,21 @@ function onSaved(saved: SccaAssessment) {
         :scale="sccaStatus"
         :value="sccaStatusKey(assessment)"
       />
+      <UBadge
+        v-if="assessment?.migrated"
+        :label="assessment.migrated.record_only ? 'Migrated record' : 'Migrated'"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-file-up"
+      />
+      <UButton
+        v-if="canSave"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-file-spreadsheet"
+        label="Upload Excel"
+        @click="uploading = true"
+      />
       <UButton
         v-if="section === 'monitoring' && assessment?.can_renew"
         icon="i-lucide-refresh-cw"
@@ -354,6 +375,45 @@ function onSaved(saved: SccaAssessment) {
     </UAlert>
 
     <template v-else-if="assessment && formula && !misplaced">
+      <SccaUploadDialog
+        v-if="canSave"
+        v-model:open="uploading"
+        :assessment="assessment"
+        @saved="onReplaced"
+      />
+      <UAlert
+        v-if="assessment.migrated"
+        class="mb-6"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-file-up"
+        :title="assessment.migrated.record_only
+          ? 'A record of an older SCCA form, brought in from its signed workbook'
+          : assessment.status === 'final'
+            ? 'Brought in from the signed workbook'
+            : 'Brought in from a workbook as a draft'"
+        :description="[
+          assessment.migrated.approved_outside_on && assessment.status === 'final' ? `Approved outside BCM Tools on ${formatDate(assessment.migrated.approved_outside_on)}.` : null,
+          assessment.migrated.record_only ? 'It has no ratings: the category, RTO and RPO are the ones recorded.' : null,
+          `Migrated on ${formatDate(assessment.migrated.at)}.`,
+        ].filter(Boolean).join(' ')"
+      >
+        <template
+          v-if="assessment.migrated.workbook"
+          #actions
+        >
+          <UButton
+            :to="`/api/scca/assessments/${assessment.id}/attachments/${assessment.migrated.workbook.id}`"
+            external
+            download
+            size="sm"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-download"
+            label="Original workbook"
+          />
+        </template>
+      </UAlert>
       <UAlert
         v-if="section === 'monitoring' && home === 'approval'"
         class="mb-6"
