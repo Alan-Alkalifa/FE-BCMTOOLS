@@ -70,6 +70,11 @@ export interface SccaInterdependency {
   gaps: string | null
   /** The assessor's own gap notes. */
   gaps_note: string | null
+  /** Read only: the application's code. */
+  application_code?: string | null
+  /** Read only: the final SCCA the category, RTO, RPO and DR capacity were taken from when the
+   *  row was saved (null: entered by the assessor, the application had no final SCCA). */
+  source?: { id: number, ref_no: string | null, finalised_at: string | null, final_category: string | null } | null
 }
 
 export type SccaRecoveryValue = { kind: SccaRecoveryKind } & Record<SccaRecoveryField, string | null>
@@ -119,6 +124,8 @@ export interface SccaRef {
   id: number
   ref_no: string | null
   status: SccaStatus
+  /** A draft a signer rejected, not resubmitted yet. */
+  in_revision?: boolean
   finalised_at?: string | null
 }
 
@@ -220,6 +227,7 @@ export interface SccaApplication {
     id: number
     ref_no: string | null
     status: SccaStatus
+    in_revision?: boolean
     assessment_date: string | null
     due_date: string | null
   } | null
@@ -229,6 +237,15 @@ export interface SccaAssessment extends SccaAssessmentFields {
   id: number
   permissions: SccaPermissions
   status: SccaStatus
+  /** A draft a signer rejected, not resubmitted yet: shown as In revision. */
+  in_revision?: boolean
+  /** Brought in by Administration > SCCA migration, else null. */
+  migrated?: {
+    at: string
+    approved_outside_on: string | null
+    record_only: boolean
+    workbook: { id: number, filename: string, size: number } | null
+  } | null
   pending_role: SccaSignoffRole | null
   submitted_at: string | null
   finalised_at: string | null
@@ -279,6 +296,9 @@ export interface SccaAssessmentSummary {
   final_category: SccaCategory | null
   is_complete: boolean
   status: SccaStatus
+  /** A draft a signer rejected, not resubmitted yet: shown as In revision. */
+  in_revision?: boolean
+  migrated?: boolean
   pending_role: SccaSignoffRole | null
   pending_step: string | null
   waiting_for_me: boolean

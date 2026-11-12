@@ -89,7 +89,8 @@ export const FORMULA = {
 
 export const STANDARDS = {
   items: [
-    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%' },
+    // Critical sets the CIMBN block's values (read-only on the Recovery tab).
+    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%', rto_to_h: 2, uptime_min_pct: 99.5, rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: 100, dr_type: 'Hot DR' },
     { category: 'Very Important', mtd: '(4 - 12 jam)', rto: '( 2 - 6 jam)', uptime: '99%' },
     { category: 'Important', mtd: '(12 - 24 jam)', rto: '( 6 - 12 jam)', uptime: '98%' },
     { category: 'Necessary', mtd: '(24 - 48 jam)', rto: '(12 - 24 jam)', uptime: '95% atau kurang' },
@@ -280,6 +281,8 @@ export const LIST = {
       final_category: null,
       is_complete: false,
       status: 'draft',
+      // A signer rejected it: In revision until it is resubmitted.
+      in_revision: true,
       pending_role: null,
       pending_step: null,
       waiting_for_me: false,
@@ -386,6 +389,26 @@ export async function mockScca(page: Page, current = assessment(), config: Recor
     const items = APPLICATIONS.filter((row) =>
       `${row.application_code} ${row.application_name}`.toLowerCase().includes(q))
     return route.fulfill({ json: { items } })
+  })
+  // GET /api/applications (paged, `characteristics=1`): the interdependency picker's table.
+  await page.route(/\/api\/applications(\?|$)/, (route) => {
+    const params = new URL(route.request().url()).searchParams
+    const q = (params.get('q') ?? '').toLowerCase()
+    const exclude = Number(params.get('exclude') ?? 0)
+    const items = APPLICATIONS
+      .filter((row) => row.application_id !== exclude)
+      .filter((row) => `${row.application_code} ${row.application_name}`.toLowerCase().includes(q))
+      .map((row) => ({
+        id: row.application_id,
+        application_code: row.application_code,
+        application_name: row.application_name,
+        category: row.category,
+        rto_hours: row.rto_hours,
+        rpo: row.rpo,
+        is_active: true,
+        characteristics: row.characteristics,
+      }))
+    return route.fulfill({ json: { items, page: 1, per_page: 10, total: items.length, pages: 1 } })
   })
   await page.route(/\/api\/applications\/\d+$/, (route) => {
     const id = Number(new URL(route.request().url()).pathname.split('/').pop())

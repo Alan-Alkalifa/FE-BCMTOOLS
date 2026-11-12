@@ -99,6 +99,24 @@ test('the draft opens first; its lists change and the publish is requested for s
   await expect(page.getByRole('button', { name: 'Withdraw request' })).toBeVisible()
 })
 
+test('the CIMBN standard table scrolls sideways to its RPO, HA, DR capacity and DR type', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockConfigAdmin(page)
+  await page.goto('/admin/scca-config?tab=formula')
+  const table = page.locator('table').filter({ has: page.getByText('Recovery standard per category') })
+  await expect(table).toBeVisible({ timeout: 60_000 })
+  // The table is wider than the card: its box scrolls, the page doesn't.
+  const box = table.locator('xpath=..')
+  const size = await box.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }))
+  expect(size.scroll).toBeGreaterThan(size.client)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const drType = page.getByRole('combobox', { name: 'Critical DR type' })
+  await drType.scrollIntoViewIfNeeded()
+  await expect(drType).toBeInViewport()
+  await page.getByRole('combobox', { name: 'Critical RPO' }).click()
+  await expect(page.getByRole('option', { name: /^Not set$/ })).toBeVisible()
+})
+
 test('a retired or active version is read-only', async ({ page }) => {
   await mockConfigAdmin(page)
   await page.goto('/admin/scca-config?version=V4.2&tab=steps')

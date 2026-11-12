@@ -7,6 +7,8 @@ useHead({ title: 'New assessment · BCM Tools' })
 const saving = ref(false)
 provide(sccaSavingKey, saving)
 
+const uploading = ref(false)
+
 function onSaved(assessment: SccaAssessment) {
   return navigateTo({ path: sccaPath('manage', assessment.id), query: { tab: 'rating' } })
 }
@@ -24,6 +26,13 @@ function onSaved(assessment: SccaAssessment) {
   >
     <template #actions>
       <UButton
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-spreadsheet"
+        label="Upload Excel"
+        @click="uploading = true"
+      />
+      <UButton
         type="submit"
         form="scca-form-details"
         icon="i-lucide-file-plus"
@@ -32,5 +41,9 @@ function onSaved(assessment: SccaAssessment) {
       />
     </template>
     <SccaDetailsForm @saved="onSaved" />
+    <SccaUploadDialog
+      v-model:open="uploading"
+      @saved="onSaved"
+    />
   </AppPage>
 </template>

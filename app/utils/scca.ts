@@ -543,11 +543,22 @@ export function commentRoleLabel(role: string | null | undefined) {
 export const SCCA_STATUSES = ['draft', 'in_approval', 'final'] as const
 export type SccaStatus = (typeof SCCA_STATUSES)[number]
 
-export const sccaStatus = defineStatusScale<SccaStatus>({
+/** What a status badge shows: the status, or In revision for a draft a signer rejected (still
+ *  status `draft` until it is resubmitted). */
+export type SccaStatusKey = SccaStatus | 'in_revision'
+
+export const sccaStatus = defineStatusScale<SccaStatusKey>({
   draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  in_revision: { label: 'In revision', color: 'error', icon: 'i-lucide-undo-2' },
   in_approval: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
   final: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
 })
+
+/** The badge key of an SCCA: In revision for a rejected draft, otherwise its status. */
+export function sccaStatusKey(item: { status: SccaStatus, in_revision?: boolean | null } | null | undefined): SccaStatusKey | undefined {
+  if (!item) return undefined
+  return item.status === 'draft' && item.in_revision ? 'in_revision' : item.status
+}
 
 export type SccaSignoffStatus = 'pending' | 'approved' | 'rejected'
 
@@ -566,3 +577,18 @@ export const SCCA_TABS = [
   { value: 'result', label: 'Result and sign-off' },
 ] as const
 export type SccaTab = (typeof SCCA_TABS)[number]['value']
+
+/** Today in WIB, as YYYY-MM-DD. */
+export function sccaTodayIso() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
+}
+
+/** As the API: an assessment date can be back-dated within this year (WIB), not into an earlier
+ *  year and not into the future. Checked when a person picks or changes the date. */
+export function sccaAssessmentDateProblem(value: string | null | undefined, today = sccaTodayIso()) {
+  if (!value) return null
+  if (value > today) return 'The assessment date can\'t be in the future.'
+  const year = today.slice(0, 4)
+  if (value.slice(0, 4) < year) return `The assessment date can be earlier this year, but not before 1 Jan ${year}.`
+  return null
+}

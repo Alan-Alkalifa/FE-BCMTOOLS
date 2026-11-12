@@ -76,6 +76,7 @@ const columns: TableColumn<SccaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref no' },
   { accessorKey: 'application_name', header: 'Application name' },
   { accessorKey: 'application_code', header: 'Application code' },
+  { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'assessment_reason', header: 'Reason' },
   { id: 'renews', header: 'Renews' },
   { accessorKey: 'my_role', header: 'My role' },
@@ -256,6 +257,21 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
               @click.stop
             />
           </UDropdownMenu>
+        </template>
+        <template #status-cell="{ row }">
+          <StatusBadge
+            :scale="sccaStatus"
+            :value="sccaStatusKey(row.original)"
+            size="sm"
+          />
+          <UBadge
+            v-if="row.original.migrated"
+            class="ms-1"
+            label="Migrated"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+          />
         </template>
         <template #computed_category-cell="{ row }">
           <StatusBadge

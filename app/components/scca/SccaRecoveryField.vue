@@ -4,6 +4,8 @@ const props = defineProps<{
   /** Read by screen readers (the field has no visible label of its own). */
   label: string
   modelValue: string
+  /** Read-only (e.g. a CIMBN value set by the configured standard). */
+  disabled?: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
@@ -46,6 +48,7 @@ const items = computed(() => {
     label-key="label"
     class="w-full"
     placeholder="—"
+    :disabled="disabled"
     :aria-label="label"
   />
   <UInput
@@ -56,6 +59,7 @@ const items = computed(() => {
     max="100"
     step="0.01"
     class="w-full"
+    :disabled="disabled"
     :aria-label="label"
     @update:model-value="emit('update:modelValue', clampPercent($event))"
   />

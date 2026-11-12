@@ -11,6 +11,7 @@ export const ALL_PERMISSIONS = [
   'scca.config.view',
   'scca.config.manage',
   'scca.config.publish',
+  'scca.migrate',
   'location.access',
   'ra.access',
   'ra.edit',

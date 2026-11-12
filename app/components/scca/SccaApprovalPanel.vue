@@ -132,7 +132,7 @@ async function reject() {
         </h2>
         <StatusBadge
           :scale="sccaStatus"
-          :value="assessment.status"
+          :value="sccaStatusKey(assessment)"
         />
       </div>
     </template>
