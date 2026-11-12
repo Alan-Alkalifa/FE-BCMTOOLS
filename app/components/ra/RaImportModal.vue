@@ -46,6 +46,27 @@ function onFiles(event: Event) {
   const target = event.target as HTMLInputElement
   const picked = Array.from(target.files ?? [])
   target.value = ''
+  addFiles(picked)
+}
+
+/** Files dropped on the drop zone go through the same checks as the ones chosen. A counter keeps
+ *  the highlight while the pointer crosses the zone's own children. */
+const dragDepth = ref(0)
+const dragging = computed(() => dragDepth.value > 0)
+function onDragEnter() {
+  if (!importing.value) dragDepth.value++
+}
+function onDragLeave() {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+function onDrop(event: DragEvent) {
+  dragDepth.value = 0
+  if (importing.value) return
+  addFiles(Array.from(event.dataTransfer?.files ?? []))
+}
+
+function addFiles(picked: File[]) {
+  if (!picked.length) return
   refused.value = []
   for (const file of picked) {
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
@@ -168,32 +189,63 @@ const importLabel = computed(() => {
         <h3 class="text-sm font-semibold">
           2. Choose the files
         </h3>
-        <div class="flex flex-wrap items-center gap-3">
-          <input
-            ref="input"
-            type="file"
-            multiple
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            class="sr-only"
-            tabindex="-1"
-            aria-label="Choose the RA workbooks"
-            @change="onFiles"
-          >
+        <input
+          ref="input"
+          type="file"
+          multiple
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          class="sr-only"
+          tabindex="-1"
+          aria-label="Choose the RA workbooks"
+          @change="onFiles"
+        >
+        <div
+          data-testid="import-drop-zone"
+          class="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed text-center transition-colors"
+          :class="[
+            entries.length ? 'px-4 py-4 sm:flex-row sm:gap-3' : 'px-4 py-8',
+            dragging ? 'border-primary bg-primary/5' : 'border-default',
+            importing ? 'opacity-60' : '',
+          ]"
+          @dragenter.prevent="onDragEnter"
+          @dragover.prevent
+          @dragleave.prevent="onDragLeave"
+          @drop.prevent="onDrop"
+        >
+          <UIcon
+            name="i-lucide-file-spreadsheet"
+            class="shrink-0 text-muted"
+            :class="entries.length ? 'size-6' : 'size-10'"
+          />
+          <p class="text-sm">
+            <span class="font-medium text-highlighted">{{ dragging ? 'Drop to add the files' : entries.length ? 'Drop more files here' : 'Drop the Excel files here' }}</span>
+            <span class="text-muted"> or</span>
+          </p>
           <UButton
             icon="i-lucide-upload"
             :label="entries.length ? 'Add more files' : 'Choose files'"
+            :variant="entries.length ? 'outline' : 'solid'"
+            :color="entries.length ? 'neutral' : 'primary'"
             :disabled="importing"
             @click="input?.click()"
           />
+          <p
+            class="text-xs text-muted"
+            :class="entries.length ? 'sm:ms-auto' : ''"
+          >
+            .xlsx, up to 10 MB each. You can add several at once.
+          </p>
+        </div>
+        <div class="flex justify-end">
           <UButton
             color="neutral"
-            variant="outline"
+            variant="link"
             icon="i-lucide-download"
             label="Download empty template"
             :loading="downloading"
+            class="px-0"
             @click="downloadTemplate"
           />
-          <span class="text-sm text-muted">.xlsx, up to 10 MB each.</span>
         </div>
         <UAlert
           v-if="refused.length"
@@ -234,12 +286,6 @@ const importLabel = computed(() => {
           @summary="(summary) => (summaries[entry.key] = summary)"
         />
       </section>
-      <p
-        v-else
-        class="rounded-md border border-dashed border-default p-6 text-center text-sm text-muted"
-      >
-        No files yet.
-      </p>
     </template>
 
     <template #footer>

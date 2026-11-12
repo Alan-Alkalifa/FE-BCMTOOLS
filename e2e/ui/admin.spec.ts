@@ -19,9 +19,9 @@ const PERMISSIONS = [
   { code: 'admin.settings.mail', module: 'admin', description: 'Edit the SMTP settings and send a test email' },
   { code: 'admin.audit.view', module: 'admin', description: 'Read the sign-in, admin and email logs' },
   { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
-  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close incidents on the location map' },
+  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close disasters on the location map' },
   { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
-  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the incident guidebook' },
+  { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the disaster guidebook' },
   { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
   { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
   { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
@@ -67,10 +67,10 @@ const scca = (id: number, event: string, actor: string | null, detail: Record<st
   created_at: `2026-10-20T0${Math.min(id, 9)}:00:00Z`,
 })
 const RA_ACTIVITY_ROWS = [
-  { id: 41, event: 'ra.building_call_tree_saved', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', rows: 5, before: 4 }, ip: null, created_at: '2026-10-30T03:00:00Z' },
-  { id: 40, event: 'ra.building_updated', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'RA-HQ-0001', kind: 'head_office', fields: ['address', 'zip_code'] }, ip: null, created_at: '2026-10-30T02:30:00Z' },
+  { id: 41, event: 'ra.building_call_tree_saved', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'HO-0001', kind: 'head_office', rows: 5, before: 4 }, ip: null, created_at: '2026-10-30T03:00:00Z' },
+  { id: 40, event: 'ra.building_updated', username: 'test@example.com', actor: 'Test User', target_type: 'ra_locations', target_id: 1, detail: { building: 'Griya CIMB Niaga 2', building_id: 1, code: 'HO-0001', kind: 'head_office', fields: ['address', 'zip_code'] }, ip: null, created_at: '2026-10-30T02:30:00Z' },
   { id: 39, event: 'ra.ratings_saved', username: 'rina@example.com', actor: 'Rina Kartika', target_type: 'ra_assessments', target_id: 9, detail: { ref_no: 'RA-2026-0009', building: 'Menara Sentraya', building_id: 3, kind: 'head_office', hazards: ['H01', 'H03'] }, ip: null, created_at: '2026-10-30T02:00:00Z' },
-  { id: 38, event: 'ra.approval_reminder_sent', username: null, actor: null, target_type: 'ra_locations', target_id: 3, detail: { building: 'Menara Sentraya', building_id: 3, code: 'RA-HQ-0003', kind: 'head_office', task: 'deactivate', waited: '3 working days' }, ip: null, created_at: '2026-10-30T01:00:00Z' },
+  { id: 38, event: 'ra.approval_reminder_sent', username: null, actor: null, target_type: 'ra_locations', target_id: 3, detail: { building: 'Menara Sentraya', building_id: 3, code: 'HO-0003', kind: 'head_office', task: 'deactivate', waited: '3 working days' }, ip: null, created_at: '2026-10-30T01:00:00Z' },
 ]
 
 const SCCA_ACTIVITY_ROWS = [
@@ -333,7 +333,7 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
   const order = calls.find((call) => call.url === '/api/admin/menus/order')!.body as { items: { id: number }[] }
-  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26])
+  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26, 28])
   await expect(page.getByRole('button', { name: 'Home is built in' })).toBeDisabled()
 })
 
@@ -450,7 +450,7 @@ test('administrators see who did what on each SCCA', async ({ page }) => {
   await expect(table.getByText('Rejected', { exact: true })).toBeVisible()
 })
 
-test('RA activity shows every edit of a building, its profile, its RAs and incidents', async ({ page }) => {
+test('RA activity shows every edit of a building, its profile, its RAs and disasters', async ({ page }) => {
   const { calls } = await mockAdmin(page)
   await page.goto('/admin/audit?tab=ra')
   const table = page.getByRole('table')

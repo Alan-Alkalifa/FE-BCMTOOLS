@@ -12,7 +12,7 @@ const MODULE_TEXT: Record<string, string> = {
   scca: 'System criticality categorisation: monitor every SCCA, manage yours, and sign off what waits for you.',
   ra: 'Location risk assessment for head office buildings: monitor every RA, manage the drafts, and sign off what waits for you.',
   ra_branch: 'Location risk assessment for branches, in the same three steps.',
-  locations: 'Every head office building and branch: its profile and map pin, the building map, incidents and the incident guidebook.',
+  locations: 'Every head office building and branch: its profile and map pin, the building map, disasters and the disaster guidebook.',
   admin: 'Users, roles and permissions, menus, email settings and the audit log.',
 }
 
@@ -31,7 +31,7 @@ const modules = computed(() =>
  * The overview: each module the user's roles open, at a glance (SCCA, RA HO, RA Branch,
  * Location). Its BCM sees the whole module (waiting for me, in approval, stuck, overdue); everyone
  * else what is theirs (sign-offs for me, overdue and due renewals). Location counts the buildings
- * and incidents waiting for approval. Each card opens that module's tab in Task Management.
+ * and disasters waiting for approval. Each card opens that module's tab in Task Management.
  */
 interface GlanceCard { key: string, label: string, value: number, icon: string, tone: 'neutral' | 'warning' | 'error' | 'info', hint: string, to: string }
 const { data: summary } = useTaskSummary()
@@ -43,7 +43,7 @@ function glanceCards(glance: TaskGlance): GlanceCard[] {
   if (module === 'location') {
     return [
       { key: 'building', label: 'Buildings waiting', value: glance.building ?? 0, icon: 'i-lucide-building', tone: 'warning', hint: 'New, or to make inactive, waiting for approval.', to: tasksLink(module, { type: 'building' }) },
-      { key: 'incident', label: 'Incidents waiting', value: glance.incident ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'incident' }) },
+      { key: 'incident', label: 'Disasters waiting', value: glance.incident ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'incident' }) },
     ]
   }
   const what = module === 'scca' ? 'SCCA' : 'RA'

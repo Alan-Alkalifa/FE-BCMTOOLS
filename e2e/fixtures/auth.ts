@@ -29,6 +29,7 @@ export const ALL_PERMISSIONS = [
   'admin.menus.manage',
   'admin.settings.mail',
   'admin.audit.view',
+  'location.master',
 ]
 
 /** The signed-in user (GET /api/me): an Administrator unless a test says otherwise. */
@@ -72,11 +73,12 @@ const MENUS = [
   { code: 'locations', label: 'Location', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
   { code: 'locations.register', label: 'Buildings', icon: 'i-lucide-building', route: '/locations', parent: 'locations', permission: 'location.access' },
   { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'location.access' },
-  { code: 'locations.crises', label: 'Incidents', icon: 'i-lucide-siren', route: '/crises', parent: 'locations', permission: 'location.access' },
-  { code: 'locations.guidebook', label: 'Incident guidebook', icon: 'i-lucide-book-marked', route: '/crises/guidebook', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.crises', label: 'Disasters', icon: 'i-lucide-siren', route: '/disasters', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.guidebook', label: 'Disaster guidebook', icon: 'i-lucide-book-marked', route: '/disasters/guidebook', parent: 'locations', permission: 'location.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
   { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'scca.access' },
+  { code: 'admin.buildings', label: 'Master building', icon: 'i-lucide-building', route: '/admin/buildings', parent: 'admin', permission: 'location.master' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-/** Incidents moved to the Locations menu. */
+/** Disasters moved to the Locations menu. */
 definePageMeta({
   permission: ['ra.access', 'ra_branch.access'],
-  redirect: (to) => ({ path: '/crises', query: to.query }),
+  redirect: (to) => ({ path: '/disasters', query: to.query }),
 })
 </script>
 

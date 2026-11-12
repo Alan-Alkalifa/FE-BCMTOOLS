@@ -3,8 +3,8 @@ import type { RaConfigTextField, RaConfigVersion } from '~/composables/useRaConf
 
 /**
  * The texts of this version, all in English: the building type description on Building Data
- * Entry, the introduction above the hazards, the sign-off statement and the Risk Summary note
- * (the CIM follow-up). An empty text uses the default.
+ * Entry, the introduction above the hazards, the sign-off statement, the Risk Summary note
+ * (the CIM follow-up) and the building approver card. An empty text uses the default.
  */
 const props = defineProps<{ version: RaConfigVersion }>()
 const emit = defineEmits<{ saved: [version: RaConfigVersion] }>()
@@ -14,6 +14,7 @@ const FIELDS: { key: RaConfigTextField, label: string, help: string, rows: numbe
   { key: 'hazard_intro', label: 'Hazards introduction', help: 'Shown at the top of the Hazards tab.', rows: 3 },
   { key: 'signoff_statement_en', label: 'Sign-off statement', help: 'What every signer agrees to, on the Sign-off tab and the report.', rows: 6 },
   { key: 'risk_summary_note_en', label: 'Risk Summary note', help: 'The CIM follow-up at the top of the Risk Summary tab and in the report.', rows: 6 },
+  { key: 'building_pending_note_en', label: 'Building approver card', help: 'On the Sign-off tab of an RA whose building waits for approval: the building approver must sign it first.', rows: 3 },
 ]
 
 const part = useRaConfigPart(

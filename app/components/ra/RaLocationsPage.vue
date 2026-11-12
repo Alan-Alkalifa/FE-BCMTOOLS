@@ -8,9 +8,18 @@ import type { RaLocation } from '~/composables/useRa'
  * province and status and sorted by a column (all in the URL; the newest change first by
  * default), one page at a time. A row opens the building's profile.
  * A new building, and making one inactive, waits for someone else's approval: the Status
- * Building column shows it, and the status filter lists the ones waiting. Approving, rejecting
- * and deleting are done on the building's page, not here.
+ * Building column shows it (one badge: Waiting for approval, Deactivation requested, Rejected,
+ * Active or Inactive), and the status filter lists the ones waiting. The Inactive filter lists
+ * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
+ * building's page, not here.
+ * Administration › Master building shows the same register (`master`), with its own title and
+ * crumbs; its buildings open there too (/admin/buildings/{id}), as does Input building data.
  */
+const props = defineProps<{ master?: boolean }>()
+const pageTitle = computed(() => (props.master ? 'Master building' : 'Buildings'))
+const pageCrumbs = computed(() => (props.master
+  ? [{ label: 'Administration' }, { label: 'Master building' }]
+  : [{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]))
 const { can } = useAuth()
 /** Every building and branch with the Location permission, otherwise the RA sides the user
  *  holds (RA and RA Branch are granted separately). */
@@ -44,7 +53,7 @@ const province = computed(() => text('province'))
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
 
 /** Sortable columns and the direction a first click sorts them in. */
-const SORTS = { name: 'asc', kind: 'asc', province: 'asc', assessments: 'desc', updated_at: 'desc' } as const
+const SORTS = { name: 'asc', kind: 'asc', province: 'asc', city: 'asc', district: 'asc', assessments: 'desc', updated_at: 'desc' } as const
 type SortKey = keyof typeof SORTS
 type SortDir = 'asc' | 'desc'
 const DEFAULT_SORT: SortKey = 'updated_at'
@@ -103,7 +112,7 @@ const { data, status, error, refresh } = useRaLocationRegister(() => ({
   kind: type.value,
   q: text('q'),
   province: province.value,
-  active: statusFilter.value === 'active' || statusFilter.value === 'inactive' ? statusFilter.value === 'active' : undefined,
+  in_service: statusFilter.value === 'active' || statusFilter.value === 'inactive' ? statusFilter.value === 'active' : undefined,
   approval: statusFilter.value === 'pending' || statusFilter.value === 'rejected' ? statusFilter.value : undefined,
   sort: sortKey.value,
   dir: sortDir.value,
@@ -137,18 +146,23 @@ const statusItems = [
   { label: 'Rejected', value: 'rejected' as const },
 ]
 
+/** The columns of the BCM Tools building list (sites.xlsx), in its order. */
+const NUMBER = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'kind', header: 'Type' },
   { accessorKey: 'province', header: 'Province' },
-  // The address gives way on narrower screens so Last updated stays in view (it is on the building page).
-  { accessorKey: 'address', header: 'Address', meta: { class: { th: 'hidden 2xl:table-cell', td: 'hidden 2xl:table-cell' } } },
-  { accessorKey: 'assessment_count', header: 'Assessments', meta: { class: { th: 'text-right', td: 'text-right' } } },
-  { id: 'latest_assessment', header: 'Latest assessment' },
-  { id: 'latest', header: 'Latest residual' },
+  { accessorKey: 'city', header: 'City' },
+  { accessorKey: 'district', header: 'District' },
+  { accessorKey: 'address', header: 'Address' },
   { id: 'building_status', header: 'Status Building' },
-  { id: 'assessment_status', header: 'Status Assessment', meta: RA_STATUS_COLUMN },
+  { accessorKey: 'onsite_employees', header: 'On-site Employees', meta: NUMBER },
+  { accessorKey: 'onsite_capacity', header: 'On-site Capacity', meta: NUMBER },
+  { id: 'latest', header: 'Residual Risk' },
+  { id: 'assessment_status', header: 'Status Risk Assessment', meta: RA_STATUS_COLUMN },
   { accessorKey: 'updated_at', header: 'Last updated' },
+  { accessorKey: 'assessment_count', header: 'Risk Assessments', meta: NUMBER },
+  { id: 'latest_assessment', header: 'Risk Assessment ID' },
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
 
@@ -156,23 +170,28 @@ function noun(location: RaLocation) {
   return RA_MODULES[location.kind].location.lower
 }
 
+/** The building's page: in Master building when the register is opened there. */
+function pathOf(location: RaLocation) {
+  return buildingPath(location.id, props.master)
+}
+
 function openRow(_event: Event, row: { original: RaLocation }) {
-  navigateTo(locationPath(row.original.id))
+  navigateTo(pathOf(row.original))
 }
 
 const addTo = computed(() => {
   const only = editKinds.value.length === 1 ? editKinds.value[0] : undefined
   const kind = type.value === 'all' ? only : type.value
-  return { path: `${LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
+  return { path: `${props.master ? MASTER_BUILDINGS_PATH : LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
 })
 </script>
 
 <template>
   <AppPage
-    title="Buildings"
+    :title="pageTitle"
     icon="i-lucide-building"
     description="Head office buildings and branches: each one's profile, map pin and RAs."
-    :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]"
+    :crumbs="pageCrumbs"
   >
     <template #actions>
       <UButton
@@ -201,7 +220,7 @@ const addTo = computed(() => {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="11"
+      :columns="14"
       :rows="5"
       label="Loading buildings"
     />
@@ -297,9 +316,23 @@ const addTo = computed(() => {
             @sort="sortBy('province')"
           />
         </template>
+        <template #city-header>
+          <SortHeader
+            label="City"
+            :direction="sortedBy('city')"
+            @sort="sortBy('city')"
+          />
+        </template>
+        <template #district-header>
+          <SortHeader
+            label="District"
+            :direction="sortedBy('district')"
+            @sort="sortBy('district')"
+          />
+        </template>
         <template #assessment_count-header>
           <SortHeader
-            label="Assessments"
+            label="Risk Assessments"
             end
             :direction="sortedBy('assessments')"
             @sort="sortBy('assessments')"
@@ -314,7 +347,7 @@ const addTo = computed(() => {
         </template>
         <template #name-cell="{ row }">
           <NuxtLink
-            :to="locationPath(row.original.id)"
+            :to="pathOf(row.original)"
             class="font-medium text-primary hover:underline"
           >
             {{ row.original.name }}
@@ -335,6 +368,34 @@ const addTo = computed(() => {
         </template>
         <template #province-cell="{ row }">
           <span v-if="row.original.province">{{ row.original.province }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #city-cell="{ row }">
+          <span v-if="row.original.city">{{ row.original.city }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #district-cell="{ row }">
+          <span v-if="row.original.district">{{ row.original.district }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #onsite_employees-cell="{ row }">
+          <span v-if="row.original.onsite_employees != null">{{ formatNumber(row.original.onsite_employees, 0) }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #onsite_capacity-cell="{ row }">
+          <span v-if="row.original.onsite_capacity != null">{{ formatNumber(row.original.onsite_capacity, 0) }}</span>
           <span
             v-else
             class="text-muted"
@@ -421,7 +482,7 @@ const addTo = computed(() => {
           <div class="flex items-center justify-end gap-1">
             <UTooltip :text="canEditRow(row.original) ? `Edit ${noun(row.original)}` : `Open ${noun(row.original)}`">
               <UButton
-                :to="locationPath(row.original.id)"
+                :to="pathOf(row.original)"
                 color="neutral"
                 variant="ghost"
                 size="sm"

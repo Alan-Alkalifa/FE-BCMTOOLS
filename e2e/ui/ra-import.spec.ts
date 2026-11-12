@@ -10,7 +10,7 @@ const MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const WORKBOOK = { name: 'Griya.xlsx', mimeType: MIME, buffer: Buffer.from('PK workbook') }
 const workbook = (name: string) => ({ name, mimeType: MIME, buffer: Buffer.from(`PK ${name}`) })
 const REGISTERED = {
-  id: 7, code: 'RA-HQ-0007', name: 'Griya CIMB Niaga 2', address: 'Jl. Wahid Hasyim Blok B4 No.3', province: 'Banten',
+  id: 7, code: 'HO-0007', name: 'Griya CIMB Niaga 2', address: 'Jl. Wahid Hasyim Blok B4 No.3', province: 'Banten',
   city: 'Tangerang Selatan', district: 'Pondok Aren', zip_code: '15224', region: null, area: null, region_description: null,
   is_active: true, approval_status: 'approved', contacts: 3, occupants: 0, recovery_team: 0, call_tree: 1, has_period: false, has_final: true,
 }
@@ -37,7 +37,7 @@ async function mockImport(page: Page, preview: Preview | ((file: string) => Prev
     if (failure) return route.fulfill({ status: 422, json: { error: 'validation_failed', details: failure } })
     const id = 55 + sent.length - 1
     return route.fulfill({ status: 201, json: {
-      location: { id: 41, code: 'RA-HQ-0041', name: 'Griya CIMB Niaga 2', kind: 'head_office', created: true },
+      location: { id: 41, code: 'HO-0041', name: 'Griya CIMB Niaga 2', kind: 'head_office', created: true },
       assessment: { id, ref_no: `RA-2026-00${id}`, kind: 'head_office' },
       saved: { contacts: 8, occupants: 39, recovery_team: 25, call_tree: 39 },
       ratings: 33,
@@ -65,7 +65,7 @@ test('Import from Excel is a dialog: pick the type, choose files, check each fil
   await expect(page).toHaveURL(/import=head_office/)
   await expect(dialog.getByRole('radio', { name: /RA HO/ })).toBeChecked()
   await expect(dialog.getByRole('radio', { name: /RA Branch/ })).toBeVisible()
-  await expect(dialog.getByText('No files yet.')).toBeVisible()
+  await expect(dialog.getByText('Drop the Excel files here')).toBeVisible()
 
   // A non-.xlsx file is refused before it is sent.
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles({ name: 'old.xls', mimeType: 'application/vnd.ms-excel', buffer: Buffer.from('x') })
@@ -99,6 +99,29 @@ test('Import from Excel is a dialog: pick the type, choose files, check each fil
   await page.goto('/ra-branch/manage')
   await page.getByRole('button', { name: 'Import from Excel' }).click({ timeout: 60_000 })
   await expect(page.getByRole('dialog', { name: 'Import from Excel' }).getByRole('radio', { name: /RA Branch/ })).toBeChecked()
+})
+
+test('files dropped on the drop zone are added like chosen ones, several at once', async ({ page }) => {
+  await mockImport(page, (file) => ({ ...PREVIEW, location: { ...PREVIEW.location, name: file === 'Menara.xlsx' ? 'Menara Uji' : PREVIEW.location.name } }))
+  const dialog = await openImport(page)
+  const zone = dialog.getByTestId('import-drop-zone')
+  const drop = async (files: { name: string, type: string }[]) => {
+    const dataTransfer = await page.evaluateHandle((list) => {
+      const transfer = new DataTransfer()
+      for (const item of list) transfer.items.add(new File(['PK workbook'], item.name, { type: item.type }))
+      return transfer
+    }, files)
+    await zone.dispatchEvent('dragenter', { dataTransfer })
+    await expect(zone).toContainText('Drop to add the files')
+    await zone.dispatchEvent('drop', { dataTransfer })
+  }
+  await drop([{ name: 'Griya.xlsx', type: MIME }, { name: 'Menara.xlsx', type: MIME }, { name: 'notes.pdf', type: 'application/pdf' }])
+  await expect(card(page, 'Griya.xlsx').getByText('Ready')).toBeVisible()
+  await expect(card(page, 'Menara.xlsx').getByText('Ready')).toBeVisible()
+  await expect(dialog.getByText('notes.pdf: use an .xlsx file. Save it as .xlsx in Excel first.')).toBeVisible()
+  await expect(zone).toContainText('Drop more files here')
+  await expect(dialog.getByText('2 of 2 ready.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Import 2 files' })).toBeEnabled()
 })
 
 test('a new building asks for the address parts, then shows the new RA', async ({ page }) => {
@@ -138,7 +161,7 @@ test('a registered building shows its own details locked; a Structural change pi
   const dialog = await openImport(page)
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
   const griya = card(page)
-  await expect(griya.getByText('Registered · RA-HQ-0007')).toBeVisible()
+  await expect(griya.getByText('Registered · HO-0007')).toBeVisible()
   await expect(griya.getByText('Already registered. Its details can\'t be changed here.')).toBeVisible()
   await expect(griya.getByRole('textbox', { name: 'Province' })).toHaveValue('Banten')
   await expect(griya.getByRole('textbox', { name: 'Province' })).toBeDisabled()
@@ -169,10 +192,33 @@ test('a registered building with an RA in that period says so before importing',
   const dialog = await openImport(page)
   await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
   const griya = card(page)
-  await expect(griya.getByText('Registered · RA-HQ-0007')).toBeVisible()
+  await expect(griya.getByText('Registered · HO-0007')).toBeVisible()
   await dialog.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(griya.getByText(/Griya CIMB Niaga 2 already has an RA for \d{4}\./)).toBeVisible()
   expect(sent).toHaveLength(0)
+})
+
+test('a registered building with an RA in progress gets no new RA; only its profile can be updated', async ({ page }) => {
+  const open = { id: 31, kind: 'head_office', ref_no: 'RA-2026-0031', period_year: 2026, status: 'draft', revision_state: null }
+  const sent = await mockImport(page, { ...PREVIEW, existing: { ...REGISTERED, open_assessment: open } })
+  const dialog = await openImport(page)
+  await dialog.getByLabel('Choose the RA workbooks').setInputFiles(WORKBOOK)
+  const griya = card(page)
+  const create = griya.getByRole('switch', { name: 'Create a draft RA' })
+  await expect(create).not.toBeChecked()
+  await expect(create).toBeDisabled()
+  await expect(griya.getByText('An RA is already in progress')).toBeVisible()
+  await expect(griya.getByText('RA-2026-0031 (Draft, 2026) must be final before a new RA can be made. Only the profile can be updated.')).toBeVisible()
+  await expect(griya.getByRole('link', { name: 'Open RA' })).toHaveAttribute('href', '/ra/manage/31')
+  await expect(griya.getByRole('combobox', { name: 'Reason for assessment' })).toHaveCount(0)
+  // Nothing chosen yet: nothing to import.
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect(griya.getByText('Nothing to import yet. Turn on Update the profile.')).toBeVisible()
+  expect(sent).toHaveLength(0)
+  await griya.getByRole('switch', { name: 'Update the profile' }).click()
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]!.options).toEqual({ location_id: 7, replace_profile: true })
 })
 
 test('several files import together; a second file for the same building and period is held back', async ({ page }) => {

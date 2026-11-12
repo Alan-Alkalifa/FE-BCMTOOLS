@@ -12,7 +12,7 @@ import 'leaflet/dist/leaflet.css'
  */
 const props = withDefaults(defineProps<{
   markers?: RaMapMarker[]
-  /** Rings: a distance around the selected place, or an incident's affected area. */
+  /** Rings: a distance around the selected place, or a disaster's affected area. */
   circles?: RaMapCircle[]
   /** A dashed line between two places, e.g. the distance being measured. */
   line?: [RaPin, RaPin] | null
@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
   autoFit?: boolean
   /** Move the view to the pin when it jumps far (typed coordinates, a reset). */
   recentre?: boolean
-  /** The editable pin's look: a building pin, or an incident point. */
+  /** The editable pin's look: a building pin, or a disaster point. */
   pinVariant?: 'location' | 'crisis'
   /** Zoom with the mouse wheel or trackpad (off by default, so scrolling the page never gets
    *  caught by a map). The + and - buttons and double-click always zoom. */
@@ -59,10 +59,10 @@ let map: LeafletMap | undefined
 let layer: import('leaflet').LayerGroup | undefined
 let editMarker: Marker | undefined
 
-function icon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null) {
+function icon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null, out = false) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
-    html: raPinHtml(RA_PIN_SVG, approval),
+    html: raPinHtml(RA_PIN_SVG, approval, out),
     className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}${approval ? ` ra-pin-${approval}` : ''}`,
     iconSize: [32, 32],
     iconAnchor: [16, 31],
@@ -70,7 +70,7 @@ function icon(level: RaMapMarker['level'], active: boolean, approval?: RaPinAppr
   })
 }
 
-/** An incident point: red, or orange while the incident waits for approval. */
+/** A disaster point: red, or orange while the disaster waits for approval. */
 function crisisIcon(pending = false) {
   return L!.divIcon({
     html: RA_CRISIS_SVG,
@@ -92,10 +92,10 @@ function quakeIcon(strong = false) {
   })
 }
 
-function branchIcon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null) {
+function branchIcon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null, out = false) {
   const colour = RA_PIN_CLASS[level ?? 'none']
   return L!.divIcon({
-    html: raPinHtml(RA_BRANCH_SVG, approval),
+    html: raPinHtml(RA_BRANCH_SVG, approval, out),
     className: `ra-pin ${colour}${active ? ' ra-pin-active' : ''}${approval ? ` ra-pin-${approval}` : ''}`,
     iconSize: [24, 24],
     iconAnchor: [12, 12],
@@ -138,8 +138,8 @@ function drawMarkers(fit: boolean) {
         : item.variant === 'quake'
           ? quakeIcon(item.strong)
           : item.variant === 'branch'
-            ? branchIcon(item.level, active, item.approval)
-            : icon(item.level, active, item.approval),
+            ? branchIcon(item.level, active, item.approval, item.outOfService)
+            : icon(item.level, active, item.approval, item.outOfService),
       title: item.label,
       alt: item.label,
       keyboard: true,
@@ -175,8 +175,8 @@ function drawPin(recentre: boolean) {
       draggable: true,
       keyboard: true,
       zIndexOffset: 1000,
-      title: crisis ? 'Incident point. Drag to move.' : 'Location pin. Drag to move.',
-      alt: crisis ? 'Incident point' : 'Location pin',
+      title: crisis ? 'Disaster point. Drag to move.' : 'Location pin. Drag to move.',
+      alt: crisis ? 'Disaster point' : 'Location pin',
     }).addTo(map)
     editMarker.on('dragend', () => {
       const position = editMarker!.getLatLng()
@@ -222,7 +222,7 @@ async function init() {
       pin.value = round(event.latlng.lat, event.latlng.lng)
     })
   }
-  // An editable map opened on an existing pin (updating an incident) shows that pin's area
+  // An editable map opened on an existing pin (updating a disaster) shows that pin's area
   // (the parent fits it on `ready`), not every place.
   drawMarkers(!(props.editable && pin.value && !props.autoFit))
   drawPin(true)
@@ -370,7 +370,7 @@ defineExpose({
   fill-opacity: 0.1;
 }
 
-/* An incident waiting for approval: orange and dashed, so it reads as "not confirmed yet"
+/* A disaster waiting for approval: orange and dashed, so it reads as "not confirmed yet"
    without colour too. */
 .ra-radius-pending {
   stroke: var(--ui-warning);
@@ -400,13 +400,6 @@ defineExpose({
 .ra-pin-active svg {
   transform: scale(1.2);
   transform-origin: 50% 100%;
-}
-
-/* Not approved yet (or rejected): the marker is a little faded and carries a badge
-   (ra-map-symbols.ts), so it reads apart without colour too. */
-.ra-pin-waiting .ra-pin-stack > svg,
-.ra-pin-rejected .ra-pin-stack > svg {
-  opacity: 0.8;
 }
 
 .ra-pin:focus-visible {

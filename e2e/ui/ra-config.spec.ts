@@ -218,7 +218,7 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await expect(title).toHaveValue('Location Incident Coordinator (LIC)')
   await expect(page.getByLabel('Signer of step 1', { exact: true })).toContainText('The LIC')
   await expect(page.getByLabel('Report box of step 1', { exact: true })).toContainText('Box 1')
-  await title.fill('Building Incident Coordinator (LIC)')
+  await title.fill('Building Disaster Coordinator (LIC)')
   // The last step is always required; a new step goes before it.
   await expect(page.getByRole('switch', { name: 'Required' }).last()).toBeDisabled()
   await page.getByRole('button', { name: 'Add step' }).click()
@@ -235,7 +235,7 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await expect(page.getByText('Sign-off steps saved').first()).toBeVisible()
   const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, title: string, mandatory: boolean, signer_mode: string }[] }).steps
   expect(sent.map((row) => row.code)).toEqual(['prepared_by', 'acknowledged_by_unit', 'checked_by_risk', 'reviewed_by', 'acknowledged_by_bcm'])
-  expect(sent[0]!.title).toBe('Building Incident Coordinator (LIC)')
+  expect(sent[0]!.title).toBe('Building Disaster Coordinator (LIC)')
   expect(sent[2]).toMatchObject({ mandatory: false, signer_mode: 'chosen' })
   expect(sent[4]).toMatchObject({ mandatory: true, signer_mode: 'fixed' })
   await expect(page.getByText('Fixed signer', { exact: true })).toBeVisible()
@@ -251,6 +251,32 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await page.getByRole('button', { name: 'Save texts' }).click()
   await expect(page.getByText('Statements and notes saved').first()).toBeVisible()
   expect(calls.find((call) => call.path.endsWith('/texts'))!.body).toMatchObject({ signoff_statement_en: 'I confirm this risk assessment is accurate.', hazard_intro: null })
+})
+
+test('a step that signs while the building waits for approval always goes first', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  await page.goto('/admin/ra-config?tab=steps')
+  await page.getByRole('button', { name: 'Add step' }).click({ timeout: 60_000 })
+  await page.getByRole('textbox', { name: 'Code of step 4' }).fill('building_check')
+  await page.getByRole('textbox', { name: 'Label of step 4' }).fill('Building approved by')
+  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Building approver')
+  await page.getByLabel('When step 4 signs', { exact: true }).click()
+  await page.getByRole('option', { name: /^Building waiting for approval/ }).click()
+  // It moves to the top, and can't be moved below the steps that always sign.
+  await expect(page.getByRole('textbox', { name: 'Code of step 1' })).toHaveValue('building_check')
+  await expect(page.getByRole('button', { name: 'Move step 1 down' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Move step 2 up' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Save steps' }).click()
+  await expect(page.getByText('Sign-off steps saved').first()).toBeVisible()
+  const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, condition: string }[] }).steps
+  expect(sent[0]).toMatchObject({ code: 'building_check', condition: 'building_pending' })
+
+  // The card's text is edited with the other statements.
+  await page.getByRole('tab', { name: 'Statements and notes' }).click()
+  await page.getByRole('textbox', { name: 'Building approver card' }).fill('Ask the building approver to sign first.')
+  await page.getByRole('button', { name: 'Save texts' }).click()
+  await expect(page.getByText('Statements and notes saved').first()).toBeVisible()
+  expect(calls.find((call) => call.path.endsWith('/texts'))!.body).toMatchObject({ building_pending_note_en: 'Ask the building approver to sign first.' })
 })
 
 test('RA Branch has its own versions; a retired or active version is read-only', async ({ page }) => {

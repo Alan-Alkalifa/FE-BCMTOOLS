@@ -33,7 +33,7 @@ export interface Task {
   level: TaskLevel
   /** It waits for the user. */
   mine: boolean
-  /** A building or incident the user asked for: someone else decides. */
+  /** A building or disaster the user asked for: someone else decides. */
   own?: boolean
   url: string
 }
@@ -118,5 +118,5 @@ export const taskType = defineStatusScale<TaskType>({
   signoff: { label: 'Sign-off', color: 'info', icon: 'i-lucide-badge-check' },
   renewal: { label: 'Renewal', color: 'neutral', icon: 'i-lucide-calendar-clock' },
   building: { label: 'Building', color: 'warning', icon: 'i-lucide-building' },
-  incident: { label: 'Incident', color: 'error', icon: 'i-lucide-siren' },
+  incident: { label: 'Disaster', color: 'error', icon: 'i-lucide-siren' },
 })

@@ -4,7 +4,7 @@ import type { RaSettings } from '~/composables/useRaConfigAdmin'
 /**
  * RA configuration > Reminders and escalation, like SCCA's: when BCM Tools reminds the signer
  * whose step waits, escalates to BCM and warns about renewals, and reminds the approvers of
- * buildings and incidents waiting on Task Management. These rules are live for every RA and RA
+ * buildings and disasters waiting on Task Management. These rules are live for every RA and RA
  * Branch assessment, whatever its configuration version.
  */
 const toast = useToast()
@@ -194,16 +194,16 @@ async function save() {
         <UCard>
           <template #header>
             <h2 class="font-semibold text-highlighted">
-              Buildings and incidents waiting for approval
+              Buildings and disasters waiting for approval
             </h2>
           </template>
           <div class="space-y-4">
             <p class="text-sm text-muted">
-              The approvers (everyone who may approve buildings and incidents, but not who asked) are emailed when something starts waiting on Task Management. A new or deactivated building is then reminded and escalated like a sign-off step above. An incident can't wait for office hours: it is reminded at any hour.
+              The approvers (everyone who may approve buildings and disasters, but not who asked) are emailed when something starts waiting on Task Management. A new or deactivated building is then reminded and escalated like a sign-off step above. A disaster can't wait for office hours: it is reminded at any hour.
             </p>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField
-                label="Remind about an incident every"
+                label="Remind about a disaster every"
                 name="incident_reminder_hours"
                 hint="hours"
                 :error="errors.incident_reminder_hours"
@@ -216,7 +216,7 @@ async function save() {
                 />
               </UFormField>
               <UFormField
-                label="Escalate an incident to BCM after"
+                label="Escalate a disaster to BCM after"
                 name="incident_escalate_hours"
                 hint="hours"
                 help="Also to the addresses above."

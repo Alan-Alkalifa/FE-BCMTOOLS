@@ -24,6 +24,7 @@ const ITEMS: Record<string, string> = {
   hazard_intro: 'Hazards introduction',
   signoff_statement_en: 'Sign-off statement',
   risk_summary_note_en: 'Risk Summary note',
+  building_pending_note_en: 'Building approver card',
 }
 
 function item(change: RaConfigChange) {

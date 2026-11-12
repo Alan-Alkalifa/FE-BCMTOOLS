@@ -28,6 +28,7 @@ export type RaConfigTextField
     | 'hazard_intro'
     | 'signoff_statement_en'
     | 'risk_summary_note_en'
+    | 'building_pending_note_en'
 
 export interface RaConfigVersion extends Omit<RaFormula, 'status'>, RaConfigVersionMeta {
   stored_texts: Record<RaConfigTextField, string | null>
@@ -79,7 +80,7 @@ export interface RaSettings {
   overdue_repeat_days: number
   window_start_hour: number
   window_end_hour: number
-  /** A declared incident waiting for approval: remind every N hours, escalate after M. */
+  /** A declared disaster waiting for approval: remind every N hours, escalate after M. */
   incident_reminder_hours: number
   incident_escalate_hours: number
   updated_at?: string | null

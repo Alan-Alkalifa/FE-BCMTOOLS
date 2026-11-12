@@ -70,6 +70,7 @@ const schema = computed(() => z.object({
   city: z.string().trim().min(1, 'Enter the city.'),
   district: z.string().trim().min(1, 'Enter the district.'),
   zip_code: z.string().trim().min(1, 'Enter the zip code.').max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.'),
+  onsite_capacity: z.number().int('Enter a whole number.').min(0, 'Enter 0 or more.').max(100000, 'At most 100,000.').nullish(),
   is_active: z.boolean(),
   region: z.string(),
   area: z.string(),
@@ -97,6 +98,7 @@ function fromLocation(location?: RaLocationDetail): State {
     city: location?.city ?? '',
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
+    onsite_capacity: location?.onsite_capacity ?? null,
     region: location?.region ?? '',
     area: location?.area ?? '',
     region_description: location?.region_description ?? '',
@@ -104,10 +106,18 @@ function fromLocation(location?: RaLocationDetail): State {
     sub_directorate: location?.sub_directorate ?? '',
     org_group: location?.org_group ?? '',
     org_level: location?.org_level ?? '',
-    // Cleared while its deactivation waits for approval; ticking it again withdraws that.
-    is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate',
+    // Cleared while its deactivation waits for approval; ticking it again withdraws that. A new
+    // building waiting for approval isn't active yet: approving it ticks it.
+    is_active: (location?.is_active ?? true) && location?.approval?.action !== 'deactivate' && !isNewAndWaiting(location),
   }
 }
+
+/** A new building waiting for approval: Active stays unticked (and locked) until the building
+ *  approver signs its RA or someone approves it on the building page. */
+function isNewAndWaiting(location?: RaLocationDetail | null) {
+  return location?.approval?.status === 'pending' && location.approval.action !== 'deactivate'
+}
+const waitingApproval = computed(() => isNewAndWaiting(props.location))
 
 const state = reactive<State>(fromLocation(props.location))
 
@@ -203,10 +213,14 @@ watch(state, () => {
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, ...fields } = state
+    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, is_active: isActive, ...fields } = state
     const body = blankToNull({
       ...fields,
+      // Locked while a new building waits for approval: approving it makes it active.
+      ...(waitingApproval.value ? {} : { is_active: isActive }),
       name: state.name.trim(),
+      // Cleared, the capacity is sent as null.
+      onsite_capacity: state.onsite_capacity ?? null,
       // With the region directory, a branch sends its region and area: its Sub Directorate and
       // Group follow them and its Directorate comes from there (the backend sets them). Without
       // it, the Sub Directorate and Group are sent and the region and area follow them.
@@ -426,15 +440,32 @@ async function onSubmit() {
                   class="w-full"
                 />
               </UFormField>
+              <UFormField
+                label="On-site capacity"
+                name="onsite_capacity"
+                help="How many people the building can hold on site."
+              >
+                <UInputNumber
+                  v-model="state.onsite_capacity"
+                  :min="0"
+                  :max="100000"
+                  :step="1"
+                  placeholder="e.g. 200"
+                  class="w-full"
+                />
+              </UFormField>
             </div>
             <UFormField
               v-if="location"
               name="is_active"
-              :help="`Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history. Making it inactive waits for someone else's approval.`"
+              :help="waitingApproval
+                ? `A new ${ra.location.lower} becomes active once it is approved: when the building approver signs its RA, or someone approves it on this page.`
+                : `Inactive ${ra.location.lowerPlural} can't get new assessments but keep their history. Making it inactive waits for someone else's approval.`"
             >
               <UCheckbox
                 v-model="state.is_active"
                 label="Active"
+                :disabled="waitingApproval"
               />
             </UFormField>
           </div>

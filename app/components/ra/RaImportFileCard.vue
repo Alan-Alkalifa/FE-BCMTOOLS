@@ -57,6 +57,9 @@ onMounted(async () => {
 const existing = computed(() => preview.value?.existing ?? null)
 /** A registered building's details are shown, not changed. */
 const locked = computed(() => Boolean(existing.value))
+/** The registered building's RA still in progress: no new RA until it is final (the API says
+ *  the same), so only its profile can be updated. */
+const openRa = computed(() => existing.value?.open_assessment ?? null)
 
 const schema = computed(() => z.object({
   name: z.string(),
@@ -91,6 +94,9 @@ const schema = computed(() => z.object({
       if (!region) need('region', 'Choose the region.')
       else if (region.areas.length && !region.areas.some((item) => item.area === value.area)) need('area', 'Choose the area.')
     }
+  }
+  if (existing.value && !value.create_assessment && !value.replace_profile) {
+    need('replace_profile', openRa.value ? 'Nothing to import yet. Turn on Update the profile.' : 'Nothing to import yet. Turn on Update the profile or Create a draft RA.')
   }
   if (!value.create_assessment) return
   if (!value.assessment_date) need('assessment_date', 'Enter the assessment date.')
@@ -171,7 +177,7 @@ function reset(found: RaImportPreview) {
     district: registered?.district ?? '',
     zip_code: registered ? registered.zip_code ?? '' : found.location.zip_code ?? '',
     replace_profile: false,
-    create_assessment: true,
+    create_assessment: !registered?.open_assessment,
     assessment_date: found.assessment_date ?? raTodayIso(),
     reason: undefined,
     due_date: null,
@@ -643,12 +649,16 @@ const otherType = computed(() => RA_MODULES[preview.value?.kind === 'branch' ? '
             />
           </UFormField>
         </fieldset>
-        <USwitch
+        <UFormField
           v-if="existing"
-          v-model="state.replace_profile"
-          label="Update the profile"
-          description="Update its contacts, occupants, recovery team and call tree."
-        />
+          name="replace_profile"
+        >
+          <USwitch
+            v-model="state.replace_profile"
+            label="Update the profile"
+            description="Update its contacts, occupants, recovery team and call tree."
+          />
+        </UFormField>
       </section>
 
       <USeparator />
@@ -662,8 +672,18 @@ const otherType = computed(() => RA_MODULES[preview.value?.kind === 'branch' ? '
           <USwitch
             v-model="state.create_assessment"
             label="Create a draft RA"
+            :disabled="Boolean(openRa)"
           />
         </div>
+        <UAlert
+          v-if="openRa"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-file-clock"
+          title="An RA is already in progress"
+          :description="`${openRa.ref_no ?? 'Its RA'} (${raStatus[raStatusKey(openRa)]?.label ?? openRa.status}, ${openRa.period_year}) must be final before a new RA can be made. Only the profile can be updated.`"
+          :actions="[{ label: 'Open RA', to: raRecordPath(openRa.kind, openRa), target: '_blank', color: 'neutral', variant: 'outline', size: 'sm', trailingIcon: 'i-lucide-external-link' }]"
+        />
         <template v-if="state.create_assessment">
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
@@ -734,7 +754,7 @@ const otherType = computed(() => RA_MODULES[preview.value?.kind === 'branch' ? '
           </div>
         </template>
         <p
-          v-else
+          v-else-if="!openRa"
           class="text-sm text-muted"
         >
           Only the {{ ra.location.lower }} {{ existing ? 'profile' : 'and its profile' }} will be imported.
