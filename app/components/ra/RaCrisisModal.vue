@@ -44,6 +44,8 @@ const placeItems = computed(() => places.value.map((place) => ({
 })))
 
 const quake = props.crisis ? null : props.fromQuake
+/** A disaster from a BMKG earthquake is an earthquake: its hazard can't be changed. */
+const hazardLocked = !!quake || !!props.crisis?.earthquake
 const startedAt = raWibParts(props.crisis?.started_at ?? quake?.earthquake.occurred_at ?? new Date())
 const initialPlace = places.value.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
 
@@ -77,7 +79,7 @@ const schema = computed(() => z.object({
   hazard_code: z.string().min(1, 'Choose the hazard.'),
   location_id: z.number().optional(),
   pin: z.custom<RaPin | null>((value) => !!value, 'Click the map to drop the pin, or choose a building or branch.'),
-  radius_km: z.number({ error: 'Enter the radius in km.' }).min(0.05, 'At least 0,05 km (50 m).').max(200, 'At most 200 km.'),
+  radius_km: z.number({ error: 'Enter the radius in km.' }).min(0.1, 'At least 0,1 km (100 m).').max(200, 'At most 200 km.'),
   date: z.string().min(1, 'Pick the date.'),
   time: z.string().regex(/^\d{2}:\d{2}$/, 'Enter the time, e.g. 14:30.'),
   description: z.string(),
@@ -244,6 +246,7 @@ async function onSubmit() {
             v-model="state.hazard_code"
             :items="hazardItems"
             value-key="value"
+            :disabled="hazardLocked"
             placeholder="Choose one of the 33 RA hazards"
             class="w-full"
           />
@@ -317,9 +320,9 @@ async function onSubmit() {
           <div class="flex flex-wrap items-center gap-2">
             <UInputNumber
               v-model="state.radius_km"
-              :min="0.05"
+              :min="0.1"
               :max="200"
-              :step="0.5"
+              :step="0.1"
               locale="en-GB"
               :format-options="{ maximumFractionDigits: 2 }"
               class="w-36"

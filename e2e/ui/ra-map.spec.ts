@@ -540,13 +540,22 @@ test('a disaster is declared from an earthquake, filled in from BMKG', async ({ 
     'Earthquake M5,6 (BMKG), 10 km deep. Pusat gempa berada di darat 3 km Barat Laut Tangerang Selatan. Felt: IV Tangerang Selatan, III Jakarta. Tidak berpotensi tsunami',
   )
   await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
+  // The hazard stays an earthquake.
+  await expect(dialog.getByLabel('Hazard')).toBeDisabled()
+  // The alert radius is filled in, and it goes up and down by 0,1 km.
+  const radius = dialog.getByLabel('Affected radius')
+  await expect(radius).toHaveValue('100')
+  await radius.fill('0.1')
+  await radius.blur()
+  await dialog.getByRole('button', { name: 'Increment' }).click()
+  await expect(radius).toHaveValue('0.2')
   await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect.poll(() => log.declared.length).toBe(1)
   expect(log.declared[0]).toMatchObject({
     hazard_code: 'H03',
     latitude: -6.28,
     longitude: 106.73,
-    radius_m: 100_000,
+    radius_m: 200,
     earthquake_id: 3,
     started_at: '2026-11-06T13:42:00+07:00',
   })
