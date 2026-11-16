@@ -91,7 +91,7 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
   { accessorKey: 'period_year', header: 'Period' },
   { accessorKey: 'due_date', header: 'Renewal due' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
 

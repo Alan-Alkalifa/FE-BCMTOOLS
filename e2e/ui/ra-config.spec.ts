@@ -192,7 +192,7 @@ test('the draft opens first; editing a hazard and requesting the publish', async
   const calls = await mockRaConfig(page)
   await page.goto('/admin/ra-config?tab=hazards')
   await expect(page.getByLabel('Version', { exact: true })).toContainText('2025-r5', { timeout: 60_000 })
-  const first = page.getByRole('textbox', { name: 'Type of Hazard 1', exact: true })
+  const first = page.getByRole('textbox', { name: 'Type of hazard 1', exact: true })
   await expect(first).toHaveValue('Banjir/ Banjir Bandang')
   await first.fill('Banjir')
   await page.getByRole('button', { name: 'Save hazards' }).click()

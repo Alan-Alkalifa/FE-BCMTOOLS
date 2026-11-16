@@ -29,7 +29,7 @@ test('the branch drafts show their region', async ({ page }) => {
 test('a branch hazard is one risk on the branch matrix', async ({ page }) => {
   const log = await mockRa(page)
   await page.goto(`${ASSESSMENT}?tab=hazards&hazard=H14`)
-  await expect(page.getByRole('button', { name: 'Type of Hazard' })).toContainText('14 - Kebakaran', { timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Type of hazard' })).toContainText('14 - Kebakaran', { timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Gross impact' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'After mitigation', exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Impact after mitigation' })).toBeVisible()

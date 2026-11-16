@@ -88,7 +88,7 @@ function stepLabel(role: string | null, title?: string | null) {
 
 const waitingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'step', header: 'Step' },
   { accessorKey: 'submitted_by', header: 'Submitted by' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },

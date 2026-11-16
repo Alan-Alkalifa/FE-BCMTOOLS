@@ -41,7 +41,7 @@ const columns = computed<TableColumn<RaCrisisSummary>[]>(() => [
   ...(tab.value === 'waiting'
     ? []
     : [
-        { accessorKey: 'status', header: 'Status' },
+        { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
         { accessorKey: 'decided_by', header: 'Decided by' },
       ]),
 ])

@@ -3,7 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { RaAssessment, RaFormula, RaRatingInputs, RaRatingUpdate } from '~/composables/useRa'
 
 /**
- * The Hazards tab. A table of every Type of Hazard with its ratings (the computed ratings are
+ * The Hazards tab. A table of every Type of hazard with its ratings (the computed ratings are
  * filled in), and, for the hazard opened from its pencil (`?hazard=H03`), the page where it is
  * rated: Hazard group and Type of hazard, the probability, the gross impact, the existing
  * mitigation and then, as the RA HO workbook continues, the risk after mitigation and the
@@ -138,14 +138,14 @@ const impactColumns = RA_IMPACTS.map((impact) => ({
 const columns = computed<TableColumn<Row>[]>(() => [
   { accessorKey: 'no', header: 'No', meta: right },
   { accessorKey: 'group', header: 'Hazard group', meta: wrap },
-  { accessorKey: 'name', header: 'Type of Hazard', meta: wrap },
+  { accessorKey: 'name', header: 'Type of hazard', meta: wrap },
   { id: 'historical', header: 'Historical of occurrence', meta: right },
   { id: 'probability', header: 'Probability of occurrence', meta: right },
   { id: 'probability_rating', header: 'Probability rating', meta: right },
   ...impactColumns,
   { id: 'impact_rating', header: 'Impact rating', meta: right },
   { id: 'mitigation', header: 'Existing mitigation measures', meta: { class: { td: 'whitespace-normal min-w-56 max-w-sm' } } },
-  { id: 'level', header: singleRisk.value ? 'Risk level' : 'Residual risk' },
+  { id: 'level', header: singleRisk.value ? 'Risk level' : 'Residual risk', meta: RA_STATUS_COLUMN },
   { id: 'action', header: 'Action', meta: { class: { th: 'text-right', td: 'w-0 text-right' } } },
 ])
 
@@ -465,12 +465,12 @@ async function save() {
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Type of Hazard">
+          <UFormField label="Type of hazard">
             <USelectMenu
               v-model="typeModel"
               value-key="value"
               :items="typeItems"
-              aria-label="Type of Hazard"
+              aria-label="Type of hazard"
               class="w-full"
             />
           </UFormField>

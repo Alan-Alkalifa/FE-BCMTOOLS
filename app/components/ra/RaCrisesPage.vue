@@ -67,7 +67,7 @@ const columns: TableColumn<RaCrisisSummary>[] = [
   { accessorKey: 'started_at', header: 'Started' },
   { accessorKey: 'radius_m', header: 'Radius', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'affected_count', header: 'Affected', meta: { class: { th: 'text-right', td: 'text-right' } } },
-  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
 
 function openRow(_event: Event, row: { original: RaCrisisSummary }) {
