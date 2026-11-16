@@ -161,6 +161,12 @@ function saveCallTree(rows: RowValues[]) {
         </fieldset>
       </template>
       <template #team>
+        <div class="mb-4 flex justify-end">
+          <RaDiagramButton
+            :kind="ra.kind"
+            diagram="recovery_team"
+          />
+        </div>
         <fieldset
           :disabled="!canEdit"
           class="min-w-0"
@@ -182,6 +188,12 @@ function saveCallTree(rows: RowValues[]) {
         </fieldset>
       </template>
       <template #calltree>
+        <div class="mb-4 flex justify-end">
+          <RaDiagramButton
+            :kind="ra.kind"
+            diagram="call_tree"
+          />
+        </div>
         <fieldset
           :disabled="!canEdit"
           class="min-w-0"
