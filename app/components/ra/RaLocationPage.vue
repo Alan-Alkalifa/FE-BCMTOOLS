@@ -113,7 +113,7 @@ const canEdit = computed(() => can(ra.value.perm.edit))
 /** Seen through the Location module without RA access, its RAs are listed, not opened. */
 const canOpenRa = useCanOpenRa()
 function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
-  if (canOpenRa(ra.value.kind)) navigateTo(raRecordPath(ra.value.kind, row.original))
+  if (canOpenRa(ra.value.kind, row.original)) navigateTo(raRecordPath(ra.value.kind, row.original))
 }
 </script>
 
@@ -291,7 +291,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
                 >
                   <template #ref_no-cell="{ row }">
                     <NuxtLink
-                      v-if="canOpenRa(ra.kind)"
+                      v-if="canOpenRa(ra.kind, row.original)"
                       :to="raRecordPath(ra.kind, row.original)"
                       class="font-medium whitespace-nowrap text-primary hover:underline"
                     >

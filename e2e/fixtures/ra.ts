@@ -583,7 +583,11 @@ export async function mockRa(
     if (collection && method === 'GET') {
       const level = url.searchParams.get('level')
       const summary = url.searchParams.get('kind') === 'branch' ? BRANCH_SUMMARY : SUMMARY
-      const items = level && level !== summary.highest_residual_level ? [] : [summary]
+      // Manage (mine=1) rows also carry the user's role and the next step, as SCCA's.
+      const row = url.searchParams.get('mine') === '1'
+        ? { ...summary, my_role: 'assessor', next_step: 'Rate all 33 hazards', renewal_of: null }
+        : summary
+      const items = level && level !== summary.highest_residual_level ? [] : [row]
       await route.fulfill({ json: { items, page: 1, per_page: 25, total: items.length, pages: 1 } })
       return
     }
@@ -764,6 +768,7 @@ function renewable(branch: boolean) {
     bucket: 'due_30',
     assessor: 'Test User',
     licom: 'Sari Dewi',
+    licom_user_id: 7,
     history: [approved],
   }
 }
@@ -834,9 +839,11 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
         { ...locations[0], renewal_status: 'draft', can_generate: false },
         { ...renewable(branch), renewal_status: 'not_started', can_generate: true },
       ]
-      await route.fulfill({ json: paged(rows, { counts: { overdue: 1, due_30: 1, due_90: 0, later: 0 } }) })
+      await route.fulfill({ json: paged(rows, { counts: { overdue: 1, due_30: 1, due_90: 0, later: 0 }, contributor_levels: ['D-2'] }) })
+    } else if (name === 'renewals/contributors') {
+      await route.fulfill({ json: { levels: ['D-2'], items: [{ id: 7, display_name: 'Sari Dewi', email: 'sari.dewi@example.co.id', job_title: null, division: null, directorate: 'FIN', org_level: 'D-2' }, { id: 8, display_name: 'Dede Kurnia', email: 'dede@example.co.id', job_title: null, division: null, directorate: 'OPS', org_level: 'D-2' }] } })
     } else if (name === 'renewals/generate') {
-      const body = route.request().postDataJSON() as { assessment_ids: number[] }
+      const body = route.request().postDataJSON() as { assessment_ids: number[], licom_user_id: number }
       log.generated.push(body)
       await route.fulfill({ json: { created: [{ id: 120, ref_no: 'RA-2026-0120', renews: 'RA-2025-0003', location: 'Menara Sentraya' }], skipped: [], refused: [] } })
     } else if (name === 'monitoring/org-values') {

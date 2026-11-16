@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaAssessmentSummary, RaListQuery } from '~/composables/useRa'
+import type { RaAssessmentSummary, RaListQuery, RaMyRole } from '~/composables/useRa'
 
 /**
- * RA (or RA Branch) Manage, as SCCA Manage: the drafts being worked on (including those returned
- * for changes) and New assessment. Submitted RAs live in Approval and Monitoring.
+ * RA (or RA Branch) Manage, as SCCA Manage. The drafts the user is the assessor or LICOM of
+ * (including those returned for changes), and the generated annual reviews their access scope
+ * shows read-only (My role Directorate). Submitted RAs live in Approval and Monitoring.
  */
 const ra = useRaModule()
 const { can } = useAuth()
@@ -26,7 +27,7 @@ const query = computed<RaListQuery>(() => ({
   location_id: asNumber(route.query.location_id),
   year: asNumber(route.query.year),
   reason: RA_REASONS.some((reason) => reason.value === route.query.reason) ? route.query.reason as RaReason : undefined,
-  ...(route.query.mine === '1' ? { mine: '1' as const } : {}),
+  mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: perPage.value,
 }))
@@ -61,17 +62,13 @@ const reasonItems = [
   { label: 'All reasons', value: 'all' as const },
   ...RA_REASONS.map((reason) => ({ label: reason.label, value: reason.value })),
 ]
-const whose = computed<'all' | 'mine'>({
-  get: () => (query.value.mine ? 'mine' : 'all'),
-  set: (value) => setQuery('mine', value === 'mine' ? '1' : undefined),
-})
 
 const { data, status, error, refresh } = useRaAssessments(query)
 /** Import from Excel, as a dialog on this module's type. */
 const importOpen = ref(false)
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason || query.value.mine))
+const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason))
 function clearFilters() {
   search.value = ''
   router.replace({ query: {} })
@@ -82,12 +79,16 @@ const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { id: 'location', header: ra.value.location.single },
   { accessorKey: 'period_year', header: 'Period' },
   { accessorKey: 'reason', header: 'Reason' },
+  { id: 'renews', header: 'Renews' },
+  { accessorKey: 'my_role', header: 'My role' },
   { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
   { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
-  { accessorKey: 'created_by', header: 'Created by' },
+  { accessorKey: 'created_by', header: 'Assessor' },
+  { accessorKey: 'next_step', header: 'Next step' },
   { accessorKey: 'updated_at', header: 'Last saved' },
 ])
+const ROLE_LABEL: Record<RaMyRole, string> = { assessor: 'Assessor', licom: 'LICOM', directorate: 'Directorate (view)' }
 
 const locationItems = computed(() => [
   { label: `All ${ra.value.location.lowerPlural}`, value: 'all' as const },
@@ -96,10 +97,6 @@ const locationItems = computed(() => [
 const yearItems = [
   { label: 'All periods', value: 'all' as const },
   ...Array.from({ length: 8 }, (_, index) => THIS_YEAR + 1 - index).map((year) => ({ label: String(year), value: year })),
-]
-const whoseItems = [
-  { label: 'All drafts', value: 'all' as const },
-  { label: 'Created by me', value: 'mine' as const },
 ]
 
 function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
@@ -134,7 +131,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
     <SkeletonTable
       v-if="showSkeleton"
       toolbar
-      :columns="9"
+      :columns="12"
       label="Loading drafts"
     />
 
@@ -160,7 +157,7 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
       v-else
       :ui="{ body: 'p-0 sm:p-0' }"
     >
-      <!-- As SCCA: search, then building → reason → whose → period (ListFilterBar). -->
+      <!-- As SCCA. Search, then building, reason and period (ListFilterBar). -->
       <ListFilterBar
         :filtered="hasFilters"
         @clear="clearFilters"
@@ -188,14 +185,6 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
           :search-input="false"
           class="w-44"
           aria-label="Reason for assessment"
-        />
-        <USelectMenu
-          v-model="whose"
-          value-key="value"
-          :items="whoseItems"
-          :search-input="false"
-          class="w-40"
-          aria-label="Whose drafts"
         />
         <USelectMenu
           v-model="yearFilter"
@@ -257,15 +246,53 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         <template #reason-cell="{ row }">
           {{ raReasonLabel(row.original.reason) ?? '—' }}
         </template>
+        <template #renews-cell="{ row }">
+          <NuxtLink
+            v-if="row.original.renewal_of?.can_open"
+            :to="raRecordPath(ra.kind, row.original.renewal_of)"
+            class="font-mono text-xs whitespace-nowrap text-primary hover:underline"
+            @click.stop
+          >
+            {{ row.original.renewal_of.ref_no }}
+          </NuxtLink>
+          <span
+            v-else-if="row.original.renewal_of"
+            class="font-mono text-xs whitespace-nowrap"
+          >{{ row.original.renewal_of.ref_no }}</span>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #my_role-cell="{ row }">
+          <UBadge
+            v-if="row.original.my_role === 'directorate'"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-eye"
+            :label="ROLE_LABEL.directorate"
+          />
+          <span
+            v-else
+            class="whitespace-nowrap"
+          >{{ row.original.my_role ? ROLE_LABEL[row.original.my_role] : '—' }}</span>
+        </template>
         <template #created_by-cell="{ row }">
           {{ row.original.created_by || '—' }}
+        </template>
+        <template #next_step-cell="{ row }">
+          <span
+            class="text-sm whitespace-nowrap"
+            :class="/overdue|Returned/.test(row.original.next_step ?? '') ? 'font-medium text-error' : /due in|Ready/.test(row.original.next_step ?? '') ? 'font-medium text-warning' : 'text-muted'"
+          >{{ row.original.next_step || '—' }}</span>
         </template>
         <template #updated_at-cell="{ row }">
           <span class="whitespace-nowrap">{{ formatDateTime(row.original.updated_at) }}</span>
         </template>
         <template #empty>
           <p class="py-10 text-center text-sm text-muted">
-            {{ hasFilters ? 'No drafts match these filters.' : 'No drafts. Use New assessment to start one.' }}
+            {{ hasFilters ? 'No drafts match these filters.' : 'No drafts of yours. Use New assessment to start one.' }}
           </p>
         </template>
       </UTable>

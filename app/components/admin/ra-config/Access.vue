@@ -163,13 +163,16 @@ async function check(user: PickedUser | null) {
             <template v-if="row.original.renewal_statuses.length">
               · {{ row.original.renewal_statuses.map(statusLabel).join(', ') }}
             </template>
+            <template v-if="row.original.risk_levels?.length">
+              · Highest residual {{ row.original.risk_levels.join(', ') }}
+            </template>
           </p>
         </template>
         <template #reasons-cell="{ row }">
           {{ row.original.reasons.map(reasonLabel).join(', ') }}
         </template>
         <template #generate-cell="{ row }">
-          <span v-if="row.original.can_generate">Yes</span>
+          <span v-if="row.original.can_generate">Yes · LICOM {{ (row.original.contributor_levels ?? ['D-2']).join(' or ') }}</span>
           <span
             v-else
             class="text-muted"
@@ -261,6 +264,14 @@ async function check(user: PickedUser | null) {
             </dt>
             <dd>
               {{ checked.can_generate ? 'Can generate annual reviews' : 'Cannot generate' }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted">
+              LICOM
+            </dt>
+            <dd>
+              {{ checked.can_be_contributor ? 'Can be the LICOM of a generated annual review' : 'Not of the LICOM levels' }}
             </dd>
           </div>
         </dl>

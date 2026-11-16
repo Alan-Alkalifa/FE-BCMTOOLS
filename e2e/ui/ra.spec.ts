@@ -33,18 +33,19 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await page.getByRole('option', { name: 'Structural change' }).click()
   await byReason
   await expect(page).toHaveURL(/reason=structural_change/)
-  // As SCCA's lists: search first, then building → reason → whose → period; Clear filters.
+  // As SCCA's lists. Search first, then building, reason and period, and Clear filters.
+  // Manage lists only the user's drafts (mine=1), so there is no Whose filter.
   const bar = page.getByRole('search')
   const labels = await bar.locator('[aria-label]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
-  expect(labels).toEqual(['Search building, ID or ref. no.', 'Filter by building', 'Reason for assessment', 'Whose drafts', 'Filter by period'])
+  expect(labels).toEqual(['Search building, ID or ref. no.', 'Filter by building', 'Reason for assessment', 'Filter by period'])
   await bar.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page).not.toHaveURL(/reason=/)
-
-  const mine = page.waitForRequest((r) => r.url().includes('mine=1'))
-  await page.getByLabel('Whose drafts').click()
-  await page.getByRole('option', { name: 'Created by me' }).click()
-  await mine
-  await expect(page).toHaveURL(/mine=1/)
+  expect(new URL((await request).url()).searchParams.get('mine')).toBe('1')
+  // SCCA's columns. Renews, My role, Assessor and Next step.
+  for (const header of ['Renews', 'My role', 'Assessor', 'Next step']) {
+    await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
+  await expect(page.getByRole('cell', { name: 'Rate all 33 hazards' })).toBeVisible()
 
   await page.getByRole('link', { name: 'RA-2025-0001' }).click()
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
@@ -104,11 +105,13 @@ test('Monitoring Renewals generates annual reviews from the ticked rows, as SCCA
   await expect(generate).toBeDisabled()
   await table.getByRole('checkbox', { name: 'Select Menara Sentraya' }).click()
   await generate.click()
-  const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'))
-  await expect(dialog.getByText('You become its assessor and LIC.', { exact: false })).toBeVisible()
+  // As SCCA's contributor, the LICOM is picked. The last final's LICOM is suggested.
+  const dialog = page.getByRole('dialog', { name: 'Generate annual review' })
+  await expect(dialog.getByText('You are the assessor and LIC.', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('Suggested is the last final\'s LICOM.')).toBeVisible()
   await dialog.getByRole('button', { name: 'Generate' }).click()
   await expect(page.getByText('Created 1, skipped 0').first()).toBeVisible()
-  expect(log.generated).toEqual([{ assessment_ids: [3] }])
+  expect(log.generated).toEqual([{ assessment_ids: [3], licom_user_id: 7 }])
 })
 
 test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export checkboxes stay', async ({ page }) => {
@@ -914,6 +917,26 @@ test('Manage shows a returned RA as a draft', async ({ page }) => {
   const row = page.getByRole('row', { name: /RA-2025-0001/ })
   await expect(row).toContainText('Draft', { timeout: 60_000 })
   await expect(row).not.toContainText('Returned')
+})
+
+test('Manage shows a generated annual review of the directorate read-only, with what it renews', async ({ page }) => {
+  await mockRa(page)
+  const generated = {
+    ...SUMMARY,
+    reason: 'annual_review',
+    my_role: 'directorate',
+    next_step: 'Rate all 33 hazards',
+    renewal_of: { id: 3, ref_no: 'RA-2025-0003', status: 'approved', can_open: false },
+  }
+  await page.route(/\/api\/ra\/assessments\?/, (route) =>
+    route.fulfill({ json: { items: [generated], page: 1, per_page: 25, total: 1, pages: 1 } }),
+  )
+  await page.goto('/ra/manage')
+  const row = page.getByRole('row', { name: /RA-2025-0001/ })
+  await expect(row.getByText('Directorate (view)')).toBeVisible({ timeout: 60_000 })
+  // The final RA it renews isn't the user's to open, so it isn't a link.
+  await expect(row.getByText('RA-2025-0003')).toBeVisible()
+  await expect(row.getByRole('link', { name: 'RA-2025-0003' })).toHaveCount(0)
 })
 
 test('Manage has New assessment in the top bar', async ({ page }) => {

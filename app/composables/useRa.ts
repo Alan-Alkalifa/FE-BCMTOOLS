@@ -331,7 +331,7 @@ export interface RaMapPlace extends RaPlace {
   is_active?: boolean
   /** Active and approved (a deactivation waiting still counts): see raInService. */
   in_service?: boolean
-  latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
+  latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null, can_open?: boolean } | null
   /** Where its four-eyes approval stands: a new building waiting (pending, register), a
    *  deactivation waiting (pending, deactivate), rejected or approved. */
   approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
@@ -473,6 +473,8 @@ export interface RaCrisisPlace {
     ref_no: string | null
     period_year: number
     status: RaStatus
+    /** The user may open it: a link, else plain text. */
+    can_open?: boolean
     rating: {
       gross_level: RaLevel | null
       residual_probability: number | null
@@ -624,6 +626,25 @@ export interface RaAssessmentSummary {
   renewal_date?: string | null
   created_by: string | null
   updated_at: string
+  /** The user may open it (its assessor, LICOM, signers, BCM, or a directorate view). */
+  can_open?: boolean
+  /** The final RA an Annual review renews. */
+  renewal_of?: RaRenewalRef | null
+  /** Manage only. The user's part in it, as SCCA's My role. */
+  my_role?: RaMyRole | null
+  /** Manage only. What to do next, in a few words. */
+  next_step?: string | null
+}
+
+/** assessor (its creator, the LIC), licom, or directorate (a generated annual review the
+ *  access scope shows read-only). */
+export type RaMyRole = 'assessor' | 'licom' | 'directorate'
+
+export interface RaRenewalRef {
+  id: number
+  ref_no: string | null
+  status: RaStatus
+  can_open: boolean
 }
 
 export interface RaAssessment extends RaAssessmentFields, RaWorkflow {
@@ -666,7 +687,8 @@ export interface RaListQuery {
   reason?: RaReason
   status?: RaStatus
   awaiting?: 'me'
-  /** Only the assessments the user created (Manage). */
+  /** Manage. The RAs the user is the assessor or LICOM of, and the generated annual reviews
+   *  their access scope opens. */
   mine?: '1'
   page: number
   per_page: number
@@ -769,9 +791,12 @@ export function useLocationKinds() {
 
 /** Whether the user may open the RAs of a kind: the Location module shows RA references to
  *  people without RA access, as plain text. */
+/** Whether the user may open an RA. Its side's access, and the API's `can_open` when the
+ *  record carries it (its assessor, LICOM, signers and BCM, as SCCA's). */
 export function useCanOpenRa() {
   const { can } = useAuth()
-  return (kind: RaKind | string) => can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access')
+  return (kind: RaKind | string, record?: { can_open?: boolean } | null) =>
+    can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access') && record?.can_open !== false
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -1086,7 +1111,7 @@ export interface RaImportOptions {
 }
 export interface RaImportResult {
   location: { id: number, code: string, name: string, kind: RaKind, created: boolean }
-  assessment: { id: number, ref_no: string, kind: RaKind } | null
+  assessment: { id: number, ref_no: string, kind: RaKind, can_open?: boolean } | null
   saved: Partial<Record<'contacts' | 'occupants' | 'recovery_team' | 'call_tree', number>>
   ratings: number
   warnings: RaImportWarning[]
@@ -1106,8 +1131,8 @@ export const raApi = {
   },
   createLocation: (body: RaLocationInput) => $fetch<RaLocationDetail>(LOCATIONS, { method: 'POST', body }),
   /** Renewals > Generate annual review for the last final RAs. */
-  generateRenewals: (assessmentIds: number[]) =>
-    $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds } }),
+  generateRenewals: (assessmentIds: number[], licomUserId: number) =>
+    $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds, licom_user_id: licomUserId } }),
   /** New assessment: the locations the access scope opens for a reason (`all` for BCM). */
   /** The buildings the access scope opens for an Annual review or a Structural change, and why
    *  a building can't be picked for it (`problems` by id, as SCCA's application lookup).
@@ -1197,6 +1222,8 @@ export interface RaAssessmentRef {
   approved_at: string | null
   is_returned: boolean
   revision_state?: RaRevisionState | null
+  /** The user may open it: a link, else plain text. */
+  can_open?: boolean
 }
 
 export type RaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
@@ -1214,6 +1241,8 @@ export interface RaMonitorLocation {
   assessor: string | null
   /** That RA's LICOM. */
   licom?: string | null
+  /** The last final's LICOM, suggested by Generate annual review. */
+  licom_user_id?: number | null
   history: RaAssessmentRef[]
   /** Renewals only: the open RA's status, or `not_started`. */
   renewal_status?: RaStatus | 'not_started'
@@ -1333,7 +1362,10 @@ export function useRaOverview(filters: MaybeRefOrGetter<RaMonitoringFilters>) {
 }
 
 export function useRaRenewals(query: Paged<RaMonitoringFilters>) {
-  return useRaList<RaMonitorLocation>('/api/ra/monitoring/renewals', query)
+  return useFetch<RaPage<RaMonitorLocation> & { counts?: Record<string, number>, contributor_levels?: string[] }>('/api/ra/monitoring/renewals', {
+    key: computed(() => `/api/ra/monitoring/renewals-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query) as unknown as Record<string, unknown>),
+  })
 }
 
 export function useRaRegister(query: Paged<RaMonitoringFilters>) {

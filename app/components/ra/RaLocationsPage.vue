@@ -413,7 +413,7 @@ const addTo = computed(() => {
         </template>
         <template #latest_assessment-cell="{ row }">
           <NuxtLink
-            v-if="row.original.latest_assessment && canOpenRa(row.original.kind)"
+            v-if="row.original.latest_assessment && canOpenRa(row.original.kind, row.original.latest_assessment)"
             :to="raRecordPath(row.original.kind, row.original.latest_assessment)"
             class="whitespace-nowrap text-primary hover:underline"
             @click.stop

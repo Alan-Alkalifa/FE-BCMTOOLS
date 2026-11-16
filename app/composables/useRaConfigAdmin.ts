@@ -217,7 +217,11 @@ export interface RaAccessRuleInput {
   reasons: RaScopedReason[]
   /** Annual review only; empty: every status. */
   renewal_statuses: RaRenewalStatus[]
+  /** The highest residual of the location's last final RA. Empty for every level. */
+  risk_levels: RaLevel[]
   can_generate: boolean
+  /** Levels a generated annual review's LICOM may have. */
+  contributor_levels: string[]
   user_ids: number[]
   valid_from: string | null
   valid_until: string | null
@@ -238,6 +242,7 @@ export interface RaAccessOptions {
   kinds: { code: RaKind, label: string }[]
   reasons: { code: RaScopedReason, label: string }[]
   renewal_statuses: { code: RaRenewalStatus, label: string }[]
+  risk_levels: { code: RaLevel, label: string }[]
 }
 
 export interface RaAccessCheck {
@@ -246,6 +251,8 @@ export interface RaAccessCheck {
   can_generate: boolean
   reasons: RaScopedReason[]
   locations: Partial<Record<RaScopedReason, number>>
+  /** Of the rules' LICOM levels, so may be picked as a generated annual review's LICOM. */
+  can_be_contributor?: boolean
 }
 
 const ACCESS = `${BASE}/access-rules`

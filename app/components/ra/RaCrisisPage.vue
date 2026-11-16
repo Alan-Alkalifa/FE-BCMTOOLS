@@ -432,7 +432,7 @@ const historyIcon: Record<string, string> = {
                     <template v-if="item.row.assessment">
                       <p class="mt-1 text-sm text-muted">
                         <NuxtLink
-                          v-if="canOpenRa(item.row.assessment.kind)"
+                          v-if="canOpenRa(item.row.assessment.kind, item.row.assessment)"
                           :to="assessmentUrl(item.row)"
                           class="text-primary hover:underline"
                         >

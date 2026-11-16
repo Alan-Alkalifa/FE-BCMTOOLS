@@ -601,7 +601,7 @@ const canOpenRa = useCanOpenRa()
                 <span class="text-muted">Latest RA:</span>
                 <template v-if="selected.latest">
                   <NuxtLink
-                    v-if="canOpenRa(selected.kind)"
+                    v-if="canOpenRa(selected.kind, selected.latest)"
                     :to="assessmentUrl(selected)"
                     class="text-primary hover:underline"
                   >
