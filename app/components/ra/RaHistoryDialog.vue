@@ -23,7 +23,7 @@ const columns: TableColumn<RaLocationHistoryRow>[] = [
   { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
   { accessorKey: 'assessment_date', header: 'Assessment date' },
   { accessorKey: 'approved_at', header: 'Final date' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'assessor', header: 'Assessor' },
   { accessorKey: 'licom', header: 'LICOM' },
 ]

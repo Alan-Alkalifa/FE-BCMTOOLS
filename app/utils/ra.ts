@@ -3,7 +3,7 @@
  * the kind: the HO workbook (RA, office buildings) and the Cabang workbook (RA Branch).
  */
 
-import type { RaCrisis, RaMapMarker } from '~/composables/useRa'
+import type { RaCrisis, RaCrisisType, RaMapMarker } from '~/composables/useRa'
 
 export type RaKind = 'head_office' | 'branch'
 
@@ -126,12 +126,13 @@ export const RA_KIND_INPUTS: Record<RaKind, RaRatingField[]> = {
 }
 
 /** The workbook's sign-off steps. RA configuration can add, remove, reorder and rename them per
- *  version (`formula.signoff_steps`, see raRoleOptions). The hint is who signs: the step title. */
+ *  version (`formula.signoff_steps`, see raRoleOptions). As SCCA's steps, the label is the step's
+ *  title and the hint its short name (who signs). */
 export const RA_SIGNOFF_ROLES = [
-  { value: 'prepared_by', label: 'Prepared by', hint: 'Location Incident Coordinator (LIC)' },
-  { value: 'acknowledged_by_unit', label: 'Acknowledged by', hint: 'Unit Critical Business Function' },
-  { value: 'reviewed_by', label: 'Reviewed by', hint: 'Alternate Location Incident Commander' },
-  { value: 'acknowledged_by_bcm', label: 'Acknowledged by', hint: 'Business Continuity Management Head' },
+  { value: 'prepared_by', label: 'Prepared by Location Incident Coordinator (LIC)', hint: 'LIC' },
+  { value: 'acknowledged_by_unit', label: 'Acknowledged by Unit Critical Business Function', hint: 'Unit Critical Business Function' },
+  { value: 'reviewed_by', label: 'Reviewed by Alternate Location Incident Commander (LICOM)', hint: 'LICOM' },
+  { value: 'acknowledged_by_bcm', label: 'Acknowledged by Business Continuity Management Head', hint: 'BCM Head' },
 ] as const
 
 /** Who picks the signer of the workbook's steps when a version has none stored: the LIC prepares,
@@ -149,9 +150,9 @@ export const raSignerModes: Record<RaSignerMode, { label: string, description: s
 
 /** Sign-off row of the branch workbook: prepared by the BOSM, approved by the BM, reviewed by the NRSOH. */
 export const RA_BRANCH_SIGNOFF_ROLES = [
-  { value: 'prepared_by', label: 'Prepared by', hint: 'BOSM' },
-  { value: 'approved_by', label: 'Approved by', hint: 'Branch Manager (BM)' },
-  { value: 'reviewed_by', label: 'Reviewed by', hint: 'NRSOH' },
+  { value: 'prepared_by', label: 'Prepared by BOSM', hint: 'BOSM' },
+  { value: 'approved_by', label: 'Approved by Branch Manager (BM)', hint: 'Branch Manager' },
+  { value: 'reviewed_by', label: 'Reviewed by NRSOH', hint: 'NRSOH' },
 ] as const
 
 /** A sign-off step code: the workbook's (prepared_by, …) or one RA configuration added. */
@@ -375,21 +376,20 @@ export function raLevelKey(result: { level: RaLevel | null, rated: boolean }): R
   return result.rated ? 'na' : null
 }
 
-/** "Prepared by (LIC)" style label of a role for one module. */
+/** A step's title ("Prepared by Location Incident Coordinator (LIC)") for one module. */
 export function raSignoffRoleName(role: RaSignoffRole | null | undefined, roles: readonly RaSignoffRoleOption[]) {
-  const option = roles.find((item) => item.value === role)
-  return option ? `${option.label} (${option.hint})` : (role ?? '')
+  return roles.find((item) => item.value === role)?.label ?? role ?? ''
 }
 
 export function raSignoffLabel(role: RaSignoffRole, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
   return roles.find((item) => item.value === role)?.label ?? role
 }
 
-/** Who signs a role, its title ("Location Incident Coordinator (LIC)"), as Monitoring and
+/** A step's title ("Prepared by Location Incident Coordinator (LIC)"), as Monitoring and
  *  Approval show the step (like SCCA). */
 export function raStepTitle(role: string | null | undefined, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
   if (!role) return ''
-  return roles.find((item) => item.value === role)?.hint ?? role
+  return roles.find((item) => item.value === role)?.label ?? role
 }
 
 /** The sign-off steps of a configuration version (as RA configuration sets them), or the
@@ -447,6 +447,25 @@ export const RA_CALL_TREE_LEVELS = [
   { value: 3, label: 'Level 3', description: 'Each level 2 contact calls their own team.' },
 ] as const
 export type RaCallTreeLevel = (typeof RA_CALL_TREE_LEVELS)[number]['value']
+
+// The recovery team and call tree forms (RaGroupedRowsForm). As in the workbook, a role (caller)
+// is written once with its people under it, and every field takes free text: a person and a
+// number, or a note such as "Sesuai Tab LRP (front)". The role, name and mobile (caller, contact
+// and mobile) are required; the API checks the same.
+export const RA_TEAM_LEAD = { key: 'role', label: 'Role', placeholder: 'Role, e.g. Floor Warden (lantai B1) or Security' }
+export const RA_TEAM_FIELDS = [
+  { key: 'name', label: 'Name', required: true, wide: true, placeholder: 'Name, or a note such as (Sesuai Shift)' },
+  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
+  { key: 'home_phone', label: 'Home phone' },
+]
+export const RA_CALL_TREE_LEAD = { key: 'caller', label: 'Caller', placeholder: 'Who calls, e.g. LIC – Legiran' }
+export const RA_CALL_TREE_FIELDS = [
+  { key: 'contact_name', label: 'Contact', required: true, placeholder: 'Name, or a note' },
+  { key: 'division', label: 'Division or role', wide: true },
+  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
+  { key: 'home_phone', label: 'Home phone' },
+]
+export const RA_CALL_TREE_GROUPS = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
 
 /**
  * The team charts beside the recovery team and call tree: the HO workbook's pictures until BCM
@@ -670,8 +689,8 @@ export function raRecordPath(kind: RaKind, assessment: { id: number, status?: Ra
  *  final RA; New building is its first RA (the API checks both). */
 export type RaReason = 'annual_review' | 'new_building' | 'structural_change'
 export const RA_REASONS: { value: RaReason, label: string, description: string }[] = [
-  { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
   { value: 'new_building', label: 'New building', description: 'The first RA of this building or branch.' },
+  { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
   { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
 ]
 /** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
@@ -710,8 +729,25 @@ const RA_FIELD_LABELS: Record<string, string> = {
 }
 
 /** As SCCA's banner (apiErrorText): what went wrong, then each field's message. */
+/** A new building's sections, as RA › New sends them with the RA (`contacts.0.phone`). */
+const RA_SECTION_LABELS: Record<string, string> = {
+  location: 'Building',
+  contacts: 'Emergency contacts',
+  occupants: 'Occupants',
+  recovery_team: 'Recovery team',
+  call_tree: 'Call tree',
+}
+
+function raFieldLabel(name: string) {
+  const [section = '', ...rest] = name.split('.')
+  const label = RA_SECTION_LABELS[section]
+  if (!label || !rest.length) return RA_FIELD_LABELS[name] ?? name.replaceAll('_', ' ')
+  const row = rest.length > 1 ? `, row ${Number(rest[0]) + 1}` : ''
+  return `${label}${row}, ${rest.at(-1)!.replaceAll('_', ' ')}`
+}
+
 export function raErrorText(error: unknown) {
-  const lines = apiFieldErrors(error).map((item) => `• ${RA_FIELD_LABELS[item.name ?? ''] ?? (item.name ?? '').replaceAll('_', ' ')}: ${item.message}`)
+  const lines = apiFieldErrors(error).map((item) => `• ${raFieldLabel(item.name ?? '')}: ${item.message}`)
   return [apiErrorMessage(error), ...lines].join('\n')
 }
 
@@ -751,43 +787,44 @@ export const raWaitLevel = defineStatusScale<RaWaitLevel>({
   escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-siren' },
 })
 
-/** The first crumb of the pages in the Location menu group (the register of head office
- *  buildings and branches, the building map, disasters and the guidebook): Home › Location ›
- *  Buildings. The routes keep their /locations names. */
-export const BUILDINGS_GROUP = 'Location'
-export const LOCATIONS_PATH = '/locations'
+/** The first crumb of the pages in the Sites menu group (the building map, Disaster and
+ *  Incident with their guidebooks): Home › Sites › Building map. The routes keep their /locations names. */
+export const BUILDINGS_GROUP = 'Sites'
 /** Import from Excel: a building and its RA from the HO or Cabang workbook. */
 export const LOCATION_IMPORT_PATH = '/locations/import'
 
 /** Where one file of Import from Excel stands (`RaImportFileCard`). */
 export type RaImportCardStatus = 'reading' | 'unreadable' | 'wrong_type' | 'ready' | 'importing' | 'imported' | 'failed'
 export const LOCATION_MAP_PATH = '/locations/map'
-export const CRISES_PATH = '/disasters'
-export const GUIDEBOOK_PATH = '/disasters/guidebook'
 
-/** A location's profile, on a tab (`map`, `contacts`, ...) when given. */
-export function locationPath(id: number, tab?: string) {
-  return `${LOCATIONS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
+/** The Disaster and Incident menus (a crisis is one or the other by its hazard): their names,
+ *  pages and icon. Manage is at `path`, Monitoring, Approval and Guidebook under it. */
+export const RA_CRISIS_TYPES: Record<RaCrisisType, { label: string, plural: string, lower: string, path: string, icon: string }> = {
+  disaster: { label: 'Disaster', plural: 'Disasters', lower: 'disaster', path: '/disasters', icon: 'i-lucide-siren' },
+  incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-triangle-alert' },
 }
 
-/** Administration › Master building, and a building's page there. */
+/** Administration › Master building, and a building's page there, on a tab (`map`,
+ *  `contacts`, ...) when given: the only page of a building (`location.master`). Show a link to
+ *  it only to who may open it (`can('location.master')`). */
 export const MASTER_BUILDINGS_PATH = '/admin/buildings'
 export function masterBuildingPath(id: number, tab?: string) {
   return `${MASTER_BUILDINGS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
 }
 
-/** A building's page in Location › Buildings, or in Administration › Master building. */
-export function buildingPath(id: number, master?: boolean, tab?: string) {
-  return master ? masterBuildingPath(id, tab) : locationPath(id, tab)
+/** Disaster › Guidebook or Incident › Guidebook, on a hazard when given. */
+export function guidebookPath(type: RaCrisisType, hazard?: string) {
+  return `${RA_CRISIS_TYPES[type].path}/guidebook${hazard ? `?hazard=${hazard}` : ''}`
 }
 
-export function crisisPath(id: number) {
-  return `${CRISES_PATH}/${id}`
+/** A disaster's (or incident's) page. */
+export function crisisPath(id: number, type: RaCrisisType = 'disaster') {
+  return `${RA_CRISIS_TYPES[type].path}/${id}`
 }
 
-/** A disaster's print view. */
-export function crisisReportPath(id: number) {
-  return `${crisisPath(id)}/report`
+/** A disaster's (or incident's) print view. */
+export function crisisReportPath(id: number, type: RaCrisisType = 'disaster') {
+  return `${crisisPath(id, type)}/report`
 }
 
 /** Where a disaster happened: its building or branch, or the pin's coordinates. */
@@ -806,7 +843,7 @@ export function raCrisisMarkers(crisis: RaCrisis): RaMapMarker[] {
           id: crisis.id,
           lat: crisis.latitude,
           lng: crisis.longitude,
-          label: `Disaster point: ${raCrisisPlaceName(crisis)}`,
+          label: `${RA_CRISIS_TYPES[crisis.type].label} point: ${raCrisisPlaceName(crisis)}`,
           variant: 'crisis' as const,
           pending: crisis.status === 'pending',
         }]),

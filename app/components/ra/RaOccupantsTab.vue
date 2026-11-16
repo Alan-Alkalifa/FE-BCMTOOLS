@@ -3,7 +3,8 @@ import type { TableColumn } from '@nuxt/ui'
 import type { RaLocationDetail, RaOccupant } from '~/composables/useRa'
 import RaOccupantModal from '~/components/ra/RaOccupantModal.vue'
 
-const props = defineProps<{ location: RaLocationDetail }>()
+/** `draft`: the divisions are kept on the page (`saved` carries them) and saved with the rest. */
+const props = defineProps<{ location: RaLocationDetail, draft?: boolean }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 const ra = useRaModule()
 
@@ -63,8 +64,25 @@ const strategyColumns: TableColumn<Row>[] = [
   { id: 'actions', header: '', meta: { class: { td: 'w-0 whitespace-nowrap' } } },
 ]
 
+function summaryOf(occupants: RaOccupant[]) {
+  const total = (field: 'employee_count' | 'disabled_count' | 'pregnant_count') =>
+    occupants.reduce((sum, row) => sum + (row[field] ?? 0), 0)
+  return {
+    units: occupants.length,
+    employees: total('employee_count'),
+    disabled: total('disabled_count'),
+    pregnant: total('pregnant_count'),
+    with_bcp: occupants.filter((row) => row.has_bcp === true).length,
+    with_alternate_site: occupants.filter((row) => row.alternate_site === true).length,
+  }
+}
+
 async function save(occupants: RaOccupant[], message: string) {
   saveError.value = null
+  if (props.draft) {
+    emit('saved', { ...props.location, occupants, occupant_summary: summaryOf(occupants) })
+    return
+  }
   saving.value = true
   try {
     const saved = await raApi.setOccupants(

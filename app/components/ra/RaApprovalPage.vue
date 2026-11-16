@@ -81,14 +81,14 @@ const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1)
 const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: perPage.value })))
 const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: COMING_PER_PAGE })))
 
-/** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it. */
+/** The step's title ("Prepared by Location Incident Coordinator (LIC)"), like SCCA shows it. */
 function stepLabel(role: string | null, title?: string | null) {
   return role ? (title || raStepTitle(role, ra.value.signoffRoles)) : '—'
 }
 
 const waitingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: 'RA' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'step', header: 'Step' },
   { accessorKey: 'submitted_by', header: 'Submitted by' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },

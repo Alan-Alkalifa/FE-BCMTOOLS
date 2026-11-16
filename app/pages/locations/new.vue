@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: ['ra.edit', 'ra_branch.edit'] })
+/** Input building data is in Administration › Master building now: old links open it there. */
+definePageMeta({
+  permission: 'location.master',
+  redirect: (to) => ({ path: '/admin/buildings/new', query: to.query }),
+})
 </script>
 
 <template>
-  <RaNewLocationPage />
+  <div />
 </template>

@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<{
   recentre?: boolean
   /** The editable pin's look: a building pin, or a disaster point. */
   pinVariant?: 'location' | 'crisis'
+  /** The crisis point's name, e.g. "Incident point" (default "Disaster point"). */
+  pinLabel?: string
   /** Zoom with the mouse wheel or trackpad (off by default, so scrolling the page never gets
    *  caught by a map). The + and - buttons and double-click always zoom. */
   scrollZoom?: boolean
@@ -40,6 +42,7 @@ const props = withDefaults(defineProps<{
   autoFit: true,
   recentre: true,
   pinVariant: 'location',
+  pinLabel: 'Disaster point',
   scrollZoom: false,
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
@@ -175,8 +178,8 @@ function drawPin(recentre: boolean) {
       draggable: true,
       keyboard: true,
       zIndexOffset: 1000,
-      title: crisis ? 'Disaster point. Drag to move.' : 'Location pin. Drag to move.',
-      alt: crisis ? 'Disaster point' : 'Location pin',
+      title: crisis ? `${props.pinLabel}. Drag to move.` : 'Location pin. Drag to move.',
+      alt: crisis ? props.pinLabel : 'Location pin',
     }).addTo(map)
     editMarker.on('dragend', () => {
       const position = editMarker!.getLatLng()

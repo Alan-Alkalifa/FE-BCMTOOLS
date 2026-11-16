@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
-import type { RaGenerateResult, RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting } from '~/composables/useRa'
+import type { RaGenerateResult, RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting, RaStepAverage } from '~/composables/useRa'
 import RaHistoryDialog from '~/components/ra/RaHistoryDialog.vue'
+import RaGenerateDialog from '~/components/ra/RaGenerateDialog.vue'
 /**
  * RA (or RA Branch) Monitoring, as SCCA Monitoring: KPI cards and charts, renewals due (with
  * Generate annual review for the selected rows), the list of every location with its RA in
@@ -14,8 +15,8 @@ const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const confirm = useConfirm()
 const historyDialog = useOverlay().create(RaHistoryDialog)
+const generateDialog = useOverlay().create(RaGenerateDialog)
 
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
@@ -250,8 +251,12 @@ const monthPoints = computed(() =>
 )
 
 const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((row) => row.approvals > 0 && row.average_working_days !== null))
+/** A step by its short name ("LIC"), else its title. */
+function stepShort(row: RaStepAverage) {
+  return row.step_short || row.step_title || stepLabel(row.step)
+}
 const stepBars = computed(() =>
-  stepRows.value.map((row) => ({ label: row.step_title || stepLabel(row.step), value: row.average_working_days ?? 0 })),
+  stepRows.value.map((row) => ({ label: stepShort(row), value: row.average_working_days ?? 0 })),
 )
 
 function plural(count: number, one: string, many = `${one}s`) {
@@ -273,7 +278,7 @@ const monthSummary = computed(() => {
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
   const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
-  return slowest ? `Slowest step: ${slowest.step_title || stepLabel(slowest.step)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
+  return slowest ? `Slowest step: ${stepShort(slowest)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -292,7 +297,7 @@ const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'location', header: locationColumn.value },
   { id: 'code', header: `${locationColumn.value} ID` },
-  { id: 'level', header: 'Highest residual' },
+  { id: 'level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { id: 'approved', header: 'Last final RA' },
   { id: 'approved_date', header: 'Last final RA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
@@ -349,36 +354,35 @@ function announce(result: RaGenerateResult) {
   })
 }
 
-/** One draft per location, copying its last final RA; the user becomes assessor and LIC. */
+/** One draft per location, copying its last final RA. The user becomes assessor and LIC and
+ *  picks the LICOM (RaGenerateDialog). */
 async function generate(rows: RaMonitorLocation[]) {
   if (!rows.length) return
-  const first = rows[0]!
-  const ok = await confirm({
-    title: rows.length === 1 ? 'Generate annual review' : `Generate ${rows.length} annual reviews`,
-    description: rows.length === 1
-      ? `${first.location.name}, from ${refLabel(first.approved)}. You become its assessor and LIC. The LICOM, ratings and signers are copied, dated today.`
-      : `One draft per ${ra.value.location.lower}, from its last final RA. You become the assessor and LIC of each. The LICOM, ratings and signers are copied, dated today.`,
-    confirmLabel: rows.length === 1 ? 'Generate' : `Generate ${rows.length}`,
-  })
-  if (!ok) return
-  try {
-    announce(await raApi.generateRenewals(rows.map((row) => row.approved!.id)))
-  } catch (failure) {
-    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
-    return
-  }
+  const result = await generateDialog.open({
+    rows,
+    levels: renewals.data.value?.contributor_levels ?? ['D-2'],
+    kind: ra.value.kind,
+    noun: ra.value.location.lower,
+  }).result
+  if (!result) return
+  announce(result)
   selected.value = new Set()
   await Promise.all([renewals.refresh(), overview.refresh()])
 }
 
 function renewalActions(row: RaMonitorLocation): DropdownMenuItem[] {
   return [
-    { label: 'Open last final', icon: 'i-lucide-file-check', to: record(row.approved!.id) },
+    {
+      label: 'Open last final',
+      icon: 'i-lucide-file-check',
+      disabled: !openable(row.approved),
+      to: openable(row.approved) ? record(row.approved!.id) : undefined,
+    },
     {
       label: 'Open renewal',
       icon: 'i-lucide-file-pen',
-      disabled: !row.open,
-      to: row.open ? record(row.open.id) : undefined,
+      disabled: !openable(row.open),
+      to: row.open && openable(row.open) ? record(row.open.id) : undefined,
     },
     {
       label: 'Generate annual review',
@@ -389,8 +393,8 @@ function renewalActions(row: RaMonitorLocation): DropdownMenuItem[] {
   ]
 }
 
-/** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it; the rows
- *  carry the title from their own configuration version. */
+/** The step's title ("Prepared by Location Incident Coordinator (LIC)"), like SCCA shows it;
+ *  the rows carry the title from their own configuration version. */
 function stepLabel(role: string, title?: string | null) {
   return title || raStepTitle(role, ra.value.signoffRoles)
 }
@@ -405,7 +409,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'directorate', header: 'Directorate' },
   { id: 'sub_directorate', header: 'Sub directorate' },
   { id: 'group', header: 'Group / Area' },
-  { id: 'level', header: 'Highest residual' },
+  { id: 'level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { id: 'approved', header: 'Last final RA' },
   { id: 'approved_date', header: 'Last final RA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
@@ -468,6 +472,11 @@ const tabs = [
 
 function pageTo(next: number) {
   return { query: { ...route.query, page: next > 1 ? next : undefined } }
+}
+
+/** The user may open the RA (the API's can_open): a link, else plain text. */
+function openable(ref: { can_open?: boolean } | null | undefined) {
+  return !!ref && ref.can_open !== false
 }
 
 function record(id: number) {
@@ -724,11 +733,16 @@ function record(id: number) {
             </template>
             <template #location-cell="{ row }">
               <NuxtLink
+                v-if="openable(row.original.approved)"
                 :to="record(row.original.approved!.id)"
                 class="font-medium text-primary hover:underline"
               >
                 {{ row.original.location.name }}
               </NuxtLink>
+              <span
+                v-else
+                class="font-medium text-highlighted"
+              >{{ row.original.location.name }}</span>
               <p
                 v-if="row.original.location.directorate"
                 class="text-xs text-muted"
@@ -798,7 +812,7 @@ function record(id: number) {
             </template>
             <template #renewal-cell="{ row }">
               <NuxtLink
-                v-if="row.original.open"
+                v-if="row.original.open && openable(row.original.open)"
                 :to="record(row.original.open.id)"
                 class="hover:underline"
               >
@@ -809,6 +823,14 @@ function record(id: number) {
                 />
                 <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
               </NuxtLink>
+              <span v-else-if="row.original.open">
+                <StatusBadge
+                  :scale="raStatus"
+                  :value="raStatusKey(row.original.open)"
+                  size="sm"
+                />
+                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
+              </span>
               <span
                 v-else
                 class="text-muted"
@@ -886,7 +908,7 @@ function record(id: number) {
             </template>
             <template #location-cell="{ row }">
               <NuxtLink
-                v-if="registerRecord(row.original)"
+                v-if="openable(registerRecord(row.original))"
                 :to="record(registerRecord(row.original)!.id)"
                 class="font-medium text-primary hover:underline"
               >
@@ -957,7 +979,7 @@ function record(id: number) {
             <!-- The open RA's status and, apart, whose step it waits for. -->
             <template #open-cell="{ row }">
               <NuxtLink
-                v-if="row.original.open"
+                v-if="row.original.open && openable(row.original.open)"
                 :to="record(row.original.open.id)"
                 class="inline-block hover:underline"
                 :aria-label="`${refLabel(row.original.open)}: ${raStatus[raStatusKey(row.original.open)].label}`"
@@ -968,6 +990,12 @@ function record(id: number) {
                   size="sm"
                 />
               </NuxtLink>
+              <StatusBadge
+                v-else-if="row.original.open"
+                :scale="raStatus"
+                :value="raStatusKey(row.original.open)"
+                size="sm"
+              />
               <span
                 v-else
                 class="text-muted"
@@ -1054,11 +1082,16 @@ function record(id: number) {
             >
               <template #assessment-cell="{ row }">
                 <NuxtLink
+                  v-if="openable(row.original)"
                   :to="record(row.original.id)"
                   class="font-medium text-primary hover:underline"
                 >
                   {{ row.original.location.name }}
                 </NuxtLink>
+                <span
+                  v-else
+                  class="font-medium text-highlighted"
+                >{{ row.original.location.name }}</span>
               </template>
               <template #ref_no-cell="{ row }">
                 <span class="font-mono text-xs">{{ refLabel(row.original) }}</span>

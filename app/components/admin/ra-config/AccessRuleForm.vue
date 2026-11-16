@@ -14,7 +14,9 @@ const form = reactive<RaAccessRuleInput>({
   kinds: [...(props.rule?.kinds ?? [])],
   reasons: [...(props.rule?.reasons ?? props.options.reasons.map((item) => item.code))],
   renewal_statuses: [...(props.rule?.renewal_statuses ?? [])],
+  risk_levels: [...(props.rule?.risk_levels ?? [])],
   can_generate: props.rule?.can_generate ?? false,
+  contributor_levels: [...(props.rule?.contributor_levels ?? ['D-2'])],
   user_ids: [...(props.rule?.user_ids ?? [])],
   valid_from: props.rule?.valid_from ?? null,
   valid_until: props.rule?.valid_until ?? null,
@@ -33,6 +35,7 @@ const directorateItems = computed(() => props.options.directorates)
 const kindItems = computed(() => props.options.kinds.map((item) => ({ label: item.label, value: item.code })))
 const reasonItems = computed(() => props.options.reasons.map((item) => ({ label: item.label, value: item.code })))
 const statusItems = computed(() => props.options.renewal_statuses.map((item) => ({ label: item.label, value: item.code })))
+const riskItems = computed(() => props.options.risk_levels.map((item) => ({ label: item.label, value: item.code })))
 const annualSelected = computed(() => form.reasons.includes('annual_review'))
 
 function dateModel(key: 'valid_from' | 'valid_until') {
@@ -245,6 +248,37 @@ async function save() {
                 placeholder="Every status"
                 class="w-full"
                 aria-label="Renewal status"
+              />
+            </UFormField>
+            <UFormField
+              label="Highest residual"
+              name="risk_levels"
+              help="Of the location's last final RA. Empty for every level."
+              :error="errors.risk_levels"
+            >
+              <USelectMenu
+                v-model="form.risk_levels"
+                value-key="value"
+                :items="riskItems"
+                multiple
+                :search-input="false"
+                placeholder="Every level"
+                class="w-full"
+                aria-label="Highest residual"
+              />
+            </UFormField>
+            <UFormField
+              label="LICOM levels"
+              name="contributor_levels"
+              help="Who may be the LICOM of an annual review they generate (any directorate)."
+              :error="errors.contributor_levels"
+            >
+              <USelectMenu
+                v-model="form.contributor_levels"
+                :items="levelItems"
+                multiple
+                class="w-full"
+                aria-label="LICOM levels"
               />
             </UFormField>
           </div>

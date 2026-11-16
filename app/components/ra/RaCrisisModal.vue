@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaCrisis, RaCrisisInput, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaCrisis, RaCrisisInput, RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
- * Declares a disaster, or updates one that is open or waiting for approval: the hazard, where it
+ * Declares a disaster or an incident (`type`: only its hazards are offered), or updates one that
+ * is open or waiting for approval (its hazard stays of its type): the hazard, where it
  * happens, the affected radius and when it started (WIB). An update needs its message (what is
  * happening now, or why it changed), kept in the history. Closes with the saved disaster, or
  * false.
@@ -22,16 +23,31 @@ const props = withDefaults(defineProps<{
   /** Declaring from a BMKG earthquake: the hazard, the epicentre, the radius, the time and the
    *  description are filled in, and the disaster is linked to the earthquake. */
   fromQuake?: { earthquake: RaEarthquake, hazardCode: string, radiusM: number, source: string } | null
-}>(), { crisis: null, locationId: null, fromQuake: null })
+  /** Declaring a disaster or an incident (from a BMKG earthquake: the earthquake hazard's type). */
+  type?: RaCrisisType
+}>(), { crisis: null, locationId: null, fromQuake: null, type: 'disaster' })
 const emit = defineEmits<{ close: [crisis: RaCrisis | false] }>()
 
 const { data: formula } = useRaFormula('head_office')
 const editing = computed(() => !!props.crisis)
 
-const hazardItems = computed(() => (formula.value?.categories ?? []).map((category) => [
+const { data: hazardTypes } = useRaHazardTypes()
+const typeOf = computed(() => Object.fromEntries((hazardTypes.value?.items ?? []).map((item) => [item.code, item.type])))
+/** Its own type when updating, else the earthquake hazard's or the one asked for. */
+const crisisType = computed<RaCrisisType>(() => props.crisis?.type
+  ?? (props.fromQuake && !props.crisis ? typeOf.value[props.fromQuake.hazardCode] : undefined)
+  ?? props.type)
+const t = computed(() => RA_CRISIS_TYPES[crisisType.value])
+
+/** The hazards of its type, by category (a category without one is left out). */
+const typeHazards = computed(() => (formula.value?.categories ?? [])
+  .map((category) => ({ category, hazards: category.hazards.filter((hazard) => typeOf.value[hazard.code] === crisisType.value) }))
+  .filter((group) => group.hazards.length))
+const hazardItems = computed(() => typeHazards.value.map(({ category, hazards }) => [
   { type: 'label' as const, label: category.label, value: category.code, description: undefined },
-  ...category.hazards.map((hazard) => ({ label: `${hazard.short_name}`, value: hazard.code, description: hazard.code })),
+  ...hazards.map((hazard) => ({ label: `${hazard.short_name}`, value: hazard.code, description: hazard.code })),
 ]))
+const hazardCount = computed(() => typeHazards.value.reduce((sum, group) => sum + group.hazards.length, 0))
 
 const ownPlaceId = props.crisis?.location?.id ?? null
 const places = computed(() => props.places.filter((place) => raInService(place) || place.id === ownPlaceId))
@@ -125,7 +141,7 @@ const markers = computed<RaMapMarker[]>(() => places.value.map((place) => ({
   id: place.id,
   lat: place.latitude,
   lng: place.longitude,
-  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the disaster here.`,
+  label: `${place.name} (${RA_PLACE_KIND_LABEL[place.kind]}). Select to put the ${t.value.lower} here.`,
   level: (place.latest ? place.latest.highest_residual_level ?? 'na' : 'none') as RaMapMarker['level'],
   variant: place.kind === 'branch' ? 'branch' as const : 'location' as const,
 })))
@@ -133,7 +149,7 @@ const circles = computed(() => (state.pin && state.radius_km > 0
   ? [{ id: 0, ...state.pin, radiusM: state.radius_km * 1000, crisis: true }]
   : []))
 
-/** The places inside the ring, nearest first: what the disaster will affect. */
+/** The places inside the ring, nearest first: what it will affect. */
 const affected = computed(() => {
   const pin = state.pin
   if (!pin) return []
@@ -166,7 +182,7 @@ async function onSubmit() {
     radius_m: Math.round(state.radius_km * 1000),
     started_at: raWibToIso(state.date, state.time),
     description: state.description.trim() || null,
-    ...(editing.value ? { note: state.note.trim() } : {}),
+    ...(editing.value ? { note: state.note.trim() } : { type: crisisType.value }),
     ...(quake ? { earthquake_id: quake.earthquake.id } : {}),
   }
   saving.value = true
@@ -186,9 +202,9 @@ async function onSubmit() {
 
 <template>
   <UModal
-    :title="editing ? `Update ${crisis!.ref_no}` : 'Declare Disaster'"
+    :title="editing ? `Update ${crisis!.ref_no}` : `Declare ${t.label}`"
     :description="editing
-      ? 'Change the radius or anything else, and say what is happening now. Both go into the disaster history.'
+      ? `Change the radius or anything else, and say what is happening now. Both go into the ${t.lower} history.`
       : 'It shows on the building map as pending until someone else with the approve permission confirms it. Then it is open until it is closed. Each affected place gets its instructions.'"
     :ui="{ content: 'sm:max-w-3xl' }"
     @update:open="(open) => !open && emit('close', false)"
@@ -206,7 +222,7 @@ async function onSubmit() {
           color="error"
           variant="subtle"
           icon="i-lucide-circle-alert"
-          :title="editing ? 'Couldn\'t update the disaster' : 'Couldn\'t declare the disaster'"
+          :title="editing ? `Couldn't update the ${t.lower}` : `Couldn't declare the ${t.lower}`"
           :description="formError"
         />
 
@@ -224,7 +240,7 @@ async function onSubmit() {
           label="Update"
           name="note"
           required
-          help="What is happening now, or why it changed. Kept in the history with what changed, and seen by everyone following the disaster."
+          :help="`What is happening now, or why it changed. Kept in the history with what changed, and seen by everyone following the ${t.lower}.`"
           :error="fieldErrors.note"
         >
           <UTextarea
@@ -247,7 +263,7 @@ async function onSubmit() {
             :items="hazardItems"
             value-key="value"
             :disabled="hazardLocked"
-            placeholder="Choose one of the 33 RA hazards"
+            :placeholder="`Choose one of the ${hazardCount} ${t.lower} hazards`"
             class="w-full"
           />
         </UFormField>
@@ -275,12 +291,13 @@ async function onSubmit() {
               v-model:pin="state.pin"
               editable
               pin-variant="crisis"
+              :pin-label="`${t.label} point`"
               :auto-fit="false"
               :recentre="false"
               :markers="markers"
               :circles="circles"
               :selected="state.location_id ?? null"
-              label="Map for the disaster point. Click to drop the pin, or select a building or branch."
+              :label="`Map for the ${t.lower} point. Click to drop the pin, or select a building or branch.`"
               height-class="h-72"
               scroll-zoom
               @select="(id: number) => choosePlace(id)"
@@ -288,7 +305,7 @@ async function onSubmit() {
             />
             <RaMapLegend
               :items="['building', 'branch', 'crisis']"
-              :labels="{ crisis: 'Disaster point and its affected area' }"
+              :labels="{ crisis: `${t.label} point and its affected area` }"
             />
             <p class="text-sm text-muted">
               <template v-if="state.pin">
@@ -369,7 +386,7 @@ async function onSubmit() {
         <UFormField
           label="What is happening"
           name="description"
-          help="Optional. Shown with the disaster, e.g. the water level or the affected floors."
+          :help="`Optional. Shown with the ${t.lower}, e.g. the water level or the affected floors.`"
         >
           <UTextarea
             v-model="state.description"
