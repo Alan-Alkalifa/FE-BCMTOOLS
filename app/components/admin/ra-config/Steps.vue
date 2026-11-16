@@ -128,7 +128,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
     const saved = await raConfigApi.setSigner(props.version.kind, code, userId ?? null)
     if (signers.data.value) signers.data.value.items = signers.data.value.items.map((row) => (row.code === code ? saved : row))
     toast.add({
-      title: saved.signer ? `${saved.label} (${saved.title}): ${saved.signer.display_name ?? saved.signer.email}` : `${saved.label} (${saved.title}): signer cleared`,
+      title: saved.signer ? `${saved.label}: ${saved.signer.display_name ?? saved.signer.email}` : `${saved.label}: signer cleared`,
       description: saved.signer_mode === 'fixed' ? 'Put on each RA at Submit.' : 'Filled in on new RAs.',
       color: 'success',
       icon: 'i-lucide-circle-check',
@@ -201,7 +201,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
             class="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]"
           >
             <legend class="sr-only">
-              Step {{ index + 1 }}: {{ step.label }} {{ step.title }}
+              Step {{ index + 1 }}: {{ step.label }}
             </legend>
             <div class="flex items-start gap-1 lg:flex-col">
               <span
@@ -228,11 +228,10 @@ async function pickSigner(code: string, userId: number | null | undefined) {
               />
             </div>
             <div class="space-y-4">
-              <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+              <div class="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
                 <UFormField
-                  label="Label"
+                  label="Title"
                   :name="`steps.${index}.label`"
-                  help="The box heading, e.g. Prepared by."
                   required
                 >
                   <template #hint>
@@ -244,12 +243,12 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                   <UInput
                     v-model="step.label"
                     :maxlength="TEXT_LIMITS.name"
-                    :aria-label="`Label of step ${index + 1}`"
+                    :aria-label="`Title of step ${index + 1}`"
                     class="w-full"
                   />
                 </UFormField>
                 <UFormField
-                  label="Title (who signs)"
+                  label="Short name"
                   :name="`steps.${index}.title`"
                   required
                 >
@@ -262,7 +261,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                   <UInput
                     v-model="step.title"
                     :maxlength="TEXT_LIMITS.name"
-                    :aria-label="`Title of step ${index + 1}`"
+                    :aria-label="`Short name of step ${index + 1}`"
                     class="w-full"
                   />
                 </UFormField>
@@ -388,7 +387,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                 :model-value="signerOf(step.code)?.signer?.id ?? null"
                 :selected="signerOf(step.code)?.signer ?? null"
                 :disabled="!canPick || picking === step.code"
-                :aria-label="`${step.label} (${step.title}) signer`"
+                :aria-label="`${step.label} signer`"
                 :permission="side.perm.access"
                 :placeholder="step.signer_mode === 'fixed' ? 'Pick the fixed signer' : 'Pick the default signer'"
                 @update:model-value="(value) => pickSigner(step.code, value)"

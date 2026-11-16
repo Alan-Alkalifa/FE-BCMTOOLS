@@ -22,8 +22,8 @@ const SYMBOLS: Record<RaMapLegendItem, { name: RaMapSymbolName, class: string, l
   waiting: { name: 'waiting', class: 'mr-1 text-muted', label: 'Waiting for approval (new, or to deactivate)' },
   rejected: { name: 'rejected', class: 'mr-1 text-muted', label: 'Rejected' },
   inactive: { name: 'inactive', class: 'mr-1 text-muted', label: 'Inactive' },
-  crisis: { name: 'crisis', class: 'text-error', label: 'Disaster and its affected area' },
-  crisis_pending: { name: 'crisis', class: 'text-warning', label: 'Disaster waiting for approval (dashed area)' },
+  crisis: { name: 'crisis', class: 'text-error', label: 'Disaster or incident and its affected area' },
+  crisis_pending: { name: 'crisis', class: 'text-warning', label: 'Disaster or incident waiting for approval (dashed area)' },
   quake: { name: 'quake', class: 'text-warning', label: 'Earthquake (BMKG), red from M6.0; dotted: its alert radius' },
 }
 
@@ -49,7 +49,7 @@ const showsFaded = computed(() => props.items.includes('inactive') || props.item
       /> {{ item.label }}</span>
     </div>
     <p v-if="showsFaded">
-      Faded: not in service (inactive, new and waiting for approval, or rejected). No disaster affects it.
+      Faded: not in service (inactive, new and waiting for approval, or rejected). No disaster or incident affects it.
     </p>
     <div
       v-if="residual"

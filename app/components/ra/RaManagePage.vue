@@ -116,13 +116,6 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
   >
     <template #actions>
       <UButton
-        :to="{ path: LOCATIONS_PATH, query: { type: ra.kind } }"
-        color="neutral"
-        variant="outline"
-        :icon="ra.kind === 'branch' ? 'i-lucide-landmark' : 'i-lucide-building-2'"
-        :label="`View ${ra.location.lowerPlural}`"
-      />
-      <UButton
         v-if="can(ra.perm.edit)"
         color="neutral"
         variant="outline"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
-import type { RaGenerateResult, RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting } from '~/composables/useRa'
+import type { RaGenerateResult, RaMonitorLocation, RaMonitoringFilters, RaRenewalBucket, RaSignoffWaiting, RaStepAverage } from '~/composables/useRa'
 import RaHistoryDialog from '~/components/ra/RaHistoryDialog.vue'
 /**
  * RA (or RA Branch) Monitoring, as SCCA Monitoring: KPI cards and charts, renewals due (with
@@ -250,8 +250,12 @@ const monthPoints = computed(() =>
 )
 
 const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((row) => row.approvals > 0 && row.average_working_days !== null))
+/** A step by its short name ("LIC"), else its title. */
+function stepShort(row: RaStepAverage) {
+  return row.step_short || row.step_title || stepLabel(row.step)
+}
 const stepBars = computed(() =>
-  stepRows.value.map((row) => ({ label: row.step_title || stepLabel(row.step), value: row.average_working_days ?? 0 })),
+  stepRows.value.map((row) => ({ label: stepShort(row), value: row.average_working_days ?? 0 })),
 )
 
 function plural(count: number, one: string, many = `${one}s`) {
@@ -273,7 +277,7 @@ const monthSummary = computed(() => {
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
   const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
-  return slowest ? `Slowest step: ${slowest.step_title || stepLabel(slowest.step)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
+  return slowest ? `Slowest step: ${stepShort(slowest)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -389,8 +393,8 @@ function renewalActions(row: RaMonitorLocation): DropdownMenuItem[] {
   ]
 }
 
-/** Who signs the step ("Location Incident Coordinator (LIC)"), like SCCA shows it; the rows
- *  carry the title from their own configuration version. */
+/** The step's title ("Prepared by Location Incident Coordinator (LIC)"), like SCCA shows it;
+ *  the rows carry the title from their own configuration version. */
 function stepLabel(role: string, title?: string | null) {
   return title || raStepTitle(role, ra.value.signoffRoles)
 }

@@ -57,15 +57,15 @@ function steps(rows: [string, string, string, Mode][]) {
 /** The workbooks' sign-off steps (the backend's texts.default_steps). */
 export const SIGNOFF_STEPS = {
   head_office: steps([
-    ['prepared_by', 'Prepared by', 'Location Incident Coordinator (LIC)', 'lic'],
-    ['acknowledged_by_unit', 'Acknowledged by', 'Unit Critical Business Function', 'chosen'],
-    ['reviewed_by', 'Reviewed by', 'Alternate Location Incident Commander', 'licom'],
-    ['acknowledged_by_bcm', 'Acknowledged by', 'Business Continuity Management Head', 'chosen'],
+    ['prepared_by', 'Prepared by Location Incident Coordinator (LIC)', 'LIC', 'lic'],
+    ['acknowledged_by_unit', 'Acknowledged by Unit Critical Business Function', 'Unit Critical Business Function', 'chosen'],
+    ['reviewed_by', 'Reviewed by Alternate Location Incident Commander (LICOM)', 'LICOM', 'licom'],
+    ['acknowledged_by_bcm', 'Acknowledged by Business Continuity Management Head', 'BCM Head', 'chosen'],
   ]),
   branch: steps([
-    ['prepared_by', 'Prepared by', 'BOSM', 'lic'],
-    ['approved_by', 'Approved by', 'Branch Manager (BM)', 'chosen'],
-    ['reviewed_by', 'Reviewed by', 'NRSOH', 'licom'],
+    ['prepared_by', 'Prepared by BOSM', 'BOSM', 'lic'],
+    ['approved_by', 'Approved by Branch Manager (BM)', 'Branch Manager', 'chosen'],
+    ['reviewed_by', 'Reviewed by NRSOH', 'NRSOH', 'licom'],
   ]),
 }
 
@@ -73,8 +73,8 @@ export const SIGNOFF_STEPS = {
 export const BUILDING_APPROVER_STEP = {
   code: 'building_approval',
   role: 'building_approval',
-  label: 'Building approved by',
-  title: 'Building approver (the building waits for approval)',
+  label: 'Building approved by Building Approver',
+  title: 'Building Approver',
   mandatory: true,
   signer_mode: 'default' as Mode,
   signer_roles: [] as string[],
@@ -587,6 +587,12 @@ export async function mockRa(
       await route.fulfill({ json: { items, page: 1, per_page: 25, total: items.length, pages: 1 } })
       return
     }
+    if (method === 'POST' && url.pathname.endsWith('/assessments/new-building')) {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      log.created.push(body)
+      await route.fulfill({ status: 201, json: current })
+      return
+    }
     if (collection && method === 'POST') {
       const body = route.request().postDataJSON() as Record<string, unknown>
       log.created.push(body)
@@ -771,8 +777,9 @@ export const ORG_VALUES = {
   departments: ['Facilities'],
 }
 
+/** A step's title, as the backend's `role_title` gives it (like SCCA's). */
 function stepTitle(branch: boolean, role: string) {
-  return SIGNOFF_STEPS[branch ? 'branch' : 'head_office'].find((row) => row.code === role)?.title ?? role
+  return SIGNOFF_STEPS[branch ? 'branch' : 'head_office'].find((row) => row.code === role)?.label ?? role
 }
 
 function waitingRow(branch: boolean, step: string, signerId: number, days: number) {
@@ -850,7 +857,7 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     } else if (name === 'bottlenecks/step-averages') {
       // Average working days per sign-off step over the approvals in the period.
       await route.fulfill({
-        json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
+        json: { items: roles.map((role, index) => ({ step: role, step_title: stepTitle(branch, role), step_short: SIGNOFF_STEPS[branch ? 'branch' : 'head_office'].find((row) => row.code === role)?.title ?? null, approvals: index < 2 ? 2 : 0, average_working_days: index < 2 ? 1.5 + index * 3 : null })) },
       })
     } else if (name === 'monitoring/bottlenecks' || name === 'approvals/board') {
       // `q=own`: an RA the signed-in BCM user made, which they may only remind (as SCCA's).
@@ -925,7 +932,7 @@ export const BMKG_QUAKES = [
     feeds: ['gempadirasakan'],
     alerted_at: null,
     nearby: [] as { location: unknown, distance_m: number }[],
-    incidents: [{ id: 7, ref_no: 'CR-2026-0001', status: 'open' }],
+    incidents: [{ id: 7, ref_no: 'DS-2026-0001', status: 'open' }],
   },
 ]
 
@@ -956,7 +963,8 @@ const STEPS = {
 
 export const CRISIS = {
   id: 7,
-  ref_no: 'CR-2026-0001',
+  type: 'disaster' as 'disaster' | 'incident',
+  ref_no: 'DS-2026-0001',
   hazard_code: 'H01',
   hazard: HAZARD,
   location: { id: 1, kind: 'head_office', name: 'Griya CIMB Niaga 2' },
@@ -1018,11 +1026,23 @@ const PLAYBOOK = ['H01', 'H02', 'H03'].map((code, index) => ({
   no: index + 1,
   short_name: ['Banjir/ Banjir Bandang', 'Tanah Longsor', 'Gempa Bumi'][index]!,
   name: ['Banjir/ Banjir Bandang', 'Tanah Longsor', 'Gempa Bumi'][index]!,
+  type: 'disaster',
   reviewed: false,
   steps: STEPS,
   updated_at: null,
   updated_by: null,
-}))
+})).concat([{
+  code: 'H14',
+  no: 14,
+  short_name: 'Kebakaran',
+  name: 'Kebakaran',
+  category: { code: 'TEC', label: 'Technological' },
+  type: 'incident',
+  reviewed: false,
+  steps: STEPS,
+  updated_at: null,
+  updated_by: null,
+}])
 
 export interface RaMapLog {
   declared: Record<string, unknown>[]
@@ -1033,14 +1053,34 @@ export interface RaMapLog {
   playbook: [string, unknown][]
   /** Approve / reject calls on the incident: [action, body]. */
   decisions: [string, unknown][]
+  /** Bodies of PUT /api/admin/ra-config/hazard-types. */
+  hazardTypes: Record<string, unknown>[]
+}
+
+/** Each hazard's type as the backend starts it: Natural disasters are disasters, the rest
+ *  incidents. */
+export function hazardTypes(overrides: Record<string, 'disaster' | 'incident'> = {}) {
+  return FORMULA.categories.flatMap((category) => category.hazards.map((hazard) => {
+    const fallback = category.code === 'NAT' ? 'disaster' : 'incident'
+    return {
+      code: hazard.code,
+      no: hazard.no,
+      short_name: hazard.short_name,
+      name: hazard.name,
+      category: { code: category.code, label: category.label },
+      type: overrides[hazard.code] ?? fallback,
+      default_type: fallback,
+    }
+  }))
 }
 
 /**
  * Mocks the location map, disasters and the playbook. `crisis: false` starts with no open disaster;
- * `declare: false` signs in without ra.crisis.declare and ra.manage.
+ * `declare: false` signs in without the declare and update permissions and ra.manage;
+ * `declareTypes` the types the user may declare (both by default).
  */
-export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, pending?: boolean, own?: boolean, unapproved?: boolean, quakes?: boolean | 'stale' | 'off' } = {}) {
-  const log: RaMapLog = { declared: [], closed: [], notes: [], updates: [], playbook: [], decisions: [] }
+export async function mockRaMap(page: Page, options: { crisis?: boolean, declare?: boolean, declareTypes?: ('disaster' | 'incident')[], pending?: boolean, own?: boolean, unapproved?: boolean, quakes?: boolean | 'stale' | 'off', incident?: boolean } = {}) {
+  const log: RaMapLog = { declared: [], closed: [], notes: [], updates: [], playbook: [], decisions: [], hazardTypes: [] }
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
   await page.route('**/api/ra/map-settings', (route) =>
@@ -1059,6 +1099,14 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     decided_at: null as string | null,
     decision_note: null as string | null,
   })
+  if (options.incident) {
+    // A fire (H14, Security threats): an incident.
+    Object.assign(crisis, {
+      type: 'incident',
+      hazard_code: 'H14',
+      hazard: { code: 'H14', no: 14, short_name: 'Kebakaran', name: 'Kebakaran', category: { code: 'SEC', label: 'Security threats' } },
+    })
+  }
   if (options.pending) {
     // Declared by Rina; the signed-in user approves it.
     Object.assign(crisis, options.own
@@ -1097,19 +1145,64 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     },
   }))
   await page.route('**/api/ra/map', (route) => route.fulfill({
-    json: { places: options.unapproved ? [...MAP_PLACES, ...UNAPPROVED_PLACES] : MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare },
+    json: { places: options.unapproved ? [...MAP_PLACES, ...UNAPPROVED_PLACES] : MAP_PLACES, unpinned: { head_office: 1, branch: 0 }, crises: open(), can_declare: canDeclare, declare_types: canDeclare ? (options.declareTypes ?? ['disaster', 'incident']) : [] },
   }))
+  let types = hazardTypes()
+  await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({
+    json: { items: types, updated_at: null, updated_by: null, can_edit: canDeclare },
+  }))
+  await page.route(/\/api\/admin\/ra-config\/hazard-types/, async (route) => {
+    const body = route.request().postDataJSON() as { types: Record<string, 'disaster' | 'incident'> }
+    log.hazardTypes.push(body)
+    types = types.map((item) => ({ ...item, type: body.types[item.code] ?? item.type }))
+    await route.fulfill({ json: { types: Object.fromEntries(types.map((item) => [item.code, item.type])) } })
+  })
   await page.route(/\/api\/ra\/crises/, async (route) => {
     const url = new URL(route.request().url())
     const method = route.request().method()
     const body = route.request().postDataJSON?.() as Record<string, unknown> | null
+    if (/\/crises\/monitoring$/.test(url.pathname)) {
+      const type = url.searchParams.get('type') ?? 'disaster'
+      const mine = crisis.type === type && crisis.status !== 'rejected' ? [crisis] : []
+      const ofType = types.filter((item) => item.type === type)
+      await route.fulfill({
+        json: {
+          type,
+          year: 2026,
+          years: [2026, 2025],
+          counts: {
+            total: mine.length,
+            pending: mine.filter((row) => row.status === 'pending').length,
+            open: mine.filter((row) => row.status === 'open').length,
+            closed: mine.filter((row) => row.status === 'closed').length,
+            rejected: 0,
+            open_now: mine.filter((row) => row.status === 'open').length,
+            pending_now: mine.filter((row) => row.status === 'pending').length,
+          },
+          affected_now: mine.some((row) => row.status === 'open') ? crisis.affected_count : 0,
+          by_month: Array.from({ length: 12 }, (_, index) => (index === 9 ? mine.length : 0)),
+          by_hazard: ofType.map((item) => {
+            const total = mine.filter((row) => row.hazard_code === item.code).length
+            return { code: item.code, hazard: item, total, pending: 0, open: total, closed: 0, rejected: 0 }
+          }),
+          active: mine.filter((row) => ['open', 'pending'].includes(row.status)),
+          can_declare: canDeclare,
+        },
+      })
+      return
+    }
     if (/\/crises\/?$/.test(url.pathname) && method === 'POST') {
       log.declared.push(body!)
       await route.fulfill({ status: 201, json: crisis })
       return
     }
     if (/\/crises\/?$/.test(url.pathname)) {
-      await route.fulfill({ json: { items: [crisis], page: 1, per_page: 25, total: 1, pages: 1 } })
+      const type = url.searchParams.get('type')
+      const status = url.searchParams.get('status')
+      const shown = (!type || crisis.type === type)
+        && (!status || crisis.status === status)
+        && (!url.searchParams.get('decided') || crisis.decided_at !== null)
+      await route.fulfill({ json: { items: shown ? [crisis] : [], page: 1, per_page: 25, total: shown ? 1 : 0, pages: 1 } })
       return
     }
     const decision = url.pathname.match(/\/(approve|reject)$/)?.[1]

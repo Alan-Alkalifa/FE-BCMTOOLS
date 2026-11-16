@@ -37,7 +37,9 @@ const props = defineProps<{
   saveLabel: string
   savedMessage: string
   errorTitle: string
-  save: (rows: Values[]) => Promise<RaLocationDetail>
+  save?: (rows: Values[]) => Promise<RaLocationDetail>
+  /** Not saved here: the page collects the rows (`collect`) and saves them with the rest. */
+  draft?: boolean
 }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 
@@ -152,20 +154,27 @@ function check() {
   return found
 }
 
-async function onSave() {
+/** The rows to save, or null when some are incomplete (the messages show). */
+function collect(): Values[] | null {
   formError.value = null
   errors.value = check()
   if (Object.keys(errors.value).length) {
     formError.value = 'Some rows are incomplete. Check the messages below.'
-    return
+    return null
   }
-  const payload = blocks.value.flatMap((block) =>
+  return blocks.value.flatMap((block) =>
     block.rows.filter(filled).map((row) => ({
       [props.groupKey]: block.group,
       [props.lead.key]: block.lead.trim(),
       ...blankToNull(row.values),
     })),
   )
+}
+defineExpose({ collect })
+
+async function onSave() {
+  const payload = collect()
+  if (!payload || !props.save) return
   try {
     const saved = await props.save(payload)
     toast.add({ title: props.savedMessage, color: 'success', icon: 'i-lucide-circle-check' })
@@ -350,7 +359,10 @@ async function onSave() {
       </div>
     </UCard>
 
-    <div class="flex justify-end">
+    <div
+      v-if="!draft"
+      class="flex justify-end"
+    >
       <UButton
         :label="saveLabel"
         loading-auto

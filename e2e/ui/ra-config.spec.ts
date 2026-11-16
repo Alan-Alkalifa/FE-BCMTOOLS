@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { USER, signIn } from '../fixtures/auth'
-import { BRANCH_FORMULA, DIVISIONS, FORMULA, withTexts } from '../fixtures/ra'
+import { BRANCH_FORMULA, DIVISIONS, FORMULA, hazardTypes, withTexts } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -215,16 +215,17 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await page.goto('/admin/ra-config?tab=roles')
   await expect(page.getByRole('tab', { name: 'Sign-off steps' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
   const title = page.getByRole('textbox', { name: 'Title of step 1' })
-  await expect(title).toHaveValue('Location Incident Coordinator (LIC)')
+  await expect(title).toHaveValue('Prepared by Location Incident Coordinator (LIC)')
+  await expect(page.getByRole('textbox', { name: 'Short name of step 1' })).toHaveValue('LIC')
   await expect(page.getByLabel('Signer of step 1', { exact: true })).toContainText('The LIC')
   await expect(page.getByLabel('Report box of step 1', { exact: true })).toContainText('Box 1')
-  await title.fill('Building Disaster Coordinator (LIC)')
+  await title.fill('Prepared by Building Disaster Coordinator (LIC)')
   // The last step is always required; a new step goes before it.
   await expect(page.getByRole('switch', { name: 'Required' }).last()).toBeDisabled()
   await page.getByRole('button', { name: 'Add step' }).click()
   await page.getByRole('textbox', { name: 'Code of step 4' }).fill('checked_by_risk')
-  await page.getByRole('textbox', { name: 'Label of step 4' }).fill('Checked by')
-  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Operational Risk')
+  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Checked by Operational Risk')
+  await page.getByRole('textbox', { name: 'Short name of step 4' }).fill('Operational Risk')
   await page.getByRole('switch', { name: 'Required' }).nth(3).click()
   await page.getByRole('button', { name: 'Move step 4 up' }).click()
   // The BCM head step gets a fixed signer.
@@ -233,15 +234,15 @@ test('the sign-off steps are configured like SCCA, and the statements are edited
   await expect(page.getByText('Save the steps, then pick the fixed signer here.')).toBeVisible()
   await page.getByRole('button', { name: 'Save steps' }).click()
   await expect(page.getByText('Sign-off steps saved').first()).toBeVisible()
-  const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, title: string, mandatory: boolean, signer_mode: string }[] }).steps
+  const sent = (calls.find((call) => call.path.endsWith('/steps'))!.body as { steps: { code: string, label: string, title: string, mandatory: boolean, signer_mode: string }[] }).steps
   expect(sent.map((row) => row.code)).toEqual(['prepared_by', 'acknowledged_by_unit', 'checked_by_risk', 'reviewed_by', 'acknowledged_by_bcm'])
-  expect(sent[0]!.title).toBe('Building Disaster Coordinator (LIC)')
+  expect(sent[0]).toMatchObject({ label: 'Prepared by Building Disaster Coordinator (LIC)', title: 'LIC' })
   expect(sent[2]).toMatchObject({ mandatory: false, signer_mode: 'chosen' })
   expect(sent[4]).toMatchObject({ mandatory: true, signer_mode: 'fixed' })
   await expect(page.getByText('Fixed signer', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Acknowledged by (Business Continuity Management Head) signer' }).click()
+  await page.getByRole('button', { name: 'Acknowledged by Business Continuity Management Head signer' }).click()
   await page.getByRole('option', { name: /^Dewi Lestari/ }).click()
-  await expect(page.getByText('Acknowledged by (Business Continuity Management Head): Dewi Lestari', { exact: true })).toBeVisible()
+  await expect(page.getByText('Acknowledged by Business Continuity Management Head: Dewi Lestari', { exact: true })).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.includes('/signers/'))).toMatchObject({ path: '/api/admin/ra-config/signers/acknowledged_by_bcm', body: { user_id: 9 } })
 
   await page.getByRole('tab', { name: 'Statements and notes' }).click()
@@ -258,8 +259,8 @@ test('a step that signs while the building waits for approval always goes first'
   await page.goto('/admin/ra-config?tab=steps')
   await page.getByRole('button', { name: 'Add step' }).click({ timeout: 60_000 })
   await page.getByRole('textbox', { name: 'Code of step 4' }).fill('building_check')
-  await page.getByRole('textbox', { name: 'Label of step 4' }).fill('Building approved by')
-  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Building approver')
+  await page.getByRole('textbox', { name: 'Title of step 4' }).fill('Building approved by Building Approver')
+  await page.getByRole('textbox', { name: 'Short name of step 4' }).fill('Building Approver')
   await page.getByLabel('When step 4 signs', { exact: true }).click()
   await page.getByRole('option', { name: /^Building waiting for approval/ }).click()
   // It moves to the top, and can't be moved below the steps that always sign.
@@ -326,6 +327,30 @@ test('earthquakes from BMKG: on or off, the minimum magnitude and the alert radi
   await page.getByRole('button', { name: 'Save earthquake settings' }).click()
   await expect(page.getByText('Earthquake settings saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/bmkg'))!.body).toEqual({ enabled: true, min_magnitude: 5, alert_radius_km: 150 })
+})
+
+test('each hazard is a disaster or an incident, saved at once', async ({ page }) => {
+  const calls = await mockRaConfig(page)
+  let types = hazardTypes()
+  await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({ json: { items: types, updated_at: null, updated_by: null, can_edit: true } }))
+  await page.route(/\/api\/admin\/ra-config\/hazard-types/, async (route) => {
+    const body = route.request().postDataJSON() as { types: Record<string, 'disaster' | 'incident'> }
+    calls.push({ method: 'PUT', path: '/api/admin/ra-config/hazard-types', body })
+    types = types.map((item) => ({ ...item, type: body.types[item.code] ?? item.type }))
+    await route.fulfill({ json: { types: Object.fromEntries(types.map((item) => [item.code, item.type])) } })
+  })
+  await page.goto('/admin/ra-config?tab=hazard-types')
+  await expect(page.getByRole('tab', { name: 'Disaster or incident' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
+  await expect(page.getByText('9 disaster hazards, 24 incident hazards.')).toBeVisible()
+  // A live setting: no version picker.
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveCount(0)
+  const fire = page.getByRole('radiogroup', { name: 'H14 Kebakaran' })
+  await fire.getByRole('radio', { name: 'Disaster' }).click()
+  await expect(page.getByText('10 disaster hazards, 23 incident hazards.')).toBeVisible()
+  await page.getByRole('button', { name: 'Save 1 change' }).click()
+  await expect(page.getByText('Default: Incident')).toBeVisible()
+  expect(calls.find((call) => call.path.endsWith('/hazard-types'))!.body).toEqual({ types: { H14: 'disaster' } })
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 })
 
 test('team diagrams start as the workbook pictures and are replaced per kind', async ({ page }) => {

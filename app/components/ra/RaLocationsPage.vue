@@ -4,22 +4,17 @@ import type { LocationQueryRaw } from 'vue-router'
 import type { RaLocation } from '~/composables/useRa'
 
 /**
- * The Buildings register: head office buildings and branches in one table, filtered by type,
+ * Administration › Master building, the Buildings register: head office buildings and branches
+ * in one table, filtered by type,
  * province and status and sorted by a column (all in the URL; the newest change first by
  * default), one page at a time. A row opens the building's profile.
  * A new building, and making one inactive, waits for someone else's approval: the Status
  * Building column shows it (one badge: Waiting for approval, Deactivation requested, Rejected,
  * Active or Inactive), and the status filter lists the ones waiting. The Inactive filter lists
  * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
- * building's page, not here.
- * Administration › Master building shows the same register (`master`), with its own title and
- * crumbs; its buildings open there too (/admin/buildings/{id}), as does Input building data.
+ * building's page, not here. Its buildings open in Master building too (/admin/buildings/{id}),
+ * as does Input building data.
  */
-const props = defineProps<{ master?: boolean }>()
-const pageTitle = computed(() => (props.master ? 'Master building' : 'Buildings'))
-const pageCrumbs = computed(() => (props.master
-  ? [{ label: 'Administration' }, { label: 'Master building' }]
-  : [{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]))
 const { can } = useAuth()
 /** Every building and branch with the Location permission, otherwise the RA sides the user
  *  holds (RA and RA Branch are granted separately). */
@@ -172,7 +167,7 @@ function noun(location: RaLocation) {
 
 /** The building's page: in Master building when the register is opened there. */
 function pathOf(location: RaLocation) {
-  return buildingPath(location.id, props.master)
+  return masterBuildingPath(location.id)
 }
 
 function openRow(_event: Event, row: { original: RaLocation }) {
@@ -182,16 +177,16 @@ function openRow(_event: Event, row: { original: RaLocation }) {
 const addTo = computed(() => {
   const only = editKinds.value.length === 1 ? editKinds.value[0] : undefined
   const kind = type.value === 'all' ? only : type.value
-  return { path: `${props.master ? MASTER_BUILDINGS_PATH : LOCATIONS_PATH}/new`, query: kind ? { type: kind } : {} }
+  return { path: `${MASTER_BUILDINGS_PATH}/new`, query: kind ? { type: kind } : {} }
 })
 </script>
 
 <template>
   <AppPage
-    :title="pageTitle"
+    title="Master building"
     icon="i-lucide-building"
     description="Head office buildings and branches: each one's profile, map pin and RAs."
-    :crumbs="pageCrumbs"
+    :crumbs="[{ label: 'Administration' }, { label: 'Master building' }]"
   >
     <template #actions>
       <UButton

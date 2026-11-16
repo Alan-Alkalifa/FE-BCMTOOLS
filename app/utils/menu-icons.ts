@@ -21,6 +21,7 @@ export const MENU_ICONS = [
   'i-lucide-chart-pie',
   'i-lucide-activity',
   'i-lucide-siren',
+  'i-lucide-triangle-alert',
   'i-lucide-life-buoy',
   'i-lucide-server',
   'i-lucide-app-window',

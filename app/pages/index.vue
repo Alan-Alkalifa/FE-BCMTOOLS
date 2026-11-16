@@ -12,8 +12,16 @@ const MODULE_TEXT: Record<string, string> = {
   scca: 'System criticality categorisation: monitor every SCCA, manage yours, and sign off what waits for you.',
   ra: 'Location risk assessment for head office buildings: monitor every RA, manage the drafts, and sign off what waits for you.',
   ra_branch: 'Location risk assessment for branches, in the same three steps.',
-  locations: 'Every head office building and branch: its profile and map pin, the building map, disasters and the disaster guidebook.',
+  locations: 'The building map, and disasters and incidents: monitor them, declare and manage them, approve the declared ones, and their guidebooks.',
   admin: 'Users, roles and permissions, menus, email settings and the audit log.',
+}
+
+/** A group's pages, with those of its own groups (Sites › Disaster › Monitoring as "Disaster
+ *  monitoring"). */
+function linksOf(node: MenuNode): (MenuNode & { route: string })[] {
+  return node.children.flatMap((child) => child.route
+    ? [child as MenuNode & { route: string }]
+    : linksOf(child).map((link) => ({ ...link, label: `${child.label} ${link.label.toLowerCase()}`, icon: link.icon ?? child.icon })))
 }
 
 /** The modules are the menu's top-level groups the user can see. */
@@ -23,15 +31,16 @@ const modules = computed(() =>
     .map((node) => ({
       node,
       description: MODULE_TEXT[node.code] ?? '',
-      links: node.children.filter((child): child is MenuNode & { route: string } => !!child.route),
+      links: linksOf(node),
     })),
 )
 
 /**
- * The overview: each module the user's roles open, at a glance (SCCA, RA HO, RA Branch,
- * Location). Its BCM sees the whole module (waiting for me, in approval, stuck, overdue); everyone
- * else what is theirs (sign-offs for me, overdue and due renewals). Location counts the buildings
- * and disasters waiting for approval. Each card opens that module's tab in Task Management.
+ * The overview: each module the user's roles open, at a glance (SCCA, RA HO, RA Branch, Sites).
+ * Its BCM sees the whole module (waiting for me, in approval, stuck, overdue, and for RA HO and
+ * RA Branch the buildings waiting for approval); everyone else what is theirs (sign-offs for me,
+ * overdue and due renewals). Sites counts the disasters and incidents waiting for approval. Each
+ * card opens that module's tab in Task Management.
  */
 interface GlanceCard { key: string, label: string, value: number, icon: string, tone: 'neutral' | 'warning' | 'error' | 'info', hint: string, to: string }
 const { data: summary } = useTaskSummary()
@@ -40,21 +49,26 @@ function tasksLink(module: TaskModule, extra: Record<string, string> = {}) {
 }
 function glanceCards(glance: TaskGlance): GlanceCard[] {
   const { module } = glance
-  if (module === 'location') {
+  if (module === 'sites') {
     return [
-      { key: 'building', label: 'Buildings waiting', value: glance.building ?? 0, icon: 'i-lucide-building', tone: 'warning', hint: 'New, or to make inactive, waiting for approval.', to: tasksLink(module, { type: 'building' }) },
-      { key: 'incident', label: 'Disasters waiting', value: glance.incident ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'incident' }) },
+      { key: 'disaster', label: 'Disasters waiting', value: glance.disaster ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'disaster' }) },
+      { key: 'incident', label: 'Incidents waiting', value: glance.incident ?? 0, icon: 'i-lucide-triangle-alert', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'incident' }) },
     ]
   }
   const what = module === 'scca' ? 'SCCA' : 'RA'
   const mine: GlanceCard = { key: 'mine', label: 'Waiting for me', value: glance.mine ?? 0, icon: 'i-lucide-user-check', tone: 'warning', hint: module === 'scca' ? 'SCCA approvals for you.' : 'RA sign-off steps for you.', to: tasksLink(module, { type: 'signoff' }) }
   const overdue: GlanceCard = { key: 'overdue', label: glance.oversees ? 'Overdue renewals' : 'My overdue renewals', value: glance.overdue_renewals ?? 0, icon: 'i-lucide-circle-alert', tone: 'error', hint: `${glance.due_renewals ?? 0} more due within 90 days.`, to: tasksLink(module, { type: 'renewal', level: 'overdue' }) }
-  if (!glance.oversees) return [mine, overdue]
+  // Only for who reviews buildings in Master building (the API leaves `building` out otherwise).
+  const buildings: GlanceCard[] = module !== 'scca' && glance.building !== undefined
+    ? [{ key: 'building', label: 'Buildings waiting', value: glance.building ?? 0, icon: 'i-lucide-building', tone: 'warning', hint: 'New, or to make inactive, waiting for approval.', to: tasksLink(module, { type: 'building' }) }]
+    : []
+  if (!glance.oversees) return [mine, overdue, ...buildings]
   return [
     mine,
     { key: 'in_approval', label: 'In approval', value: glance.in_approval ?? 0, icon: 'i-lucide-hourglass', tone: 'info', hint: `Every ${what} waiting for a signer.`, to: tasksLink(module, { type: 'signoff' }) },
     { key: 'stuck', label: 'Stuck sign-offs', value: glance.stuck ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Waiting past the escalation.', to: tasksLink(module, { type: 'signoff', level: 'stuck' }) },
     overdue,
+    ...buildings,
   ]
 }
 const glances = computed(() => (summary.value?.modules ?? []).map((glance) => ({
@@ -150,7 +164,7 @@ const greeting = computed(() => {
         </h3>
         <div
           class="grid gap-4 sm:grid-cols-2"
-          :class="{ 'xl:grid-cols-4': glance.cards.length === 4 }"
+          :class="{ 'xl:grid-cols-3': glance.cards.length === 3, 'xl:grid-cols-4': glance.cards.length === 4, 'xl:grid-cols-5': glance.cards.length === 5 }"
         >
           <KpiCard
             v-for="card in glance.cards"

@@ -5,7 +5,7 @@ test.setTimeout(90_000)
 
 test('one register lists head office buildings and branches', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toBeVisible()
@@ -13,16 +13,16 @@ test('one register lists head office buildings and branches', async ({ page }) =
   // The building ID in grey under the name.
   await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('HO-0001')
   await expect(table.getByRole('row', { name: /KCP Bogor Pajajaran/ })).toContainText('Branch')
-  await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/locations/${BRANCH_ID}`)
+  await expect(table.getByRole('link', { name: 'KCP Bogor Pajajaran', exact: true })).toHaveAttribute('href', `/admin/buildings/${BRANCH_ID}`)
   expect(new URLSearchParams(log.locationQueries.at(-1)).get('kind')).toBe('all')
   await expect(page.getByText('Showing 1–6 of 6')).toBeVisible()
-  // Home › Location › Buildings
-  await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Location\s*Buildings/)
+  // Home › Administration › Master building
+  await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Administration\s*Master building/)
 })
 
 test('the register filters by type, province, status and search, in the URL', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toBeVisible({ timeout: 60_000 })
   // The province column instead of the region.
@@ -55,7 +55,7 @@ test('the register filters by type, province, status and search, in the URL', as
   expect(inactive.get('active')).toBeNull()
 
   // The province filter works for head office buildings too.
-  await page.goto('/locations?type=head_office&province=DKI+Jakarta&q=graha')
+  await page.goto('/admin/buildings?type=head_office&province=DKI+Jakarta&q=graha')
   await expect(table.getByRole('link', { name: 'Graha CIMB Niaga', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Province', { exact: true })).toContainText('DKI Jakarta')
@@ -63,7 +63,7 @@ test('the register filters by type, province, status and search, in the URL', as
 
 test('Building Data Entry picks the type from a dropdown, with its description', async ({ page }) => {
   const log = await mockRa(page)
-  await page.goto('/locations/new')
+  await page.goto('/admin/buildings/new')
   await expect(page.getByRole('heading', { name: 'Building Data Entry' })).toBeVisible({ timeout: 60_000 })
   const type = page.getByRole('combobox', { name: 'Type of building' })
   await expect(type).toContainText('Head office building')
@@ -81,30 +81,28 @@ test('Building Data Entry picks the type from a dropdown, with its description',
   await expect(page.getByText('The branch\'s area.')).toBeVisible()
   await fillAddress(page)
   await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page).toHaveURL(/\/locations\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/admin\/buildings\/3\?tab=contacts$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', zip_code: '12920', sub_directorate: null, org_group: null })
-})
-
-test('adding a building from New assessment returns to the new assessment', async ({ page }) => {
-  const log = await mockRa(page)
-  await page.goto('/locations/new?type=branch&then=assessment')
-  await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
-  await fillAddress(page)
-  await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page).toHaveURL(/\/ra-branch\/manage\/new\?location_id=3$/)
-  expect(log.created[0]).toMatchObject({ kind: 'branch' })
 })
 
 test('old RA links open the new pages', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/locations?q=griya')
-  await expect(page).toHaveURL(/\/locations\?.*type=head_office/, { timeout: 60_000 })
+  await expect(page).toHaveURL(/\/admin\/buildings\?.*type=head_office/, { timeout: 60_000 })
   await expect(page).toHaveURL(/q=griya/)
   await page.goto('/ra-branch/locations')
-  await expect(page).toHaveURL(/\/locations\?type=branch$/)
+  await expect(page).toHaveURL(/\/admin\/buildings\?type=branch$/)
+  // The Buildings list is Master building now.
+  await page.goto('/locations?type=branch')
+  await expect(page).toHaveURL(/\/admin\/buildings\?type=branch$/)
+  await page.goto('/locations/new?type=branch')
+  await expect(page).toHaveURL(/\/admin\/buildings\/new\?type=branch$/)
   await page.goto(`/ra-branch/locations/${BRANCH_ID}?tab=occupants`)
-  await expect(page).toHaveURL(new RegExp(`/locations/${BRANCH_ID}\\?tab=occupants$`))
+  await expect(page).toHaveURL(new RegExp(`/admin/buildings/${BRANCH_ID}\\?tab=occupants$`))
   await expect(page.getByRole('tab', { name: 'Occupants', exact: true }).first()).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
+  // A building's page is in Master building: old /locations/{id} links open it there.
+  await page.goto('/locations/1?tab=map')
+  await expect(page).toHaveURL(/\/admin\/buildings\/1\?tab=map$/)
   await page.goto('/ra/map')
   await expect(page).toHaveURL(/\/locations\/map$/)
   await page.goto('/ra/crises/7')
@@ -125,7 +123,7 @@ test('old RA links open the new pages', async ({ page }) => {
 
 test('a building someone else added is approved, like an RA configuration publish', async ({ page }) => {
   const log = await mockRa(page, { pendingLocation: true })
-  await page.goto('/locations/1')
+  await page.goto('/admin/buildings/1')
   const banner = page.getByTestId('approval-banner')
   await expect(banner).toContainText('Waiting for approval. Rina added this building', { timeout: 60_000 })
   await banner.getByRole('button', { name: 'Approve' }).click()
@@ -139,7 +137,7 @@ test('a building someone else added is approved, like an RA configuration publis
 
 test('rejecting a building needs a reason', async ({ page }) => {
   const log = await mockRa(page, { pendingLocation: true })
-  await page.goto('/locations/1')
+  await page.goto('/admin/buildings/1')
   const banner = page.getByTestId('approval-banner')
   await banner.getByRole('button', { name: 'Reject' }).click({ timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'Reject this building?' })
@@ -158,7 +156,7 @@ test('an RA of a building waiting for approval is signed by the building approve
   // The card: its heading names the step's signer, its text comes from RA configuration.
   const card = page.getByTestId('building-approver-card')
   await expect(card).toContainText('The building is waiting for approval', { timeout: 60_000 })
-  await expect(card.getByRole('heading', { name: 'Must be signed by the Building approver first' })).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Must be signed by the Building Approver first' })).toBeVisible()
   await expect(card).toContainText('this assessment must be signed by the Building approver first, before the other signers.')
   await expect(card).toContainText('Building approved by')
   // The building approver is step 1, before the other four.
@@ -178,9 +176,9 @@ test('without a building approver step, an RA of a building waiting for approval
 
 test('Building map and Input building data sit in the top bar', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const add = page.getByRole('link', { name: 'Input building data' })
-  await expect(add).toHaveAttribute('href', '/locations/new', { timeout: 60_000 })
+  await expect(add).toHaveAttribute('href', '/admin/buildings/new', { timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'Building map' }).first()).toHaveAttribute('href', '/locations/map')
   const main = page.getByRole('main')
   await expect(main.getByRole('link', { name: 'Input building data' })).toHaveCount(0)
@@ -190,7 +188,7 @@ test('Building map and Input building data sit in the top bar', async ({ page })
 
 test('a new building waiting for approval isn\'t active yet: Active stays unticked until it is approved', async ({ page }) => {
   await mockRa(page, { pendingLocation: true })
-  await page.goto('/locations/1')
+  await page.goto('/admin/buildings/1')
   const active = page.getByRole('checkbox', { name: 'Active' })
   await expect(active).not.toBeChecked({ timeout: 60_000 })
   await expect(active).toBeDisabled()
@@ -204,7 +202,7 @@ test('a new building waiting for approval isn\'t active yet: Active stays untick
 
 test('an approved building shows Active ticked', async ({ page }) => {
   await mockRa(page)
-  await page.goto('/locations/1')
+  await page.goto('/admin/buildings/1')
   const active = page.getByRole('checkbox', { name: 'Active' })
   await expect(active).toBeChecked({ timeout: 60_000 })
   await expect(active).toBeEnabled()
@@ -212,14 +210,14 @@ test('an approved building shows Active ticked', async ({ page }) => {
 
 test('a building waiting for approval is approved on its page, not in the Buildings list', async ({ page }) => {
   await mockRa(page, { pendingLocation: true })
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const row = page.getByRole('row', { name: /Griya CIMB Niaga 2/ })
   await expect(row).toContainText('Waiting for approval', { timeout: 60_000 })
   // One status badge: Waiting for approval, without Active or Inactive beside it.
   await expect(row).not.toContainText(/\b(Active|Inactive)\b/)
   await expect(row.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
   await row.getByRole('link', { name: 'Edit Griya CIMB Niaga 2' }).click()
-  await expect(page).toHaveURL(/\/locations\/1$/)
+  await expect(page).toHaveURL(/\/admin\/buildings\/1$/)
   const banner = page.getByTestId('approval-banner')
   await expect(banner.getByRole('button', { name: 'Approve' })).toBeVisible()
   await expect(banner.getByRole('button', { name: 'Reject' })).toBeVisible()
@@ -229,7 +227,7 @@ test('the Buildings list shows the last update and sorts by a column, newest cha
   const log = await mockRa(page)
   // The register's own requests (the pickers and the province list send no page).
   const lastPage = () => log.locationQueries.filter((query) => query.includes('page=')).at(-1)
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const table = page.getByRole('table')
   await expect(table.getByRole('columnheader', { name: /Last updated/ })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ })).toContainText('1 Mar 2026')
@@ -270,7 +268,7 @@ test('the Buildings list shows the latest Risk Assessment ID and its residual ap
   await page.route(/\/api\/ra\/locations\?.*page=/, (route) =>
     route.fulfill({ json: { items: rows, page: 1, per_page: 25, total: rows.length, pages: 1 } }),
   )
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const table = page.getByRole('table')
   await expect(table.getByRole('columnheader', { name: 'Risk Assessment ID' })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByRole('columnheader', { name: 'Residual Risk' })).toBeVisible()
@@ -291,25 +289,19 @@ test('the Buildings list shows the latest Risk Assessment ID and its residual ap
   await expect(table.getByRole('row', { name: /KCP Cilegon/ })).toContainText('Final')
 })
 
-test('the Location permission alone opens the Location module read-only, RAs named but not linked', async ({ page }) => {
+test('the Location permission alone opens the Sites menu, not the building pages (Master building)', async ({ page }) => {
   await mockRa(page, { permissions: ['scca.access', 'location.access'] })
   await page.goto('/')
   const sidebar = page.getByRole('navigation', { name: 'Main' })
-  for (const name of ['Buildings', 'Building map', 'Disasters', 'Disaster guidebook']) {
-    await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(sidebar.getByRole('link', { name: 'Building map', exact: true })).toBeVisible({ timeout: 60_000 })
+  for (const name of ['Sites', 'Disaster', 'Incident']) {
+    await expect(sidebar.getByRole('button', { name, exact: true })).toBeVisible()
   }
+  // No Buildings list, and a building's page is only in Master building (location.master).
+  await expect(sidebar.getByRole('link', { name: 'Buildings', exact: true })).toHaveCount(0)
   await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
-  await sidebar.getByRole('link', { name: 'Buildings', exact: true }).click()
-  // Every building and branch, nothing to add.
-  await expect(page.getByLabel('Type', { exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('link', { name: 'Input building data' })).toHaveCount(0)
-  const table = page.getByRole('table')
-  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible()
-  await expect(table.getByRole('link', { name: /^RA-2025-/ })).toHaveCount(0)
-  await table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('link', { name: 'New assessment' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: /^RA-2025-/ })).toHaveCount(0)
+  await page.goto('/admin/buildings/1')
+  await expect(page).toHaveURL(/\/forbidden\?from=/, { timeout: 60_000 })
 })
 
 test('the Buildings list has the columns of the BCM Tools building list', async ({ page }) => {
@@ -318,7 +310,7 @@ test('the Buildings list has the columns of the BCM Tools building list', async 
   await page.route(/\/api\/ra\/locations\?.*page=/, (route) =>
     route.fulfill({ json: { items: [row], page: 1, per_page: 25, total: 1, pages: 1 } }),
   )
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   const table = page.getByRole('table')
   await expect(table.getByRole('columnheader').first()).toBeVisible({ timeout: 60_000 })
   const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim()).filter(Boolean)

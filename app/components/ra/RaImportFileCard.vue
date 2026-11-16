@@ -22,7 +22,7 @@ const emit = defineEmits<{
   summary: [summary: { status: RaImportCardStatus, building: string | null, period: number | null }]
 }>()
 
-const { user } = useAuth()
+const { user, can } = useAuth()
 const { data: profile } = useProfile()
 
 const preview = ref<RaImportPreview | null>(null)
@@ -450,11 +450,12 @@ const otherType = computed(() => RA_MODULES[preview.value?.kind === 'branch' ? '
           :to="raPath(result.assessment.kind, 'manage', result.assessment.id)"
         />
         <UButton
+          v-if="can('location.master')"
           size="sm"
           color="neutral"
           variant="ghost"
           :label="`Open ${ra.location.lower}`"
-          :to="locationPath(result.location.id)"
+          :to="masterBuildingPath(result.location.id)"
         />
       </template>
     </UAlert>

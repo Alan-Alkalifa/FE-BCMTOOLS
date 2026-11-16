@@ -10,6 +10,10 @@ import type { RaAssessmentSummary, RaLocation, RaLocationDetail, RaUserRef } fro
  * building doesn't fit asks first and clears the building (or keeps the reason). Picking a
  * building says what its last RA is and copies from it, as SCCA copies an application's last
  * SCCA; a building that already has an RA for the period is flagged on the assessment date.
+ *
+ * New building (not opened from a building page): no building is picked. The new building is
+ * entered here in full (details, map pin, emergency contacts and, for head office, occupants,
+ * recovery team and call tree) and saved with the RA in one go, or nothing is.
  */
 const ra = useRaModule()
 const { user } = useAuth()
@@ -29,8 +33,12 @@ const phoneField = (message: string) => required(message).superRefine((value, co
   const problem = value ? raPhoneProblem(value) : null
   if (problem) context.addIssue({ code: 'custom', message: problem })
 })
+const initialLocation = Number(route.query.location_id) || undefined
+/** New building, not opened from a building page: the building is entered below, not picked. */
+const newBuilding = computed((): boolean => state.reason === 'new_building' && !initialLocation)
+
 const schema = computed(() => z.object({
-  location_id: z.number(`Choose the ${ra.value.location.lower}.`),
+  location_id: newBuilding.value ? z.number().optional() : z.number(`Choose the ${ra.value.location.lower}.`),
   assessment_date: z.string().min(1, 'Enter the assessment date.'),
   reason: z.enum(RA_REASONS.map((reason) => reason.value) as [RaReason, ...RaReason[]], 'Choose the reason for this assessment.'),
   due_date: z.string().nullable(),
@@ -43,7 +51,7 @@ const schema = computed(() => z.object({
   // One RA per building per period (the year of the assessment date), said before the API
   // does. A Structural change may follow in the same period once that period's RA is final.
   const year = raPeriodOf(value.assessment_date)
-  const same = year && detail.value?.id === value.location_id ? detail.value.assessments.filter((row) => row.period_year === year) : []
+  const same = year && detail.value && detail.value.id === value.location_id ? detail.value.assessments.filter((row) => row.period_year === year) : []
   const open = same.find((row) => row.status !== 'approved')
   const refOf = (row: RaAssessmentSummary) => row.ref_no ?? `#${row.id}`
   if (same.length && value.reason !== RA_CUSTOM_DUE_REASON) {
@@ -74,7 +82,6 @@ const MEMBERS: Member[] = ['lic', 'licom']
 /** The members picked (and copied from the last RA): the LICOM. */
 const TEAM_PICKED: Member[] = ['licom']
 
-const initialLocation = Number(route.query.location_id) || undefined
 const state = reactive<State>({
   location_id: initialLocation as number,
   assessment_date: today('Asia/Jakarta').toString(),
@@ -154,7 +161,7 @@ const locationItems = computed(() =>
 const pickedProblem = computed(() => (state.location_id ? problems.value[String(state.location_id)] ?? null : null))
 const locationHelp = computed(() => {
   const { lower, lowerPlural } = ra.value.location
-  if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet. Not listed? Use Add ${lower}.`
+  if (state.reason === 'new_building') return `Only ${lowerPlural} without an RA yet.`
   const scoped = scopedIds.value ? ` Only the ${lowerPlural} your access scope opens.` : ''
   if (state.reason === 'annual_review') return `Only ${lowerPlural} with a final RA to renew, while no other RA of it is open.${scoped}`
   if (state.reason === 'structural_change') return `The ${lower} that changed: one with a final RA, while no other RA of it is open and its renewal isn't overdue. It can follow a final RA in the same period.${scoped}`
@@ -305,11 +312,122 @@ const chosenDue = computed({
   },
 })
 
+// --- New building, entered here ---------------------------------------------------------------
+
+/** An empty building of this kind: what the profile forms start from. */
+const blankLocation = computed<RaLocationDetail>(() => ({
+  id: 0,
+  kind: ra.value.kind,
+  name: '',
+  region: null,
+  address: null,
+  latitude: null,
+  longitude: null,
+  is_active: true,
+  assessment_count: 0,
+  latest_assessment: null,
+  updated_at: '',
+  can_delete: false,
+  assessments: [],
+  contacts: [],
+  occupants: [],
+  occupant_summary: { units: 0, employees: 0, disabled: 0, pregnant: 0, with_bcp: 0, with_alternate_site: 0 },
+  recovery_team: [],
+  call_tree: [],
+  created_by: null,
+  updated_by: null,
+}))
+const occupantsDraft = ref<RaLocationDetail>(blankLocation.value)
+watch(() => ra.value.kind, () => {
+  occupantsDraft.value = blankLocation.value
+})
+
+const locationForm = useTemplateRef('locationForm')
+const mapTab = useTemplateRef('mapTab')
+const contactsForm = useTemplateRef('contactsForm')
+const teamForm = useTemplateRef('teamForm')
+const callTreeForm = useTemplateRef('callTreeForm')
+/** The map's side card names the building as it is typed. */
+const mapLocation = computed<RaLocationDetail>(() => ({
+  ...blankLocation.value,
+  name: locationForm.value?.state.name.trim() || `New ${ra.value.location.lower}`,
+  address: locationForm.value?.state.address.trim() || null,
+}))
+
+type BuildingTab = 'details' | 'map' | 'contacts' | 'occupants' | 'team' | 'calltree'
+const LCP_TABS: BuildingTab[] = ['occupants', 'team', 'calltree']
+const buildingTab = ref<BuildingTab>('details')
+const buildingTabs = computed(() => [
+  { label: 'Details', value: 'details', icon: 'i-lucide-building-2', slot: 'details' as const },
+  { label: 'Map', value: 'map', icon: 'i-lucide-map-pinned', slot: 'map' as const },
+  { label: 'Emergency contacts', value: 'contacts', icon: 'i-lucide-phone', slot: 'contacts' as const },
+  { label: 'Occupants', value: 'occupants', icon: 'i-lucide-users', slot: 'occupants' as const },
+  { label: 'Recovery team', value: 'team', icon: 'i-lucide-life-buoy', slot: 'team' as const },
+  { label: 'Call tree', value: 'calltree', icon: 'i-lucide-network', slot: 'calltree' as const },
+].filter((item) => ra.value.hasLcp || !LCP_TABS.includes(item.value as BuildingTab)))
+
+/** The building and its profile from the tabs, or null (showing the first tab that needs
+ *  attention). Every tab is checked, so each shows its messages. */
+async function collectBuilding() {
+  const location = await locationForm.value?.collect()
+  const pin = mapTab.value?.collect()
+  const contacts = contactsForm.value?.collect()
+  const lcp = ra.value.hasLcp
+  const team = lcp ? teamForm.value?.collect() : []
+  const callTree = lcp ? callTreeForm.value?.collect() : []
+  const failed = ([['details', location], ['map', pin], ['contacts', contacts], ['team', team], ['calltree', callTree]] as const)
+    .find(([, value]) => !value)
+  if (failed || !location || !pin || !contacts || !team || !callTree) {
+    if (failed) buildingTab.value = failed[0]
+    return null
+  }
+  return {
+    location: { ...location, ...pin },
+    contacts,
+    occupants: lcp ? occupantsDraft.value.occupants.map(({ seq: _seq, critical_rating: _rating, ...occupant }) => occupant) : [],
+    recovery_team: team,
+    call_tree: callTree,
+  }
+}
+
+const submitting = ref(false)
+async function createWithBuilding() {
+  formError.value = null
+  submitting.value = true
+  try {
+    const header = await form.value?.validate({ silent: true })
+    const building = await collectBuilding()
+    if (!header || !building) {
+      formError.value = 'Some fields need attention. Check the messages below each field.'
+      return
+    }
+    const created = await raApi.createWithBuilding({
+      ...building,
+      period_year: raPeriodOf(state.assessment_date) ?? new Date().getFullYear(),
+      assessment_date: state.assessment_date,
+      lic_phone: state.lic_phone.trim(),
+      licom_user_id: state.licom_user_id ?? undefined,
+      licom_phone: state.licom_phone.trim(),
+    })
+    toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
+    await navigateTo(raPath(ra.value.kind, 'manage', created.id))
+  } catch (error) {
+    const errors = apiFieldErrors(error)
+    const own = errors.filter((item) => item.name?.startsWith('location.')).map((item) => ({ ...item, name: item.name!.slice('location.'.length) }))
+    locationForm.value?.setErrors(own)
+    if (own.length) buildingTab.value = 'details'
+    form.value?.setErrors(raHeaderErrors(errors.filter((item) => !item.name?.includes('.'))))
+    formError.value = raErrorText(error)
+  } finally {
+    submitting.value = false
+  }
+}
+
 async function onSubmit() {
   formError.value = null
   try {
     const created = await raApi.create({
-      location_id: state.location_id,
+      location_id: state.location_id!,
       // The RA period is the year of the assessment date.
       period_year: raPeriodOf(state.assessment_date) ?? new Date().getFullYear(),
       assessment_date: state.assessment_date,
@@ -340,7 +458,7 @@ async function onSubmit() {
       :schema="schema"
       :state="state"
       class="grid max-w-6xl items-start gap-6 lg:grid-cols-2"
-      @submit="onSubmit"
+      @submit="newBuilding ? createWithBuilding() : onSubmit()"
     >
       <UAlert
         v-if="formError"
@@ -381,29 +499,20 @@ async function onSubmit() {
           :class="noReason ? 'opacity-60' : ''"
         >
           <UFormField
+            v-if="!newBuilding"
             class="sm:col-span-2"
             :label="ra.location.single"
             name="location_id"
             required
             :help="locationHelp"
           >
-            <div class="flex gap-2">
-              <USelectMenu
-                v-model="state.location_id"
-                value-key="value"
-                :items="locationItems"
-                :placeholder="`Choose a ${ra.location.lower}`"
-                class="min-w-0 flex-1"
-              />
-              <UButton
-                :to="{ path: `${LOCATIONS_PATH}/new`, query: { type: ra.kind, then: 'assessment' } }"
-                :disabled="noReason"
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-plus"
-                :label="`Add ${ra.location.lower}`"
-              />
-            </div>
+            <USelectMenu
+              v-model="state.location_id"
+              value-key="value"
+              :items="locationItems"
+              :placeholder="`Choose a ${ra.location.lower}`"
+              class="w-full"
+            />
           </UFormField>
           <!-- As SCCA's note on a picked application: what the building's last RA is, and that
                the new one starts from it. -->
@@ -512,7 +621,10 @@ async function onSubmit() {
           </fieldset>
         </UCard>
 
-        <div class="flex justify-end gap-2">
+        <div
+          v-if="!newBuilding"
+          class="flex justify-end gap-2"
+        >
           <UButton
             :to="raPath(ra.kind, 'manage')"
             color="neutral"
@@ -527,5 +639,98 @@ async function onSubmit() {
         </div>
       </div>
     </UForm>
+
+    <!-- Outside the form above: the building tabs have forms of their own. -->
+    <section
+      v-if="newBuilding"
+      class="max-w-6xl space-y-4"
+      aria-labelledby="new-building-heading"
+    >
+      <h2
+        id="new-building-heading"
+        class="text-lg font-semibold"
+      >
+        New {{ ra.location.lower }}
+      </h2>
+      <UTabs
+        v-model="buildingTab"
+        :items="buildingTabs"
+        variant="link"
+        :unmount-on-hide="false"
+        :ui="{ content: 'pt-4' }"
+      >
+        <template #details>
+          <RaLocationForm
+            ref="locationForm"
+            draft
+            kind-locked
+          />
+        </template>
+        <template #map>
+          <RaLocationMapTab
+            ref="mapTab"
+            draft
+            :location="mapLocation"
+          />
+        </template>
+        <template #contacts>
+          <RaContactsForm
+            ref="contactsForm"
+            draft
+            :location="blankLocation"
+          />
+        </template>
+        <template #occupants>
+          <RaOccupantsTab
+            draft
+            :location="occupantsDraft"
+            @saved="(next) => (occupantsDraft = next)"
+          />
+        </template>
+        <template #team>
+          <RaGroupedRowsForm
+            ref="teamForm"
+            draft
+            :groups="RA_RECOVERY_TEAMS"
+            group-key="team"
+            :lead="RA_TEAM_LEAD"
+            :fields="RA_TEAM_FIELDS"
+            :initial="[]"
+            item-label="member"
+            save-label="Save recovery team"
+            saved-message="Recovery team saved"
+            error-title="Check the recovery team"
+          />
+        </template>
+        <template #calltree>
+          <RaGroupedRowsForm
+            ref="callTreeForm"
+            draft
+            :groups="RA_CALL_TREE_GROUPS"
+            group-key="level"
+            :lead="RA_CALL_TREE_LEAD"
+            :fields="RA_CALL_TREE_FIELDS"
+            :initial="[]"
+            item-label="contact"
+            save-label="Save call tree"
+            saved-message="Call tree saved"
+            error-title="Check the call tree"
+          />
+        </template>
+      </UTabs>
+      <div class="flex justify-end gap-2">
+        <UButton
+          :to="raPath(ra.kind, 'manage')"
+          color="neutral"
+          variant="outline"
+          label="Cancel"
+        />
+        <UButton
+          label="Create assessment"
+          :loading="submitting"
+          @click="createWithBuilding"
+        />
+      </div>
+    </section>
   </AppPage>
 </template>

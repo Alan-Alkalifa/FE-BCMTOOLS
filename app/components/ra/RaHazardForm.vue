@@ -364,7 +364,7 @@ async function save() {
         :columns="columns"
         sticky
         class="max-h-[70vh]"
-        :ui="{ th: 'first:ps-4 last:pe-4 whitespace-normal align-bottom', td: 'first:ps-4 last:pe-4 align-top' }"
+        :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap align-bottom', td: 'first:ps-4 last:pe-4 align-top' }"
       >
         <template #name-cell="{ row }">
           <span class="flex items-center gap-1.5">

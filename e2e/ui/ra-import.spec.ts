@@ -48,7 +48,7 @@ async function mockImport(page: Page, preview: Preview | ((file: string) => Prev
 }
 
 async function openImport(page: Page) {
-  await page.goto('/locations')
+  await page.goto('/admin/buildings')
   await page.getByRole('button', { name: 'Import from Excel' }).click({ timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'Import from Excel' })
   await expect(dialog).toBeVisible()
@@ -310,7 +310,7 @@ test('the empty template of the chosen type downloads; the old link opens the di
     })
   })
   await page.goto('/locations/import')
-  await expect(page).toHaveURL(/\/locations\?import=head_office$/, { timeout: 60_000 })
+  await expect(page).toHaveURL(/\/admin\/buildings\?import=head_office$/, { timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'Import from Excel' })
   const ho = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Download empty template' }).click()
