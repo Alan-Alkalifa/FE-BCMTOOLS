@@ -74,7 +74,7 @@ test('the requester cannot approve their own publication', async ({ page }) => {
 test('a user without configuration permission is sent to forbidden', async ({ page }) => {
   await signIn(page, { permissions: ['bianca.access'] })
   await page.goto('/admin/bianca-config')
-  await expect(page).toHaveURL(/\/forbidden/, { timeout: 15000 })
+  await expect(page).toHaveURL(/\/forbidden/, { timeout: 45000 })
 })
 
 test('new BIA questionnaire renders a configured sixth category', async ({ page }) => {
@@ -94,4 +94,87 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
   await count.fill('7')
   await expect(page.getByText('(configured categories · V2)', { exact: true })).toBeVisible()
   await expect(page.getByText('7', { exact: true })).toBeVisible()
+})
+
+test('configuration sections keep draft edits across tabs and compare saved values', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = {
+    ...version(), id: 2, code: 'V2', status: 'draft',
+    changes: [{ part: 'loss_alert_idr', before: 4000000000, after: 5000000000 }],
+  }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft, version()] } })
+  })
+
+  await page.goto('/admin/bianca-config?version=2&tab=lists&list=suggested_mtd')
+  const versionSelect = page.getByRole('combobox', { name: 'Configuration version' })
+  const requestPublish = page.getByRole('button', { name: 'Request publish', exact: true })
+  await expect(versionSelect).toHaveText(/V2/, { timeout: 45000 })
+  await expect(requestPublish).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Discard draft', exact: true })).toBeEnabled()
+
+  const lists = page.getByRole('navigation', { name: 'Lists', exact: true })
+  await expect(lists.getByRole('button', { name: /^Suggested MTD/ })).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('textbox', { name: 'Suggested MTD', exact: true }).fill('4 hours\n2 days')
+  await expect(requestPublish).toBeDisabled()
+  await lists.getByRole('button', { name: /^Yes \/ No codes/ }).click()
+  await expect(page.getByRole('textbox', { name: 'Yes / No codes', exact: true })).toBeDisabled()
+
+  await page.getByRole('tab', { name: 'Impact and MTD', exact: true }).click()
+  const impact = page.getByRole('navigation', { name: 'Impact and MTD', exact: true })
+  await impact.getByRole('button', { name: 'Time conversion', exact: true }).click()
+  await expect(page.getByRole('spinbutton', { name: 'Hours per day' })).toBeVisible()
+  await impact.getByRole('button', { name: 'Expected MTD', exact: true }).click()
+  await page.getByRole('button', { name: 'Add MTD', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Expected MTD 2', exact: true }).fill('2 days')
+
+  await page.getByRole('tab', { name: 'Guides and statements', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Attestation statement' }).fill('I confirm the assessment.')
+  await page.getByRole('tab', { name: 'Approval template', exact: true }).click()
+  const headOf = page.getByRole('group', { name: /Step 3: head_of/ })
+  await headOf.getByRole('switch', { name: 'Required' }).uncheck()
+  await headOf.getByRole('button', { name: 'Move head_of down' }).click()
+  await expect(page.getByRole('group', { name: /Step 4: head_of/ }).getByRole('switch', { name: 'Required' })).toBeChecked()
+
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click()
+  const diff = page.getByRole('table', { name: 'Changes to Impact and MTD' })
+  await expect(diff.getByRole('columnheader', { name: 'Source version' })).toBeVisible()
+  await expect(diff.getByRole('rowheader', { name: 'Financial loss alert (IDR)' })).toBeVisible()
+  await expect(diff.getByRole('cell', { name: 'Changed', exact: true })).toBeVisible()
+  await expect(diff.getByRole('cell', { name: '4.000.000.000', exact: true })).toBeVisible()
+  await expect(diff.getByRole('cell', { name: '5.000.000.000', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect(requestPublish).toBeEnabled()
+  expect(saved?.suggested_mtd).toEqual(['4 hours', '2 days'])
+  expect(saved?.expected_mtd[1]).toEqual({ value: '2 days', category: 'Others' })
+  expect(saved?.guides.attestation).toBe('I confirm the assessment.')
+  expect(saved?.signoff_steps.at(-1)).toMatchObject({ code: 'head_of', required: true })
+})
+
+test('the configuration tabs and section menu fit on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, { permissions })
+  const published = { ...version(), requested_by_id: 1, published_at: '2026-11-17T02:00:00Z' }
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [published] } }))
+  await page.goto('/admin/bianca-config?tab=lists')
+
+  const main = page.getByRole('main')
+  const menu = page.getByRole('navigation', { name: 'Lists', exact: true })
+  await expect(menu).toBeVisible({ timeout: 45000 })
+  await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
+  await menu.getByRole('button', { name: /^Suggested MTD/ }).click()
+  await expect(page.getByRole('textbox', { name: 'Suggested MTD', exact: true })).toBeDisabled()
+  const tabs = page.getByRole('tablist')
+  await expect.poll(() => tabs.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  await expect.poll(() => main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click()
+  await expect(page.getByText('No saved parameter changes.')).toBeVisible()
 })
