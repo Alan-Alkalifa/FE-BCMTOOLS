@@ -39,7 +39,9 @@ export function useAuth() {
 
   async function fetchUser() {
     try {
-      setUser(await $fetch<CurrentUser>('/api/me'))
+      // A timeout, because the route middleware awaits this before anything renders: a backend
+      // that is down or hanging would otherwise leave the page blank instead of showing sign-in.
+      setUser(await $fetch<CurrentUser>('/api/me', { timeout: 8000 }))
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode !== 401) throw error
       setUser(null)
