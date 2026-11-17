@@ -103,10 +103,12 @@ test('configuration sections keep draft edits across tabs and compare saved valu
     changes: [{ part: 'loss_alert_idr', before: 4000000000, after: 5000000000 }],
   }
   let saved: BiancaConfigPayload | undefined
+  let listsSent: BiancaConfigVersion['list_items']
   await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
     if (route.request().method() === 'PUT') {
       const body = route.request().postDataJSON()
       saved = body.payload
+      listsSent = body.list_items
       Object.assign(draft, body, { revision: 2 })
       return route.fulfill({ json: draft })
     }
@@ -122,10 +124,23 @@ test('configuration sections keep draft edits across tabs and compare saved valu
 
   const lists = page.getByRole('navigation', { name: 'Lists', exact: true })
   await expect(lists.getByRole('button', { name: /^Suggested MTD/ })).toHaveAttribute('aria-current', 'page')
-  await page.getByRole('textbox', { name: 'Suggested MTD', exact: true }).fill('4 hours\n2 days')
+  const choices = page.getByRole('table', { name: 'Suggested MTD items' })
+  await expect(choices.getByRole('textbox', { name: 'Code 2' })).toHaveValue('1 day')
+  await choices.getByRole('switch', { name: 'Item 2 active' }).uncheck()
+  await page.getByRole('button', { name: 'Add item', exact: true }).click()
+  await choices.getByRole('textbox', { name: 'Code 3' }).fill('2 days')
+  await choices.getByRole('textbox', { name: 'Label 3' }).fill('Two days')
+  await choices.getByRole('textbox', { name: 'Text 3' }).fill('Within two days')
+  await choices.getByRole('button', { name: 'Move item 3 up' }).click()
+  await choices.getByRole('button', { name: 'Move item 2 up' }).click()
+  await page.getByRole('button', { name: 'Add item', exact: true }).click()
+  await choices.getByRole('button', { name: 'Remove item 4' }).click()
   await expect(requestPublish).toBeDisabled()
   await lists.getByRole('button', { name: /^Yes \/ No codes/ }).click()
-  await expect(page.getByRole('textbox', { name: 'Yes / No codes', exact: true })).toBeDisabled()
+  const fixed = page.getByRole('table', { name: 'Yes / No codes items' })
+  await expect(fixed.getByRole('textbox', { name: 'Code 1' })).toBeDisabled()
+  await expect(fixed.getByRole('switch', { name: 'Item 1 active' })).toBeDisabled()
+  await expect(fixed.getByRole('textbox', { name: 'Label 1' })).toBeEditable()
 
   await page.getByRole('tab', { name: 'Impact and MTD', exact: true }).click()
   const impact = page.getByRole('navigation', { name: 'Impact and MTD', exact: true })
@@ -153,7 +168,12 @@ test('configuration sections keep draft edits across tabs and compare saved valu
 
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await expect(requestPublish).toBeEnabled()
-  expect(saved?.suggested_mtd).toEqual(['4 hours', '2 days'])
+  expect(saved?.suggested_mtd).toEqual(['2 days', '4 hours'])
+  expect(listsSent?.suggested_mtd).toEqual([
+    { code: '2 days', label: 'Two days', text: 'Within two days', active: true },
+    { code: '4 hours', label: '4 hours', text: null, active: true },
+    { code: '1 day', label: '1 day', text: null, active: false },
+  ])
   expect(saved?.expected_mtd[1]).toEqual({ value: '2 days', category: 'Others' })
   expect(saved?.guides.attestation).toBe('I confirm the assessment.')
   expect(saved?.signoff_steps.at(-1)).toMatchObject({ code: 'head_of', required: true })
@@ -171,7 +191,7 @@ test('the configuration tabs and section menu fit on a phone', async ({ page }) 
   await expect(menu).toBeVisible({ timeout: 45000 })
   await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
   await menu.getByRole('button', { name: /^Suggested MTD/ }).click()
-  await expect(page.getByRole('textbox', { name: 'Suggested MTD', exact: true })).toBeDisabled()
+  await expect(page.getByRole('table', { name: 'Suggested MTD items' }).getByRole('textbox', { name: 'Code 1' })).toBeDisabled()
   const tabs = page.getByRole('tablist')
   await expect.poll(() => tabs.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
   await expect.poll(() => main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)

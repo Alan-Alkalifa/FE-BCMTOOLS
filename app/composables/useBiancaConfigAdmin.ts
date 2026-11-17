@@ -41,7 +41,17 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   guides: Record<string, string>
 }
 
+export interface BiancaListItem {
+  code: string
+  label: string
+  text: string | null
+  active: boolean
+}
+
+export type BiancaListItems = Record<BiancaListKey, BiancaListItem[]>
+
 export interface BiancaConfigVersion {
+  list_items?: Partial<BiancaListItems>
   signer_profiles?: Record<string, BiancaSigner>
   id: number
   code: string
@@ -60,7 +70,7 @@ export interface BiancaConfigVersion {
 const BIA_CONFIG = '/api/admin/bianca-config/versions'
 export const biancaConfigApi = {
   start: () => $fetch<BiancaConfigVersion>(BIA_CONFIG, { method: 'POST' }),
-  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload }) =>
+  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload, list_items: BiancaListItems }) =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}`, { method: 'PUT', body }),
   action: (id: number, revision: number, action: 'request-publish' | 'withdraw' | 'publish') =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}/${action}`, { method: 'POST', body: { revision } }),

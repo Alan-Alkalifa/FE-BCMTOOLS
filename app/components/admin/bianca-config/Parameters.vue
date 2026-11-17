@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BiancaConfigPayload, BiancaGrade, BiancaListKey, BiancaSigner } from '~/composables/useBiancaConfigAdmin'
+import type { BiancaConfigPayload, BiancaGrade, BiancaSigner } from '~/composables/useBiancaConfigAdmin'
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
 const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner> }>()
@@ -7,33 +7,6 @@ const props = defineProps<{ section: string, disabled: boolean, signers: Record<
 const route = useRoute()
 const router = useRouter()
 
-const lists: { key: BiancaListKey, label: string, help: string, locked?: boolean }[] = [
-  { key: 'periods', label: 'Impact periods', help: 'One period per line, in time order. New versions can have 1–24 periods.' },
-  { key: 'suggested_mtd', label: 'Suggested MTD', help: 'Positive durations, for example 4 hours or 1 day.' },
-  { key: 'dependency_mtd', label: 'Dependency MTD', help: 'Durations, NA or SLA.' },
-  { key: 'percentages', label: 'Planned capacity', help: 'One percentage per line, between 0% and 100%.' },
-  { key: 'upstream_capacity', label: 'Dependency capacity', help: 'Configured percentages, NA or SLA.' },
-  { key: 'alt_site_strategies', label: 'Alternate site strategies', help: 'One strategy per line.' },
-  { key: 'frequencies', label: 'Critical timing frequencies', help: 'One choice per line. Keep legacy values when needed.' },
-  { key: 'system_usage', label: 'System dependency codes', help: 'Semantic codes used by the gap rule; maintained by the application.', locked: true },
-  { key: 'yes_no', label: 'Yes / No codes', help: 'Semantic codes; maintained by the application.', locked: true },
-]
-
-const selectedList = computed({
-  get: () => lists.find((list) => list.key === route.query.list)?.key ?? 'periods',
-  set: (value: string) => router.replace({ query: { ...route.query, list: value } }),
-})
-const list = computed(() => lists.find((entry) => entry.key === selectedList.value)!)
-const listItems = computed(() => lists.map(({ key, label }) => ({ value: key, label, count: model.value[key].length })))
-
-const listText = reactive({} as Record<BiancaListKey, string>)
-watch(() => model.value, () => {
-  for (const list of lists) listText[list.key] = model.value[list.key].join('\n')
-}, { immediate: true })
-function setList(key: BiancaListKey, value: string) {
-  listText[key] = value
-  model.value[key] = value.split('\n').map((v) => v.trim()).filter(Boolean)
-}
 function addGrade() {
   let i = model.value.staff_grades.length + 1
   while (model.value.staff_grades.some((g) => g.code === `grade_${i}`)) i++
@@ -228,46 +201,6 @@ function selectedSigner(id: number | null) {
         </section>
       </fieldset>
     </UCard>
-
-    <AdminBiancaConfigSectionLayout
-      v-else-if="section === 'lists'"
-      v-model="selectedList"
-      label="Lists"
-      :items="listItems"
-    >
-      <template #header>
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="font-semibold text-highlighted">
-            {{ list.label }}
-          </h2>
-          <UBadge
-            v-if="list.locked"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-lock"
-            label="Fixed codes"
-          />
-        </div>
-        <p class="mt-1 text-sm text-muted">
-          {{ list.help }}
-        </p>
-      </template>
-      <UFormField
-        :label="list.label"
-        :ui="{ label: 'sr-only' }"
-      >
-        <UTextarea
-          :key="list.key"
-          :model-value="listText[list.key]"
-          :rows="8"
-          autoresize
-          :maxrows="16"
-          class="w-full max-w-2xl"
-          :disabled="disabled || list.locked"
-          @update:model-value="setList(list.key, $event)"
-        />
-      </UFormField>
-    </AdminBiancaConfigSectionLayout>
 
     <AdminBiancaConfigSectionLayout
       v-else-if="section === 'impact'"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   label: string
+  flush?: boolean
   items: { value: string, label: string, count?: number }[]
 }>()
 
@@ -36,7 +37,10 @@ const selected = defineModel<string>({ required: true })
       </nav>
     </UCard>
 
-    <UCard class="min-w-0">
+    <UCard
+      class="min-w-0"
+      :ui="flush ? { body: 'p-0 sm:p-0' } : undefined"
+    >
       <template #header>
         <slot name="header" />
       </template>

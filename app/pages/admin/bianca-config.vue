@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import type { TableColumn } from '@nuxt/ui'
 import type { BiancaConfigVersion } from '~/composables/useBiancaConfigAdmin'
+import { biancaListItems } from '~/utils/bianca-config'
 
 definePageMeta({ permission: 'bianca.config.view' })
 const route = useRoute()
@@ -13,11 +14,14 @@ const { data, status, error, refresh } = await useFetch<{ items: BiancaConfigVer
 const version = computed(() => data.value?.items.find((v) => v.id === Number(route.query.version))
   ?? data.value?.items.find((v) => v.status === 'draft')
   ?? data.value?.items.find((v) => v.status === 'active'))
-const form = ref<{ name: string, notes: string | null, payload: BiancaConfigVersion['payload'] } | null>(null)
+function versionForm(version: BiancaConfigVersion) {
+  return { name: version.name, notes: version.notes, payload: toRaw(version.payload), list_items: biancaListItems(version) }
+}
+const form = ref<ReturnType<typeof versionForm> | null>(null)
 watch(version, (v) => {
-  form.value = v ? { name: v.name, notes: v.notes, payload: structuredClone(toRaw(v.payload)) } : null
+  form.value = v ? structuredClone(versionForm(v)) : null
 }, { immediate: true })
-const original = computed(() => version.value ? JSON.stringify({ name: version.value.name, notes: version.value.notes, payload: version.value.payload }) : '')
+const original = computed(() => version.value ? JSON.stringify(versionForm(version.value)) : '')
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== original.value)
 const editable = computed(() => version.value?.status === 'draft' && can('bianca.config.manage'))
 const busy = ref<string | null>(null)
@@ -89,7 +93,12 @@ async function start() {
 }
 async function save() {
   if (!version.value || !form.value || !editable.value || !dirty.value || busy.value) return
-  await run('save', () => biancaConfigApi.save(version.value!.id, { ...form.value!, revision: version.value!.revision }), 'Draft configuration saved')
+  const { id, revision } = version.value
+  const { name, notes, payload, list_items } = form.value
+  const activeCodes = Object.fromEntries(Object.entries(list_items).map(([key, items]) => [
+    key, items.filter((item) => item.active).map((item) => item.code.trim()),
+  ]))
+  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: { ...payload, ...activeCodes }, list_items }), 'Draft configuration saved')
 }
 async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'discard') {
   const selected = version.value
@@ -363,6 +372,12 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-else-if="item.value === 'changes'"
               class="mt-4"
               :version="version"
+            />
+            <AdminBiancaConfigLists
+              v-else-if="item.value === 'lists'"
+              v-model="form.list_items"
+              class="mt-4"
+              :disabled="!editable || !!busy"
             />
             <AdminBiancaConfigParameters
               v-else

@@ -1,5 +1,6 @@
+import type { BiancaListItems, BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
+
 import type { BiancaStatus } from '~/utils/bianca'
-import type { BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
 
 /** One workbook cell the upload reader or the completeness check names. */
 export interface BiancaProblem {
@@ -142,6 +143,7 @@ export interface BiancaPlace { id: number, code: string | null, name: string, la
 export interface BiancaApplication { id: number, code: string, name: string, label: string, category: string | null, rto: string | null, rpo: string | null }
 
 export interface BiancaLookups {
+  list_items?: BiancaListItems
   signer_profiles?: Record<string, BiancaSigner>
   config_version_id: number | null
   config_version: string
