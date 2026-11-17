@@ -6,7 +6,8 @@ import type { RaLocationDetail, RaPin } from '~/composables/useRa'
  * coordinates Google Maps copies ("-6.271633, 106.719358"). It belongs to the location, so
  * every RA cycle of the building or branch shows the same pin.
  */
-const props = defineProps<{ location: RaLocationDetail }>()
+/** `draft`: not saved here; the page collects the pin (`collect`) and saves it with the rest. */
+const props = defineProps<{ location: RaLocationDetail, draft?: boolean }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 
 const ra = useRaModule()
@@ -25,7 +26,9 @@ function reset(location: RaLocationDetail) {
   coordinatesError.value = null
 }
 
-watch(() => props.location, (location) => reset(location))
+watch(() => props.location, (location) => {
+  if (!props.draft) reset(location)
+})
 
 const saved = computed(() => raPin(props.location))
 const changed = computed(() => raFormatCoordinates(pin.value) !== raFormatCoordinates(saved.value))
@@ -55,6 +58,14 @@ function applyCoordinates() {
   coordinatesError.value = null
   pin.value = parsed
 }
+
+/** The pin to save (null coordinates: no pin), or null when the coordinates typed are wrong. */
+function collect(): { latitude: number | null, longitude: number | null } | null {
+  applyCoordinates()
+  if (coordinatesError.value) return null
+  return { latitude: pin.value?.lat ?? null, longitude: pin.value?.lng ?? null }
+}
+defineExpose({ collect })
 
 async function save(next: RaPin | null) {
   formError.value = null
@@ -98,7 +109,7 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
         />
 
         <UAlert
-          v-if="!saved"
+          v-if="draft ? !pin : !saved"
           color="warning"
           variant="subtle"
           icon="i-lucide-map-pin-off"
@@ -138,7 +149,10 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
         </UFormField>
       </div>
 
-      <template #footer>
+      <template
+        v-if="!draft"
+        #footer
+      >
         <div class="flex flex-wrap items-center justify-end gap-2">
           <p
             v-if="!saved && !pin"
@@ -181,7 +195,7 @@ const searchQuery = computed(() => [props.location.name, props.location.address]
           </dt>
           <dd>{{ location.address || '—' }}</dd>
         </div>
-        <div>
+        <div v-if="!draft">
           <dt class="text-muted">
             Saved pin
           </dt>

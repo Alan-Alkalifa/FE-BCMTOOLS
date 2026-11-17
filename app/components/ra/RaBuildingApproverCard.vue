@@ -19,12 +19,9 @@ const steps = computed(() => {
 })
 const shown = computed(() => props.assessment.building_pending && props.assessment.status !== 'approved' && steps.value.length > 0)
 
-/** "Building approver (the building waits for approval)" names the signer as "Building approver". */
-function who(title: string) {
-  return title.replace(/\s*\(.*\)\s*$/, '') || title
-}
+/** The signers by their short names ("Building Approver"). */
 const heading = computed(() => {
-  const names = [...new Set(steps.value.map((step) => who(step.title)))]
+  const names = [...new Set(steps.value.map((step) => step.title))]
   return `Must be signed by the ${names.join(' and the ')} first`
 })
 

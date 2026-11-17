@@ -3,8 +3,8 @@
  * The module's BCM sees every task of it (`oversees`), everyone else what waits for them. The
  * Home overview shows each module at a glance (`useTaskSummary`). It sends no reminders.
  */
-export type TaskModule = 'scca' | 'ra' | 'ra_branch' | 'location'
-export type TaskType = 'signoff' | 'renewal' | 'building' | 'incident'
+export type TaskModule = 'scca' | 'ra' | 'ra_branch' | 'sites'
+export type TaskType = 'signoff' | 'renewal' | 'building' | 'disaster' | 'incident'
 export type TaskLevel = 'ok' | 'reminder' | 'escalated' | 'overdue' | 'due_30' | 'due_90'
 /** The quick filters: stuck sign-offs, overdue or due renewals. */
 export type TaskLevelFilter = 'stuck' | 'overdue' | 'due'
@@ -63,7 +63,8 @@ export interface TaskPage {
 }
 
 /** One module at a glance on Home. Sign-off modules count `mine` … `due_renewals` (every one
- *  for its BCM, `oversees`; otherwise the user's own); Location counts `building` and `incident`. */
+ *  for its BCM, `oversees`; otherwise the user's own), RA HO and RA Branch also `building`;
+ *  Sites counts `disaster` and `incident`. */
 export interface TaskGlance {
   module: TaskModule
   oversees: boolean
@@ -73,6 +74,7 @@ export interface TaskGlance {
   overdue_renewals?: number
   due_renewals?: number
   building?: number
+  disaster?: number
   incident?: number
 }
 
@@ -95,22 +97,22 @@ export const TASK_MODULES: Record<TaskModule, string> = {
   scca: 'SCCA',
   ra: 'RA HO',
   ra_branch: 'RA Branch',
-  location: 'Location',
+  sites: 'Sites',
 }
 
 export const TASK_MODULE_ICONS: Record<TaskModule, string> = {
   scca: 'i-lucide-shield-check',
   ra: 'i-lucide-building-2',
   ra_branch: 'i-lucide-landmark',
-  location: 'i-lucide-map-pinned',
+  sites: 'i-lucide-map-pinned',
 }
 
 /** The task types each module's tab has. */
 export const TASK_MODULE_TYPES: Record<TaskModule, TaskType[]> = {
   scca: ['signoff', 'renewal'],
-  ra: ['signoff', 'renewal'],
-  ra_branch: ['signoff', 'renewal'],
-  location: ['building', 'incident'],
+  ra: ['signoff', 'renewal', 'building'],
+  ra_branch: ['signoff', 'renewal', 'building'],
+  sites: ['disaster', 'incident'],
 }
 
 /** Each kind of task, as a badge (`StatusBadge`). */
@@ -118,5 +120,6 @@ export const taskType = defineStatusScale<TaskType>({
   signoff: { label: 'Sign-off', color: 'info', icon: 'i-lucide-badge-check' },
   renewal: { label: 'Renewal', color: 'neutral', icon: 'i-lucide-calendar-clock' },
   building: { label: 'Building', color: 'warning', icon: 'i-lucide-building' },
-  incident: { label: 'Disaster', color: 'error', icon: 'i-lucide-siren' },
+  disaster: { label: 'Disaster', color: 'error', icon: 'i-lucide-siren' },
+  incident: { label: 'Incident', color: 'error', icon: 'i-lucide-triangle-alert' },
 })

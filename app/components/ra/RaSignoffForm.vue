@@ -317,7 +317,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
     <UCard v-if="assessment.can_approve && currentRole">
       <template #header>
         <h2 class="text-lg font-semibold">
-          Your approval: {{ currentRole.label }} ({{ currentRole.hint }})
+          Your approval: {{ currentRole.label }}
         </h2>
         <p class="text-sm text-muted">
           By approving you agree to the sign-off statement below for this assessment.
@@ -366,7 +366,7 @@ const history = computed(() => [...props.assessment.signoff_history].reverse())
     >
       <template #header>
         <h2 class="text-lg font-semibold">
-          Act for the signer: {{ currentRole.label }} ({{ currentRole.hint }})
+          Act for the signer: {{ currentRole.label }}
         </h2>
         <p class="text-sm text-muted">
           {{ assessment.awaiting_signer?.name ?? 'The signer' }} signs this step. As BCM you can give it to someone else, or approve it on their behalf when they approved outside BCM Tools.

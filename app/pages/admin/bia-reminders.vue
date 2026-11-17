@@ -9,13 +9,13 @@ definePageMeta({ permission: 'bianca.approval.manage' })
     description="Live reminder, escalation and annual renewal notice rules for Business Impact Analysis (BIANCA)."
     :crumbs="[
       { label: 'Administration' },
-      { label: 'BIA configuration', to: '/admin/bia-config' },
+      { label: 'BIA configuration', to: '/admin/bianca-config' },
       { label: 'Reminders and escalation' },
     ]"
   >
     <template #actions>
       <UButton
-        to="/admin/bia-config?tab=reminders"
+        to="/admin/bianca-config?tab=reminders"
         color="neutral"
         variant="outline"
         icon="i-lucide-arrow-left"

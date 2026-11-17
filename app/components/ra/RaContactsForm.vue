@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { RaContact, RaLocationDetail } from '~/composables/useRa'
 
-const props = defineProps<{ location: RaLocationDetail }>()
+/** `draft`: not saved here; the page collects the contacts (`collect`) and saves them with the rest. */
+const props = defineProps<{ location: RaLocationDetail, draft?: boolean }>()
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 
 const toast = useToast()
@@ -87,15 +88,22 @@ function filled(row: Row) {
   return needed(row.kind).some((field) => String(row[field]).trim())
 }
 
-async function save() {
+/** The contacts to save, or null when a row is incomplete (the messages show). */
+function collect(): RaContact[] | null {
   formError.value = null
   if (!validate()) {
     formError.value = 'Every contact needs all of its details. Fill in the fields marked below, or remove the row.'
-    return
+    return null
   }
-  const contacts = rows.value
+  return rows.value
     .filter(filled)
     .map(({ key: _key, ...row }) => blankToNull(row) as RaContact)
+}
+defineExpose({ collect })
+
+async function save() {
+  const contacts = collect()
+  if (!contacts) return
   try {
     const saved = await raApi.setContacts(props.location.id, contacts)
     reset(saved)
@@ -224,7 +232,10 @@ async function save() {
       </div>
     </UCard>
 
-    <div class="flex justify-end">
+    <div
+      v-if="!draft"
+      class="flex justify-end"
+    >
       <UButton
         label="Save contacts"
         loading-auto

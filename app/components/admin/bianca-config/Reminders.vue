@@ -315,7 +315,7 @@ async function runRemindersNow() {
             How it runs
           </p>
           <p class="text-muted">
-            These rules are not part of a configuration version: they apply to every BIA as soon as they are saved, whichever version is shown above.
+            These rules are not part of a configuration version: they apply to every BIA as soon as they are saved.
           </p>
           <p class="text-muted">
             The server checks every 30 minutes and sends only what is due, so nobody gets the same email twice. Each reminder, escalation and notice is in the email outbox and in Audit log.

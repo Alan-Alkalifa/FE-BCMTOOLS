@@ -18,7 +18,7 @@ const emit = defineEmits<{ saved: [assessment: BiancaAssessment] }>()
 
 const toast = useToast()
 const confirm = useConfirm()
-const { data: lookups } = useBiancaLookups()
+const { data: lookups } = useBiancaLookups(() => props.assessment?.id)
 
 const editable = computed(() => !props.assessment || props.assessment.can_edit)
 const saved = ref<BiancaAssessment | null>(props.assessment ?? null)
@@ -33,6 +33,7 @@ const tabs = [
   { label: 'RA questionnaire', value: 'ra', icon: 'i-lucide-clipboard-list' },
   { label: 'Business functions', value: 'functions', icon: 'i-lucide-workflow' },
   { label: 'Notes', value: 'notes', icon: 'i-lucide-notebook-pen' },
+  { label: 'Approval template', value: 'approval', icon: 'i-lucide-signature' },
 ]
 const tab = ref('sign')
 
@@ -43,6 +44,9 @@ function blankHeader(): BiancaHeader {
   for (const name of BIANCA_STAFF) header[name] = undefined
   header.main_location_id = undefined
   header.alt_location_id = undefined
+  header.personnel_counts = {}
+  header.personnel_notes = {}
+  header.signoff_users = {}
   return header as unknown as BiancaHeader
 }
 
@@ -96,7 +100,9 @@ function blankRow(row: object) {
 }
 
 function toInput(): BiancaInput {
-  const body = clean({ ...toRaw(header), functions: toRaw(functions.value) }) as BiancaInput
+  const legacyFields = new Set<string>(BIANCA_STAFF)
+  const raw = Object.fromEntries(Object.entries(toRaw(header)).filter(([name]) => !legacyFields.has(name)))
+  const body = clean({ ...raw, config_version_id: lookups.value?.config_version_id, functions: toRaw(functions.value) }) as BiancaInput
   for (const fn of body.functions ?? []) {
     fn.it_dependencies = fn.it_dependencies.filter((row) => !blankRow(row))
     fn.dependencies = fn.dependencies.filter((row) => !blankRow(row))
@@ -114,12 +120,15 @@ function previewInput(): BiancaInput {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined
+let previewSequence = 0
 watch([header, functions], () => {
   dirty.value = true
   clearTimeout(timer)
+  const sequence = ++previewSequence
   timer = setTimeout(async () => {
     try {
-      preview.value = await biancaApi.calculate(previewInput())
+      const result = await biancaApi.calculate(previewInput(), saved.value?.id)
+      if (sequence === previewSequence) preview.value = result
     } catch {
       // Half-typed values the API refuses: keep the last result until they are valid.
     }
@@ -127,14 +136,15 @@ watch([header, functions], () => {
 }, { deep: true })
 onMounted(async () => {
   try {
-    preview.value = await biancaApi.calculate(previewInput())
+    preview.value = await biancaApi.calculate(previewInput(), saved.value?.id)
   } catch {
     preview.value = null
   }
 })
 onBeforeUnmount(() => clearTimeout(timer))
 
-const totalStaff = computed(() => preview.value?.total_staff ?? BIANCA_STAFF.reduce((sum, name) => sum + (Number(header[name]) || 0), 0))
+const totalStaff = computed(() => Object.values(header.personnel_counts).reduce<number>((sum, count) => sum + (Number(count) || 0), 0))
+const grades = computed(() => lookups.value?.personnel_grades.filter((g) => g.active || (header.personnel_counts[g.code] ?? 0) > 0) ?? [])
 const organisation = computed(() => saved.value ?? lookups.value?.organisation ?? null)
 
 function addFunction() {
@@ -184,7 +194,7 @@ async function save(quiet = false) {
 async function submit() {
   if (!await confirm({
     title: 'Submit this BIA for approval?',
-    description: 'It leaves your drafts and can no longer be edited. The approvers sign off in turn.',
+    description: 'This records the assigned signers and locks the draft. Assessment approve/reject execution is not available in this release.',
     confirmLabel: 'Submit',
   })) return
   submitting.value = true
@@ -225,7 +235,7 @@ function onImported(result: BiancaAssessment) {
 }
 
 /** What still blocks Submit, as the API counted it at the last save. */
-const problems = computed(() => (dirty.value ? [] : saved.value?.problems ?? []))
+const problems = computed(() => (dirty.value ? [] : [...(saved.value?.problems ?? []), ...(saved.value?.approval_problems ?? [])]))
 const warnings = computed(() => saved.value?.warnings ?? [])
 const canSubmit = computed(() => !!saved.value && !dirty.value && !problems.value.length)
 
@@ -581,12 +591,12 @@ const people = [
       <div class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <UFormField
-            v-for="name in BIANCA_STAFF"
-            :key="name"
-            :label="lookups.staff_grades[name]"
+            v-for="grade in grades"
+            :key="grade.code"
+            :label="biancaGradeLabel(grade)"
           >
             <UInput
-              v-model.number="header[name]"
+              v-model.number="header.personnel_counts[grade.code]"
               type="number"
               min="0"
               class="w-full"
@@ -595,11 +605,13 @@ const people = [
           </UFormField>
         </div>
         <UFormField
-          label="Others: please specify"
+          v-for="grade in grades.filter(g => g.requires_note)"
+          :key="grade.code"
+          :label="`${grade.label}: please specify`"
           class="max-w-md"
         >
           <UInput
-            v-model="header.staff_others_note"
+            v-model="header.personnel_notes[grade.code]"
             class="w-full"
             :maxlength="TEXT_LIMITS.name"
             :disabled="!editable"
@@ -607,7 +619,7 @@ const people = [
         </UFormField>
         <p class="text-sm">
           <span class="font-medium">Total staff:</span> <span class="tabular-nums">{{ totalStaff }}</span>
-          <span class="ms-1 text-muted">(the five grades added)</span>
+          <span class="ms-1 text-muted">(configured categories · {{ lookups.config_version }})</span>
         </p>
         <UFormField
           label="Is the Business Continuity Risk Assessment of the location done?"
@@ -727,6 +739,43 @@ const people = [
             :disabled="!editable"
           />
         </UFormField>
+      </div>
+    </UCard>
+
+    <UCard v-show="tab === 'approval'">
+      <template #header>
+        <h2 class="text-sm font-semibold">
+          Approval template · {{ lookups.config_version }}
+        </h2>
+      </template>
+      <div class="space-y-4">
+        <p class="text-sm text-muted">
+          {{ lookups.guides.attestation }}
+        </p>
+        <UFormField
+          v-for="(step, i) in lookups.signoff_steps"
+          :key="step.code"
+          :label="`${i + 1}. ${step.title}${step.required ? '' : ' (optional)'}`"
+          :help="step.signer_mode === 'creator' ? 'The creator signs by submitting.' : step.signer_mode === 'fixed' ? 'Assigned by the configuration.' : 'Choose an active BIANCA user before submitting.'"
+        >
+          <p
+            v-if="step.signer_mode === 'creator'"
+            class="text-sm"
+          >
+            {{ saved?.created_by ?? 'Current user' }}
+          </p>
+          <UserPicker
+            v-else
+            :model-value="step.signer_mode === 'fixed' ? step.user_id : header.signoff_users[step.code] ?? step.user_id"
+            :selected="lookups.signer_profiles?.[String(step.signer_mode === 'fixed' ? step.user_id : header.signoff_users[step.code] ?? step.user_id)] ?? null"
+            permission="bianca.access"
+            :disabled="!editable || step.signer_mode === 'fixed'"
+            @update:model-value="header.signoff_users[step.code] = $event ?? null"
+          />
+        </UFormField>
+        <p class="text-sm text-muted">
+          This release configures and assigns the approval template. Assessment approve/reject execution is not available yet.
+        </p>
       </div>
     </UCard>
 

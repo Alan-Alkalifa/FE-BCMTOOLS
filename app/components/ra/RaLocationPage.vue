@@ -7,8 +7,7 @@ type Tab = (typeof TABS)[number]
 /** The LCP sheets are only in the HO workbook. */
 const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 
-/** `master`: opened from Administration › Master building, whose crumbs and links it keeps. */
-const props = defineProps<{ master?: boolean }>()
+/** A building's page, under Administration › Master building (its only page). */
 
 const route = useRoute()
 const router = useRouter()
@@ -92,27 +91,9 @@ const assessmentColumns: TableColumn<RaAssessmentSummary>[] = [
   { accessorKey: 'ref_no', header: 'Ref. no.' },
   { accessorKey: 'period_year', header: 'Period' },
   { accessorKey: 'due_date', header: 'Renewal due' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual' },
+  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
 ]
-
-// As in the workbook, a role (caller) is written once with its people under it, and every field
-// takes free text: a person and a number, or a note such as "Sesuai Tab LRP (front)". The role,
-// name and mobile (caller, contact and mobile) are required; the API checks the same.
-const teamLead = { key: 'role', label: 'Role', placeholder: 'Role, e.g. Floor Warden (lantai B1) or Security' }
-const teamFields = [
-  { key: 'name', label: 'Name', required: true, wide: true, placeholder: 'Name, or a note such as (Sesuai Shift)' },
-  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
-  { key: 'home_phone', label: 'Home phone' },
-]
-const callTreeLead = { key: 'caller', label: 'Caller', placeholder: 'Who calls, e.g. LIC – Legiran' }
-const callTreeFields = [
-  { key: 'contact_name', label: 'Contact', required: true, placeholder: 'Name, or a note' },
-  { key: 'division', label: 'Division or role', wide: true },
-  { key: 'mobile', label: 'Mobile', required: true, placeholder: 'Number, or a note' },
-  { key: 'home_phone', label: 'Home phone' },
-]
-const callTreeLevels = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
 
 type RowValues = Record<string, string | number | null>
 const teamRows = computed(() => (location.value?.recovery_team ?? []) as unknown as RowValues[])
@@ -132,7 +113,7 @@ const canEdit = computed(() => can(ra.value.perm.edit))
 /** Seen through the Location module without RA access, its RAs are listed, not opened. */
 const canOpenRa = useCanOpenRa()
 function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
-  if (canOpenRa(ra.value.kind)) navigateTo(raRecordPath(ra.value.kind, row.original))
+  if (canOpenRa(ra.value.kind, row.original)) navigateTo(raRecordPath(ra.value.kind, row.original))
 }
 </script>
 
@@ -141,9 +122,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
     :title="location?.name ?? ra.location.single"
     :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
-      ...(props.master
-        ? [{ label: 'Administration' }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }]
-        : [{ label: BUILDINGS_GROUP }, { label: 'Buildings', to: LOCATIONS_PATH }]),
+      { label: 'Administration' },
+      { label: 'Master building', to: MASTER_BUILDINGS_PATH },
       ...(location ? [{ label: location.name }] : []),
     ]"
   >
@@ -290,7 +270,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
               <RaLocationForm
                 :key="`details-${formKey}`"
                 :location="location"
-                :cancel-to="props.master ? MASTER_BUILDINGS_PATH : undefined"
+                :cancel-to="MASTER_BUILDINGS_PATH"
                 @saved="onSaved"
               />
               <UCard>
@@ -311,7 +291,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
                 >
                   <template #ref_no-cell="{ row }">
                     <NuxtLink
-                      v-if="canOpenRa(ra.kind)"
+                      v-if="canOpenRa(ra.kind, row.original)"
                       :to="raRecordPath(ra.kind, row.original)"
                       class="font-medium whitespace-nowrap text-primary hover:underline"
                     >
@@ -414,8 +394,8 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
               :key="`team-${formKey}`"
               :groups="RA_RECOVERY_TEAMS"
               group-key="team"
-              :lead="teamLead"
-              :fields="teamFields"
+              :lead="RA_TEAM_LEAD"
+              :fields="RA_TEAM_FIELDS"
               :initial="teamRows"
               item-label="member"
               save-label="Save recovery team"
@@ -445,10 +425,10 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           >
             <RaGroupedRowsForm
               :key="`calltree-${formKey}`"
-              :groups="callTreeLevels"
+              :groups="RA_CALL_TREE_GROUPS"
               group-key="level"
-              :lead="callTreeLead"
-              :fields="callTreeFields"
+              :lead="RA_CALL_TREE_LEAD"
+              :fields="RA_CALL_TREE_FIELDS"
               :initial="callTreeRows"
               item-label="contact"
               save-label="Save call tree"

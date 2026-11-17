@@ -38,7 +38,7 @@ function confirm() {
       <UFormField
         :label="props.noteLabel"
         :required="props.required"
-        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the disaster history.')"
+        :help="props.help ?? (props.required ? undefined : 'Optional. Kept in the history.')"
         :error="missing && !note.trim() ? (props.requiredMessage ?? 'Enter the reason.') : undefined"
       >
         <UTextarea

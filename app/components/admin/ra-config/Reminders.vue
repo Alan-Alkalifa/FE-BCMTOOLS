@@ -194,16 +194,16 @@ async function save() {
         <UCard>
           <template #header>
             <h2 class="font-semibold text-highlighted">
-              Buildings and disasters waiting for approval
+              Buildings, disasters and incidents waiting for approval
             </h2>
           </template>
           <div class="space-y-4">
             <p class="text-sm text-muted">
-              The approvers (everyone who may approve buildings and disasters, but not who asked) are emailed when something starts waiting on Task Management. A new or deactivated building is then reminded and escalated like a sign-off step above. A disaster can't wait for office hours: it is reminded at any hour.
+              The approvers (everyone who may approve buildings, disasters and incidents, but not who asked) are emailed when something starts waiting on Task Management. A new or deactivated building is then reminded and escalated like a sign-off step above. A disaster or incident can't wait for office hours: it is reminded at any hour.
             </p>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField
-                label="Remind about a disaster every"
+                label="Remind about a disaster or incident every"
                 name="incident_reminder_hours"
                 hint="hours"
                 :error="errors.incident_reminder_hours"
@@ -216,7 +216,7 @@ async function save() {
                 />
               </UFormField>
               <UFormField
-                label="Escalate a disaster to BCM after"
+                label="Escalate a disaster or incident to BCM after"
                 name="incident_escalate_hours"
                 hint="hours"
                 help="Also to the addresses above."

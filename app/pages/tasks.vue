@@ -3,8 +3,9 @@ import type { TableColumn } from '@nuxt/ui'
 import type { Task, TaskLevelFilter, TaskModule, TaskType } from '~/composables/useTasks'
 
 /**
- * Task Management: one tab per module the user's roles open — SCCA, RA HO, RA Branch, and
- * Location (buildings and disasters waiting for approval, for their approvers). In a tab the
+ * Task Management: one tab per module the user's roles open — SCCA, RA HO, RA Branch (with
+ * their buildings waiting for approval) and Sites (disasters and incidents waiting for approval,
+ * for their approvers). In a tab the
  * module's BCM sees every task; everyone else what waits for them: the approvals and sign-off
  * steps they sign and the renewals of what they look after. Each task is done on its own page.
  * Nothing is reminded from here.
@@ -15,15 +16,16 @@ const route = useRoute()
 const router = useRouter()
 const perPage = useRowsPerPage()
 
-const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'location']
-const TYPES: TaskType[] = ['signoff', 'renewal', 'building', 'incident']
+const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'sites']
+const TYPES: TaskType[] = ['signoff', 'renewal', 'building', 'disaster', 'incident']
 const LEVELS: TaskLevelFilter[] = ['stuck', 'overdue', 'due']
 function pick<T extends string>(value: unknown, options: T[]): T | undefined {
   return options.includes(value as T) ? value as T : undefined
 }
 
 const query = computed(() => ({
-  module: pick(route.query.module, MODULES),
+  // Sites was called Location: old links open it.
+  module: pick(route.query.module === 'location' ? 'sites' : route.query.module, MODULES),
   type: pick(route.query.type, TYPES),
   level: pick(route.query.level, LEVELS),
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
@@ -79,8 +81,11 @@ const typeFilter = computed({
   get: () => query.value.type ?? 'all',
   set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, level: undefined }),
 })
-const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', incident: 'Disasters' }
-const moduleTypes = computed(() => module.value ? TASK_MODULE_TYPES[module.value] : TYPES)
+const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', disaster: 'Disasters', incident: 'Incidents' }
+const { can } = useAuth()
+/** Buildings waiting for approval are reviewed in Master building: only for who opens it. */
+const moduleTypes = computed(() => (module.value ? TASK_MODULE_TYPES[module.value] : TYPES)
+  .filter((type) => type !== 'building' || can('location.master')))
 const typeItems = computed(() => [
   { label: 'Every task', value: 'all' },
   ...moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], value: type })),
@@ -96,13 +101,15 @@ const cards = computed(() => {
       : (all ? 'Every RA in sign-off.' : 'RA sign-off steps waiting for you.'),
     renewal: all ? 'Overdue or due within 90 days.' : 'Of what you look after, overdue or due within 90 days.',
     building: 'New, or to make inactive, waiting for approval.',
+    disaster: 'Declared, waiting for approval.',
     incident: 'Declared, waiting for approval.',
   }
   const looks: Record<TaskType, { icon: string, tone: 'info' | 'warning' | 'error' }> = {
     signoff: { icon: 'i-lucide-badge-check', tone: 'info' },
     renewal: { icon: 'i-lucide-calendar-clock', tone: 'warning' },
     building: { icon: 'i-lucide-building', tone: 'warning' },
-    incident: { icon: 'i-lucide-siren', tone: 'error' },
+    disaster: { icon: 'i-lucide-siren', tone: 'error' },
+    incident: { icon: 'i-lucide-triangle-alert', tone: 'error' },
   }
   return moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], type, value: counts?.[type], hint: hints[type], ...looks[type] }))
 })
@@ -118,7 +125,7 @@ function waited(task: Task) {
     if (days < 0) return `${-days} ${days === -1 ? 'day' : 'days'} overdue`
     return days === 0 ? 'Due today' : `Due in ${days} ${days === 1 ? 'day' : 'days'}`
   }
-  if (task.type === 'incident') {
+  if (task.type === 'disaster' || task.type === 'incident') {
     const hours = Math.floor(task.hours_waiting ?? 0)
     return hours < 1 ? 'Under an hour' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`
   }
@@ -131,10 +138,8 @@ function urgent(task: Task) {
 function urgentLabel(task: Task) {
   return task.type === 'signoff' ? 'Stuck' : 'Escalated to BCM'
 }
-/** A building task says whether it is a head office building or a branch. */
 function subline(task: Task) {
-  const kind = task.type === 'building' && task.kind ? (task.kind === 'branch' ? 'Branch' : 'Head office') : null
-  return [task.ref, task.detail, kind].filter(Boolean).join(' · ')
+  return [task.ref, task.detail].filter(Boolean).join(' · ')
 }
 function openLabel(task: Task) {
   if (!task.mine) return 'Open'
@@ -202,11 +207,12 @@ const columns: TableColumn<Task>[] = [
         variant="subtle"
         icon="i-lucide-lock"
         title="No module to show"
-        description="Your roles open none of SCCA, RA HO, RA Branch or the building approvals."
+        description="Your roles open none of SCCA, RA HO, RA Branch or Sites."
       />
       <div
         v-else
         class="grid gap-4 sm:grid-cols-2"
+        :class="cards.length > 2 ? 'xl:grid-cols-3' : ''"
       >
         <KpiCard
           v-for="card in cards"
