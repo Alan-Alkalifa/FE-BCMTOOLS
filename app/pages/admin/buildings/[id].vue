@@ -1,9 +1,10 @@
 <script setup lang="ts">
-/** A building's page under Administration › Master building (the same page as Location ›
- *  Buildings › the building, with Master building's crumbs and links). */
-definePageMeta({ permission: ['location.master'] })
+/** Master building moved to Administration › Master data (/masterdata/masterbuilding/{id}). */
+definePageMeta({
+  redirect: (to) => ({ path: `/masterdata/masterbuilding/${(to.params as { id: string }).id}`, query: to.query }),
+})
 </script>
 
 <template>
-  <RaLocationPage master />
+  <div />
 </template>

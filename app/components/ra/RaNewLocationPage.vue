@@ -4,7 +4,7 @@ import type { RaLocationDetail } from '~/composables/useRa'
 /**
  * Building Data Entry: add a head office building or a branch. The type comes from the link
  * (`?type=branch`, e.g. from RA Branch > New assessment), otherwise the user picks it in the
- * form; every field follows it. `master`: opened from Administration › Master building, where the
+ * form; every field follows it. `master`: opened from Administration › Master data › Master building, where the
  * saved building then opens.
  */
 const props = defineProps<{ master?: boolean }>()
@@ -41,7 +41,7 @@ function onSaved(location: RaLocationDetail) {
     icon="i-lucide-building"
     :crumbs="[
       ...(props.master
-        ? [{ label: 'Administration' }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }]
+        ? [{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }]
         : [{ label: BUILDINGS_GROUP }, { label: 'Buildings', to: LOCATIONS_PATH }]),
       { label: 'Building Data Entry' },
     ]"

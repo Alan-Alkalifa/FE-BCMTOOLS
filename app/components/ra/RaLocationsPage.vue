@@ -12,13 +12,13 @@ import type { RaLocation } from '~/composables/useRa'
  * Active or Inactive), and the status filter lists the ones waiting. The Inactive filter lists
  * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
  * building's page, not here.
- * Administration › Master building shows the same register (`master`), with its own title and
- * crumbs; its buildings open there too (/admin/buildings/{id}), as does Input building data.
+ * Administration › Master data › Master building shows the same register (`master`), with its own title and
+ * crumbs; its buildings open there too (/masterdata/masterbuilding/{id}), as does Input building data.
  */
 const props = defineProps<{ master?: boolean }>()
 const pageTitle = computed(() => (props.master ? 'Master building' : 'Buildings'))
 const pageCrumbs = computed(() => (props.master
-  ? [{ label: 'Administration' }, { label: 'Master building' }]
+  ? [{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Master building' }]
   : [{ label: BUILDINGS_GROUP }, { label: 'Buildings' }]))
 const { can } = useAuth()
 /** Every building and branch with the Location permission, otherwise the RA sides the user

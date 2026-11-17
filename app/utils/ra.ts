@@ -770,13 +770,13 @@ export function locationPath(id: number, tab?: string) {
   return `${LOCATIONS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
 }
 
-/** Administration › Master building, and a building's page there. */
-export const MASTER_BUILDINGS_PATH = '/admin/buildings'
+/** Administration › Master data › Master building, and a building's page there. */
+export const MASTER_BUILDINGS_PATH = '/masterdata/masterbuilding'
 export function masterBuildingPath(id: number, tab?: string) {
   return `${MASTER_BUILDINGS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
 }
 
-/** A building's page in Location › Buildings, or in Administration › Master building. */
+/** A building's page in Location › Buildings, or in Administration › Master data › Master building. */
 export function buildingPath(id: number, master?: boolean, tab?: string) {
   return master ? masterBuildingPath(id, tab) : locationPath(id, tab)
 }
