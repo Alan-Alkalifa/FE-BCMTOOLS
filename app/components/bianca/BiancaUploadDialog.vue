@@ -106,7 +106,7 @@ function where(problem: { sheet: string | null, cell: string | null }) {
             Use the template downloaded here, for your own Group: its application systems and office locations come from the system. Fill every white cell and pick values from the dropdowns. The file name doesn't matter.
           </p>
           <UButton
-            :to="BIANCA_TEMPLATE_URL"
+            :to="draft ? `${BIANCA_TEMPLATE_URL}?assessment_id=${draft.id}` : BIANCA_TEMPLATE_URL"
             external
             download
             color="neutral"

@@ -143,6 +143,7 @@ const long = TEXT_LIMITS.long
                   :items="lookups.scores"
                   size="sm"
                   class="w-full"
+                  :ui="fn.regulatory_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
                   :disabled="disabled"
                   :aria-label="`Regulatory score ${periods[i]}`"
                 />
@@ -163,6 +164,7 @@ const long = TEXT_LIMITS.long
                   :items="lookups.scores"
                   size="sm"
                   class="w-full"
+                  :ui="fn.customer_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
                   :disabled="disabled"
                   :aria-label="`Customer score ${periods[i]}`"
                 />
@@ -183,7 +185,7 @@ const long = TEXT_LIMITS.long
       </p>
       <UFormField
         label="Suggested MTD"
-        help="The maximum tolerable downtime suggested by the impact above."
+        :help="lookups.guides.suggested_mtd"
         class="max-w-xs"
       >
         <USelect
