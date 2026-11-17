@@ -749,6 +749,47 @@ export const LIST_LABELS = {
   dependency: 'Dependency',
 }
 
+/** The DR decision of the standard 08.2026 (Lampiran 8-10), as the server seeds it. */
+const BAND = {
+  sync_method: 'Storage replication',
+  backup_tools: 'Networker/Commvault',
+  data_sync_type: 'Online Async',
+  dr_capacity: '100%',
+}
+const CHARACTERISTICS = (backup: string, ha: string) => ({
+  data_sync: 'Optional', disaster_recovery: 'Optional', rpo: 'Last day backup (LDB)', backup_interval: backup,
+  app_resiliency: ha, infra_resiliency: 'Component redundancy', dr_testing: 'Optional', service_monitoring: 'All layers', dr_type_minimum: 'Per DR Decision Tree',
+})
+export const DR_CONFIG = {
+  settings: {
+    mandatory_categories: ['Critical', 'Very Important'],
+    mtd_threshold_h: 24,
+    question_alt_process: 'Is there an alternate business process while the application is down?',
+    question_accept: 'Does the business accept running without DR?',
+    outcome_proposed: 'Proposed DR',
+    outcome_not_required: 'No DR required',
+    category_mtd_h: {},
+    rto_gap_pct: 70,
+    band_upper_inclusive: true,
+    acceptance_mode: 'assessor',
+    legacy_mode: 'not_assessed',
+  },
+  catalogue: [
+    { ...BAND, mtd_from_h: 0, mtd_to_h: 2, suggested_dr: 'Platinum', target_rto: '0–1 h', target_rpo: 'LST', dr_type: 'Hot DR: Full Active-Active' },
+    { ...BAND, mtd_from_h: 2, mtd_to_h: 4, suggested_dr: 'Gold', target_rto: '1–2 h', target_rpo: 'LST', dr_type: 'Hot DR; Warm DR' },
+    { ...BAND, mtd_from_h: 4, mtd_to_h: 12, suggested_dr: 'Silver (1)', target_rto: '2–6 h', target_rpo: 'LST', dr_type: 'Warm DR: Active-Standby' },
+    { ...BAND, mtd_from_h: 12, mtd_to_h: 24, suggested_dr: 'Silver (2)', target_rto: '6–12 h', target_rpo: 'LDB', dr_type: 'Warm DR; Cold DR' },
+    { ...BAND, mtd_from_h: 24, mtd_to_h: null, suggested_dr: 'Bronze', target_rto: '12–24 h', target_rpo: 'LSB', dr_type: 'Cold DR: Active-Cold' },
+  ],
+  characteristics: {
+    'Critical': { ...CHARACTERISTICS('Daily full backup', 'High availability in production and DR'), disaster_recovery: 'Mandatory', dr_type_minimum: 'DR mandatory, type per suggested DR' },
+    'Very Important': { ...CHARACTERISTICS('Daily full backup', 'High availability optional'), disaster_recovery: 'Mandatory' },
+    'Important': CHARACTERISTICS('Weekly full and daily incremental backup', 'High availability not required'),
+    'Necessary': CHARACTERISTICS('Weekly full and daily incremental backup', 'High availability not required'),
+    'Other': CHARACTERISTICS('Ad-hoc', 'High availability not required'),
+  },
+}
+
 export function sccaConfig(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
@@ -768,6 +809,7 @@ export function sccaConfig(overrides: Record<string, unknown> = {}) {
     list_labels: LIST_LABELS,
     steps: JSON.parse(JSON.stringify(CONFIG_STEPS)),
     rating_notes: CONFIG_NOTES,
+    dr: JSON.parse(JSON.stringify(DR_CONFIG)),
     ...overrides,
   }
 }

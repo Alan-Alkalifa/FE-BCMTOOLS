@@ -195,6 +195,12 @@ export interface SccaAssessmentFields {
   override_category: SccaCategory | null
   justification: string | null
   cim_ref_no: string | null
+  /** DR Decision Tree answers (Recovery tab). */
+  dr_alt_process: boolean | null
+  dr_alt_process_note: string | null
+  dr_business_accepts: boolean | null
+  dr_accept_note: string | null
+  dr_accepted_by: string | null
 }
 
 /** An active application of the master, with the header of its latest SCCA if it has one
@@ -235,6 +241,8 @@ export interface SccaApplication {
 
 export interface SccaAssessment extends SccaAssessmentFields {
   id: number
+  /** Live on a draft, the stored copy once submitted; null on a final SCCA from before the DR decision. */
+  dr_decision: SccaDrDecision | null
   permissions: SccaPermissions
   status: SccaStatus
   /** A draft a signer rejected, not resubmitted yet: shown as In revision. */

@@ -52,6 +52,10 @@ async function mockConfigAdmin(page: Page, draft = version('V4.3', 'draft')) {
       versions.draft = { ...versions.draft, lists: { ...versions.draft.lists, deployment_model: (body as { items: never[] }).items } }
       return route.fulfill({ json: versions.draft })
     }
+    if (path.endsWith('/versions/V4.3/dr') && request.method() === 'PUT') {
+      versions.draft = { ...versions.draft, dr: body as typeof versions.draft.dr }
+      return route.fulfill({ json: versions.draft })
+    }
     if (path.endsWith('/request-publish')) {
       versions.draft = { ...versions.draft, requested_by: 'Test User', requested_by_id: USER.id, requested_at: '2026-10-20T03:00:00Z', can: { ...versions.draft.can, request_publish: false, withdraw_request: true } }
       return route.fulfill({ json: versions.draft })
@@ -97,6 +101,30 @@ test('the draft opens first; its lists change and the publish is requested for s
   // The requester can't approve their own request.
   await expect(page.getByRole('button', { name: 'Publish V4.3' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Withdraw request' })).toBeVisible()
+})
+
+test('the DR decision tab edits the parameters, the DR type catalogue and the characteristics', async ({ page }) => {
+  const calls = await mockConfigAdmin(page)
+  await page.goto('/admin/scca-config?tab=dr')
+  await expect(page.getByRole('heading', { name: 'DR type catalogue (Lampiran 10)' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'System characteristics (Lampiran 8)' })).toBeVisible()
+  await expect(page.getByLabel('MTD threshold')).toHaveValue('24')
+  await expect(page.getByLabel('Suggested DR 2')).toHaveValue('Gold')
+  await expect(page.getByRole('button', { name: 'Save DR decision' })).toBeDisabled()
+  await page.getByLabel('MTD threshold').fill('36')
+  await page.getByLabel('RTO gap threshold').fill('60')
+  await page.getByLabel('Backup interval Other').fill('On request')
+  await page.getByRole('button', { name: 'Add band' }).click()
+  await expect(page.getByLabel('Suggested DR 6')).toBeVisible()
+  await page.getByRole('button', { name: 'Remove band 6' }).click()
+  await page.getByRole('button', { name: 'Save DR decision' }).click()
+  await expect(page.getByText('DR decision saved', { exact: true })).toBeVisible()
+  const put = calls.find((call) => call.method === 'PUT')!
+  expect(put.path).toBe('/api/admin/scca-config/versions/V4.3/dr')
+  const body = put.body as { settings: { mtd_threshold_h: number, rto_gap_pct: number }, catalogue: unknown[], characteristics: Record<string, { backup_interval: string }> }
+  expect(body.settings).toMatchObject({ mtd_threshold_h: 36, rto_gap_pct: 60 })
+  expect(body.catalogue).toHaveLength(5)
+  expect(body.characteristics.Other!.backup_interval).toBe('On request')
 })
 
 test('the CIMBN standard table scrolls sideways to its RPO, HA, DR capacity and DR type', async ({ page }) => {

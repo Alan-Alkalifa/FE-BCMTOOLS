@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SccaAssessment, SccaRecoveryStandard, SccaRecoveryValue } from '~/composables/useScca'
 import { sccaLevelLabel } from '~/utils/scca'
+import type { DrAnswers } from './SccaDrDecision.vue'
 
 const props = defineProps<{
   assessment: SccaAssessment
@@ -60,21 +61,38 @@ function fromAssessment() {
   return recovery
 }
 
+function triText(value: boolean | null | undefined): 'yes' | 'no' | '' {
+  return value === true ? 'yes' : value === false ? 'no' : ''
+}
+
+function drFromAssessment(): DrAnswers {
+  const row = props.assessment
+  return {
+    alt: triText(row.dr_alt_process),
+    altNote: row.dr_alt_process_note ?? '',
+    accepts: triText(row.dr_business_accepts),
+    acceptNote: row.dr_accept_note ?? '',
+    acceptedBy: row.dr_accepted_by ?? '',
+  }
+}
+
 const state = reactive(fromAssessment())
+const drAnswers = ref<DrAnswers>(drFromAssessment())
 
 function comparableState() {
-  return JSON.stringify(state)
+  return JSON.stringify({ state, dr: drAnswers.value })
 }
 
 function reset() {
   Object.assign(state, fromAssessment())
+  drAnswers.value = drFromAssessment()
   applyStandard()
   snapshot.value = comparableState()
   if (dirty) dirty.value = false
 }
 
 watch(() => props.assessment, reset)
-watch(state, () => {
+watch([state, drAnswers], () => {
   if (dirty) dirty.value = comparableState() !== snapshot.value
 }, { deep: true })
 onMounted(reset)
@@ -83,8 +101,22 @@ const category = computed(() =>
   props.assessment.result.final_category ?? props.assessment.result.computed_category,
 )
 
-/** Every category of the version's standard, Other included. */
-const visibleStandards = computed(() => props.standards)
+/** The CIMB Niaga standard table shows the SCCA's current category only. */
+const visibleStandards = computed(() => props.standards.filter((row) => row.category === category.value))
+
+const standardRows = computed(() => {
+  const row = visibleStandards.value[0]
+  if (!row) return []
+  return [
+    { label: 'Maximum tolerable downtime (MTD, hours)', value: row.mtd || '—' },
+    { label: 'Recovery time objective (RTO, hours)', value: row.rto || '—' },
+    { label: 'Availability/SLA (per year)', value: row.uptime || '—' },
+    { label: 'RPO', value: sccaListLabel(config.value, 'rpo', row.rpo) || '—' },
+    { label: 'HA (Prod / DR)', value: sccaListLabel(config.value, 'ha', row.ha) || '—' },
+    { label: 'DR capacity (%)', value: row.dr_capacity == null ? '—' : `${row.dr_capacity}%` },
+    { label: 'DR type', value: sccaListLabel(config.value, 'dr_type', row.dr_type) || '—' },
+  ]
+})
 
 const currentStandard = computed(() =>
   props.standards.find((row) => row.category === category.value),
@@ -92,9 +124,17 @@ const currentStandard = computed(() =>
 
 const config = useSccaConfigContext()
 
+const drDecision = computed(() => {
+  const dr = config.value?.dr
+  if (!dr || props.assessment.status !== 'draft') return props.assessment.dr_decision
+  const flag = (value: 'yes' | 'no' | '') => (value === 'yes' ? true : value === 'no' ? false : null)
+  return decideDr(dr, props.standards, category.value, flag(drAnswers.value.alt), flag(drAnswers.value.accepts))
+})
+
 const recoveryGaps = computed(() => [
   ...recoveryGapMessages(state.current_it, state.business, state.regulatory, config.value),
   ...standardGapMessages(category.value, state.current_it, state.business, currentStandard.value),
+  ...(config.value?.dr ? drGapMessages(config.value.dr, drDecision.value, state.final.rto, state.final.dr_type) : []),
 ])
 
 const scoreSummary = computed(() => {
@@ -184,6 +224,15 @@ async function onSubmit() {
       customer_facing: state.customer_facing === 'yes'
         ? true
         : state.customer_facing === 'no' ? false : undefined,
+      ...(config.value?.dr && props.assessment.status === 'draft'
+        ? {
+            dr_alt_process: drAnswers.value.alt === '' ? null : drAnswers.value.alt === 'yes',
+            dr_alt_process_note: drAnswers.value.altNote.trim() || null,
+            dr_business_accepts: drAnswers.value.accepts === '' ? null : drAnswers.value.accepts === 'yes',
+            dr_accept_note: drAnswers.value.acceptNote.trim() || null,
+            dr_accepted_by: drAnswers.value.acceptedBy.trim() || null,
+          }
+        : {}),
       recovery_values: EDITED_KINDS.map((kind) => recoveryPayload(kind)),
     })
     emit('saved', saved)
@@ -224,125 +273,61 @@ async function onSubmit() {
           </p>
         </div>
 
-        <UCard v-if="visibleStandards.length">
+        <UCard>
           <template #header>
-            <h3 class="font-semibold">
-              Recovery architecture standard (CIMB Niaga)
-            </h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-semibold">
+                Recovery architecture standard (CIMB Niaga)
+              </h3>
+              <StatusBadge
+                v-if="category"
+                :scale="sccaCategory"
+                :value="(category as SccaCategory)"
+                size="sm"
+              />
+            </div>
           </template>
-          <div class="overflow-x-auto">
+          <p
+            v-if="!category"
+            class="text-sm text-muted"
+          >
+            Complete the Rating tab to see the standard for this application's category.
+          </p>
+          <p
+            v-else-if="!visibleStandards.length"
+            class="text-sm text-muted"
+          >
+            Not set in SCCA configuration > Formula.
+          </p>
+          <div
+            v-else
+            class="overflow-x-auto"
+          >
             <table class="w-full text-sm">
-              <thead>
-                <tr class="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted">
-                  <th class="px-3 py-2">
-                    System characteristics
-                  </th>
-                  <th
-                    v-for="row in visibleStandards"
-                    :key="row.category"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'text-primary' : undefined"
-                  >
-                    {{ sccaCategory[row.category]?.label ?? row.category }}
-                  </th>
-                </tr>
-              </thead>
               <tbody class="divide-y divide-default">
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    Maximum tolerable downtime (MTD, hours)
+                <tr
+                  v-for="item in standardRows"
+                  :key="item.label"
+                >
+                  <th class="w-1/2 px-3 py-2 text-left font-medium">
+                    {{ item.label }}
                   </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-mtd`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ row.mtd || '—' }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    Recovery time objective (RTO, hours)
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-rto`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ row.rto || '—' }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    Availability/SLA (per year)
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-uptime`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ row.uptime || '—' }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    RPO
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-rpo`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ sccaListLabel(config, 'rpo', row.rpo) || '—' }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    HA (Prod / DR)
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-ha`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ sccaListLabel(config, 'ha', row.ha) || '—' }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    DR capacity (%)
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-dr-capacity`"
-                    class="px-3 py-2 tabular-nums"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ row.dr_capacity == null ? '—' : `${row.dr_capacity}%` }}
-                  </td>
-                </tr>
-                <tr>
-                  <th class="px-3 py-2 text-left font-medium">
-                    DR type
-                  </th>
-                  <td
-                    v-for="row in visibleStandards"
-                    :key="`${row.category}-dr-type`"
-                    class="px-3 py-2"
-                    :class="row.category === category ? 'font-medium text-highlighted' : undefined"
-                  >
-                    {{ sccaListLabel(config, 'dr_type', row.dr_type) || '—' }}
+                  <td class="px-3 py-2 font-medium tabular-nums text-highlighted">
+                    {{ item.value }}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </UCard>
+
+        <SccaDrDecision
+          v-model="drAnswers"
+          :assessment="assessment"
+          :standards="standards"
+          :category="category"
+          :editable="true"
+        />
 
         <UCard
           v-for="kind in LEFT_KINDS"
