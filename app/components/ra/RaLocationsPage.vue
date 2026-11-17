@@ -145,7 +145,7 @@ const statusItems = [
 const NUMBER = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
-  { accessorKey: 'kind', header: 'Type' },
+  { accessorKey: 'kind', header: 'Type', meta: { class: { th: 'text-center', td: 'text-center' } } },
   { accessorKey: 'province', header: 'Province' },
   { accessorKey: 'city', header: 'City' },
   { accessorKey: 'district', header: 'District' },

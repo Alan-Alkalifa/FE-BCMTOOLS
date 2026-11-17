@@ -18,7 +18,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'hazard-types', 'reminders', 'earthquakes', 'diagrams', 'access', 'changes'] as const
+const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'hazard-types', 'reminders', 'earthquakes', 'past-disasters', 'diagrams', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 /** Tabs that edit live rules rather than a version. */
 const LIVE: Tab[] = ['divisions', 'hazard-types', 'reminders', 'diagrams', 'access']
@@ -36,6 +36,7 @@ const tabItems = [
   { label: 'Disaster or incident', value: 'hazard-types', icon: 'i-lucide-split', slot: 'hazard-types' },
   { label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' },
   { label: 'Earthquakes', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' },
+  { label: 'Past disasters', value: 'past-disasters', icon: 'i-lucide-history', slot: 'past-disasters' },
   { label: 'Team diagrams', value: 'diagrams', icon: 'i-lucide-network', slot: 'diagrams' },
   { label: 'Access scope', value: 'access', icon: 'i-lucide-shield-check', slot: 'access' },
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare', slot: 'changes' },
@@ -345,6 +346,13 @@ async function discard() {
         </template>
         <template #earthquakes>
           <AdminRaConfigEarthquakes class="mt-4" />
+        </template>
+        <template #past-disasters>
+          <AdminRaConfigPastDisasters class="mt-4" />
+          <div class="mt-6 grid items-start gap-6 lg:grid-cols-2">
+            <AdminRaConfigOutbreakNews />
+            <AdminRaConfigAirQuality />
+          </div>
         </template>
         <template #diagrams>
           <AdminRaConfigDiagrams

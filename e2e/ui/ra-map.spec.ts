@@ -555,6 +555,34 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
 })
 
+test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', async ({ page }) => {
+  await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map')
+  await expect(page.getByTestId('ra-earthquakes')).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('tab', { name: 'Disease outbreaks (WHO)' }).click()
+  await expect(page).toHaveURL(/report=outbreaks/)
+  const who = page.getByTestId('ra-outbreaks')
+  await expect(who.getByRole('heading', { name: 'Disease outbreaks in Indonesia (WHO)' })).toBeVisible()
+  await expect(who).toContainText('Poliomyelitis - Indonesia')
+  await expect(who).toContainText('The latest 2 of 154.')
+  await expect(who.getByRole('link', { name: 'Read on who.int' }).first()).toHaveAttribute('href', 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500')
+  await expect(page.getByTestId('ra-earthquakes')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Air quality (OpenAQ)' }).click()
+  const air = page.getByTestId('ra-air-quality')
+  await expect(air.locator('li').first()).toContainText('160,2 · Sangat tidak sehat')
+  await expect(air.locator('li').first()).toContainText('US Embassy Jakarta South, 2,5 km away')
+  await expect(air.locator('li').first()).toContainText('Above 55,4 µg/m³ on 501 of 1.001 days since 1 Jan 2024')
+  await expect(air.locator('li').nth(1)).toContainText('12,4 · Baik')
+  await air.locator('li').first().getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/place=/)
+
+  // Opened with the tab in the link.
+  await page.goto('/locations/map?report=outbreaks')
+  await expect(page.getByTestId('ra-outbreaks')).toBeVisible({ timeout: 30_000 })
+})
+
 test('a disaster is declared from an earthquake, filled in from BMKG', async ({ page }) => {
   const log = await mockRaMap(page, { quakes: true, crisis: false })
   await page.goto('/locations/map?quake=3')

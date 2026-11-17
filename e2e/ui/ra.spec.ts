@@ -444,6 +444,45 @@ test('rating a hazard fills in its ratings and saves only that hazard', async ({
   expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H03', monetary: 5, historical: 3 })])
 })
 
+test('BNPB\'s past disasters suggest the Historical of occurrence, and Use fills it in', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const hint = page.getByTestId('past-disasters')
+  await expect(hint).toContainText('BNPB recorded it 12 times in Kota Adm. Jakarta Selatan from 2016 to 2026.', { timeout: 60_000 })
+  await expect(hint).toContainText('Suggested Historical of occurrence 4.')
+  await hint.getByRole('button', { name: 'Use 4' }).click()
+  await expect(hint.getByRole('button', { name: 'Use 4' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save ratings', exact: true }).click()
+  await expect(page.getByText('1 hazard saved').first()).toBeVisible()
+  expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H01', historical: 4 })])
+
+  // None recorded for another hazard: it says so, without a suggestion.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none in Kota Adm. Jakarta Selatan', { timeout: 60_000 })
+})
+
+test('WHO\'s outbreak news and OpenAQ\'s air quality suggest their hazards\' Historical of occurrence', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H11')
+  const who = page.getByTestId('outbreak-news')
+  await expect(who).toContainText('WHO reported outbreaks in Indonesia 3 times from 2016 to 2026.', { timeout: 60_000 })
+  await expect(who.getByRole('link', { name: 'Poliomyelitis - Indonesia' })).toHaveAttribute('href', 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500')
+  // DIBI counts nothing for it, so its "none" stays out.
+  await expect(page.getByTestId('past-disasters')).not.toContainText('BNPB recorded none')
+  await who.getByRole('button', { name: 'Use 2' }).click()
+  await page.getByRole('button', { name: 'Save ratings', exact: true }).click()
+  await expect(page.getByText('1 hazard saved').first()).toBeVisible()
+  expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H11', historical: 2 })])
+
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H10')
+  const air = page.getByTestId('air-quality')
+  await expect(air).toContainText('PM2.5 was above 55,4 µg/m³ on 501 days at US Embassy Jakarta South, 2,5 km away, from 2024 to 2026.', { timeout: 60_000 })
+  await expect(air).toContainText('Suggested Historical of occurrence 5.')
+  await expect(air).toContainText('worst 140,3 µg/m³ on 15 Nov 2026')
+  await expect(air.getByRole('button', { name: 'Use 5' })).toBeVisible()
+  await expect(page.getByTestId('outbreak-news')).toHaveCount(0)
+})
+
 test('a hazard without its existing mitigation doesn\'t count as rated yet', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')

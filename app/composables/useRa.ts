@@ -966,6 +966,49 @@ export function useRaEarthquakes(days: MaybeRefOrGetter<number> = 7) {
   })
 }
 
+/** GET /api/ra/outbreaks: WHO's latest Disease Outbreak News about the country (building map). */
+export interface RaOutbreakReport {
+  enabled: boolean
+  synced_at: string | null
+  error: string | null
+  country: string
+  hazard_code: string
+  total: number
+  items: { id: string, don_id: string | null, title: string, on: string, url: string }[]
+  source: string
+  source_url: string
+}
+
+/** Indonesia's ISPU band of a day's PM2.5 average. */
+export type RaIspuBand = 'baik' | 'sedang' | 'tidak_sehat' | 'sangat_tidak_sehat' | 'berbahaya'
+
+/** GET /api/ra/air-quality: the latest PM2.5 near each pinned place, the worst first. */
+export interface RaAirQualityReport {
+  enabled: boolean
+  configured: boolean
+  threshold: number
+  hazard_code: string
+  places: number
+  tried_at: string | null
+  error: string | null
+  items: {
+    location_id: number
+    station: string | null
+    distance_km: number | null
+    latest: { value: number, on: string, band: RaIspuBand } | null
+    worst: { value: number, on: string } | null
+    threshold: number
+    days: number
+    unhealthy_days: number
+    rating: RaRatingValue
+    from: string | null
+    read_at: string | null
+    error: string | null
+  }[]
+  source: string
+  source_url: string
+}
+
 export function useRaCrises(query: MaybeRefOrGetter<{ type?: RaCrisisType, status?: RaCrisisStatus, decided?: 1, q?: string, page: number, per_page?: number }>) {
   return useFetch<RaPage<RaCrisisSummary>>(CRISES, {
     key: computed(() => `ra-crises-${JSON.stringify(toValue(query))}`),
@@ -977,6 +1020,63 @@ export function useRaCrisisMonitoring(type: MaybeRefOrGetter<RaCrisisType>, year
   return useFetch<RaCrisisMonitoring>(`${CRISES}/monitoring`, {
     key: computed(() => `ra-crisis-monitoring-${toValue(type)}-${toValue(year) ?? ''}`),
     query: computed(() => ({ type: toValue(type), year: toValue(year) })),
+  })
+}
+
+/** GET /api/ra/locations/{id}/past-disasters: BNPB's DIBI records in the building's regency
+ *  over the window, per hazard, with the suggested Historical of occurrence rating, and the
+ *  same from WHO's outbreak news and OpenAQ's air quality. */
+export interface RaPastDisasters {
+  enabled: boolean
+  synced_at: string | null
+  city: string | null
+  years: number
+  from: string
+  to: string
+  regency: string | null
+  province: string | null
+  hazards: Record<string, { events: number, rating: RaRatingValue, last: string | null, kinds: string[] }>
+  /** WHO's Disease Outbreak News about the country in the window, for its hazard (H11). */
+  outbreaks?: RaOutbreakSuggestion
+  /** PM2.5 at the nearest OpenAQ station, for its hazard (H10). */
+  air?: RaAirSuggestion
+}
+
+export interface RaOutbreakSuggestion {
+  hazard_code: string
+  enabled: boolean
+  synced_at: string | null
+  country: string
+  years: number
+  from: string
+  to: string
+  events: number
+  rating: RaRatingValue
+  items: { title: string, on: string, url: string }[]
+}
+
+export interface RaAirSuggestion {
+  hazard_code: string
+  enabled: boolean
+  configured: boolean
+  has_coordinates: boolean
+  read_at: string | null
+  station: string | null
+  distance_km: number | null
+  threshold: number
+  days: number
+  unhealthy_days: number
+  rating: RaRatingValue
+  from: string | null
+  to: string | null
+  worst: { value: number, on: string } | null
+  latest: { value: number, on: string } | null
+  error: string | null
+}
+
+export function useRaPastDisasters(locationId: MaybeRefOrGetter<number>) {
+  return useFetch<RaPastDisasters>(() => `/api/ra/locations/${toValue(locationId)}/past-disasters`, {
+    key: computed(() => `ra-past-disasters-${toValue(locationId)}`),
   })
 }
 

@@ -510,6 +510,13 @@ async function save() {
               :disabled="locked"
             />
           </div>
+          <RaPastDisasterHint
+            :location-id="assessment.location.id"
+            :code="activeHazard.code"
+            :current="active.historical"
+            :locked="locked"
+            @use="(rating) => (active!.historical = rating)"
+          />
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
               label="Probability rating"

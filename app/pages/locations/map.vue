@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaAirQualityReport, RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaOutbreakReport, RaPin } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
@@ -16,6 +16,10 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
  * and in "Recent earthquakes (BMKG)" below the map, refreshed every 2 minutes; selecting one
  * (?quake=3) draws its alert radius, and a disaster can be declared from it. BMKG is credited
  * as the source next to the map and the list (BMKG's terms).
+ *
+ * The reports under the map are tabs (?report=). Earthquakes (BMKG), Disease outbreaks (WHO's
+ * latest outbreak news about the country) and Air quality (OpenAQ's latest PM2.5 near each
+ * place, the worst first, with Show on map).
  */
 definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
 
@@ -44,6 +48,26 @@ onMounted(() => {
   if (data.value) refresh()
 })
 onBeforeUnmount(() => clearInterval(quakeTimer))
+
+/** The reports under the map, one tab each (?report=outbreaks). Earthquakes first. */
+const REPORTS = ['earthquakes', 'outbreaks', 'air'] as const
+type Report = typeof REPORTS[number]
+const report = computed<Report>({
+  get: () => (REPORTS as readonly string[]).includes(String(route.query.report)) ? route.query.report as Report : 'earthquakes',
+  set: (value) => router.replace({ query: { ...route.query, report: value === 'earthquakes' ? undefined : value } }),
+})
+// WHO's outbreak news and OpenAQ's air quality, read when their tab is first opened.
+const { data: outbreakReport, error: outbreakError, execute: loadOutbreaks } = useLazyFetch<RaOutbreakReport>('/api/ra/outbreaks', { key: 'ra-outbreaks', immediate: false })
+const { data: airReport, error: airError, execute: loadAir } = useLazyFetch<RaAirQualityReport>('/api/ra/air-quality', { key: 'ra-air-quality', immediate: false })
+watch(report, (value) => {
+  if (value === 'outbreaks' && !outbreakReport.value) loadOutbreaks()
+  if (value === 'air' && !airReport.value) loadAir()
+}, { immediate: true })
+const reportTabs = [
+  { label: 'Earthquakes (BMKG)', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' as const },
+  { label: 'Disease outbreaks (WHO)', value: 'outbreaks', icon: 'i-lucide-biohazard', slot: 'outbreaks' as const },
+  { label: 'Air quality (OpenAQ)', value: 'air', icon: 'i-lucide-wind', slot: 'air' as const },
+]
 
 /** The selected earthquake stays in the URL (?quake=3), as the email links to it. */
 const selectedQuakeId = computed<number | null>({
@@ -147,6 +171,13 @@ function select(id: number) {
   selectedId.value = id
   const place = byId(id)
   if (place) mapRef.value?.focus(pinOf(place))
+}
+
+/** From a report under the map: bring the map into view and select the place. */
+function showPlace(id: number) {
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  select(id)
 }
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
@@ -710,13 +741,41 @@ const canOpenRa = useCanOpenRa()
         </div>
       </div>
 
-      <RaEarthquakesCard
-        :list="quakeList"
-        :error="quakeError"
-        :selected-id="selectedQuakeId"
-        @select="(quake) => selectQuake(quake, true)"
-        @declare="declareFromQuake"
-      />
+      <UTabs
+        v-model="report"
+        :items="reportTabs"
+        variant="link"
+        class="min-w-0"
+        :ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"
+      >
+        <template #earthquakes>
+          <RaEarthquakesCard
+            class="mt-4"
+            :list="quakeList"
+            :error="quakeError"
+            :selected-id="selectedQuakeId"
+            @select="(quake) => selectQuake(quake, true)"
+            @declare="declareFromQuake"
+          />
+        </template>
+        <template #outbreaks>
+          <RaOutbreaksCard
+            class="mt-4"
+            :report="outbreakReport"
+            :error="outbreakError"
+          />
+        </template>
+        <template #air>
+          <RaAirQualityCard
+            class="mt-4"
+            :report="airReport"
+            :places="places"
+            :error="airError"
+            :selected-id="selectedId"
+            @select="showPlace"
+          />
+        </template>
+      </UTabs>
 
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <template #header>
