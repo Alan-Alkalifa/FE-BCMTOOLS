@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
 import type {
@@ -951,7 +951,12 @@ function record(id: number) {
                     ? 'font-medium text-warning'
                     : 'text-muted'"
               >
-                Valid until · {{ daysLeft(row.original) }}
+                <template v-if="row.original.bucket === 'overdue'">
+                  Final BIA expired · {{ daysLeft(row.original).replace('overdue', 'ago') }}
+                </template>
+                <template v-else>
+                  Final BIA expires · {{ daysLeft(row.original) }}
+                </template>
               </p>
               <div
                 v-if="row.original.open && row.original.approved"
