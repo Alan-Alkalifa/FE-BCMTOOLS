@@ -50,9 +50,49 @@ async function changed() {
   await Promise.all([refresh(), fetchMenu()])
 }
 
-async function edit(menu?: AdminMenu) {
-  const saved = await menuForm.open({ menu: menu ?? null, menus: data.value?.items ?? [], permissions: permissions.value?.items ?? [] }).result
+async function edit(menu?: AdminMenu, parentId: number | null = null) {
+  const saved = await menuForm.open({ menu: menu ?? null, parentId, menus: data.value?.items ?? [], permissions: permissions.value?.items ?? [] }).result
   if (saved) await changed()
+}
+
+const all = computed(() => data.value?.items ?? [])
+const byId = computed(() => new Map(all.value.map((m) => [m.id, m])))
+/** 1 for a top-level menu, 2 for one inside a group, and so on. */
+function level(menu: AdminMenu): number {
+  let depth = 1
+  for (let current = menu; current.parent_id && depth < 10; depth++) current = byId.value.get(current.parent_id) ?? { ...current, parent_id: null }
+  return depth
+}
+/** The group directly above in the same list takes it in, as the last item (up to the third group level). */
+const intoGroupAbove = (row: TreeRow) => {
+  const above = row.siblings[row.index - 1]
+  return above && !above.route && level(above) <= 3 ? above : null
+}
+
+async function saveOrder(items: { id: number, parent_id: number | null, sort_order: number }[]) {
+  try {
+    await adminApi.orderMenus(items)
+    await changed()
+  } catch (failure) {
+    toast.add({ title: adminErrorText(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+}
+
+async function indent(row: TreeRow) {
+  const group = intoGroupAbove(row)
+  if (!group) return
+  const inside = [...all.value.filter((m) => m.parent_id === group.id), row.menu]
+  collapsed.value = new Set([...collapsed.value].filter((id) => id !== group.id))
+  await saveOrder(inside.map((m, i) => ({ id: m.id, parent_id: group.id, sort_order: (i + 1) * 10 })))
+}
+
+async function outdent(row: TreeRow) {
+  const parent = row.menu.parent_id ? byId.value.get(row.menu.parent_id) : undefined
+  if (!parent) return
+  // It goes right after the group it leaves, in that group's own list.
+  const beside = all.value.filter((m) => m.parent_id === parent.parent_id && m.id !== row.menu.id)
+  beside.splice(beside.findIndex((m) => m.id === parent.id) + 1, 0, row.menu)
+  await saveOrder(beside.map((m, i) => ({ id: m.id, parent_id: parent.parent_id, sort_order: (i + 1) * 10 })))
 }
 
 async function move(siblings: AdminMenu[], index: number, step: -1 | 1) {
@@ -164,6 +204,12 @@ async function remove(menu: AdminMenu) {
             :first="row.index === 0"
             :last="row.index === row.siblings.length - 1"
             :built-in="BUILT_IN.has(row.menu.code)"
+            :group="!row.menu.route"
+            :can-indent="!!intoGroupAbove(row)"
+            :can-outdent="!!row.menu.parent_id"
+            @indent="indent(row)"
+            @outdent="outdent(row)"
+            @add="edit(undefined, row.menu.id)"
             @up="move(row.siblings, row.index, -1)"
             @down="move(row.siblings, row.index, 1)"
             @edit="edit(row.menu)"
@@ -174,7 +220,7 @@ async function remove(menu: AdminMenu) {
       </ol>
     </UCard>
     <p class="text-xs text-muted">
-      A group can hold pages and other groups, three groups deep (group › group › group › page). A group with nothing visible in it is hidden in the sidebar.
+      A group can hold pages and other groups, three groups deep (group › group › group › page). Use the indent buttons to move an item into the group above it or back out, or + to add an item inside a group. A group with nothing visible in it is hidden in the sidebar.
       Built-in items can be renamed, reordered and hidden but not deleted. Hiding an item does not remove access: the page still checks the permission.
     </p>
   </AppPage>
