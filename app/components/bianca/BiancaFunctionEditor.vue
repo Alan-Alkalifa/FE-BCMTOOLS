@@ -462,7 +462,7 @@ const long = TEXT_LIMITS.long
             <UFormField label="Planned capacity">
               <USelect
                 v-model="row[`${side.key}_capacity`]"
-                :items="lookups.upstream_capacity"
+                :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
                 class="w-full"
                 :disabled="disabled"
               />

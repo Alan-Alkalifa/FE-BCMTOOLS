@@ -11,6 +11,9 @@ function payload(): BiancaConfigPayload {
     expected_mtd: [{ value: '4 hours', category: 'Business Critical' }],
     dependency_mtd: ['4 hours', 'NA', 'SLA'], percentages: ['0%', '100%'],
     upstream_capacity: ['0%', '100%', 'NA', 'SLA'], yes_no: ['Yes', 'No'],
+    downstream_capacity: ['0%', '100%', 'NA', 'SLA'], generic_values: ['0%', '100%', 'NA', 'SLA'], expected_support_capacity: ['0%', '100%', 'NA', 'SLA'],
+    financial_bands: [{ code: 'very_high', label: 'Very High', description: 'IDR 4 Billion' }],
+    impact_matrix: [{ score: 3, regulatory: 'Breach of laws', customer: '>20% affected' }],
     system_usage: ['Minimal Dependency', 'Full Dependency', 'Partial Dependency'],
     alt_site_strategies: ['Hyspace'], frequencies: ['Daily'], scores: [1, 2, 3],
     loss_alert_idr: 4000000000, score_alert: 3, hours_per_day: 24, days_per_week: 7,
@@ -100,7 +103,8 @@ test('configuration sections keep draft edits across tabs and compare saved valu
   await signIn(page, { permissions })
   const draft: BiancaConfigVersion = {
     ...version(), id: 2, code: 'V2', status: 'draft',
-    changes: [{ part: 'loss_alert_idr', before: 4000000000, after: 5000000000 }],
+    previous_version: 'V1', current_version: 'V2',
+    changes: [{ part: 'loss_alert_idr', before: 4000000000, after: 5000000000, previous_version: 'V1', previous_value: 4000000000, current_version: 'V2', current_value: 5000000000 }],
   }
   let saved: BiancaConfigPayload | undefined
   let listsSent: BiancaConfigVersion['list_items']
@@ -160,7 +164,11 @@ test('configuration sections keep draft edits across tabs and compare saved valu
 
   await page.getByRole('tab', { name: 'Changes', exact: true }).click()
   const diff = page.getByRole('table', { name: 'Changes to Impact and MTD' })
-  await expect(diff.getByRole('columnheader', { name: 'Source version' })).toBeVisible()
+  for (const name of ['Previous version', 'Previous value', 'Current version', 'Current value']) {
+    await expect(diff.getByRole('columnheader', { name, exact: true })).toBeVisible()
+  }
+  await expect(diff.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  await expect(diff.getByRole('cell', { name: 'V2', exact: true })).toBeVisible()
   await expect(diff.getByRole('rowheader', { name: 'Financial loss alert (IDR)' })).toBeVisible()
   await expect(diff.getByRole('cell', { name: 'Changed', exact: true })).toBeVisible()
   await expect(diff.getByRole('cell', { name: '4.000.000.000', exact: true })).toBeVisible()
@@ -197,4 +205,76 @@ test('the configuration tabs and section menu fit on a phone', async ({ page }) 
   await expect.poll(() => main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
   await page.getByRole('tab', { name: 'Changes', exact: true }).click()
   await expect(page.getByText('No saved parameter changes.')).toBeVisible()
+})
+
+test('workbook lists distinguish IDs, stored values, string choices and integer scores', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft', list_items: {
+    yes_no: [{ id: '1', code: 'Yes', value: 'Yes', data_type: 'string', label: 'Yes', text: null, active: true },
+      { id: '0', code: 'No', value: 'No', data_type: 'string', label: 'No', text: null, active: true }],
+  } }
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
+  await page.goto('/admin/bianca-config?tab=lists&list=yes_no')
+  const table = page.getByRole('table', { name: 'Yes / No codes items' })
+  for (const label of ['ID', 'Code', 'Value', 'Data type']) await expect(table.getByRole('columnheader', { name: label, exact: true })).toBeVisible()
+  await expect(table.getByRole('row').nth(1).getByRole('cell').nth(3)).toHaveText('Yes')
+  await expect(table.getByRole('cell', { name: '0', exact: true })).toBeVisible()
+  await expect(table.getByText('string', { exact: true })).toHaveCount(2)
+  const menu = page.getByRole('navigation', { name: 'Lists', exact: true })
+  for (const label of ['Downstream capacity', 'Expected business support capacity', 'Generic percentages']) {
+    await menu.getByRole('button', { name: new RegExp('^' + label) }).click()
+    await expect(page.getByRole('table').getByRole('textbox', { name: 'Code 3' })).toHaveValue('NA')
+  }
+  await menu.getByRole('button', { name: /^Expected MTD reference/ }).click()
+  await expect(page.getByRole('cell', { name: 'Reference only', exact: true })).toHaveCount(2)
+  await menu.getByRole('button', { name: /^Impact scores/ }).click()
+  await expect(page.getByRole('cell', { name: 'integer', exact: true })).toHaveCount(3)
+})
+
+test('guide preview preserves paragraphs and personnel export requires saved edits', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft', reference_guides: { attestation: '1. Workbook confirmation.\n\n2. Review changes.' } }
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') Object.assign(draft, route.request().postDataJSON(), { revision: 2 })
+    return route.fulfill({ json: route.request().method() === 'PUT' ? draft : { items: [draft] } })
+  })
+  await page.goto('/admin/bianca-config?tab=personnel')
+  const download = page.getByRole('link', { name: 'Export to Excel', exact: true })
+  await expect(download).toHaveAttribute('href', '/api/admin/bianca-config/versions/2/personnel.xlsx')
+  await expect(download).not.toHaveAttribute('aria-disabled', 'true')
+  await page.getByRole('tab', { name: 'Guides and statements', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Attestation statement', exact: true }).fill('First paragraph.\n\nSecond paragraph.')
+  const preview = page.getByRole('region', { name: 'Reading preview' })
+  await expect(preview.getByText('First paragraph.', { exact: true })).toBeVisible()
+  await expect(preview.getByText('Second paragraph.', { exact: true })).toBeVisible()
+  await page.getByText('Workbook reference', { exact: true }).click()
+  await page.getByRole('button', { name: 'Use workbook text', exact: true }).click()
+  await expect(preview.getByText('2. Review changes.', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Personnel levels', exact: true }).click()
+  await expect(download).toHaveAttribute('aria-disabled', 'true')
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect(download).not.toHaveAttribute('aria-disabled', 'true')
+})
+
+test('financial and non-financial matrices save their typed configuration', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft] } })
+  })
+  await page.goto('/admin/bianca-config?tab=impact&impact=financial-bands')
+  await page.getByRole('textbox', { name: 'very_high description', exact: true }).fill('Review loss above IDR 4 billion.')
+  await page.getByRole('navigation', { name: 'Impact and MTD', exact: true }).getByRole('button', { name: 'Regulatory and customer matrix', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Regulatory score 3', exact: true }).fill('Breach of laws and regulations.')
+  await expect(page.getByText(/Exactly 20% is not defined/)).toBeVisible()
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect.poll(() => saved?.financial_bands[0]?.description).toBe('Review loss above IDR 4 billion.')
+  expect(saved?.impact_matrix[0]?.regulatory).toBe('Breach of laws and regulations.')
 })

@@ -8,8 +8,13 @@ const parts: Record<string, [section: string, label: string]> = {
   periods: ['Lists', 'Impact periods'],
   suggested_mtd: ['Lists', 'Suggested MTD'],
   dependency_mtd: ['Lists', 'Dependency MTD'],
-  percentages: ['Lists', 'Planned capacity'],
-  upstream_capacity: ['Lists', 'Dependency capacity'],
+  percentages: ['Lists', 'Function planned capacity'],
+  upstream_capacity: ['Lists', 'Upstream capacity'],
+  downstream_capacity: ['Lists', 'Downstream capacity'],
+  expected_support_capacity: ['Lists', 'Expected business support capacity'],
+  generic_values: ['Lists', 'Generic percentages'],
+  financial_bands: ['Impact and MTD', 'Financial loss matrix'],
+  impact_matrix: ['Impact and MTD', 'Regulatory and customer matrix'],
   alt_site_strategies: ['Lists', 'Alternate site strategies'],
   frequencies: ['Lists', 'Critical timing frequencies'],
   system_usage: ['Lists', 'System dependency codes'],
@@ -116,13 +121,25 @@ function display(value: unknown): string {
                   scope="col"
                   class="w-1/3 px-3 py-2"
                 >
-                  Source version
+                  Previous version
+                </th>
+                <th
+                  scope="col"
+                  class="w-1/3 px-3 py-2"
+                >
+                  Previous value
                 </th>
                 <th
                   scope="col"
                   class="w-1/3 px-3 py-2 pe-4"
                 >
-                  {{ version.code }}
+                  Current version
+                </th>
+                <th
+                  scope="col"
+                  class="w-1/3 px-3 py-2 pe-4"
+                >
+                  Current value
                 </th>
               </tr>
             </thead>
@@ -144,11 +161,17 @@ function display(value: unknown): string {
                     size="sm"
                   />
                 </td>
-                <td class="px-3 py-2 align-top whitespace-pre-wrap wrap-anywhere text-muted">
-                  {{ display(change.before) }}
+                <td class="px-3 py-2 align-top font-medium">
+                  {{ change.previous_version ?? version.previous_version ?? '—' }}
                 </td>
-                <td class="px-3 py-2 pe-4 align-top whitespace-pre-wrap wrap-anywhere">
-                  {{ display(change.after) }}
+                <td class="min-w-64 px-3 py-2 align-top whitespace-pre-wrap wrap-anywhere text-muted">
+                  {{ display(change.previous_value !== undefined ? change.previous_value : change.before) }}
+                </td>
+                <td class="px-3 py-2 align-top font-medium">
+                  {{ change.current_version ?? version.current_version ?? version.code }}
+                </td>
+                <td class="min-w-64 px-3 py-2 pe-4 align-top whitespace-pre-wrap wrap-anywhere">
+                  {{ display(change.current_value !== undefined ? change.current_value : change.after) }}
                 </td>
               </tr>
             </tbody>
