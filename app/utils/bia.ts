@@ -34,16 +34,13 @@ export function biaStatusKey(item: { status: BiaStatus, is_returned?: boolean, r
   return item.revision_state ?? (item.is_returned ? 'in_revision' : 'draft')
 }
 
-export type BiaGroupStatusKey = BiaStatusKey | 'overdue' | 'due_soon' | 'renewal_due' | 'not_started'
+export type BiaGroupStatusKey = 'approved' | 'overdue' | 'due_soon' | 'renewal_due' | 'no_final' | 'not_started'
 export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
   approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
   overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
   due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-calendar-clock' },
   renewal_due: { label: 'Renewal due', color: 'info', icon: 'i-lucide-calendar' },
-  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
-  need_revision: { label: 'Need revision', color: 'error', icon: 'i-lucide-undo-2' },
-  in_revision: { label: 'In revision', color: 'warning', icon: 'i-lucide-pencil-line' },
-  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  no_final: { label: 'No final BIA', color: 'neutral', icon: 'i-lucide-clock' },
   not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed' },
 })
 
@@ -58,7 +55,7 @@ export function biaGroupStatusKey(row: {
     if (row.bucket === 'due_90') return 'renewal_due'
     return 'approved'
   }
-  if (row.open) return biaStatusKey(row.open)
+  if (row.open) return 'no_final'
   return 'not_started'
 }
 

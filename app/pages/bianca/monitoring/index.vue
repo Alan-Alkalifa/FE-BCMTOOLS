@@ -386,6 +386,7 @@ const registerColumns: TableColumn<BiaMonitorGroupRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'group', header: 'Group' },
   { id: 'group_status', header: 'Status' },
+  { id: 'open', header: 'Open BIA' },
   { id: 'bia_users', header: 'BIA users & PIC' },
   { id: 'category', header: 'Highest category' },
   { id: 'shortest_mtd', header: 'Shortest MTD' },
@@ -926,8 +927,8 @@ function record(id: number) {
             </template>
             <template #group_status-cell="{ row }">
               <NuxtLink
-                v-if="row.original.approved ?? row.original.open"
-                :to="record((row.original.approved ?? row.original.open)!.id)"
+                v-if="row.original.approved"
+                :to="record(row.original.approved.id)"
                 class="inline-block hover:underline"
               >
                 <StatusBadge
@@ -958,19 +959,26 @@ function record(id: number) {
                   Final BIA expires · {{ daysLeft(row.original) }}
                 </template>
               </p>
-              <div
-                v-if="row.original.open && row.original.approved"
-                class="mt-1.5 space-y-0.5 border-l-2 border-default pl-2"
+              <p
+                v-else-if="!row.original.approved"
+                class="mt-1 text-xs text-muted"
               >
-                <div class="flex items-center gap-1.5 text-xs text-muted">
-                  <span>Renewal</span>
+                {{ row.original.open ? 'Initial BIA in progress' : 'No BIA submitted yet' }}
+              </p>
+            </template>
+            <template #open-cell="{ row }">
+              <template v-if="row.original.open">
+                <NuxtLink
+                  :to="record(row.original.open.id)"
+                  class="inline-block hover:underline"
+                >
                   <StatusBadge
                     :scale="biaStatus"
                     :value="biaStatusKey(row.original.open)"
                     size="sm"
                   />
-                </div>
-                <p class="text-xs text-muted">
+                </NuxtLink>
+                <p class="mt-1 text-xs text-muted">
                   <NuxtLink
                     :to="record(row.original.open.id)"
                     class="font-mono hover:underline"
@@ -981,27 +989,11 @@ function record(id: number) {
                     · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
                   </template>
                 </p>
-              </div>
-              <p
-                v-else-if="row.original.open"
-                class="mt-1 text-xs text-muted"
-              >
-                <NuxtLink
-                  :to="record(row.original.open.id)"
-                  class="font-mono hover:underline"
-                >
-                  {{ refLabel(row.original.open) }}
-                </NuxtLink>
-                <template v-if="row.original.open.status === 'in_signoff' && row.original.open.current_signoff_role">
-                  · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-                </template>
-              </p>
-              <p
-                v-else-if="!row.original.approved"
-                class="mt-1 text-xs text-muted"
-              >
-                No BIA submitted yet
-              </p>
+              </template>
+              <span
+                v-else
+                class="text-xs text-muted"
+              >—</span>
             </template>
             <template #bia_users-cell="{ row }">
               <div class="space-y-1">
