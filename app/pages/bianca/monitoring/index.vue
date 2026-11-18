@@ -392,7 +392,6 @@ const registerColumns: TableColumn<BiaMonitorGroupRow>[] = [
   { id: 'functions', header: 'Functions' },
   { id: 'approved', header: 'Last final BIA' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Open BIA', meta: BIA_STATUS_COLUMN },
   { id: 'directorate', header: 'Directorate' },
   { accessorKey: 'assessment_count', header: 'BIA(s)' },
 ]
@@ -944,12 +943,26 @@ function record(id: number) {
               />
               <p class="mt-1 text-xs text-muted">
                 <template v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role">
-                  Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+                  <NuxtLink
+                    :to="record(row.original.open.id)"
+                    class="font-mono hover:underline"
+                  >
+                    {{ refLabel(row.original.open) }}
+                  </NuxtLink>
+                  · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
                 </template>
                 <template v-else-if="row.original.open">
-                  {{ refLabel(row.original.open) }}
+                  <NuxtLink
+                    :to="record(row.original.open.id)"
+                    class="font-mono hover:underline"
+                  >
+                    {{ refLabel(row.original.open) }}
+                  </NuxtLink>
+                  <template v-if="row.original.approved">
+                    · Renewal in progress
+                  </template>
                 </template>
-                <template v-else-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30')">
+                <template v-else-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')">
                   {{ daysLeft(row.original) }}
                 </template>
                 <template v-else-if="!row.original.approved">
@@ -985,16 +998,27 @@ function record(id: number) {
               <span class="tabular-nums">{{ (row.original.approved ?? row.original.open)?.function_count ?? '—' }}</span>
             </template>
             <template #category-cell="{ row }">
-              <StatusBadge
-                v-if="row.original.approved?.highest_category"
-                :scale="biaCategory"
-                :value="row.original.approved.highest_category"
-                size="sm"
-              />
+              <template v-if="row.original.approved?.highest_category">
+                <StatusBadge
+                  :scale="biaCategory"
+                  :value="row.original.approved.highest_category"
+                  size="sm"
+                />
+              </template>
+              <template v-else-if="row.original.open?.highest_category">
+                <StatusBadge
+                  :scale="biaCategory"
+                  :value="row.original.open.highest_category"
+                  size="sm"
+                />
+                <p class="mt-1 text-xs text-muted">
+                  Preliminary
+                </p>
+              </template>
               <span
                 v-else
                 class="text-muted"
-              >{{ row.original.approved ? 'Not rated' : 'Not final yet' }}</span>
+              >Not rated</span>
             </template>
             <template #shortest_mtd-cell="{ row }">
               <span :class="(row.original.approved ?? row.original.open)?.shortest_mtd ? '' : 'text-muted'">
@@ -1022,25 +1046,6 @@ function record(id: number) {
             </template>
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
-            </template>
-            <template #open-cell="{ row }">
-              <NuxtLink
-                v-if="row.original.open"
-                :to="record(row.original.open.id)"
-                class="inline-flex flex-col items-center gap-1 hover:underline"
-                :aria-label="`${refLabel(row.original.open)}: ${biaStatus[biaStatusKey(row.original.open)].label}`"
-              >
-                <StatusBadge
-                  :scale="biaStatus"
-                  :value="biaStatusKey(row.original.open)"
-                  size="sm"
-                />
-                <span class="font-mono text-xs text-muted">{{ refLabel(row.original.open) }}</span>
-              </NuxtLink>
-              <span
-                v-else
-                class="text-muted"
-              >—</span>
             </template>
             <template #directorate-cell="{ row }">
               <p class="max-w-52 truncate">
