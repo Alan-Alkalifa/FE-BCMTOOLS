@@ -942,7 +942,14 @@ function record(id: number) {
                 :value="biaGroupStatusKey(row.original)"
                 size="sm"
               />
-              <p class="mt-1 text-xs text-muted">
+              <p
+                class="mt-1 text-xs"
+                :class="!row.original.open && row.original.approved && row.original.bucket === 'overdue'
+                  ? 'font-medium text-error'
+                  : !row.original.open && row.original.approved && row.original.bucket === 'due_30'
+                    ? 'font-medium text-warning'
+                    : 'text-muted'"
+              >
                 <template v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role">
                   <NuxtLink
                     :to="record(row.original.open.id)"
@@ -964,7 +971,7 @@ function record(id: number) {
                   </template>
                 </template>
                 <template v-else-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')">
-                  {{ daysLeft(row.original) }}
+                  Last final · {{ daysLeft(row.original) }}
                 </template>
                 <template v-else-if="!row.original.approved">
                   No BIA submitted yet

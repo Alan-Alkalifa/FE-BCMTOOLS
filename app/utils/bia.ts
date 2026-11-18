@@ -34,9 +34,12 @@ export function biaStatusKey(item: { status: BiaStatus, is_returned?: boolean, r
   return item.revision_state ?? (item.is_returned ? 'in_revision' : 'draft')
 }
 
-export type BiaGroupStatusKey = BiaStatusKey | 'not_started'
+export type BiaGroupStatusKey = BiaStatusKey | 'overdue' | 'due_soon' | 'renewal_due' | 'not_started'
 export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
   approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
+  overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
+  due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-calendar-clock' },
+  renewal_due: { label: 'Renewal due', color: 'info', icon: 'i-lucide-calendar' },
   in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
   need_revision: { label: 'Need revision', color: 'error', icon: 'i-lucide-undo-2' },
   in_revision: { label: 'In revision', color: 'warning', icon: 'i-lucide-pencil-line' },
@@ -47,9 +50,15 @@ export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
 export function biaGroupStatusKey(row: {
   approved: { status: BiaStatus } | null
   open: { status: BiaStatus, is_returned?: boolean, revision_state?: BiaRevisionState | null } | null
+  bucket?: 'overdue' | 'due_30' | 'due_90' | 'later' | null
 }): BiaGroupStatusKey {
   if (row.open) return biaStatusKey(row.open)
-  if (row.approved) return 'approved'
+  if (row.approved) {
+    if (row.bucket === 'overdue') return 'overdue'
+    if (row.bucket === 'due_30') return 'due_soon'
+    if (row.bucket === 'due_90') return 'renewal_due'
+    return 'approved'
+  }
   return 'not_started'
 }
 
