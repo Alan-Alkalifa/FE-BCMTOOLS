@@ -127,6 +127,21 @@ test('the DR decision tab edits the parameters, the DR type catalogue and the ch
   expect(body.characteristics.Other!.backup_interval).toBe('On request')
 })
 
+test('the tabs scroll sideways on a narrow screen and the last one can still be opened', async ({ page }) => {
+  await mockConfigAdmin(page)
+  await page.setViewportSize({ width: 640, height: 900 })
+  await page.goto('/admin/scca-config')
+  const tabs = page.getByRole('tablist')
+  await expect(tabs).toBeVisible({ timeout: 60_000 })
+  const sizes = await tabs.evaluate((list) => ({ scroll: list.scrollWidth, visible: list.clientWidth, overflow: getComputedStyle(list).overflowX }))
+  expect(sizes.scroll).toBeGreaterThan(sizes.visible)
+  expect(sizes.overflow).toBe('auto')
+  // No page-wide sideways scrolling: only the tab row moves.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.getByRole('tab', { name: 'Changes' }).click()
+  await expect(page.getByRole('tab', { name: 'Changes' })).toHaveAttribute('aria-selected', 'true')
+})
+
 test('the CIMBN standard table scrolls sideways to its RPO, HA, DR capacity and DR type', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockConfigAdmin(page)

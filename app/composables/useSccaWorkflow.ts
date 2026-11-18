@@ -271,7 +271,7 @@ export interface SccaGenerateResult {
 export const sccaRenewalsApi = {
   contributors: (q: string) =>
     $fetch<{ levels: string[], items: SccaContributorOption[] }>(`${MONITOR}/renewals/contributors`, { query: { q } }),
-  generate: (assessmentIds: number[], contributorId: number) =>
+  generate: (assessmentIds: number[], contributorId: number | null) =>
     $fetch<SccaGenerateResult>(`${MONITOR}/renewals/generate`, {
       method: 'POST',
       body: { assessment_ids: assessmentIds, contributor_id: contributorId },

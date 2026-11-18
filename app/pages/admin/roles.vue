@@ -171,7 +171,9 @@ async function remove() {
               />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-medium text-highlighted">{{ role.name }}</span>
-                <span class="block text-xs text-muted">{{ role.permissions.length }} permissions</span>
+                <span class="block truncate text-xs text-muted">
+                  <code>{{ role.code }}</code> · {{ role.permissions.length }} permissions
+                </span>
               </span>
               <UBadge
                 :label="String(role.user_count)"
@@ -188,9 +190,17 @@ async function remove() {
       <UCard v-if="selectedId !== null">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-lg font-semibold text-highlighted">
-              {{ selectedId === 'new' ? 'New role' : selected?.name }}
-            </h2>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-highlighted">
+                {{ selectedId === 'new' ? 'New role' : selected?.name }}
+              </h2>
+              <p
+                v-if="selected"
+                class="text-xs text-muted"
+              >
+                Code <code data-testid="role-code">{{ selected.code }}</code>
+              </p>
+            </div>
             <div class="flex items-center gap-2">
               <UBadge
                 v-if="selected?.is_system"
