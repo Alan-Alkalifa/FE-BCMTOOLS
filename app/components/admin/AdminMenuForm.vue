@@ -2,7 +2,7 @@
 import type { AdminMenu, AdminPermission } from '~/composables/useAdmin'
 
 /** Add or edit one sidebar item: its label, icon, page, parent group and needed permission. */
-const props = defineProps<{ menu?: AdminMenu | null, menus: AdminMenu[], permissions: AdminPermission[] }>()
+const props = defineProps<{ menu?: AdminMenu | null, parentId?: number | null, menus: AdminMenu[], permissions: AdminPermission[] }>()
 const emit = defineEmits<{ close: [saved?: AdminMenu] }>()
 
 const toast = useToast()
@@ -10,11 +10,13 @@ const form = reactive({
   label: props.menu?.label ?? '',
   icon: props.menu?.icon ?? 'i-lucide-circle',
   route: props.menu?.route ?? '',
-  parent_id: props.menu?.parent_id ?? null as number | null,
+  parent_id: props.menu?.parent_id ?? props.parentId ?? null as number | null,
   sort_order: props.menu?.sort_order ?? 100,
   permission: props.menu?.permission ?? null as string | null,
   is_active: props.menu?.is_active ?? true,
 })
+/** A group has no page of its own: it holds other items. */
+const asGroup = ref(!!props.menu && !props.menu.route)
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
 /** The fields that show their own error; any other server error goes in the alert on top. */
@@ -69,7 +71,7 @@ const permissionItems = computed(() => [
 async function save() {
   errors.value = {}
   busy.value = true
-  const body = { ...form, route: form.route.trim() || null, icon: form.icon.trim() || null }
+  const body = { ...form, route: asGroup.value ? null : form.route.trim() || null, icon: form.icon.trim() || null }
   try {
     const saved = props.menu ? await adminApi.updateMenu(props.menu.id, body) : await adminApi.createMenu(body)
     toast.add({ title: props.menu ? 'Menu item saved' : 'Menu item added', color: 'success', icon: 'i-lucide-circle-check' })
@@ -131,12 +133,12 @@ async function save() {
           <UFormField
             label="Page"
             name="route"
-            :help="isGroup ? 'A group has no page of its own.' : 'The path, e.g. /scca'"
+            :help="isGroup || asGroup ? 'A group has no page of its own.' : 'The path, e.g. /scca'"
             :error="errors.route"
           >
             <UInput
               v-model="form.route"
-              :disabled="isGroup"
+              :disabled="isGroup || asGroup"
               placeholder="/"
               class="w-full font-mono"
             />
@@ -179,6 +181,12 @@ async function save() {
             class="w-full"
           />
         </UFormField>
+        <USwitch
+          v-model="asGroup"
+          label="This is a group"
+          description="It holds other items, so it has no page. Pick it as the Group of the items inside."
+          :disabled="isGroup"
+        />
         <USwitch
           v-model="form.is_active"
           label="Shown in the menu"

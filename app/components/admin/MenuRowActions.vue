@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AdminMenu } from '~/composables/useAdmin'
 
-const props = defineProps<{ menu: AdminMenu, first: boolean, last: boolean, builtIn: boolean }>()
-const emit = defineEmits<{ up: [], down: [], edit: [], toggle: [active: boolean], remove: [] }>()
+const props = defineProps<{ menu: AdminMenu, first: boolean, last: boolean, builtIn: boolean, group: boolean, canIndent: boolean, canOutdent: boolean }>()
+const emit = defineEmits<{ up: [], down: [], indent: [], outdent: [], add: [], edit: [], toggle: [active: boolean], remove: [] }>()
 </script>
 
 <template>
@@ -31,6 +31,38 @@ const emit = defineEmits<{ up: [], down: [], edit: [], toggle: [active: boolean]
       :disabled="last"
       :aria-label="`Move ${props.menu.label} down`"
       @click="emit('down')"
+    />
+    <UButton
+      color="neutral"
+      variant="ghost"
+      size="sm"
+      icon="i-lucide-indent-decrease"
+      :disabled="!canOutdent"
+      :aria-label="`Move ${props.menu.label} out of its group`"
+      @click="emit('outdent')"
+    />
+    <UButton
+      color="neutral"
+      variant="ghost"
+      size="sm"
+      icon="i-lucide-indent-increase"
+      :disabled="!canIndent"
+      :aria-label="`Move ${props.menu.label} into the group above`"
+      @click="emit('indent')"
+    />
+    <UButton
+      v-if="group"
+      color="neutral"
+      variant="ghost"
+      size="sm"
+      icon="i-lucide-plus"
+      :aria-label="`Add an item inside ${props.menu.label}`"
+      @click="emit('add')"
+    />
+    <span
+      v-else
+      class="size-8"
+      aria-hidden="true"
     />
     <UButton
       color="neutral"
