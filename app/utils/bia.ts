@@ -52,13 +52,13 @@ export function biaGroupStatusKey(row: {
   open: { status: BiaStatus, is_returned?: boolean, revision_state?: BiaRevisionState | null } | null
   bucket?: 'overdue' | 'due_30' | 'due_90' | 'later' | null
 }): BiaGroupStatusKey {
-  if (row.open) return biaStatusKey(row.open)
   if (row.approved) {
     if (row.bucket === 'overdue') return 'overdue'
     if (row.bucket === 'due_30') return 'due_soon'
     if (row.bucket === 'due_90') return 'renewal_due'
     return 'approved'
   }
+  if (row.open) return biaStatusKey(row.open)
   return 'not_started'
 }
 

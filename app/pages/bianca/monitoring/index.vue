@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
 import type {
@@ -926,8 +926,8 @@ function record(id: number) {
             </template>
             <template #group_status-cell="{ row }">
               <NuxtLink
-                v-if="row.original.open ?? row.original.approved"
-                :to="record((row.original.open ?? row.original.approved)!.id)"
+                v-if="row.original.approved ?? row.original.open"
+                :to="record((row.original.approved ?? row.original.open)!.id)"
                 class="inline-block hover:underline"
               >
                 <StatusBadge
@@ -943,39 +943,59 @@ function record(id: number) {
                 size="sm"
               />
               <p
+                v-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')"
                 class="mt-1 text-xs"
-                :class="!row.original.open && row.original.approved && row.original.bucket === 'overdue'
+                :class="row.original.bucket === 'overdue'
                   ? 'font-medium text-error'
-                  : !row.original.open && row.original.approved && row.original.bucket === 'due_30'
+                  : row.original.bucket === 'due_30'
                     ? 'font-medium text-warning'
                     : 'text-muted'"
               >
-                <template v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role">
+                Valid until · {{ daysLeft(row.original) }}
+              </p>
+              <div
+                v-if="row.original.open && row.original.approved"
+                class="mt-1.5 space-y-0.5 border-l-2 border-default pl-2"
+              >
+                <div class="flex items-center gap-1.5 text-xs text-muted">
+                  <span>Renewal</span>
+                  <StatusBadge
+                    :scale="biaStatus"
+                    :value="biaStatusKey(row.original.open)"
+                    size="sm"
+                  />
+                </div>
+                <p class="text-xs text-muted">
                   <NuxtLink
                     :to="record(row.original.open.id)"
                     class="font-mono hover:underline"
                   >
                     {{ refLabel(row.original.open) }}
                   </NuxtLink>
+                  <template v-if="row.original.open.status === 'in_signoff' && row.original.open.current_signoff_role">
+                    · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+                  </template>
+                </p>
+              </div>
+              <p
+                v-else-if="row.original.open"
+                class="mt-1 text-xs text-muted"
+              >
+                <NuxtLink
+                  :to="record(row.original.open.id)"
+                  class="font-mono hover:underline"
+                >
+                  {{ refLabel(row.original.open) }}
+                </NuxtLink>
+                <template v-if="row.original.open.status === 'in_signoff' && row.original.open.current_signoff_role">
                   · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
                 </template>
-                <template v-else-if="row.original.open">
-                  <NuxtLink
-                    :to="record(row.original.open.id)"
-                    class="font-mono hover:underline"
-                  >
-                    {{ refLabel(row.original.open) }}
-                  </NuxtLink>
-                  <template v-if="row.original.approved">
-                    · Renewal in progress
-                  </template>
-                </template>
-                <template v-else-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')">
-                  Last final · {{ daysLeft(row.original) }}
-                </template>
-                <template v-else-if="!row.original.approved">
-                  No BIA submitted yet
-                </template>
+              </p>
+              <p
+                v-else-if="!row.original.approved"
+                class="mt-1 text-xs text-muted"
+              >
+                No BIA submitted yet
               </p>
             </template>
             <template #bia_users-cell="{ row }">
