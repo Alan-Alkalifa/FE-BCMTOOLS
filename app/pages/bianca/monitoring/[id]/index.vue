@@ -291,7 +291,9 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
                         color="neutral"
                         variant="subtle"
                       >
-                        {{ member.name }}<template v-if="member.roles.length">
+                        {{ member.name }}<template v-if="member.org_level">
+                          ({{ member.org_level }})
+                        </template><template v-if="member.roles.length">
                           · {{ member.roles[0] }}
                         </template>
                       </UBadge>
@@ -300,6 +302,30 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
                       v-else
                       class="text-muted"
                     >No active BIANCA user assigned to this group</span>
+                  </dd>
+                </div>
+                <div
+                  v-if="detail.directorate_users?.length"
+                  class="grid grid-cols-3 gap-4 py-2.5"
+                >
+                  <dt class="text-muted">
+                    Directorate / Sub
+                  </dt>
+                  <dd class="col-span-2">
+                    <div class="flex flex-wrap gap-1.5">
+                      <UBadge
+                        v-for="leader in detail.directorate_users"
+                        :key="`dir-${leader.id}`"
+                        color="neutral"
+                        variant="outline"
+                      >
+                        {{ leader.name }}<template v-if="leader.org_level">
+                          ({{ leader.org_level }})
+                        </template><template v-if="leader.sub_directorate">
+                          · {{ leader.sub_directorate }}
+                        </template>
+                      </UBadge>
+                    </div>
                   </dd>
                 </div>
               </dl>

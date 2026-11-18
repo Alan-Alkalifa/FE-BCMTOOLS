@@ -24,6 +24,10 @@ export interface BiaGroupUser {
   name: string
   job_title: string | null
   email: string | null
+  org_level?: string | null
+  directorate?: string | null
+  sub_directorate?: string | null
+  org_group?: string | null
   roles: string[]
 }
 
@@ -50,6 +54,7 @@ export interface BiaMonitorGroupRow {
   assessor: string | null
   alt_coordinator: string | null
   group_users?: BiaGroupUser[]
+  directorate_users?: BiaGroupUser[]
   can_generate: boolean
   history: BiaAssessmentRef[]
 }
@@ -129,6 +134,7 @@ export interface BiaAssessmentDetail {
   config_version?: string
   created_by?: string | null
   group_users?: BiaGroupUser[]
+  directorate_users?: BiaGroupUser[]
   period_year: number
   assessment_date: string
   approved_at: string | null
