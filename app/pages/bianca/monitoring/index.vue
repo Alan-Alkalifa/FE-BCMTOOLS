@@ -106,12 +106,12 @@ const state = computed<string>({
 })
 const stateItems = [
   { label: 'Any state', value: 'any' },
-  { label: 'Has a final BIA', value: 'approved' },
-  { label: 'Draft open', value: 'draft' },
-  { label: 'Need revision', value: 'need_revision' },
-  { label: 'In revision', value: 'in_revision' },
-  { label: 'In approval', value: 'in_signoff' },
-  { label: 'No final BIA yet', value: 'none' },
+  { label: 'Existing: Has a final BIA', value: 'approved' },
+  { label: 'Existing: No final BIA yet', value: 'none' },
+  { label: 'Open BIA: Draft', value: 'draft' },
+  { label: 'Open BIA: Need revision', value: 'need_revision' },
+  { label: 'Open BIA: In revision', value: 'in_revision' },
+  { label: 'Open BIA: In approval', value: 'in_signoff' },
 ]
 
 const reasonFilter = computed<string>({
@@ -193,19 +193,34 @@ const bottlenecks = useBiaBottlenecks(computed(() => ({
 })))
 const stepAverages = useBiaBottlenecksStepAverages(filters)
 
-const cards = computed(() => {
+const cardSections = computed(() => {
   const value = overview.data.value?.cards
   return [
-    { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' as const },
-    { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'BIA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' as const },
-    { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' as const },
-    { key: 'assessed', label: 'Groups assessed', hint: 'With a final BIA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' as const },
-    { key: 'not_assessed', label: 'No final BIA yet', hint: 'Active groups without a final BIA', icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' as const },
-    { key: 'in_signoff', label: 'In approval', hint: 'BIAs waiting for their signers', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' as const },
-    { key: 'drafts', label: 'Drafts', hint: 'BIAs being worked on', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' as const },
-    { key: 'need_revision', label: 'Need revision', hint: 'Returned, not accepted yet', icon: 'i-lucide-undo-2', value: value?.need_revision, to: { tab: 'register', state: 'need_revision' }, tone: 'error' as const },
-    { key: 'in_revision', label: 'In revision', hint: 'Accepted, being changed', icon: 'i-lucide-pencil-line', value: value?.in_revision, to: { tab: 'register', state: 'in_revision' }, tone: 'warning' as const },
-  ] as const
+    {
+      title: 'Action needed',
+      cards: [
+        { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' as const },
+        { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'Final BIA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' as const },
+        { key: 'need_revision', label: 'Need revision', hint: 'Returned by approver; waiting for PIC to accept', icon: 'i-lucide-undo-2', value: value?.need_revision, to: { tab: 'register', state: 'need_revision' }, tone: 'error' as const },
+      ],
+    },
+    {
+      title: 'Compliance (Existing BIA)',
+      cards: [
+        { key: 'assessed', label: 'Groups assessed', hint: 'With a final BIA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' as const },
+        { key: 'not_assessed', label: 'No final BIA yet', hint: 'Active groups without a final BIA', icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' as const },
+        { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Final BIAs expiring soon', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' as const },
+      ],
+    },
+    {
+      title: 'In progress (Open BIA)',
+      cards: [
+        { key: 'drafts', label: 'Drafts', hint: 'New or renewal BIAs in draft', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' as const },
+        { key: 'in_revision', label: 'In revision', hint: 'Accepted by PIC; revision in progress', icon: 'i-lucide-pencil-line', value: value?.in_revision, to: { tab: 'register', state: 'in_revision' }, tone: 'warning' as const },
+        { key: 'in_signoff', label: 'In approval', hint: 'Waiting for sign-off approval', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' as const },
+      ],
+    },
+  ]
 })
 
 function cardLink(target: Record<string, string>) {
@@ -612,35 +627,44 @@ function record(id: number) {
     >
       <template #overview>
         <div class="mt-4 space-y-6">
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <ULink
-              v-for="card in cards"
-              :key="card.key"
-              :to="cardLink(card.to)"
-              class="group rounded-lg border border-default bg-default p-4 transition hover:border-accented hover:bg-elevated/40"
-              :aria-label="`${card.label}: ${card.value ?? 'loading'}`"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="text-sm text-muted">
-                    {{ card.label }}
-                  </p>
-                  <p
-                    class="mt-1 text-3xl font-semibold tabular-nums"
-                    :class="card.tone === 'error' && card.value ? 'text-error' : card.tone === 'warning' && card.value ? 'text-warning' : 'text-highlighted'"
-                  >
-                    {{ card.value ?? '—' }}
-                  </p>
-                  <p class="mt-1 text-xs text-muted">
-                    {{ card.hint }}
-                  </p>
+          <div
+            v-for="section in cardSections"
+            :key="section.title"
+            class="space-y-2.5"
+          >
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+              {{ section.title }}
+            </h3>
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <ULink
+                v-for="card in section.cards"
+                :key="card.key"
+                :to="cardLink(card.to)"
+                class="group rounded-lg border border-default bg-default p-4 transition hover:border-accented hover:bg-elevated/40"
+                :aria-label="`${card.label}: ${card.value ?? 'loading'}`"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm text-muted">
+                      {{ card.label }}
+                    </p>
+                    <p
+                      class="mt-1 text-3xl font-semibold tabular-nums"
+                      :class="card.tone === 'error' && card.value ? 'text-error' : card.tone === 'warning' && card.value ? 'text-warning' : 'text-highlighted'"
+                    >
+                      {{ card.value ?? '—' }}
+                    </p>
+                    <p class="mt-1 text-xs text-muted">
+                      {{ card.hint }}
+                    </p>
+                  </div>
+                  <UIcon
+                    :name="card.icon"
+                    class="size-5 text-dimmed group-hover:text-muted"
+                  />
                 </div>
-                <UIcon
-                  :name="card.icon"
-                  class="size-5 text-dimmed group-hover:text-muted"
-                />
-              </div>
-            </ULink>
+              </ULink>
+            </div>
           </div>
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart
@@ -684,7 +708,7 @@ function record(id: number) {
         >
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
             <p class="text-sm text-muted">
-              {{ bucket ? `${biaRenewalBucket[bucket].label}, soonest first.` : 'Overdue and due within 90 days, soonest first.' }}
+              {{ bucket ? `${biaRenewalBucket[bucket].label}, soonest first.` : 'Final BIAs overdue or expiring within 90 days, soonest first. Select rows to send reminders or generate a renewal draft.' }}
             </p>
             <div class="flex flex-wrap gap-2">
               <UButton
@@ -818,8 +842,8 @@ function record(id: number) {
               </NuxtLink>
               <span
                 v-else
-                class="text-muted"
-              >Not started</span>
+                class="text-xs text-muted"
+              >No renewal draft yet</span>
             </template>
             <template #actions-cell="{ row }">
               <UDropdownMenu
@@ -924,6 +948,28 @@ function record(id: number) {
                   · {{ row.original.group.main_building }}
                 </template>
               </p>
+            </template>
+            <template #group_status-header>
+              <span class="inline-flex items-center gap-1">
+                <span>Status</span>
+                <UTooltip text="Compliance status of the group's latest Final (approved) BIA.">
+                  <UIcon
+                    name="i-lucide-info"
+                    class="size-3.5 text-muted"
+                  />
+                </UTooltip>
+              </span>
+            </template>
+            <template #open-header>
+              <span class="inline-flex items-center gap-1">
+                <span>Open BIA</span>
+                <UTooltip text="Active new submission or renewal currently in Draft, Revision, or Approval.">
+                  <UIcon
+                    name="i-lucide-info"
+                    class="size-3.5 text-muted"
+                  />
+                </UTooltip>
+              </span>
             </template>
             <template #group_status-cell="{ row }">
               <NuxtLink
@@ -1128,7 +1174,7 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                BIAs in approval, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
+                BIAs waiting for sign-off, longest-waiting step first. Select rows and click Send reminder to notify the active Waiting signer.
               </p>
               <div class="flex flex-wrap gap-2">
                 <UButton
@@ -1149,6 +1195,28 @@ function record(id: number) {
               :loading="bottlenecks.status.value === 'pending'"
               :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
             >
+              <template #working_days_waiting-header>
+                <span class="inline-flex items-center gap-1">
+                  <span>Waiting</span>
+                  <UTooltip text="Working days (Mon–Fri) waiting at the current sign-off step.">
+                    <UIcon
+                      name="i-lucide-info"
+                      class="size-3.5 text-muted"
+                    />
+                  </UTooltip>
+                </span>
+              </template>
+              <template #working_days_in_signoff-header>
+                <span class="inline-flex items-center gap-1">
+                  <span>In approval</span>
+                  <UTooltip text="Total working days since this BIA was submitted for approval.">
+                    <UIcon
+                      name="i-lucide-info"
+                      class="size-3.5 text-muted"
+                    />
+                  </UTooltip>
+                </span>
+              </template>
               <template #select-header>
                 <UCheckbox
                   v-if="bottleneckRows.length"
