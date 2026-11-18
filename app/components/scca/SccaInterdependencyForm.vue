@@ -44,7 +44,7 @@ type FormRow = {
   workaround: string
   gaps_note: string
   /** The final SCCA the values come from (read-only), or null: entered by the assessor. */
-  source: { ref_no: string | null, finalised_at: string | null } | null
+  source: { id: number | null, ref_no: string | null, finalised_at: string | null } | null
   /** The values the source gave (read-only); a field it left empty stays editable. */
   filled: Filled[]
 }
@@ -69,7 +69,7 @@ function emptyRow(direction: SccaDirection): FormRow {
 }
 
 function toFormRow(row: SccaInterdependency): FormRow {
-  const source = row.source ? { ref_no: row.source.ref_no, finalised_at: row.source.finalised_at } : null
+  const source = row.source ? { id: row.source.id ?? null, ref_no: row.source.ref_no, finalised_at: row.source.finalised_at } : null
   return {
     direction: row.direction,
     application_id: row.application_id ?? null,
@@ -144,7 +144,7 @@ function addApplications(applications: Application[]) {
       row.rto = values.rto ?? ''
       row.rpo = values.rpo ?? ''
       row.dr_capacity = values.dr_capacity ?? ''
-      row.source = values.final ? { ref_no: values.final.ref_no, finalised_at: values.final.finalised_at } : null
+      row.source = values.final ? { id: values.final.id ?? null, ref_no: values.final.ref_no, finalised_at: values.final.finalised_at } : null
       row.filled = values.final ? FILLED.filter((field) => !!row[field]) : []
     }
     rows.push(row)
@@ -164,12 +164,10 @@ function fixed(row: FormRow, field: Filled) {
   return !!row.source && row.filled.includes(field)
 }
 
-/** Under the application's name: which SCCA its values come from. */
+/** Under the application's name: a linked application without a final SCCA needs its values entered. */
 function sourceNote(row: FormRow) {
-  if (!row.application_id) return null
-  if (!row.source) return 'No final SCCA (listed before one was required): enter the values.'
-  const when = row.source.finalised_at ? `, final ${formatDate(row.source.finalised_at)}` : ''
-  return `Current SCCA ${row.source.ref_no ?? ''}${when}`.trim()
+  if (!row.application_id || row.source) return null
+  return 'No final SCCA (listed before one was required): enter the values.'
 }
 
 /** Keep DR capacity within 0–100. The typed value is set first, so a value clamped back to
@@ -335,14 +333,20 @@ function hourChoices(current: string) {
         v-else
         class="overflow-x-auto"
       >
-        <table class="w-full min-w-7xl text-sm">
+        <table class="w-full min-w-[96rem] text-sm">
           <thead>
             <tr class="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted">
-              <th class="w-12 px-3 py-2">
+              <th class="sticky left-0 z-10 w-12 bg-muted px-3 py-2">
                 No.
               </th>
-              <th class="px-3 py-2">
+              <th class="sticky left-12 z-10 bg-muted px-3 py-2">
                 Application name <span class="text-error">*</span>
+              </th>
+              <th class="px-3 py-2">
+                Application code
+              </th>
+              <th class="px-3 py-2">
+                SCCA ref
               </th>
               <th class="px-3 py-2">
                 Category <span class="text-error">*</span>
@@ -378,18 +382,12 @@ function hourChoices(current: string) {
               v-for="(row, index) in state[group.value]"
               :key="`${group.value}-${index}`"
             >
-              <td class="px-3 py-2 align-top tabular-nums text-muted">
+              <td class="sticky left-0 z-10 bg-default px-3 py-2 align-top tabular-nums text-muted">
                 {{ index + 1 }}
               </td>
-              <td class="min-w-64 px-3 py-2 align-top">
+              <td class="sticky left-12 z-10 min-w-56 bg-default px-3 py-2 align-top">
                 <p class="font-medium">
                   {{ row.system_name }}
-                </p>
-                <p
-                  v-if="row.application_code"
-                  class="text-xs text-muted"
-                >
-                  {{ row.application_code }}
                 </p>
                 <p
                   v-if="sourceNote(row)"
@@ -402,6 +400,45 @@ function hourChoices(current: string) {
                   />
                   {{ sourceNote(row) }}
                 </p>
+              </td>
+              <td class="px-3 py-2 align-top tabular-nums">
+                <span v-if="row.application_code">{{ row.application_code }}</span>
+                <template v-else>
+                  <span class="text-muted">—</span>
+                  <p class="text-xs text-muted">
+                    Entered by hand
+                  </p>
+                </template>
+              </td>
+              <td class="min-w-40 px-3 py-2 align-top">
+                <template v-if="row.source?.ref_no">
+                  <NuxtLink
+                    v-if="row.source.id"
+                    :to="`/scca/${row.source.id}`"
+                    target="_blank"
+                    class="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                  >
+                    {{ row.source.ref_no }}
+                    <UIcon
+                      name="i-lucide-external-link"
+                      class="size-3.5 shrink-0"
+                    />
+                  </NuxtLink>
+                  <span
+                    v-else
+                    class="font-medium"
+                  >{{ row.source.ref_no }}</span>
+                  <p
+                    v-if="row.source.finalised_at"
+                    class="text-xs text-muted"
+                  >
+                    Final {{ formatDate(row.source.finalised_at) }}
+                  </p>
+                </template>
+                <span
+                  v-else
+                  class="text-muted"
+                >—</span>
               </td>
               <td class="px-3 py-2 align-top">
                 <StatusBadge
@@ -517,9 +554,23 @@ function hourChoices(current: string) {
                 />
               </td>
               <td class="min-w-72 px-3 py-2 align-top">
+                <UTextarea
+                  v-model="row.gaps_note"
+                  :maxlength="TEXT_LIMITS.long"
+                  :rows="2"
+                  autoresize
+                  placeholder="Other gaps (optional)"
+                  class="w-full min-w-72"
+                  :aria-label="`Gap notes ${index + 1}`"
+                />
+                <FieldCount
+                  class="mt-1 block text-right text-xs"
+                  :value="row.gaps_note"
+                  :max="TEXT_LIMITS.long"
+                />
                 <ul
                   v-if="rowGaps(row).length"
-                  class="mb-2 space-y-1"
+                  class="mt-2 space-y-1"
                   :aria-label="`Automatic gaps ${index + 1}`"
                 >
                   <li
@@ -536,24 +587,10 @@ function hourChoices(current: string) {
                 </ul>
                 <p
                   v-else
-                  class="mb-2 text-xs text-muted"
+                  class="mt-2 text-xs text-muted"
                 >
                   No automatic gap.
                 </p>
-                <UTextarea
-                  v-model="row.gaps_note"
-                  :maxlength="TEXT_LIMITS.long"
-                  :rows="2"
-                  autoresize
-                  placeholder="Other gaps (optional)"
-                  class="w-full min-w-72"
-                  :aria-label="`Gap notes ${index + 1}`"
-                />
-                <FieldCount
-                  class="mt-1 block text-right text-xs"
-                  :value="row.gaps_note"
-                  :max="TEXT_LIMITS.long"
-                />
               </td>
               <td class="px-3 py-2 align-top">
                 <UButton

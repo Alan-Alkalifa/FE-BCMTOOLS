@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { EDITOR, FORMULA, LIST, SAMPLE_RATINGS, assessment, draft, mockScca, signIn } from '../fixtures/scca'
+import { EDITOR, FORMULA, LIST, SAMPLE_RATINGS, SAMPLE_RESULT, assessment, draft, mockScca, signIn } from '../fixtures/scca'
 import { sccaConfig } from '../fixtures/scca-config'
 
 test.setTimeout(90_000)
@@ -183,6 +183,11 @@ test('C1 only offers the ratings allowed by the formula', async ({ page }) => {
   await expect(c1.getByRole('button', { name: 'Insignificant', exact: true })).toBeVisible()
   await expect(c1.getByRole('button', { name: 'Major', exact: true })).toHaveCount(0)
   expect(FORMULA.questions[0].options.map((option) => option.rating)).toEqual([5, 3, 1])
+  // A level the question does not provide is a disabled button, not a struck-through one.
+  const high = c1.getByRole('button', { name: 'High', exact: true })
+  await expect(high).toBeDisabled()
+  await expect(high).not.toHaveClass(/line-through/)
+  expect(await high.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe('none')
 })
 
 test('the rating tab shows only the picked rating\'s guidance, above its justification', async ({ page }) => {
@@ -298,7 +303,8 @@ test('interdependencies are ticked in a table and take their values from the cur
   await expect(dialog).toHaveCount(0)
 
   // Its category, RTO, RPO and DR capacity are the final SCCA's, read-only.
-  await expect(page.getByText('Current SCCA SCCA-2025-0009, final 2 Nov 2025')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'SCCA-2025-0009' })).toBeVisible()
+  await expect(page.getByText('Final 2 Nov 2025')).toBeVisible()
   await expect(page.getByLabel('RTO (hours) 1')).toHaveCount(0)
   await expect(page.getByLabel('Automatic gaps 1')).toContainText('RTO 12 h is longer than the committed RTO of 6 h.')
 
@@ -334,8 +340,9 @@ test('recovery values show a gap and can be saved', async ({ page }) => {
   await page.goto('/scca/1?tab=recovery')
   await expect(page.getByRole('heading', { name: 'Recovery architecture standard (CIMB Niaga)' })).toBeVisible({ timeout: 90_000 })
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
-  // Every category, Other included; the CIMBN block follows Critical's standard (read-only).
-  await expect(page.getByText('Not applicable')).toBeVisible()
+  // The standard table shows the current category (Critical) only; the CIMBN block follows it (read-only).
+  await expect(page.getByText('Not applicable')).toHaveCount(0)
+  await expect(page.getByText('(0 - 4 jam)')).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toBeDisabled()
   await expect(page.getByRole('combobox', { name: 'CIMBN recovery architecture standard DR type' })).toContainText('Hot DR')
   await expect(page.getByLabel('CIMBN recovery architecture standard Availability/SLA (%)')).toBeDisabled()
@@ -563,4 +570,103 @@ test('in Manage, Save sits in the top bar beside View report and saves the open 
   await page.goto('/scca/manage/new')
   await expect(page.getByRole('button', { name: 'Create assessment' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: /^Save / })).toHaveCount(0)
+})
+
+test('A3 shows the application name, code and SCCA ref in their own columns, the gap under the notes', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockScca(page, assessment({
+    interdependencies: [
+      {
+        direction: 'upstream', seq: 1, application_id: 3, application_code: 'CBS', system_name: 'Core Banking',
+        criticality_category: 'Critical', rto: '24', rpo: 'LST', dr_capacity: '100', processing_mode: 'Online', dependency: 'Full',
+        workaround: null, gaps: null, gaps_note: 'Checked with the owner',
+        source: { id: 9, ref_no: 'SCCA-2025-0009', finalised_at: '2025-11-02T03:00:00Z', final_category: 'Critical' },
+      },
+      {
+        direction: 'downstream', seq: 1, application_id: null, application_code: null, system_name: 'Manual file',
+        criticality_category: 'Other', rto: '4', rpo: 'LDB', dr_capacity: '0', processing_mode: 'Batch', dependency: 'No',
+        workaround: null, gaps: null, gaps_note: null, source: null,
+      },
+    ],
+    recovery_values: [{ kind: 'current_it', availability_sla: '99.5', mtd: null, rto: '4', rpo: 'LST', ha: null, dr_capacity: '100', instance_type: 'Different', dr_type: null }],
+  }))
+  await page.goto('/scca/1?tab=interdependencies')
+  const upstream = page.locator('table').first()
+  await expect(upstream.getByRole('columnheader', { name: 'Application code' })).toBeVisible({ timeout: 90_000 })
+  await expect(upstream.getByRole('columnheader', { name: 'SCCA ref' })).toBeVisible()
+  const row = upstream.getByRole('row').filter({ hasText: 'Core Banking' })
+  await expect(row.getByRole('cell', { name: 'CBS', exact: true })).toBeVisible()
+  const ref = row.getByRole('link', { name: 'SCCA-2025-0009' })
+  await expect(ref).toHaveAttribute('href', '/scca/9')
+  await expect(ref).toHaveAttribute('target', '_blank')
+  // The automatic gap sits below the gap notes field, not above it.
+  const notes = row.getByRole('textbox', { name: 'Gap notes 1' })
+  const gap = row.getByText('RTO 24 h is longer than the committed RTO of 4 h')
+  await expect(gap).toBeVisible()
+  const [notesBox, gapBox] = [await notes.boundingBox(), await gap.boundingBox()]
+  expect(gapBox!.y).toBeGreaterThan(notesBox!.y + notesBox!.height - 1)
+  // A row typed by hand has no code or SCCA ref.
+  const hand = page.locator('table').nth(1).getByRole('row').filter({ hasText: 'Manual file' })
+  await expect(hand.getByText('Entered by hand')).toBeVisible()
+})
+
+const IMPORTANT = { ...SAMPLE_RESULT, computed_category: 'Important' as const, final_category: 'Important' as const }
+
+test('the recovery tab shows the standard of the current category only', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockScca(page, assessment({ result: IMPORTANT }))
+  await page.goto('/scca/1?tab=recovery')
+  await expect(page.getByRole('heading', { name: 'Recovery architecture standard (CIMB Niaga)' })).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByText('(12 - 24 jam)')).toBeVisible()
+  await expect(page.getByText('(0 - 4 jam)')).toHaveCount(0)
+  await expect(page.getByText('( > 48 jam)')).toHaveCount(0)
+})
+
+test('a Critical SCCA runs the DR decision without questions and suggests Gold', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockScca(page)
+  await page.goto('/scca/1?tab=recovery')
+  await expect(page.getByRole('heading', { name: 'Disaster recovery decision' })).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByText('Proposed DR', { exact: true })).toBeVisible()
+  await expect(page.getByText('Suggested DR', { exact: true })).toBeVisible()
+  await expect(page.getByText('Gold', { exact: true })).toBeVisible()
+  await expect(page.getByText('Is there an alternate business process')).toHaveCount(0)
+  // The standard's information of the category.
+  await expect(page.getByText('Daily full backup')).toBeVisible()
+  // The Final row has no DR type: the automatic gap shows.
+  await expect(page.getByText('DR is proposed by the DR Decision Tree but the Final row has no DR.')).toBeVisible()
+  await page.getByRole('button', { name: 'View Lampiran 8 and Lampiran 10' }).click()
+  await expect(page.getByRole('dialog').getByText('Lampiran 10 · DR type catalogue by MTD')).toBeVisible()
+})
+
+test('an Important SCCA answers the DR questions and the tree gives its outcome', async ({ page }) => {
+  test.setTimeout(120_000)
+  const current = assessment({ result: IMPORTANT })
+  await mockScca(page, current)
+  await page.goto('/scca/1?tab=recovery')
+  await expect(page.getByRole('heading', { name: 'Disaster recovery decision' })).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByText('Answer the DR decision questions', { exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Alternate business process available' }).click()
+  await page.getByRole('option', { name: 'No', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Business accepts running without DR' }).click()
+  await page.getByRole('option', { name: 'No', exact: true }).click()
+  await expect(page.getByText('Proposed DR', { exact: true })).toBeVisible()
+  await expect(page.getByText('Silver (2)', { exact: true })).toBeVisible()
+  await expect(page.getByText('Weekly full and daily incremental backup')).toBeVisible()
+  const request = page.waitForRequest((req) => req.method() === 'PUT')
+  await page.getByRole('button', { name: 'Save recovery' }).click()
+  expect((await request).postDataJSON()).toMatchObject({ dr_alt_process: false, dr_business_accepts: false })
+})
+
+test('an alternate business process means no DR is required, with the catalogue row as reference', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockScca(page, assessment({ result: { ...SAMPLE_RESULT, computed_category: 'Necessary' as const, final_category: 'Necessary' as const } }))
+  await page.goto('/scca/1?tab=recovery')
+  await expect(page.getByRole('heading', { name: 'Disaster recovery decision' })).toBeVisible({ timeout: 90_000 })
+  await page.getByRole('combobox', { name: 'Alternate business process available' }).click()
+  await page.getByRole('option', { name: 'Yes', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Alternate business process description' }).fill('Paper forms at the branch')
+  await expect(page.getByText('No DR required', { exact: true })).toBeVisible()
+  await expect(page.getByText('MTD of 48 h is over 24 h and an alternate business process exists.')).toBeVisible()
+  await expect(page.getByText('Reference only: the catalogue row for this MTD')).toBeVisible()
 })
