@@ -82,7 +82,7 @@ export interface BiancaConfigVersion {
   published_at: string | null
   used_by: number
   payload: BiancaConfigPayload
-  changes: { part: string, before: unknown, after: unknown, previous_version?: string | null, previous_value?: unknown, current_version?: string, current_value?: unknown }[]
+  changes: { part: string, path?: string[], change?: 'added' | 'removed' | 'changed', before: unknown, after: unknown, previous_version?: string | null, previous_value?: unknown, current_version?: string, current_value?: unknown }[]
 }
 
 const BIA_CONFIG = '/api/admin/bianca-config/versions'

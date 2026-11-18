@@ -278,3 +278,47 @@ test('financial and non-financial matrices save their typed configuration', asyn
   await expect.poll(() => saved?.financial_bands[0]?.description).toBe('Review loss above IDR 4 billion.')
   expect(saved?.impact_matrix[0]?.regulatory).toBe('Breach of laws and regulations.')
 })
+
+test('Changes shows only Recovery when only the recovery guide changes', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = {
+    ...version(), id: 2, code: 'V2', status: 'draft', previous_version: 'V1',
+    changes: [{ part: 'guides', path: ['guides', 'recovery'], change: 'changed', before: 'Original recovery guide.', after: 'Original recovery guide. tes tes', previous_version: 'V1', current_version: 'V2' }],
+  }
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
+  await page.goto('/admin/bianca-config?tab=changes')
+  const table = page.getByRole('table', { name: 'Changes to Guides and statements' })
+  await expect(table.getByRole('row')).toHaveCount(2)
+  await expect(table.getByRole('rowheader', { name: 'Recovery', exact: true })).toBeVisible()
+  await expect(table.getByRole('cell', { name: 'Original recovery guide.', exact: true })).toBeVisible()
+  await expect(table.getByRole('cell', { name: 'Original recovery guide. tes tes', exact: true })).toBeVisible()
+  await expect(table.getByText(/Attestation|Customer|Suggested MTD/)).toHaveCount(0)
+})
+
+test('Changes separates fields in every nested configuration section', async ({ page }) => {
+  await signIn(page, { permissions })
+  const changes: BiancaConfigVersion['changes'] = [
+    { part: 'guides', path: ['guides', 'recovery'], change: 'changed', before: 'Recovery old', after: 'Recovery new' },
+    { part: 'guides', path: ['guides', 'attestation'], change: 'changed', before: 'Statement old', after: 'Statement new' },
+    { part: 'frequencies', path: ['frequencies', 'Daily', 'label'], change: 'changed', before: 'Daily', after: 'Every day' },
+    { part: 'staff_grades', path: ['staff_grades', 'staff_manager', 'max_level'], change: 'changed', before: 9, after: 10 },
+    { part: 'expected_mtd', path: ['expected_mtd', '4 hours', 'category'], change: 'changed', before: 'Important', after: 'Business Critical' },
+    { part: 'impact_matrix', path: ['impact_matrix', '3', 'regulatory'], change: 'changed', before: 'Old regulatory text', after: 'New regulatory text' },
+    { part: 'financial_bands', path: ['financial_bands', 'high', 'description'], change: 'changed', before: 'Old band', after: 'New band' },
+    { part: 'signoff_steps', path: ['signoff_steps', 'bcm_head', 'user_id'], change: 'changed', before: null, after: 8 },
+    { part: 'signoff_steps', path: ['signoff_steps', 'group_head', '@order'], change: 'changed', before: 2, after: 3 },
+    { part: 'signoff_steps', path: ['signoff_steps', 'head_of', '@order'], change: 'changed', before: 3, after: 2 },
+    { part: 'scores', path: ['scores', '2'], change: 'removed', before: 2, after: null },
+  ]
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft', previous_version: 'V1', changes }
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
+  await page.goto('/admin/bianca-config?tab=changes')
+  await expect(page.getByRole('rowheader')).toHaveCount(changes.length)
+  for (const name of ['Recovery', 'Attestation statement', 'Critical timing frequencies / Daily / Label', 'Personnel categories / staff_manager / Last U level', 'Expected MTD / 4 hours / Category', 'Regulatory and customer matrix / Score 3 / Regulatory impact', 'Financial loss matrix / high / Description', 'Sign-off steps / group_head / Order', 'Sign-off steps / head_of / Order']) {
+    await expect(page.getByRole('rowheader', { name, exact: true })).toBeVisible()
+  }
+  const assigned = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Sign-off steps / bcm_head / Signer', exact: true }) })
+  await expect(assigned.getByRole('cell', { name: 'Changed', exact: true })).toBeVisible()
+  await expect(assigned.getByRole('cell', { name: 'Added', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: 'Removed', exact: true })).toHaveCount(1)
+})
