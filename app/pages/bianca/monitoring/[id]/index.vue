@@ -235,10 +235,21 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
             <UCard>
               <template #header>
                 <h2 class="text-base font-semibold text-highlighted">
-                  BCM coordinators
+                  BCM coordinators & BIA users
                 </h2>
               </template>
               <dl class="divide-y divide-default text-sm">
+                <div
+                  v-if="detail.created_by"
+                  class="grid grid-cols-3 gap-4 py-2.5"
+                >
+                  <dt class="text-muted">
+                    Created by
+                  </dt>
+                  <dd class="col-span-2 font-medium text-highlighted">
+                    {{ detail.created_by }}
+                  </dd>
+                </div>
                 <div class="grid grid-cols-3 gap-4 py-2.5">
                   <dt class="text-muted">
                     BCM Coordinator
@@ -263,6 +274,32 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
                     <p class="text-xs text-muted">
                       {{ detail.alt_coordinator.email }} · {{ detail.alt_coordinator.phone }}
                     </p>
+                  </dd>
+                </div>
+                <div class="grid grid-cols-3 gap-4 py-2.5">
+                  <dt class="text-muted">
+                    Group BIA users
+                  </dt>
+                  <dd class="col-span-2">
+                    <div
+                      v-if="detail.group_users?.length"
+                      class="flex flex-wrap gap-1.5"
+                    >
+                      <UBadge
+                        v-for="member in detail.group_users"
+                        :key="member.id"
+                        color="neutral"
+                        variant="subtle"
+                      >
+                        {{ member.name }}<template v-if="member.roles.length">
+                          · {{ member.roles[0] }}
+                        </template>
+                      </UBadge>
+                    </div>
+                    <span
+                      v-else
+                      class="text-muted"
+                    >No active BIANCA user assigned to this group</span>
                   </dd>
                 </div>
               </dl>

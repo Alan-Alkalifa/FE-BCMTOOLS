@@ -34,6 +34,25 @@ export function biaStatusKey(item: { status: BiaStatus, is_returned?: boolean, r
   return item.revision_state ?? (item.is_returned ? 'in_revision' : 'draft')
 }
 
+export type BiaGroupStatusKey = BiaStatusKey | 'not_started'
+export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
+  approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
+  in_signoff: { label: 'In approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  need_revision: { label: 'Need revision', color: 'error', icon: 'i-lucide-undo-2' },
+  in_revision: { label: 'In revision', color: 'warning', icon: 'i-lucide-pencil-line' },
+  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed' },
+})
+
+export function biaGroupStatusKey(row: {
+  approved: { status: BiaStatus } | null
+  open: { status: BiaStatus, is_returned?: boolean, revision_state?: BiaRevisionState | null } | null
+}): BiaGroupStatusKey {
+  if (row.open) return biaStatusKey(row.open)
+  if (row.approved) return 'approved'
+  return 'not_started'
+}
+
 export const BIA_STATUS_COLUMN = { class: { th: 'text-center', td: 'text-center' } }
 
 export type BiaReason = 'annual_review' | 'new_group' | 'org_change'

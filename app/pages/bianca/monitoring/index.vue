@@ -385,19 +385,15 @@ async function remindRenewals(rows: BiaMonitorGroupRow[]) {
 const registerColumns: TableColumn<BiaMonitorGroupRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'group', header: 'Group' },
-  { id: 'code', header: 'Group ID' },
-  { id: 'directorate', header: 'Directorate' },
-  { id: 'sub_directorate', header: 'Sub directorate' },
-  { id: 'functions', header: 'Functions' },
+  { id: 'group_status', header: 'Status' },
+  { id: 'bia_users', header: 'BIA users & PIC' },
   { id: 'category', header: 'Highest category' },
   { id: 'shortest_mtd', header: 'Shortest MTD' },
+  { id: 'functions', header: 'Functions' },
   { id: 'approved', header: 'Last final BIA' },
-  { id: 'approved_date', header: 'Last final BIA date' },
   { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'open', header: 'Open BIA', meta: BIA_STATUS_COLUMN },
-  { id: 'open_step', header: 'Waiting for' },
-  { id: 'assessor', header: 'BCM Coordinator' },
-  { id: 'alt_coordinator', header: 'Alternate' },
+  { id: 'directorate', header: 'Directorate' },
   { accessorKey: 'assessment_count', header: 'BIA(s)' },
 ]
 
@@ -443,7 +439,8 @@ const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   { id: 'assessment', header: 'Group' },
   { accessorKey: 'ref_no', header: 'BIA ref. no.' },
   { accessorKey: 'step', header: 'Current step' },
-  { id: 'signer', header: 'Signer' },
+  { id: 'coordinator', header: 'BCM Coordinator' },
+  { id: 'signer', header: 'Waiting signer' },
   { accessorKey: 'working_days_waiting', header: 'Waiting' },
   { accessorKey: 'reminders_sent', header: 'Reminders' },
   { accessorKey: 'escalated_at', header: 'Escalated on' },
@@ -532,7 +529,7 @@ function record(id: number) {
           <UInput
             v-model="search"
             icon="i-lucide-search"
-            placeholder="Group, ID or ref. no."
+            placeholder="Group, ID, ref. no. or user"
             aria-label="Search groups"
             class="w-full"
           />
@@ -791,8 +788,14 @@ function record(id: number) {
             </template>
             <template #assessor-cell="{ row }">
               <p class="max-w-56 truncate">
-                {{ row.original.assessor || '—' }}
+                {{ row.original.assessor || row.original.group_users?.[0]?.name || '—' }}
               </p>
+              <BiaGroupUsersPopover
+                v-if="row.original.group_users?.length"
+                :group-name="row.original.group.name"
+                :users="row.original.group_users"
+                variant="link"
+              />
             </template>
             <template #alt_coordinator-cell="{ row }">
               <p class="max-w-56 truncate">
@@ -914,21 +917,69 @@ function record(id: number) {
                 v-else
                 class="font-medium text-highlighted"
               >{{ row.original.group.name }}</span>
-              <p
-                v-if="row.original.group.main_building"
-                class="text-xs text-muted"
-              >
-                {{ row.original.group.main_building }}
+              <p class="text-xs text-muted">
+                <span class="font-mono">{{ row.original.group.code || '—' }}</span>
+                <template v-if="row.original.group.main_building && row.original.group.main_building !== '—'">
+                  · {{ row.original.group.main_building }}
+                </template>
               </p>
             </template>
-            <template #code-cell="{ row }">
-              <span class="font-mono text-xs">{{ row.original.group.code || '—' }}</span>
+            <template #group_status-cell="{ row }">
+              <NuxtLink
+                v-if="row.original.open ?? row.original.approved"
+                :to="record((row.original.open ?? row.original.approved)!.id)"
+                class="inline-block hover:underline"
+              >
+                <StatusBadge
+                  :scale="biaGroupStatus"
+                  :value="biaGroupStatusKey(row.original)"
+                  size="sm"
+                />
+              </NuxtLink>
+              <StatusBadge
+                v-else
+                :scale="biaGroupStatus"
+                :value="biaGroupStatusKey(row.original)"
+                size="sm"
+              />
+              <p class="mt-1 text-xs text-muted">
+                <template v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role">
+                  Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+                </template>
+                <template v-else-if="row.original.open">
+                  {{ refLabel(row.original.open) }}
+                </template>
+                <template v-else-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30')">
+                  {{ daysLeft(row.original) }}
+                </template>
+                <template v-else-if="!row.original.approved">
+                  No BIA submitted yet
+                </template>
+              </p>
             </template>
-            <template #directorate-cell="{ row }">
-              <span :class="row.original.group.directorate ? '' : 'text-muted'">{{ row.original.group.directorate || '—' }}</span>
-            </template>
-            <template #sub_directorate-cell="{ row }">
-              <span :class="row.original.group.sub_directorate ? '' : 'text-muted'">{{ row.original.group.sub_directorate || '—' }}</span>
+            <template #bia_users-cell="{ row }">
+              <div class="space-y-1">
+                <p class="max-w-56 truncate text-sm font-medium text-highlighted">
+                  {{ row.original.assessor || row.original.group_users?.[0]?.name || '—' }}
+                </p>
+                <p
+                  v-if="row.original.alt_coordinator && row.original.alt_coordinator !== row.original.assessor"
+                  class="max-w-56 truncate text-xs text-muted"
+                >
+                  Alt: {{ row.original.alt_coordinator }}
+                </p>
+                <BiaGroupUsersPopover
+                  v-if="row.original.group_users?.length"
+                  :group-name="row.original.group.name"
+                  :users="row.original.group_users"
+                />
+                <p
+                  v-else-if="!row.original.assessor"
+                  class="text-xs text-muted"
+                >
+                  No user assigned
+                </p>
+              </div>
             </template>
             <template #functions-cell="{ row }">
               <span class="tabular-nums">{{ (row.original.approved ?? row.original.open)?.function_count ?? '—' }}</span>
@@ -952,21 +1003,22 @@ function record(id: number) {
             </template>
             <template #approved-cell="{ row }">
               <template v-if="row.original.approved">
-                <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
-                <p
-                  v-if="row.original.approved.reason"
-                  class="text-xs text-muted"
+                <NuxtLink
+                  :to="record(row.original.approved.id)"
+                  class="font-mono text-xs text-primary hover:underline"
                 >
-                  {{ biaReasonLabel(row.original.approved.reason) }}
+                  {{ refLabel(row.original.approved) }}
+                </NuxtLink>
+                <p class="text-xs text-muted">
+                  {{ formatDate(row.original.approved.approved_at) || '—' }}<template v-if="row.original.approved.reason">
+                    · {{ biaReasonLabel(row.original.approved.reason) }}
+                  </template>
                 </p>
               </template>
               <span
                 v-else
                 class="text-muted"
               >—</span>
-            </template>
-            <template #approved_date-cell="{ row }">
-              {{ formatDate(row.original.approved?.approved_at) || '—' }}
             </template>
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
@@ -975,7 +1027,7 @@ function record(id: number) {
               <NuxtLink
                 v-if="row.original.open"
                 :to="record(row.original.open.id)"
-                class="inline-block hover:underline"
+                class="inline-flex flex-col items-center gap-1 hover:underline"
                 :aria-label="`${refLabel(row.original.open)}: ${biaStatus[biaStatusKey(row.original.open)].label}`"
               >
                 <StatusBadge
@@ -983,32 +1035,22 @@ function record(id: number) {
                   :value="biaStatusKey(row.original.open)"
                   size="sm"
                 />
+                <span class="font-mono text-xs text-muted">{{ refLabel(row.original.open) }}</span>
               </NuxtLink>
               <span
                 v-else
                 class="text-muted"
               >—</span>
             </template>
-            <template #open_step-cell="{ row }">
-              <span
-                v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role"
-                class="text-sm"
-              >
-                {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-              </span>
-              <span
-                v-else
-                class="text-muted"
-              >—</span>
-            </template>
-            <template #assessor-cell="{ row }">
-              <p class="max-w-56 truncate">
-                {{ row.original.assessor || '—' }}
+            <template #directorate-cell="{ row }">
+              <p class="max-w-52 truncate">
+                {{ row.original.group.directorate || '—' }}
               </p>
-            </template>
-            <template #alt_coordinator-cell="{ row }">
-              <p class="max-w-56 truncate">
-                {{ row.original.alt_coordinator || '—' }}
+              <p
+                v-if="row.original.group.sub_directorate && row.original.group.sub_directorate !== '—'"
+                class="max-w-52 truncate text-xs text-muted"
+              >
+                {{ row.original.group.sub_directorate }}
               </p>
             </template>
             <template #assessment_count-cell="{ row }">
@@ -1104,14 +1146,25 @@ function record(id: number) {
               <template #step-cell="{ row }">
                 {{ biaStepTitle(row.original.step, row.original.step_title) }}
               </template>
+              <template #coordinator-cell="{ row }">
+                <span :class="row.original.coordinator ? '' : 'text-muted'">
+                  {{ row.original.coordinator || '—' }}
+                </span>
+              </template>
               <template #signer-cell="{ row }">
-                {{ row.original.signer?.name ?? '—' }}
-                <p
-                  v-if="row.original.signer?.job_title"
+                <template v-if="row.original.signer?.name">
+                  {{ row.original.signer.name }}
+                  <p
+                    v-if="row.original.signer.job_title"
+                    class="text-xs text-muted"
+                  >
+                    {{ row.original.signer.job_title }}
+                  </p>
+                </template>
+                <span
+                  v-else
                   class="text-xs text-muted"
-                >
-                  {{ row.original.signer.job_title }}
-                </p>
+                >Unassigned (via Coordinator)</span>
               </template>
               <template #working_days_waiting-cell="{ row }">
                 <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ biaWaiting(row.original.working_days_waiting) }}</span>

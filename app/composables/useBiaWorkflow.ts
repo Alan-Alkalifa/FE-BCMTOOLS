@@ -19,6 +19,14 @@ export interface BiaAssessmentRef {
   approved_at: string | null
 }
 
+export interface BiaGroupUser {
+  id: number
+  name: string
+  job_title: string | null
+  email: string | null
+  roles: string[]
+}
+
 export interface BiaGroupInfo {
   id: number
   code: string
@@ -31,6 +39,8 @@ export interface BiaGroupInfo {
 
 export interface BiaMonitorGroupRow {
   group: BiaGroupInfo
+  group_status?: string
+  group_status_label?: string
   approved: BiaAssessmentRef | null
   open: BiaAssessmentRef | null
   assessment_count: number
@@ -39,6 +49,7 @@ export interface BiaMonitorGroupRow {
   bucket: BiaRenewalBucket | null
   assessor: string | null
   alt_coordinator: string | null
+  group_users?: BiaGroupUser[]
   can_generate: boolean
   history: BiaAssessmentRef[]
 }
@@ -49,6 +60,7 @@ export interface BiaSignoffWaitingRow {
   group: BiaGroupInfo
   step: string
   step_title: string
+  coordinator?: string | null
   signer: { name: string, job_title: string } | null
   waiting_since: string
   working_days_waiting: number
@@ -115,6 +127,8 @@ export interface BiaAssessmentDetail {
   ref_no: string
   config_version_id?: number | null
   config_version?: string
+  created_by?: string | null
+  group_users?: BiaGroupUser[]
   period_year: number
   assessment_date: string
   approved_at: string | null
