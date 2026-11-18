@@ -122,6 +122,13 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
     ]"
   >
     <template #actions>
+      <UBadge
+        v-if="detail.config_version"
+        color="neutral"
+        variant="subtle"
+      >
+        Config {{ detail.config_version }}
+      </UBadge>
       <StatusBadge
         :scale="biaStatus"
         :value="biaStatusKey(detail)"
@@ -274,9 +281,24 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
                   </dt>
                   <dd class="col-span-2 font-medium tabular-nums text-highlighted">
                     {{ formatNumber(detail.ra_questionnaire.total_staff, 0) }} staff
-                    <span class="font-normal text-muted">
+                    <span
+                      v-if="detail.ra_questionnaire.personnel_breakdown?.length"
+                      class="font-normal text-muted"
+                    >
+                      ({{ detail.ra_questionnaire.personnel_breakdown.map((g) => `${g.label}: ${g.count}`).join(', ') }})
+                    </span>
+                    <span
+                      v-else
+                      class="font-normal text-muted"
+                    >
                       (U1–U3: {{ detail.ra_questionnaire.senior_mgmt }}, U4–U5: {{ detail.ra_questionnaire.middle_mgmt }}, U6–U9: {{ detail.ra_questionnaire.executive_mgr }}, U10–U11: {{ detail.ra_questionnaire.staff }})
                     </span>
+                    <p
+                      v-if="detail.ra_questionnaire.others_note"
+                      class="mt-1 text-xs font-normal text-muted"
+                    >
+                      Others note: {{ detail.ra_questionnaire.others_note }}
+                    </p>
                   </dd>
                 </div>
                 <div class="grid grid-cols-3 gap-4 py-2.5">

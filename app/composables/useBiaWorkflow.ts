@@ -113,6 +113,8 @@ export interface BiaFunctionItem {
 export interface BiaAssessmentDetail {
   id: number
   ref_no: string
+  config_version_id?: number | null
+  config_version?: string
   period_year: number
   assessment_date: string
   approved_at: string | null
@@ -168,6 +170,12 @@ export interface BiaAssessmentDetail {
     executive_mgr: number
     staff: number
     others: number
+    others_note?: string | null
+    personnel_breakdown?: {
+      code: string
+      label: string
+      count: number
+    }[]
     total_staff: number
   }
   functions: BiaFunctionItem[]
