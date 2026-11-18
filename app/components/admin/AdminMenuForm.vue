@@ -17,6 +17,8 @@ const form = reactive({
 })
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
+/** The fields that show their own error; any other server error goes in the alert on top. */
+const FIELDS = ['label', 'icon', 'route', 'parent_id', 'sort_order', 'permission']
 
 const iconItems = MENU_ICONS.map((name): { label: string, value: string, icon: string } => ({
   label: name.replace('i-lucide-', '').replaceAll('-', ' '),
@@ -74,7 +76,8 @@ async function save() {
     emit('close', saved)
   } catch (failure) {
     const details = (failure as { data?: { details?: Record<string, string> } }).data?.details
-    errors.value = details ? { ...details } : { form: adminErrorText(failure) }
+    const other = Object.entries(details ?? {}).filter(([key]) => !FIELDS.includes(key)).map(([, text]) => text)
+    errors.value = details ? { ...details, ...(other.length ? { form: other.join(' ') } : {}) } : { form: adminErrorText(failure) }
   } finally {
     busy.value = false
   }

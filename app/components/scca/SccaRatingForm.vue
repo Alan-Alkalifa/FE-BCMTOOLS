@@ -259,7 +259,7 @@ async function onSubmit() {
                   :color="state.answers[question.code]!.rating === level.rating ? 'primary' : 'neutral'"
                   :variant="state.answers[question.code]!.rating === level.rating ? 'solid' : 'outline'"
                   :aria-pressed="state.answers[question.code]!.rating === level.rating"
-                  :class="level.allowed ? '' : 'line-through decoration-1'"
+                  :aria-disabled="!level.allowed"
                   @click="choose(question.code, level.rating)"
                 />
               </UTooltip>
