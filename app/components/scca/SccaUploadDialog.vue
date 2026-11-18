@@ -208,7 +208,7 @@ async function save() {
             </template>
             <UFormField
               label="Contributor (IT support)"
-              help="Needed to submit. You can pick it later in the form."
+              help="Optional. You can pick it later in the form."
             >
               <UserPicker
                 v-model="contributorId"

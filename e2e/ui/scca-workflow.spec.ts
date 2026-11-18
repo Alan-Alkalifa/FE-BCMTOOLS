@@ -319,6 +319,26 @@ test('Renewals: the Act menu and Generate annual review for the selected rows', 
   await expect(page).toHaveURL(/\/scca\/manage\/90$/)
 })
 
+test('Generate annual review does not need a contributor', async ({ page }) => {
+  const { calls } = await mockScca(page)
+  await page.goto('/scca/monitoring?tab=renewals')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('link', { name: 'Payment Gateway' })).toBeVisible({ timeout: 60_000 })
+  await table.getByRole('checkbox', { name: 'Select Payment Gateway' }).click()
+  await page.getByRole('button', { name: 'Generate annual review (1)' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Generate annual review' })
+  await expect(dialog.getByText('Contributor (optional)')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Contributor' })).toContainText('Dewi Head')
+  // The suggestion is cleared: the drafts are generated without a contributor.
+  await dialog.locator('[data-slot="trailingClear"]').click()
+  await expect(dialog.getByRole('button', { name: 'Contributor' })).not.toContainText('Dewi Head')
+  await dialog.getByRole('button', { name: 'Generate' }).click()
+  await expect(page.getByText('Created 1, skipped 0', { exact: true })).toBeVisible()
+  await expect(page.getByText('Pick the contributor.')).toHaveCount(0)
+  const sent = calls.find((call) => call.url === '/api/scca/monitoring/renewals/generate')!
+  expect(sent.body).toEqual({ assessment_ids: [5], contributor_id: null })
+})
+
 test('the BCM board sends a reminder to the selected SCCAs and says what was skipped', async ({ page }) => {
   const { calls } = await mockScca(page)
   await page.goto('/scca/approval?tab=board')
