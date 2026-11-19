@@ -223,7 +223,7 @@ const cardSections = computed(() => {
   ]
 })
 
-function cardLink(target: Record<string, string | undefined>) {
+function cardLink(target: Record<string, string>) {
   return { query: { ...route.query, ...target, page: undefined } }
 }
 
