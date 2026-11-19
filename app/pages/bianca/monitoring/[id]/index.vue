@@ -83,9 +83,16 @@ const impactPeriods = computed(() =>
 )
 
 function scoreTone(score: number | null | undefined) {
-  if ((score ?? 0) >= 3) return 'font-semibold text-error'
+  const alertScore = detail.value?.impact_reference?.score_alert ?? 3
+  if ((score ?? 0) >= alertScore) return 'font-semibold text-error'
   if (score === 2) return 'font-medium text-warning'
   return 'text-muted'
+}
+
+function lossTone(amount: number | null | undefined) {
+  const alertIdr = detail.value?.impact_reference?.loss_alert_idr
+  if (alertIdr != null && (amount ?? 0) > alertIdr) return 'font-semibold text-error'
+  return ''
 }
 
 const detailSummary = computed(() => {
@@ -654,6 +661,7 @@ const lossPeriodTotals = computed(() =>
                       v-for="(periodLabel, idx) in impactPeriods"
                       :key="`loss-${fn.seq_no}-${periodLabel}`"
                       class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
+                      :class="lossTone(fn.losses?.[idx])"
                     >
                       {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
                     </td>
@@ -765,15 +773,64 @@ const lossPeriodTotals = computed(() =>
                 </tbody>
               </table>
             </div>
-            <div class="border-t border-default bg-elevated/20 px-4 py-3 text-xs text-muted">
-              <p>
-                <span class="font-medium text-highlighted">Regulatory (A):</span>
-                1 = No foreseeable breach/non-compliance · 2 = Non-compliance with internal/association guidelines · 3 = Breach of laws or regulator requirements
-              </p>
-              <p class="mt-1">
-                <span class="font-medium text-highlighted">Customer (B):</span>
-                1 = No customer affected · 2 = &lt;20% of unit customer base affected · 3 = &gt;20% of unit customer base affected
-              </p>
+          </UCard>
+
+          <UCard v-if="detail.impact_reference">
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-base font-semibold text-highlighted">
+                  Impact reference matrix (Config {{ detail.config_version || 'active' }})
+                </h2>
+                <span class="text-xs text-muted">
+                  Alert threshold: &gt; {{ formatCurrency(detail.impact_reference.loss_alert_idr) }} or Score ≥ {{ detail.impact_reference.score_alert }}
+                </span>
+              </div>
+            </template>
+            <div class="grid gap-6 lg:grid-cols-2">
+              <div v-if="detail.impact_reference.financial_bands.length">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Potential cumulative financial loss matrix
+                </h3>
+                <dl class="mt-2 divide-y divide-default text-sm">
+                  <div
+                    v-for="band in detail.impact_reference.financial_bands"
+                    :key="band.code"
+                    class="flex items-baseline justify-between gap-4 py-2"
+                  >
+                    <dt class="font-medium text-highlighted">
+                      {{ band.label }}
+                    </dt>
+                    <dd class="text-right text-muted tabular-nums">
+                      {{ band.description }}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <div v-if="detail.impact_reference.impact_matrix.length">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Regulatory (A) &amp; customer service (B) matrix
+                </h3>
+                <div class="mt-2 divide-y divide-default text-xs">
+                  <div
+                    v-for="item in detail.impact_reference.impact_matrix"
+                    :key="item.score"
+                    class="py-2"
+                  >
+                    <p
+                      class="font-semibold"
+                      :class="scoreTone(item.score)"
+                    >
+                      Score {{ item.score }}
+                    </p>
+                    <p class="mt-0.5 text-muted">
+                      <span class="font-medium text-highlighted">Regulatory (A):</span> {{ item.regulatory }}
+                    </p>
+                    <p class="mt-0.5 text-muted">
+                      <span class="font-medium text-highlighted">Customer (B):</span> {{ item.customer }}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </UCard>
 

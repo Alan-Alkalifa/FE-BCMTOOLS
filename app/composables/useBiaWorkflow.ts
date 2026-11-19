@@ -152,6 +152,12 @@ export interface BiaAssessmentDetail {
   highest_category: BiaCategory | null
   shortest_mtd: string | null
   periods?: string[]
+  impact_reference?: {
+    loss_alert_idr: number
+    score_alert: number
+    financial_bands: { code: string, label: string, description: string }[]
+    impact_matrix: { score: number, regulatory: string, customer: string }[]
+  }
   loss_totals?: {
     fin_loss_4h: number
     fin_loss_d1: number
