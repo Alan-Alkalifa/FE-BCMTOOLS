@@ -2,6 +2,8 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, today as todayIn, type CalendarDate } from '@internationalized/date'
 import type {
+  BiaDirectorateRow,
+  BiaDirectorateSort,
   BiaGenerateResult,
   BiaMonitoringFilters,
   BiaMonitorGroupRow,
@@ -38,7 +40,7 @@ function text(name: string) {
 type Period = 'all' | 'year' | '12m' | 'custom'
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
-const STATES = ['approved', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none'] as const
+const STATES = ['approved', 'overdue', 'due_soon', 'open', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none'] as const
 
 const filters = computed<BiaMonitoringFilters>(() => ({
   q: text('q'),
@@ -107,7 +109,10 @@ const state = computed<string>({
 const stateItems = [
   { label: 'Any state', value: 'any' },
   { label: 'Existing: Has a final BIA', value: 'approved' },
+  { label: 'Existing: Overdue', value: 'overdue' },
+  { label: 'Existing: Due soon (≤ 30 days)', value: 'due_soon' },
   { label: 'Existing: No final BIA yet', value: 'none' },
+  { label: 'Open BIA: Any open', value: 'open' },
   { label: 'Open BIA: Draft', value: 'draft' },
   { label: 'Open BIA: Need revision', value: 'need_revision' },
   { label: 'Open BIA: In revision', value: 'in_revision' },
@@ -181,6 +186,40 @@ const renewalCards = [
   { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
   { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
+const listView = computed<'directorates' | 'flat'>({
+  get: () => (text('view') === 'flat' ? 'flat' : 'directorates'),
+  set: (value) => setQuery({ view: value === 'directorates' ? undefined : 'flat' }),
+})
+const dirSort = computed<BiaDirectorateSort>({
+  get: () => {
+    const s = text('sort')
+    return s === 'name' || s === 'groups' ? s : 'urgent'
+  },
+  set: (value) => setQuery({ sort: value === 'urgent' ? undefined : value }),
+})
+const attentionOnly = computed<boolean>({
+  get: () => text('attention_only') === '1',
+  set: (value) => setQuery({ attention_only: value ? '1' : undefined }),
+})
+const dirSortItems = [
+  { label: 'Most urgent', value: 'urgent' },
+  { label: 'Name (A–Z)', value: 'name' },
+  { label: 'Most groups', value: 'groups' },
+]
+const smartFlat = computed(() =>
+  listView.value === 'directorates' && Boolean(filters.value.q || filters.value.org_group),
+)
+const effectiveListMode = computed<'directorates' | 'flat'>(() =>
+  listView.value === 'flat' || smartFlat.value ? 'flat' : 'directorates',
+)
+
+const directorates = useBiaDirectorates(computed(() => ({
+  ...filters.value,
+  sort: dirSort.value,
+  attention_only: attentionOnly.value,
+  page: page.value,
+  per_page: perPage.value,
+})))
 const register = useBiaRegister(computed(() => ({
   ...filters.value,
   page: page.value,
@@ -454,41 +493,18 @@ async function remindRenewals(rows: BiaMonitorGroupRow[]) {
   }
 }
 
-const registerColumns: TableColumn<BiaMonitorGroupRow>[] = [
-  { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'group', header: 'Group' },
-  { id: 'group_status', header: 'Status' },
-  { id: 'open', header: 'Open BIA' },
-  { id: 'bia_users', header: 'BIA users & PIC' },
-  { id: 'category', header: 'Highest category' },
-  { id: 'shortest_mtd', header: 'Shortest MTD' },
-  { id: 'functions', header: 'Functions' },
-  { id: 'approved', header: 'Last final BIA' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'directorate', header: 'Directorate' },
-  { accessorKey: 'assessment_count', header: 'BIA(s)' },
-]
-
 const picked = ref<Map<number, string>>(new Map())
 const pickedIds = computed(() => [...picked.value.keys()])
-const pageRows = computed(() => register.data.value?.items ?? [])
-const pageState = computed<boolean | 'indeterminate'>({
-  get: () => {
-    const ticked = pageRows.value.filter((row) => picked.value.has(row.group.id)).length
-    if (!ticked) return false
-    return ticked === pageRows.value.length ? true : 'indeterminate'
-  },
-  set: (value) => pickPage(value),
-})
+const pickedIdSet = computed(() => new Set(picked.value.keys()))
 function pick(row: BiaMonitorGroupRow, value: boolean | 'indeterminate') {
   const next = new Map(picked.value)
   if (value === true) next.set(row.group.id, row.group.name)
   else next.delete(row.group.id)
   picked.value = next
 }
-function pickPage(value: boolean | 'indeterminate') {
+function pickManyRows(rows: BiaMonitorGroupRow[], value: boolean | 'indeterminate') {
   const next = new Map(picked.value)
-  for (const row of pageRows.value) {
+  for (const row of rows) {
     if (value === true) next.set(row.group.id, row.group.name)
     else next.delete(row.group.id)
   }
@@ -498,13 +514,73 @@ function clearPicked() {
   picked.value = new Map()
 }
 
-function registerRecord(row: BiaMonitorGroupRow) {
-  return row.approved ?? row.open ?? row.history?.[0] ?? null
-}
-
 function openHistory(row: BiaMonitorGroupRow) {
   historyDialog.open({ row })
 }
+
+function directorateLink(name: string) {
+  return {
+    path: '/bianca/monitoring/directorate',
+    query: {
+      name,
+      sort: dirSort.value === 'urgent' ? undefined : dirSort.value,
+      attention_only: attentionOnly.value ? '1' : undefined,
+      state: filters.value.state,
+      category: filters.value.category,
+      reason: filters.value.reason,
+      from: filters.value.from,
+      to: filters.value.to,
+    },
+  }
+}
+
+function openDirectorate(row: BiaDirectorateRow) {
+  router.push(directorateLink(row.name))
+}
+
+function directorateSeverityBar(severity: BiaDirectorateRow['severity']) {
+  if (severity === 'error') return 'border-s-4 border-s-error'
+  if (severity === 'warning') return 'border-s-4 border-s-warning'
+  return 'border-s-4 border-s-transparent'
+}
+
+function coveragePct(part: number, total: number) {
+  return total > 0 ? `${Math.round((part / total) * 100)}%` : '0%'
+}
+
+function directorateOpenLabel(row: BiaDirectorateRow) {
+  const oc = row.open_counts
+  if (!oc.total) return '—'
+  if (oc.in_signoff === oc.total) return `${oc.in_signoff} in approval`
+  if (oc.draft === oc.total) return `${oc.draft} draft`
+  if (oc.returned === oc.total) return `${oc.returned} returned`
+  return `${oc.total} open`
+}
+
+function renewalDisabledReason(row: BiaMonitorGroupRow) {
+  if (row.open) return `${refLabel(row.open)} is already open for this group`
+  return 'No final BIA available to renew'
+}
+
+const activeFilterChips = computed(() => {
+  const chips: string[] = []
+  if (filters.value.state) {
+    const found = stateItems.find((i) => i.value === filters.value.state)
+    chips.push(found ? found.label.replace(/^(Existing|Open BIA): /, '') : filters.value.state)
+  }
+  if (filters.value.category) {
+    const found = categoryItems.find((i) => i.value === filters.value.category)
+    chips.push(found ? found.label : filters.value.category)
+  }
+  if (filters.value.reason) {
+    const label = biaReasonLabel(filters.value.reason)
+    if (label) chips.push(label)
+  }
+  if (filters.value.directorate) chips.push(filters.value.directorate)
+  if (filters.value.sub_directorate) chips.push(filters.value.sub_directorate)
+  if (filters.value.from || filters.value.to) chips.push('Date range')
+  return chips
+})
 
 const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
@@ -914,12 +990,19 @@ function record(id: number) {
               />
             </template>
             <template #select-cell="{ row }">
-              <UCheckbox
-                :model-value="selected.has(row.original.group.id)"
-                :disabled="!row.original.can_generate"
-                :aria-label="`Select ${row.original.group.name}`"
-                @update:model-value="toggle(row.original, $event)"
-              />
+              <UTooltip
+                :disabled="row.original.can_generate"
+                :text="renewalDisabledReason(row.original)"
+              >
+                <span class="inline-flex">
+                  <UCheckbox
+                    :model-value="selected.has(row.original.group.id)"
+                    :disabled="!row.original.can_generate"
+                    :aria-label="`Select ${row.original.group.name}`"
+                    @update:model-value="toggle(row.original, $event)"
+                  />
+                </span>
+              </UTooltip>
             </template>
             <template #group-cell="{ row }">
               <NuxtLink
@@ -1044,282 +1127,379 @@ function record(id: number) {
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
-            <p class="text-sm text-muted">
-              {{ plural(register.data.value?.total ?? 0, 'group') }}<template v-if="pickedIds.length">
-                · <span class="font-medium text-highlighted">{{ pickedIds.length }} selected</span>
-              </template>
-            </p>
-            <div class="flex flex-wrap items-center gap-2">
+          <!-- Top toolbar -->
+          <div class="space-y-3 border-b border-default p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2 text-sm text-muted">
+                <template v-if="effectiveListMode === 'directorates'">
+                  <span>
+                    {{ plural(directorates.data.value?.total ?? 0, 'directorate') }} · {{ plural(directorates.data.value?.total_groups ?? 0, 'group') }}
+                  </span>
+                  <UBadge
+                    v-if="(directorates.data.value?.attention_directorates ?? 0) > 0"
+                    color="warning"
+                    variant="subtle"
+                    size="xs"
+                    icon="i-lucide-triangle-alert"
+                    :label="`${plural(directorates.data.value!.attention_directorates, 'directorate')} need attention`"
+                  />
+                </template>
+                <template v-else>
+                  <span>{{ plural(register.data.value?.total ?? 0, 'group') }}</span>
+                  <template v-if="pickedIds.length">
+                    · <span class="font-medium text-highlighted">{{ pickedIds.length }} selected</span>
+                  </template>
+                </template>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <template v-if="effectiveListMode === 'directorates'">
+                  <UButton
+                    size="xs"
+                    :color="attentionOnly ? 'warning' : 'neutral'"
+                    :variant="attentionOnly ? 'soft' : 'outline'"
+                    icon="i-lucide-triangle-alert"
+                    label="Needs attention only"
+                    :aria-pressed="attentionOnly"
+                    @click="attentionOnly = !attentionOnly"
+                  />
+                  <div class="flex items-center gap-1.5 text-xs text-muted">
+                    <span>Sort:</span>
+                    <USelect
+                      v-model="dirSort"
+                      :items="dirSortItems"
+                      size="xs"
+                      class="w-36"
+                      aria-label="Sort directorates"
+                    />
+                  </div>
+                </template>
+
+                <div
+                  class="inline-flex rounded-md border border-default p-0.5 text-xs"
+                  role="group"
+                  aria-label="List display mode"
+                >
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 font-medium transition"
+                    :class="listView === 'directorates' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="listView = 'directorates'"
+                  >
+                    By directorate
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 font-medium transition"
+                    :class="listView === 'flat' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="listView = 'flat'"
+                  >
+                    All groups
+                  </button>
+                </div>
+
+                <UButton
+                  v-if="effectiveListMode === 'flat' && pickedIds.length"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-x"
+                  label="Clear selection"
+                  @click="clearPicked"
+                />
+                <UButton
+                  v-if="can('bianca.report.download')"
+                  :to="biaExportUrl(filters, effectiveListMode === 'flat' ? pickedIds : undefined)"
+                  external
+                  download
+                  color="neutral"
+                  variant="outline"
+                  size="xs"
+                  icon="i-lucide-file-spreadsheet"
+                  :label="effectiveListMode === 'flat' && pickedIds.length ? `Export selected (${pickedIds.length})` : 'Export to Excel'"
+                />
+              </div>
+            </div>
+
+            <!-- Active filter / Smart search notice banner -->
+            <div
+              v-if="smartFlat || activeFilterChips.length"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-elevated/60 px-3 py-1.5 text-xs"
+            >
+              <div class="flex flex-wrap items-center gap-1.5 text-muted">
+                <UIcon
+                  :name="smartFlat ? 'i-lucide-search' : 'i-lucide-filter'"
+                  class="size-3.5 text-primary"
+                />
+                <span v-if="smartFlat">
+                  Showing matching groups directly for <strong class="text-highlighted">{{ filters.q || filters.org_group }}</strong>
+                </span>
+                <span v-if="activeFilterChips.length">
+                  <template v-if="smartFlat"> · </template>Filtered:
+                  <strong class="text-highlighted">{{ activeFilterChips.join(' · ') }}</strong>
+                </span>
+              </div>
               <UButton
-                v-if="pickedIds.length"
                 color="neutral"
-                variant="ghost"
-                icon="i-lucide-x"
-                label="Clear selection"
-                @click="clearPicked"
-              />
-              <UButton
-                v-if="can('bianca.report.download')"
-                :to="biaExportUrl(filters, pickedIds)"
-                external
-                download
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-file-spreadsheet"
-                :label="pickedIds.length ? `Export selected (${pickedIds.length})` : 'Export to Excel'"
+                variant="link"
+                size="xs"
+                label="Clear"
+                class="px-0"
+                @click="clearFilters"
               />
             </div>
           </div>
-          <UTable
-            :data="register.data.value?.items ?? []"
-            :columns="registerColumns"
-            :get-row-id="(row: BiaMonitorGroupRow) => String(row.group.id)"
-            :loading="register.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
-          >
-            <template #select-header>
-              <UCheckbox
-                :model-value="pageState"
-                aria-label="Select every group on this page"
-                @update:model-value="pickPage"
+
+          <!-- Level 1: By Directorate View -->
+          <template v-if="effectiveListMode === 'directorates'">
+            <div
+              v-if="directorates.status.value === 'pending' && !directorates.data.value"
+              class="space-y-2 p-4"
+            >
+              <USkeleton
+                v-for="i in 5"
+                :key="i"
+                class="h-14 rounded-md"
               />
-            </template>
-            <template #select-cell="{ row }">
-              <UCheckbox
-                :model-value="picked.has(row.original.group.id)"
-                :aria-label="`Select ${row.original.group.name}`"
-                @update:model-value="(value: boolean | 'indeterminate') => pick(row.original, value)"
+            </div>
+
+            <div
+              v-else-if="!(directorates.data.value?.items?.length)"
+              class="py-10 text-center"
+            >
+              <p class="text-sm text-muted">
+                No directorate matches these filters.
+              </p>
+              <UButton
+                v-if="filtered || attentionOnly"
+                class="mt-3"
+                color="neutral"
+                variant="outline"
+                size="xs"
+                label="Clear filters"
+                @click="attentionOnly = false; clearFilters()"
               />
-            </template>
-            <template #group-cell="{ row }">
-              <NuxtLink
-                v-if="registerRecord(row.original)"
-                :to="record(registerRecord(row.original)!.id)"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ row.original.group.name }}
-              </NuxtLink>
-              <span
-                v-else
-                class="font-medium text-highlighted"
-              >{{ row.original.group.name }}</span>
-              <p class="text-xs text-muted">
-                <span class="font-mono">{{ row.original.group.code || '—' }}</span>
-                <template v-if="row.original.group.main_building && row.original.group.main_building !== '—'">
-                  · {{ row.original.group.main_building }}
-                </template>
-              </p>
-            </template>
-            <template #group_status-header>
-              <span class="inline-flex items-center gap-1">
-                <span>Status</span>
-                <UTooltip text="Compliance status of the group's latest Final (approved) BIA.">
-                  <UIcon
-                    name="i-lucide-info"
-                    class="size-3.5 text-muted"
-                  />
-                </UTooltip>
-              </span>
-            </template>
-            <template #open-header>
-              <span class="inline-flex items-center gap-1">
-                <span>Open BIA</span>
-                <UTooltip text="Active new submission or renewal currently in Draft, Revision, or Approval.">
-                  <UIcon
-                    name="i-lucide-info"
-                    class="size-3.5 text-muted"
-                  />
-                </UTooltip>
-              </span>
-            </template>
-            <template #group_status-cell="{ row }">
-              <NuxtLink
-                v-if="row.original.approved"
-                :to="record(row.original.approved.id)"
-                class="inline-block hover:underline"
-              >
-                <StatusBadge
-                  :scale="biaGroupStatus"
-                  :value="biaGroupStatusKey(row.original)"
-                  size="sm"
-                />
-              </NuxtLink>
-              <StatusBadge
-                v-else
-                :scale="biaGroupStatus"
-                :value="biaGroupStatusKey(row.original)"
-                size="sm"
-              />
-              <p
-                v-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')"
-                class="mt-1 text-xs"
-                :class="row.original.bucket === 'overdue'
-                  ? 'font-medium text-error'
-                  : row.original.bucket === 'due_30'
-                    ? 'font-medium text-warning'
-                    : 'text-muted'"
-              >
-                <template v-if="row.original.bucket === 'overdue'">
-                  Final BIA expired · {{ daysLeft(row.original).replace('overdue', 'ago') }}
-                </template>
-                <template v-else>
-                  Final BIA expires · {{ daysLeft(row.original) }}
-                </template>
-              </p>
-              <p
-                v-else-if="!row.original.approved"
-                class="mt-1 text-xs text-muted"
-              >
-                {{ row.original.open ? 'Initial BIA in progress' : 'No BIA submitted yet' }}
-              </p>
-            </template>
-            <template #open-cell="{ row }">
-              <template v-if="row.original.open">
-                <NuxtLink
-                  :to="record(row.original.open.id)"
-                  class="inline-block hover:underline"
+            </div>
+
+            <template v-else>
+              <!-- Mobile stacked cards -->
+              <ul class="divide-y divide-default sm:hidden">
+                <li
+                  v-for="dir in directorates.data.value.items"
+                  :key="dir.name"
+                  class="space-y-2 p-4 transition hover:bg-elevated/50"
+                  :class="directorateSeverityBar(dir.severity)"
+                  @click="openDirectorate(dir)"
                 >
-                  <StatusBadge
-                    :scale="biaStatus"
-                    :value="biaStatusKey(row.original.open)"
-                    size="sm"
-                  />
-                </NuxtLink>
-                <p class="mt-1 text-xs text-muted">
-                  <NuxtLink
-                    :to="record(row.original.open.id)"
-                    class="font-mono hover:underline"
-                  >
-                    {{ refLabel(row.original.open) }}
-                  </NuxtLink>
-                  <template v-if="row.original.open.status === 'in_signoff' && row.original.open.current_signoff_role">
-                    · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-                  </template>
-                </p>
-              </template>
-              <span
-                v-else
-                class="text-xs text-muted"
-              >—</span>
-            </template>
-            <template #bia_users-cell="{ row }">
-              <div class="space-y-1">
-                <p class="max-w-56 truncate text-sm font-medium text-highlighted">
-                  {{ row.original.assessor || row.original.group_users?.[0]?.name || '—' }}
-                </p>
-                <p
-                  v-if="row.original.alt_coordinator && row.original.alt_coordinator !== row.original.assessor"
-                  class="max-w-56 truncate text-xs text-muted"
-                >
-                  Alt: {{ row.original.alt_coordinator }}
-                </p>
-                <BiaGroupUsersPopover
-                  v-if="row.original.assessor || row.original.group_users?.length || row.original.directorate_users?.length"
-                  :group-name="row.original.group.name"
-                  :users="row.original.group_users ?? []"
-                  :directorate-users="row.original.directorate_users ?? []"
-                  :coordinator="row.original.assessor"
-                  :alt-coordinator="row.original.alt_coordinator"
-                />
-                <p
-                  v-else-if="!row.original.assessor"
-                  class="text-xs text-muted"
-                >
-                  No user assigned
-                </p>
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <NuxtLink
+                        :to="directorateLink(dir.name)"
+                        class="font-semibold text-highlighted hover:text-primary hover:underline"
+                        @click.stop
+                      >
+                        {{ dir.name }}
+                      </NuxtLink>
+                      <p class="mt-0.5 text-xs text-muted">
+                        {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
+                      </p>
+                    </div>
+                    <StatusBadge
+                      v-if="dir.highest_category"
+                      :scale="biaCategory"
+                      :value="dir.highest_category"
+                      size="sm"
+                    />
+                  </div>
+                  <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                      <div class="flex h-2 w-20 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                        <div
+                          v-if="dir.coverage.approved"
+                          class="bg-success"
+                          :style="{ width: coveragePct(dir.coverage.approved, dir.coverage.total) }"
+                        />
+                        <div
+                          v-if="dir.coverage.due_soon"
+                          class="bg-warning"
+                          :style="{ width: coveragePct(dir.coverage.due_soon, dir.coverage.total) }"
+                        />
+                        <div
+                          v-if="dir.coverage.overdue"
+                          class="bg-error"
+                          :style="{ width: coveragePct(dir.coverage.overdue, dir.coverage.total) }"
+                        />
+                      </div>
+                      <span class="font-medium tabular-nums text-highlighted">
+                        {{ dir.coverage.valid_final }}/{{ dir.coverage.total }} final
+                      </span>
+                    </div>
+                    <span class="text-muted">Open: {{ directorateOpenLabel(dir) }}</span>
+                  </div>
+                  <div @click.stop>
+                    <BiancaHealthChips
+                      :alerts="dir.alerts"
+                      size="xs"
+                    />
+                  </div>
+                </li>
+              </ul>
+
+              <!-- Desktop table -->
+              <div class="hidden overflow-x-auto sm:block">
+                <table class="w-full text-left text-sm">
+                  <thead class="border-b border-default bg-elevated/40 text-xs font-medium uppercase text-muted">
+                    <tr>
+                      <th class="py-2.5 ps-4 pe-3">
+                        Directorate
+                      </th>
+                      <th class="px-3 py-2.5">
+                        Final coverage
+                      </th>
+                      <th class="px-3 py-2.5">
+                        Needs attention
+                      </th>
+                      <th class="px-3 py-2.5">
+                        Open BIA
+                      </th>
+                      <th class="py-2.5 ps-3 pe-4 text-right">
+                        Highest
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-default">
+                    <tr
+                      v-for="dir in directorates.data.value.items"
+                      :key="dir.name"
+                      tabindex="0"
+                      role="link"
+                      :aria-label="`Open ${dir.name} (${dir.sub_directorate_count} sub-directorates, ${dir.group_count} groups)`"
+                      class="cursor-pointer transition hover:bg-elevated/50 focus-visible:bg-elevated/60 focus-visible:outline-none"
+                      @click="openDirectorate(dir)"
+                      @keydown.enter.prevent="openDirectorate(dir)"
+                    >
+                      <td
+                        class="py-3.5 ps-3.5 pe-3 align-middle"
+                        :class="directorateSeverityBar(dir.severity)"
+                      >
+                        <NuxtLink
+                          :to="directorateLink(dir.name)"
+                          class="font-semibold text-highlighted hover:text-primary hover:underline"
+                          @click.stop
+                        >
+                          {{ dir.name }}
+                        </NuxtLink>
+                        <p class="mt-0.5 text-xs text-muted">
+                          {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
+                          <template v-if="dir.shortest_mtd">
+                            · Shortest MTD {{ dir.shortest_mtd }}
+                          </template>
+                        </p>
+                      </td>
+
+                      <td class="px-3 py-3.5 align-middle">
+                        <div class="flex items-center gap-2.5">
+                          <div
+                            class="flex h-2 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"
+                            :title="`Valid Final: ${dir.coverage.valid_final}/${dir.coverage.total} (${dir.coverage.pct}%)`"
+                          >
+                            <div
+                              v-if="dir.coverage.approved"
+                              class="bg-success"
+                              :style="{ width: coveragePct(dir.coverage.approved, dir.coverage.total) }"
+                            />
+                            <div
+                              v-if="dir.coverage.due_soon"
+                              class="bg-warning"
+                              :style="{ width: coveragePct(dir.coverage.due_soon, dir.coverage.total) }"
+                            />
+                            <div
+                              v-if="dir.coverage.overdue"
+                              class="bg-error"
+                              :style="{ width: coveragePct(dir.coverage.overdue, dir.coverage.total) }"
+                            />
+                          </div>
+                          <span class="font-medium tabular-nums text-highlighted">
+                            {{ dir.coverage.valid_final }}/{{ dir.coverage.total }}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td
+                        class="px-3 py-3.5 align-middle"
+                        @click.stop
+                      >
+                        <BiancaHealthChips :alerts="dir.alerts" />
+                      </td>
+
+                      <td class="px-3 py-3.5 align-middle">
+                        <span
+                          :class="dir.open_counts.total ? 'font-medium text-highlighted' : 'text-xs text-muted'"
+                        >
+                          {{ directorateOpenLabel(dir) }}
+                        </span>
+                        <p
+                          v-if="dir.open_counts.longest_working_days != null"
+                          class="mt-0.5 text-xs text-muted"
+                        >
+                          longest {{ dir.open_counts.longest_working_days }} wd
+                        </p>
+                      </td>
+
+                      <td class="py-3.5 ps-3 pe-4 text-right align-middle">
+                        <div class="inline-flex items-center justify-end gap-2">
+                          <StatusBadge
+                            v-if="dir.highest_category"
+                            :scale="biaCategory"
+                            :value="dir.highest_category"
+                            size="sm"
+                          />
+                          <span
+                            v-else
+                            class="text-xs text-muted"
+                          >Not rated</span>
+                          <UIcon
+                            name="i-lucide-chevron-right"
+                            class="size-4 text-muted"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </template>
-            <template #functions-cell="{ row }">
-              <span class="tabular-nums">{{ (row.original.approved ?? row.original.open)?.function_count ?? '—' }}</span>
-            </template>
-            <template #category-cell="{ row }">
-              <template v-if="row.original.approved?.highest_category">
-                <StatusBadge
-                  :scale="biaCategory"
-                  :value="row.original.approved.highest_category"
-                  size="sm"
-                />
-              </template>
-              <template v-else-if="row.original.open?.highest_category">
-                <StatusBadge
-                  :scale="biaCategory"
-                  :value="row.original.open.highest_category"
-                  size="sm"
-                />
-                <p class="mt-1 text-xs text-muted">
-                  Preliminary
-                </p>
-              </template>
-              <span
-                v-else
-                class="text-muted"
-              >Not rated</span>
-            </template>
-            <template #shortest_mtd-cell="{ row }">
-              <span :class="(row.original.approved ?? row.original.open)?.shortest_mtd ? '' : 'text-muted'">
-                {{ (row.original.approved ?? row.original.open)?.shortest_mtd || '—' }}
-              </span>
-            </template>
-            <template #approved-cell="{ row }">
-              <template v-if="row.original.approved">
-                <NuxtLink
-                  :to="record(row.original.approved.id)"
-                  class="font-mono text-xs text-primary hover:underline"
-                >
-                  {{ refLabel(row.original.approved) }}
-                </NuxtLink>
-                <p class="text-xs text-muted">
-                  {{ formatDate(row.original.approved.approved_at) || '—' }}<template v-if="row.original.approved.reason">
-                    · {{ biaReasonLabel(row.original.approved.reason) }}
-                  </template>
-                </p>
-              </template>
-              <span
-                v-else
-                class="text-muted"
-              >—</span>
-            </template>
-            <template #renewal_date-cell="{ row }">
-              {{ formatDate(row.original.renewal_date) || '—' }}
-            </template>
-            <template #directorate-cell="{ row }">
-              <p class="max-w-52 truncate">
-                {{ row.original.group.directorate || '—' }}
-              </p>
-              <p
-                v-if="row.original.group.sub_directorate && row.original.group.sub_directorate !== '—'"
-                class="max-w-52 truncate text-xs text-muted"
-              >
-                {{ row.original.group.sub_directorate }}
-              </p>
-            </template>
-            <template #assessment_count-cell="{ row }">
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="sm"
-                trailing-icon="i-lucide-history"
-                :label="String(row.original.assessment_count)"
-                :disabled="!row.original.assessment_count"
-                :aria-label="`BIA history of ${row.original.group.name}`"
-                @click="openHistory(row.original)"
-              />
-            </template>
-            <template #empty>
-              <p class="py-6 text-center text-sm text-muted">
-                No group matches these filters.
-              </p>
-            </template>
-          </UTable>
-          <TablePagination
-            v-model:per-page="perPage"
-            page-sizes
-            :page="page"
-            :total="register.data.value?.total ?? 0"
-            :to="pageTo"
-            label="List"
-          />
+
+            <TablePagination
+              v-model:per-page="perPage"
+              page-sizes
+              :page="page"
+              :total="directorates.data.value?.total ?? 0"
+              :to="pageTo"
+              label="Directorates"
+            />
+          </template>
+
+          <!-- Flat / Smart Search View -->
+          <template v-else>
+            <BiancaRegisterGroupTable
+              :rows="register.data.value?.items ?? []"
+              :picked-ids="pickedIdSet"
+              :loading="register.status.value === 'pending'"
+              :show-org-path="smartFlat"
+              @pick="pick"
+              @pick-all="pickManyRows"
+              @open-history="openHistory"
+            />
+            <TablePagination
+              v-model:per-page="perPage"
+              page-sizes
+              :page="page"
+              :total="register.data.value?.total ?? 0"
+              :to="pageTo"
+              label="List"
+            />
+          </template>
         </UCard>
       </template>
 

@@ -56,7 +56,104 @@ export interface BiaMonitorGroupRow {
   group_users?: BiaGroupUser[]
   directorate_users?: BiaGroupUser[]
   can_generate: boolean
+  stuck_approval?: boolean
   history: BiaAssessmentRef[]
+}
+
+export type BiaAlertKey = 'overdue' | 'returned' | 'stuck' | 'due_soon' | 'no_final'
+export type BiaSeverity = 'error' | 'warning' | 'ok'
+export type BiaDirectorateSort = 'urgent' | 'name' | 'groups'
+
+export interface BiaAlertItem {
+  key: BiaAlertKey
+  count: number
+  severity: 'error' | 'warning' | 'neutral'
+  groups: string[]
+}
+
+export interface BiaRollupCoverage {
+  valid_final: number
+  total_final: number
+  total: number
+  pct: number
+  approved: number
+  due_soon: number
+  overdue: number
+  no_final: number
+}
+
+export interface BiaRollupSummary {
+  group_count: number
+  group_ids: number[]
+  coverage: BiaRollupCoverage
+  status_counts: Record<BiaGroupStatusKey, number>
+  open_counts: {
+    total: number
+    in_signoff: number
+    draft: number
+    in_revision: number
+    need_revision: number
+    returned: number
+    longest_working_days: number | null
+  }
+  alerts: BiaAlertItem[]
+  alert_counts: Record<BiaAlertKey, number> & { total: number }
+  needs_attention: boolean
+  severity: BiaSeverity
+  highest_category: BiaCategory | null
+  critical_count: number
+  shortest_mtd: string | null
+}
+
+export interface BiaDirectorateRow extends BiaRollupSummary {
+  name: string
+  sub_directorate_count: number
+}
+
+export interface BiaDirectoratesResponse extends BiaPaginatedResponse<BiaDirectorateRow> {
+  total_directorates: number
+  total_groups: number
+  attention_directorates: number
+}
+
+export interface BiaNeedsActionItem {
+  kind: BiaAlertKey
+  severity: 'error' | 'warning' | 'neutral'
+  group_id: number
+  group_name: string
+  sub_directorate: string
+  bia_id: number | null
+  ref_no: string | null
+  approved_id: number | null
+  open_id: number | null
+  open_ref_no: string | null
+  can_generate: boolean
+  can_remind_renewal: boolean
+  can_remind_approval: boolean
+  days: number | null
+  summary: string
+}
+
+export interface BiaSubDirectorateRow extends BiaRollupSummary {
+  name: string
+  groups: BiaMonitorGroupRow[]
+}
+
+export interface BiaDirectorateSwitcherItem {
+  name: string
+  group_count: number
+  severity: BiaSeverity
+  needs_attention: boolean
+}
+
+export interface BiaDirectorateDetailResponse {
+  name: string
+  exists: boolean
+  summary: BiaRollupSummary & { sub_directorate_count: number }
+  base_summary: BiaRollupSummary & { sub_directorate_count: number }
+  needs_action: BiaNeedsActionItem[]
+  sub_directorates: BiaSubDirectorateRow[]
+  directorates: BiaDirectorateSwitcherItem[]
 }
 
 export interface BiaSignoffWaitingRow {
@@ -248,7 +345,7 @@ export interface BiaAssessmentDetail {
 export interface BiaMonitoringFilters {
   q?: string
   category?: BiaCategory | 'none'
-  state?: 'approved' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none'
+  state?: 'approved' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none' | 'overdue' | 'due_soon' | 'open'
   reason?: BiaReason
   from?: string
   to?: string
@@ -352,6 +449,41 @@ export function useBiaRenewals(filters: MaybeRefOrGetter<BiaMonitoringFilters>) 
 export function useBiaRegister(filters: MaybeRefOrGetter<BiaMonitoringFilters>) {
   return useFetch<BiaPaginatedResponse<BiaMonitorGroupRow>>('/api/bianca/monitoring/register', {
     query: computed(() => toValue(filters)),
+  })
+}
+
+export interface BiaDirectorateListParams extends BiaMonitoringFilters {
+  sort?: BiaDirectorateSort
+  attention_only?: boolean
+}
+
+export function useBiaDirectorates(params: MaybeRefOrGetter<BiaDirectorateListParams>) {
+  return useFetch<BiaDirectoratesResponse>('/api/bianca/monitoring/directorates', {
+    query: computed(() => {
+      const value = toValue(params)
+      return {
+        ...value,
+        attention_only: value.attention_only ? '1' : undefined,
+      }
+    }),
+  })
+}
+
+export interface BiaDirectorateDetailParams extends BiaMonitoringFilters {
+  name: string
+  sort?: BiaDirectorateSort
+  attention_only?: boolean
+}
+
+export function useBiaDirectorateDetail(params: MaybeRefOrGetter<BiaDirectorateDetailParams>) {
+  return useFetch<BiaDirectorateDetailResponse>('/api/bianca/monitoring/directorates/detail', {
+    query: computed(() => {
+      const value = toValue(params)
+      return {
+        ...value,
+        attention_only: value.attention_only ? '1' : undefined,
+      }
+    }),
   })
 }
 
