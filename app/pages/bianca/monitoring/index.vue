@@ -815,10 +815,12 @@ function record(id: number) {
                 {{ row.original.assessor || row.original.group_users?.[0]?.name || '—' }}
               </p>
               <BiaGroupUsersPopover
-                v-if="row.original.group_users?.length || row.original.directorate_users?.length"
+                v-if="row.original.assessor || row.original.group_users?.length || row.original.directorate_users?.length"
                 :group-name="row.original.group.name"
                 :users="row.original.group_users ?? []"
                 :directorate-users="row.original.directorate_users ?? []"
+                :coordinator="row.original.assessor"
+                :alt-coordinator="row.original.alt_coordinator"
                 variant="link"
               />
             </template>
@@ -1053,10 +1055,12 @@ function record(id: number) {
                   Alt: {{ row.original.alt_coordinator }}
                 </p>
                 <BiaGroupUsersPopover
-                  v-if="row.original.group_users?.length || row.original.directorate_users?.length"
+                  v-if="row.original.assessor || row.original.group_users?.length || row.original.directorate_users?.length"
                   :group-name="row.original.group.name"
                   :users="row.original.group_users ?? []"
                   :directorate-users="row.original.directorate_users ?? []"
+                  :coordinator="row.original.assessor"
+                  :alt-coordinator="row.original.alt_coordinator"
                 />
                 <p
                   v-else-if="!row.original.assessor"

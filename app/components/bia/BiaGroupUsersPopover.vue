@@ -5,10 +5,25 @@ const props = withDefaults(defineProps<{
   groupName: string
   users: BiaGroupUser[]
   directorateUsers?: BiaGroupUser[]
+  coordinator?: string | null
+  altCoordinator?: string | null
   variant?: 'link' | 'soft'
 }>(), {
   directorateUsers: () => [],
+  coordinator: null,
+  altCoordinator: null,
   variant: 'soft',
+})
+
+const coordinators = computed(() => {
+  const list: { role: string, name: string }[] = []
+  if (props.coordinator) {
+    list.push({ role: 'Primary', name: props.coordinator })
+  }
+  if (props.altCoordinator && props.altCoordinator !== props.coordinator) {
+    list.push({ role: 'Alternate', name: props.altCoordinator })
+  }
+  return list
 })
 
 const label = computed(() => {
@@ -20,13 +35,18 @@ const label = computed(() => {
   if (gCount) {
     return `${gCount} ${gCount === 1 ? 'BIA user' : 'BIA users'}`
   }
-  return `${dCount} Dir/Sub ${dCount === 1 ? 'user' : 'users'}`
+  if (dCount) {
+    return `${dCount} Dir/Sub ${dCount === 1 ? 'user' : 'users'}`
+  }
+  return 'BCM Coordinator'
 })
 
 const sections = computed(() => [
   { key: 'group', title: `BIA users in ${props.groupName}`, rows: props.users, showGroup: false },
   { key: 'dir', title: 'Directorate & Sub-directorate oversight', rows: props.directorateUsers, showGroup: true },
 ].filter((section) => section.rows.length > 0))
+
+const hasContent = computed(() => coordinators.value.length > 0 || sections.value.length > 0)
 
 function subtitle(u: BiaGroupUser, showGroup: boolean) {
   const hierarchy = [u.directorate, u.sub_directorate].filter((v) => v && v !== '—').join(' › ')
@@ -35,7 +55,7 @@ function subtitle(u: BiaGroupUser, showGroup: boolean) {
 </script>
 
 <template>
-  <UPopover v-if="sections.length">
+  <UPopover v-if="hasContent">
     <UButton
       type="button"
       color="neutral"
@@ -47,10 +67,25 @@ function subtitle(u: BiaGroupUser, showGroup: boolean) {
     />
     <template #content>
       <div class="w-80 max-h-96 overflow-y-auto space-y-3 p-3 text-xs">
+        <div v-if="coordinators.length">
+          <p class="font-semibold text-highlighted">
+            BCM Coordinator (PIC)
+          </p>
+          <ul class="mt-1 divide-y divide-default">
+            <li
+              v-for="pic in coordinators"
+              :key="pic.role"
+              class="flex items-center justify-between gap-2 py-1.5"
+            >
+              <span class="font-medium text-highlighted">{{ pic.name }}</span>
+              <span class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted">{{ pic.role }}</span>
+            </li>
+          </ul>
+        </div>
         <div
           v-for="(section, idx) in sections"
           :key="section.key"
-          :class="idx > 0 ? 'border-t border-default pt-2.5' : undefined"
+          :class="(idx > 0 || coordinators.length) ? 'border-t border-default pt-2.5' : undefined"
         >
           <p class="font-semibold text-highlighted">
             {{ section.title }}
