@@ -37,18 +37,35 @@ const tabs = [
   { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' as const },
 ]
 
-const impactColumns: TableColumn<BiaFunctionItem>[] = [
-  { accessorKey: 'seq_no', header: 'No' },
-  { accessorKey: 'name', header: 'Business function' },
-  { accessorKey: 'suggested_mtd', header: 'Suggested MTD' },
-  { accessorKey: 'expected_mtd', header: 'Expected MTD' },
-  { accessorKey: 'category', header: 'Category' },
-  { accessorKey: 'fin_loss_4h', header: 'Loss (4 hrs)', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { accessorKey: 'fin_loss_d1', header: 'Loss (Day 1)', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { accessorKey: 'fin_loss_w1', header: 'Loss (Week 1)', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { accessorKey: 'fin_loss_w4', header: 'Loss (Week 4)', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { id: 'scores', header: 'Max Reg / Cust score' },
-]
+const DEFAULT_IMPACT_PERIODS = ['4 Hours', 'Day 1', 'Day 2', 'Day 3', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
+const impactPeriods = computed(() =>
+  detail.value?.periods?.length ? detail.value.periods : DEFAULT_IMPACT_PERIODS,
+)
+const summaryPeriodLabels = computed(() => {
+  const periods = impactPeriods.value
+  return [
+    periods[0] ?? '4 Hours',
+    periods[1] ?? 'Day 1',
+    periods[4] ?? 'Week 1',
+    periods[periods.length - 1] ?? 'Week 4',
+  ]
+})
+
+const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => {
+  const [p0, p1, p4, pLast] = summaryPeriodLabels.value
+  return [
+    { accessorKey: 'seq_no', header: 'No' },
+    { accessorKey: 'name', header: 'Business function' },
+    { accessorKey: 'suggested_mtd', header: 'Suggested MTD' },
+    { accessorKey: 'expected_mtd', header: 'Expected MTD' },
+    { accessorKey: 'category', header: 'Category' },
+    { accessorKey: 'fin_loss_4h', header: `Loss (${p0})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+    { accessorKey: 'fin_loss_d1', header: `Loss (${p1})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+    { accessorKey: 'fin_loss_w1', header: `Loss (${p4})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+    { accessorKey: 'fin_loss_w4', header: `Loss (${pLast})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+    { id: 'scores', header: 'Max Reg / Cust score' },
+  ]
+})
 
 const recoveryColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'seq_no', header: 'No' },
@@ -78,11 +95,6 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
   pending: { label: 'Waiting', color: 'warning', icon: 'i-lucide-hourglass' },
   rejected: { label: 'Returned', color: 'error', icon: 'i-lucide-undo-2' },
 })
-
-const DEFAULT_IMPACT_PERIODS = ['4 Hours', 'Day 1', 'Day 2', 'Day 3', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
-const impactPeriods = computed(() =>
-  detail.value?.periods?.length ? detail.value.periods : DEFAULT_IMPACT_PERIODS,
-)
 
 function scoreTone(score: number | null | undefined) {
   const alertScore = detail.value?.impact_reference?.score_alert ?? 3
@@ -637,7 +649,7 @@ const lossPeriodTotals = computed(() =>
                 v-if="detail.loss_totals"
                 class="text-xs text-muted tabular-nums"
               >
-                Total loss (4h / D1 / W1 / W4):
+                Total loss ({{ summaryPeriodLabels.join(' / ') }}):
                 <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_4h) }}</span> /
                 <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_d1) }}</span> /
                 <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_w1) }}</span> /
