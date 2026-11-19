@@ -130,6 +130,12 @@ const attentionItems = computed(() => {
   }
   return items
 })
+
+const lossPeriodTotals = computed(() =>
+  impactPeriods.value.map((_, idx) =>
+    (detail.value?.functions ?? []).reduce((sum, fn) => sum + (fn.losses?.[idx] ?? 0), 0),
+  ),
+)
 </script>
 
 <template>
@@ -653,6 +659,21 @@ const attentionItems = computed(() => {
                     </td>
                   </tr>
                 </tbody>
+                <tfoot v-if="detail.functions.length">
+                  <tr class="border-t border-default bg-elevated/40 font-semibold text-highlighted">
+                    <td class="py-3 ps-4 pe-3" />
+                    <td class="py-3 px-3 whitespace-nowrap">
+                      Total
+                    </td>
+                    <td
+                      v-for="(totalVal, idx) in lossPeriodTotals"
+                      :key="`loss-total-${idx}`"
+                      class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
+                    >
+                      {{ formatCurrency(totalVal) }}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </UCard>
@@ -686,6 +707,9 @@ const attentionItems = computed(() => {
                     >
                       {{ periodLabel }}
                     </th>
+                    <th class="py-3 px-3 text-right whitespace-nowrap">
+                      Suggested MTD
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-default">
@@ -717,6 +741,12 @@ const attentionItems = computed(() => {
                       >
                         {{ fn.regulatory_scores?.[idx] ?? '—' }}
                       </td>
+                      <td
+                        rowspan="2"
+                        class="py-3 px-3 text-right align-top font-medium text-highlighted whitespace-nowrap"
+                      >
+                        {{ fn.suggested_mtd }}
+                      </td>
                     </tr>
                     <tr class="bg-elevated/30">
                       <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
@@ -734,6 +764,16 @@ const attentionItems = computed(() => {
                   </template>
                 </tbody>
               </table>
+            </div>
+            <div class="border-t border-default bg-elevated/20 px-4 py-3 text-xs text-muted">
+              <p>
+                <span class="font-medium text-highlighted">Regulatory (A):</span>
+                1 = No foreseeable breach/non-compliance · 2 = Non-compliance with internal/association guidelines · 3 = Breach of laws or regulator requirements
+              </p>
+              <p class="mt-1">
+                <span class="font-medium text-highlighted">Customer (B):</span>
+                1 = No customer affected · 2 = &lt;20% of unit customer base affected · 3 = &gt;20% of unit customer base affected
+              </p>
             </div>
           </UCard>
 
