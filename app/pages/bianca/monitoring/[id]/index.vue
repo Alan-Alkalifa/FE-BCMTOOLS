@@ -488,9 +488,19 @@ const lossPeriodTotals = computed(() =>
                     BCM Coordinator
                   </dt>
                   <dd class="col-span-2">
-                    <p class="font-medium text-highlighted">
-                      {{ detail.coordinator.name }} ({{ detail.coordinator.nik }})
-                    </p>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <p class="font-medium text-highlighted">
+                        {{ detail.coordinator.name }} ({{ detail.coordinator.nik }})
+                      </p>
+                      <UBadge
+                        v-if="detail.coordinator.id"
+                        color="neutral"
+                        variant="subtle"
+                        size="xs"
+                        icon="i-lucide-user-check"
+                        label="Directory"
+                      />
+                    </div>
                     <p class="text-xs text-muted">
                       {{ detail.coordinator.email }} · {{ detail.coordinator.phone }}
                     </p>
@@ -501,9 +511,19 @@ const lossPeriodTotals = computed(() =>
                     Alternate coordinator
                   </dt>
                   <dd class="col-span-2">
-                    <p class="font-medium text-highlighted">
-                      {{ detail.alt_coordinator.name }} ({{ detail.alt_coordinator.nik }})
-                    </p>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <p class="font-medium text-highlighted">
+                        {{ detail.alt_coordinator.name }} ({{ detail.alt_coordinator.nik }})
+                      </p>
+                      <UBadge
+                        v-if="detail.alt_coordinator.id"
+                        color="neutral"
+                        variant="subtle"
+                        size="xs"
+                        icon="i-lucide-user-check"
+                        label="Directory"
+                      />
+                    </div>
                     <p class="text-xs text-muted">
                       {{ detail.alt_coordinator.email }} · {{ detail.alt_coordinator.phone }}
                     </p>

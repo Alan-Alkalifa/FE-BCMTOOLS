@@ -201,21 +201,23 @@ export interface BiaAssessmentDetail {
     recovery_strategy: string
   }
   coordinator: {
+    id?: number | null
     name: string
     nik: string
     email: string
     phone: string
   }
   alt_coordinator: {
+    id?: number | null
     name: string
     nik: string
     email: string
     phone: string
   }
   ra_questionnaire: {
-    considered_bc: 'Yes' | 'No'
+    considered_bc: string
     tools_used: string
-    controls_included: 'Yes' | 'No'
+    controls_included: string
     location_ra_completed: 'Yes' | 'No'
     senior_mgmt: number
     middle_mgmt: number
