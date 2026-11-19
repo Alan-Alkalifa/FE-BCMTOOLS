@@ -111,19 +111,29 @@ function comingTo(page: number) {
 /** The page of the given tab's table (page 1 for the tabs not shown). */
 const pageOf = (name: ApprovalTab) => computed(() => (tab.value === name ? number('page') : 1))
 
+// Column sorting (server side), kept in the URL.
+const { query: sortQuery, header: sortable } = useTableSort(['submitted_at', 'waiting_since', 'working_days_waiting', 'reminders_sent', 'escalated_at', 'working_days_in_approval'])
+function column<T>(key: string, label: string, cls = '', end = false): TableColumn<T> {
+  return { accessorKey: key, header: sortable(label, key, end), meta: { class: { th: cls, td: cls } } }
+}
+
 // --- my inbox -------------------------------------------------------------------------------
 
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: perPage.value })))
+const inbox = useSccaInbox(computed(() => ({ page: inboxPage.value, per_page: perPage.value, ...(tab.value === 'inbox' ? sortQuery.value : {}) })))
 const upcoming = useSccaUpcoming(computed(() => ({ page: comingPage.value, per_page: COMING_PER_PAGE })))
 
 const inboxColumns: TableColumn<SccaInboxRow>[] = [
-  { accessorKey: 'application_name', header: 'SCCA' },
-  { accessorKey: 'category', header: 'Category' },
-  { accessorKey: 'step', header: 'My step' },
-  { accessorKey: 'submitted_by', header: 'Submitted by' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
+  column('application_name', 'Application name', 'min-w-40'),
+  column('ref_no', 'SCCA ref. no.', 'min-w-32'),
+  column('category', 'Category', 'min-w-24'),
+  column('step_title', 'My step', 'min-w-32'),
+  column('submitted_at', 'Submitted date', 'min-w-28'),
+  column('submitted_by', 'Submitted by', 'min-w-32'),
+  column('level', 'Status', 'min-w-32'),
+  column('working_days_waiting', 'Working days', 'min-w-28', true),
+  column('reminders_sent', 'Reminders sent', 'min-w-24', true),
 ]
 
 function openReview(_event: Event, row: { original: { id: number } }) {
@@ -169,9 +179,9 @@ const DECISION_TONE: Record<SccaHistoryKind, 'success' | 'error' | 'info' | 'neu
   comment: 'neutral',
 }
 const historyColumns: TableColumn<SccaHistoryRow>[] = [
-  { accessorKey: 'at', header: 'When' },
-  { accessorKey: 'application_name', header: 'SCCA' },
-  { accessorKey: 'step_title', header: 'Step' },
+  { accessorKey: 'at', header: 'Decided on' },
+  { accessorKey: 'application_name', header: 'Application name' },
+  { accessorKey: 'step_title', header: 'Approval step' },
   { accessorKey: 'decision', header: 'Decision' },
   { accessorKey: 'status_now', header: 'Status now' },
 ]
@@ -208,17 +218,21 @@ const board = bcm.value
       to: tab.value === 'board' ? text('to') : undefined,
       page: boardPage.value,
       per_page: perPage.value,
+      ...(tab.value === 'board' ? sortQuery.value : {}),
     })))
   : null
 const boardColumns: TableColumn<SccaBottleneckRow>[] = [
   { id: 'select', header: '' },
-  { accessorKey: 'application_name', header: 'Application name' },
-  { accessorKey: 'ref_no', header: 'SCCA ref. no.' },
-  { accessorKey: 'step', header: 'Current step' },
-  { accessorKey: 'approver', header: 'Approver' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated on' },
+  column('application_name', 'Application name', 'min-w-40'),
+  column('ref_no', 'SCCA ref. no.', 'min-w-32'),
+  column('category', 'Category', 'min-w-24'),
+  column('step_title', 'Current approval step', 'min-w-32'),
+  column('approver', 'Approver', 'min-w-32'),
+  column('level', 'Status', 'min-w-32'),
+  column('waiting_since', 'Waiting since', 'min-w-28'),
+  column('working_days_waiting', 'Working days', 'min-w-28', true),
+  column('reminders_sent', 'Reminders sent', 'min-w-24', true),
+  column('escalated_at', 'Escalated on', 'min-w-28'),
   { id: 'actions', header: '' },
 ]
 
@@ -348,7 +362,7 @@ const tabs = computed(() => [
               :loading="inbox.status.value === 'pending'"
               class="cursor-pointer"
               :on-select="openReview"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #application_name-cell="{ row }">
                 <NuxtLink
@@ -357,9 +371,9 @@ const tabs = computed(() => [
                 >
                   {{ row.original.application_name }}
                 </NuxtLink>
-                <p class="font-mono text-xs text-muted">
-                  {{ row.original.ref_no }}
-                </p>
+              </template>
+              <template #ref_no-cell="{ row }">
+                <span class="font-mono text-xs">{{ row.original.ref_no || '—' }}</span>
               </template>
               <template #category-cell="{ row }">
                 <StatusBadge
@@ -369,24 +383,27 @@ const tabs = computed(() => [
                   size="sm"
                 />
               </template>
-              <template #step-cell="{ row }">
+              <template #step_title-cell="{ row }">
                 {{ signoffRoleLabel(row.original.step, true) }}
+              </template>
+              <template #submitted_at-cell="{ row }">
+                {{ formatDate(row.original.submitted_at) || '—' }}
               </template>
               <template #submitted_by-cell="{ row }">
                 {{ row.original.submitted_by || '—' }}
-                <p class="text-xs text-muted">
-                  {{ formatDate(row.original.submitted_at) }}
-                </p>
               </template>
-              <template #working_days_waiting-cell="{ row }">
+              <template #level-cell="{ row }">
                 <StatusBadge
                   :scale="sccaWaitLevel"
                   :value="row.original.level"
                   size="sm"
                 />
-                <p class="mt-1 text-xs text-muted">
-                  {{ workingDays(row.original.working_days_waiting) }}<span v-if="row.original.reminders_sent"> · {{ row.original.reminders_sent }} reminder{{ row.original.reminders_sent === 1 ? '' : 's' }}</span>
-                </p>
+              </template>
+              <template #working_days_waiting-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ workingDays(row.original.working_days_waiting) }}</span>
+              </template>
+              <template #reminders_sent-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #empty>
                 <div class="py-8 text-center">
@@ -705,7 +722,15 @@ const tabs = computed(() => [
             <template #ref_no-cell="{ row }">
               <span class="font-mono text-xs">{{ row.original.ref_no || '—' }}</span>
             </template>
-            <template #step-cell="{ row }">
+            <template #category-cell="{ row }">
+              <StatusBadge
+                v-if="row.original.category"
+                :scale="sccaCategory"
+                :value="row.original.category"
+                size="sm"
+              />
+            </template>
+            <template #step_title-cell="{ row }">
               {{ signoffRoleLabel(row.original.step, true) }}
             </template>
             <template #approver-cell="{ row }">
@@ -717,18 +742,21 @@ const tabs = computed(() => [
                 Your own SCCA: reminders only
               </p>
             </template>
-            <template #working_days_waiting-cell="{ row }">
+            <template #level-cell="{ row }">
               <StatusBadge
                 :scale="sccaWaitLevel"
                 :value="row.original.level"
                 size="sm"
               />
-              <p class="mt-1 text-xs text-muted">
-                {{ workingDays(row.original.working_days_waiting) }} since {{ formatDate(row.original.waiting_since) }}
-              </p>
+            </template>
+            <template #waiting_since-cell="{ row }">
+              {{ formatDate(row.original.waiting_since) || '—' }}
+            </template>
+            <template #working_days_waiting-cell="{ row }">
+              <span class="block text-right tabular-nums">{{ workingDays(row.original.working_days_waiting) }}</span>
             </template>
             <template #reminders_sent-cell="{ row }">
-              {{ row.original.reminders_sent }}
+              <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
             </template>
             <template #escalated_at-cell="{ row }">
               <span

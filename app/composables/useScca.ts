@@ -342,6 +342,8 @@ export interface SccaListQuery {
   needs_action?: '1'
   page: number
   per_page: number
+  sort?: string
+  dir?: 'asc' | 'desc'
 }
 
 export type SccaAssessmentUpdate = Partial<SccaAssessmentFields> & {

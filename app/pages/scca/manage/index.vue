@@ -17,6 +17,8 @@ function asCategory(value: unknown): SccaCategory | undefined {
     : undefined
 }
 
+const { query: sortQuery, header: sortable } = useTableSort(['due_date', 'updated_at'])
+
 /** Manage is for drafts (including rejected ones). Submitted SCCAs live in Approval and Monitoring. */
 const query = computed<SccaListQuery>(() => ({
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
@@ -26,6 +28,7 @@ const query = computed<SccaListQuery>(() => ({
   mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: perPage.value,
+  ...sortQuery.value,
 }))
 
 const search = ref(query.value.q ?? '')
@@ -72,19 +75,22 @@ function clearFilters() {
 const { data, status, error, refresh } = useSccaAssessments(query)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 
+function column(key: string, label: string, cls = ''): TableColumn<SccaAssessmentSummary> {
+  return { accessorKey: key, header: sortable(label, key), meta: { class: { th: cls, td: cls } } }
+}
 const columns: TableColumn<SccaAssessmentSummary>[] = [
-  { accessorKey: 'ref_no', header: 'Ref no' },
-  { accessorKey: 'application_name', header: 'Application name' },
-  { accessorKey: 'application_code', header: 'Application code' },
-  { accessorKey: 'status', header: 'Status' },
-  { accessorKey: 'assessment_reason', header: 'Reason' },
-  { id: 'renews', header: 'Renews' },
-  { accessorKey: 'my_role', header: 'My role' },
-  { accessorKey: 'assessor', header: 'Assessor' },
-  { accessorKey: 'computed_category', header: 'Category so far' },
-  { accessorKey: 'due_date', header: 'Renewal date' },
-  { accessorKey: 'next_step', header: 'Next step' },
-  { accessorKey: 'updated_at', header: 'Last saved' },
+  column('ref_no', 'Current SCCA ref. no.', 'min-w-40'),
+  column('application_name', 'Application name', 'min-w-40'),
+  column('application_code', 'Application code', 'min-w-32'),
+  column('status', 'Status', 'min-w-28'),
+  column('assessment_reason', 'Assessment reason', 'min-w-36'),
+  column('renews', 'Renews SCCA ref. no.', 'min-w-40'),
+  { accessorKey: 'my_role', header: 'My role', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  column('assessor', 'Assessor', 'min-w-36'),
+  column('computed_category', 'Category so far', 'min-w-32'),
+  column('due_date', 'Renewal date', 'min-w-32'),
+  { accessorKey: 'next_step', header: 'Next step', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  column('updated_at', 'Last saved', 'min-w-32'),
   { id: 'actions', header: '' },
 ]
 const ROLE_LABEL = { assessor: 'Assessor', contributor: 'Contributor', directorate: 'Directorate (view)' } as const
