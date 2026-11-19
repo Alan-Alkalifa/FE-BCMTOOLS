@@ -65,6 +65,67 @@ test('an administrator adds a personnel category and saves the typed payload wit
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
 })
 
+test('personnel removal can be cancelled and saved without changing the active version', async ({ page }) => {
+  await signIn(page, { permissions })
+  const active = version()
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft, active] } })
+  })
+  await page.goto('/admin/bianca-config?version=2&tab=personnel')
+  const remove = page.getByRole('button', { name: 'Remove category Senior Management', exact: true })
+  await expect(remove).toBeVisible({ timeout: 45000 })
+  await remove.click()
+  let dialog = page.getByRole('dialog', { name: 'Remove Senior Management?' })
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(remove).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled()
+  await remove.click()
+  dialog = page.getByRole('dialog', { name: 'Remove Senior Management?' })
+  await dialog.getByRole('button', { name: 'Remove category', exact: true }).click()
+  await expect(remove).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(4)
+  await expect(page.getByText('Senior Management (U1–U3)', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect.poll(() => saved?.staff_grades.length).toBe(4)
+  expect(saved?.staff_grades.some((grade) => grade.code === 'staff_senior')).toBe(false)
+  expect(active.payload.staff_grades).toHaveLength(5)
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(4, { timeout: 45000 })
+  await expect(remove).toHaveCount(0)
+})
+
+test('personnel removal keeps the last active category and is hidden on published versions', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  draft.payload.staff_grades = [
+    draft.payload.staff_grades[0]!,
+    { ...draft.payload.staff_grades[1]!, active: false },
+  ]
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft, version()] } }))
+  await page.goto('/admin/bianca-config?version=2&tab=personnel')
+  await expect(page.getByRole('button', { name: 'Remove category Senior Management', exact: true })).toBeDisabled({ timeout: 45000 })
+  const remove = page.getByRole('button', { name: 'Remove category Middle Management', exact: true })
+  await expect(remove).toBeEnabled()
+  await remove.click()
+  await page.getByRole('dialog', { name: 'Remove Middle Management?' }).getByRole('button', { name: 'Remove category', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Remove category Senior Management', exact: true })).toBeDisabled()
+  await page.getByRole('combobox', { name: 'Configuration version' }).click()
+  await page.getByRole('option', { name: /V1/ }).click()
+  await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Remove category/ })).toHaveCount(0)
+})
+
 test('the requester cannot approve their own publication', async ({ page }) => {
   await signIn(page, { permissions })
   const pending = { ...version(), id: 2, status: 'draft', requested_by_id: 1, requested_at: '2026-11-17T01:00:00Z' }

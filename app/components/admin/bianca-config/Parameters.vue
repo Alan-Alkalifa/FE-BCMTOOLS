@@ -3,6 +3,24 @@ import type { BiancaConfigPayload, BiancaGrade, BiancaSigner } from '~/composabl
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
 const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string> }>()
+const confirm = useConfirm()
+
+function canRemoveGrade(grade: BiancaGrade) {
+  return model.value.staff_grades.length > 1
+    && (!grade.active || model.value.staff_grades.filter((item) => item.active).length > 1)
+}
+async function removeGrade(grade: BiancaGrade) {
+  if (props.disabled || !canRemoveGrade(grade)) return
+  const confirmed = await confirm({
+    title: 'Remove ' + (grade.label || 'personnel category') + '?',
+    description: 'This removes the category from this draft. Existing BIAs keep their saved configuration. Save and publish the draft to apply this change to new BIAs.',
+    confirmLabel: 'Remove category',
+    destructive: true,
+  })
+  if (!confirmed || props.disabled || !canRemoveGrade(grade)) return
+  const index = model.value.staff_grades.indexOf(grade)
+  if (index >= 0) model.value.staff_grades.splice(index, 1)
+}
 
 function addGrade() {
   let i = model.value.staff_grades.length + 1
@@ -77,7 +95,7 @@ function selectedSigner(id: number | null) {
               Personnel levels
             </h2>
             <p class="text-sm text-muted">
-              Category codes are stable. Deactivate published categories instead of deleting them. Active U ranges cannot overlap.
+              Remove categories from a draft or deactivate them to keep them listed. Existing BIAs keep their saved configuration. Keep at least one category active; active U ranges cannot overlap.
             </p>
           </div>
           <UButton
@@ -162,6 +180,17 @@ function selectedSigner(id: number | null) {
               label="Move down"
               :disabled="i === model.staff_grades.length - 1"
               @click="move(i, 1)"
+            />
+            <UButton
+              v-if="!disabled"
+              type="button"
+              color="error"
+              variant="ghost"
+              icon="i-lucide-trash-2"
+              label="Remove category"
+              :aria-label="'Remove category ' + (grade.label || grade.code)"
+              :disabled="!canRemoveGrade(grade)"
+              @click="removeGrade(grade)"
             />
           </div>
         </div>
