@@ -76,6 +76,17 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
   pending: { label: 'Waiting', color: 'warning', icon: 'i-lucide-hourglass' },
   rejected: { label: 'Returned', color: 'error', icon: 'i-lucide-undo-2' },
 })
+
+const DEFAULT_IMPACT_PERIODS = ['4 Hours', 'Day 1', 'Day 2', 'Day 3', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
+const impactPeriods = computed(() =>
+  detail.value?.periods?.length ? detail.value.periods : DEFAULT_IMPACT_PERIODS,
+)
+
+function scoreTone(score: number | null | undefined) {
+  if ((score ?? 0) >= 3) return 'font-semibold text-error'
+  if (score === 2) return 'font-medium text-warning'
+  return 'text-muted'
+}
 </script>
 
 <template>
@@ -446,6 +457,135 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
                 <span class="tabular-nums">A: {{ row.original.reg_score_max }} · B: {{ row.original.cust_score_max }}</span>
               </template>
             </UTable>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <template #header>
+              <h2 class="text-base font-semibold text-highlighted">
+                Potential cumulative financial loss (IDR) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
+              </h2>
+            </template>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead>
+                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
+                    <th class="py-3 ps-4 pe-3 whitespace-nowrap">
+                      No
+                    </th>
+                    <th class="py-3 px-3 whitespace-nowrap">
+                      Business function
+                    </th>
+                    <th
+                      v-for="periodLabel in impactPeriods"
+                      :key="`loss-h-${periodLabel}`"
+                      class="py-3 px-3 text-right whitespace-nowrap"
+                    >
+                      {{ periodLabel }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr
+                    v-for="fn in detail.functions"
+                    :key="`loss-${fn.seq_no}`"
+                  >
+                    <td class="py-3 ps-4 pe-3 tabular-nums text-muted">
+                      {{ fn.seq_no }}
+                    </td>
+                    <td class="py-3 px-3 font-medium text-highlighted whitespace-nowrap">
+                      {{ fn.name }}
+                    </td>
+                    <td
+                      v-for="(periodLabel, idx) in impactPeriods"
+                      :key="`loss-${fn.seq_no}-${periodLabel}`"
+                      class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
+                    >
+                      {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-base font-semibold text-highlighted">
+                  Potential regulatory (A) &amp; customer service (B) impact (Score 1–3) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
+                </h2>
+                <span class="text-xs text-muted">A = Regulatory Impact · B = Customer Service Impact</span>
+              </div>
+            </template>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead>
+                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
+                    <th class="py-3 ps-4 pe-3 whitespace-nowrap">
+                      No
+                    </th>
+                    <th class="py-3 px-3 whitespace-nowrap">
+                      Business function
+                    </th>
+                    <th class="py-3 px-3 whitespace-nowrap">
+                      Impact
+                    </th>
+                    <th
+                      v-for="periodLabel in impactPeriods"
+                      :key="`score-h-${periodLabel}`"
+                      class="py-3 px-3 text-center whitespace-nowrap"
+                    >
+                      {{ periodLabel }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <template
+                    v-for="fn in detail.functions"
+                    :key="`score-${fn.seq_no}`"
+                  >
+                    <tr>
+                      <td
+                        rowspan="2"
+                        class="py-3 ps-4 pe-3 align-top tabular-nums text-muted"
+                      >
+                        {{ fn.seq_no }}
+                      </td>
+                      <td
+                        rowspan="2"
+                        class="py-3 px-3 align-top font-medium text-highlighted whitespace-nowrap"
+                      >
+                        {{ fn.name }}
+                      </td>
+                      <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
+                        Regulatory (A)
+                      </td>
+                      <td
+                        v-for="(periodLabel, idx) in impactPeriods"
+                        :key="`reg-${fn.seq_no}-${periodLabel}`"
+                        class="py-2 px-3 text-center tabular-nums"
+                        :class="scoreTone(fn.regulatory_scores?.[idx])"
+                      >
+                        {{ fn.regulatory_scores?.[idx] ?? '—' }}
+                      </td>
+                    </tr>
+                    <tr class="bg-elevated/30">
+                      <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
+                        Customer (B)
+                      </td>
+                      <td
+                        v-for="(periodLabel, idx) in impactPeriods"
+                        :key="`cust-${fn.seq_no}-${periodLabel}`"
+                        class="py-2 px-3 text-center tabular-nums"
+                        :class="scoreTone(fn.customer_scores?.[idx])"
+                      >
+                        {{ fn.customer_scores?.[idx] ?? '—' }}
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </UCard>
 
           <UCard v-if="hasPart1Notes">

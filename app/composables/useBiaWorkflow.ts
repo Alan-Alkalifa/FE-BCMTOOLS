@@ -110,6 +110,9 @@ export interface BiaFunctionItem {
   fin_loss_d1: number
   fin_loss_w1: number
   fin_loss_w4: number
+  losses?: number[]
+  regulatory_scores?: number[]
+  customer_scores?: number[]
   reg_score_max: number
   cust_score_max: number
   total_staff: number
@@ -148,6 +151,7 @@ export interface BiaAssessmentDetail {
   current_step_title: string | null
   highest_category: BiaCategory | null
   shortest_mtd: string | null
+  periods?: string[]
   loss_totals?: {
     fin_loss_4h: number
     fin_loss_d1: number
