@@ -2,7 +2,7 @@
 import type { RaCrisisType } from '~/composables/useRa'
 
 /**
- * RA configuration > Disaster or incident: whether each hazard is a disaster or an incident. A
+ * Sites configuration > Disaster or incident: whether each hazard is a disaster or an incident. A
  * crisis follows its hazard: it is declared, monitored and approved in that menu (Disaster or
  * Incident). Live for everyone as soon as it is saved, and audited; a crisis already declared
  * moves with its hazard. By default the Natural disasters (H01-H09) are disasters.
@@ -41,7 +41,7 @@ async function save() {
   failure.value = null
   busy.value = true
   try {
-    await raCrisisApi.saveHazardTypes(Object.fromEntries(changed.value.map((item) => [item.code, draft.value[item.code]!])))
+    await sitesConfigApi.saveHazardTypes(Object.fromEntries(changed.value.map((item) => [item.code, draft.value[item.code]!])))
     await refresh()
     refreshNuxtData('ra-map')
     toast.add({ title: 'Saved', description: 'Disasters and incidents follow their hazard from now on.', color: 'success', icon: 'i-lucide-circle-check' })

@@ -6,9 +6,9 @@ import type { RaConfigVersion } from '~/composables/useRaConfigAdmin'
  * their hazards and guides, sign-off role titles, statements and notes: one active, at most
  * one draft (a copy of the active one), the rest retired. Only the draft is edited; publishing
  * takes two people (one requests, another approves). Assessments keep their version.
- * The division list, disaster or incident per hazard, the reminder rules, the team diagrams and
- * the access scope are live, not
- * part of a version.
+ * The division list, the reminder rules, the team diagrams and the access scope are live, not
+ * part of a version. Disaster or incident per hazard, the earthquakes and the past disasters are
+ * in Sites configuration (old links to those tabs open it).
  */
 definePageMeta({ permission: 'ra.config.view' })
 
@@ -18,10 +18,13 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'hazard-types', 'reminders', 'earthquakes', 'past-disasters', 'diagrams', 'access', 'changes'] as const
+const TABS = ['versions', 'hazards', 'steps', 'texts', 'divisions', 'reminders', 'diagrams', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 /** Tabs that edit live rules rather than a version. */
-const LIVE: Tab[] = ['divisions', 'hazard-types', 'reminders', 'diagrams', 'access']
+const LIVE: Tab[] = ['divisions', 'reminders', 'diagrams', 'access']
+if (SITES_CONFIG_TABS.includes(route.query.tab as SitesConfigTab)) {
+  await navigateTo({ path: SITES_CONFIG_PATH, query: { tab: route.query.tab } }, { replace: true })
+}
 const tab = computed<Tab>({
   // ?tab=roles is the older name of the Sign-off steps tab.
   get: () => (route.query.tab === 'roles' ? 'steps' : TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'versions'),
@@ -33,10 +36,7 @@ const tabItems = [
   { label: 'Sign-off steps', value: 'steps', icon: 'i-lucide-signature', slot: 'steps' },
   { label: 'Statements and notes', value: 'texts', icon: 'i-lucide-text-quote', slot: 'texts' },
   { label: 'Divisions', value: 'divisions', icon: 'i-lucide-building-2', slot: 'divisions' },
-  { label: 'Disaster or incident', value: 'hazard-types', icon: 'i-lucide-split', slot: 'hazard-types' },
   { label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' },
-  { label: 'Earthquakes', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' },
-  { label: 'Past disasters', value: 'past-disasters', icon: 'i-lucide-history', slot: 'past-disasters' },
   { label: 'Team diagrams', value: 'diagrams', icon: 'i-lucide-network', slot: 'diagrams' },
   { label: 'Access scope', value: 'access', icon: 'i-lucide-shield-check', slot: 'access' },
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare', slot: 'changes' },
@@ -292,7 +292,7 @@ async function discard() {
         />
       </template>
 
-      <!-- Eleven tabs: they keep their full labels and scroll sideways when they don't fit. -->
+      <!-- Nine tabs: they keep their full labels and scroll sideways when they don't fit. -->
       <UTabs
         v-model="tab"
         :items="tabItems"
@@ -338,21 +338,8 @@ async function discard() {
         <template #divisions>
           <AdminRaConfigDivisions class="mt-4" />
         </template>
-        <template #hazard-types>
-          <AdminRaConfigHazardTypes class="mt-4" />
-        </template>
         <template #reminders>
           <AdminRaConfigReminders class="mt-4" />
-        </template>
-        <template #earthquakes>
-          <AdminRaConfigEarthquakes class="mt-4" />
-        </template>
-        <template #past-disasters>
-          <AdminRaConfigPastDisasters class="mt-4" />
-          <div class="mt-6 grid items-start gap-6 lg:grid-cols-2">
-            <AdminRaConfigOutbreakNews />
-            <AdminRaConfigAirQuality />
-          </div>
         </template>
         <template #diagrams>
           <AdminRaConfigDiagrams

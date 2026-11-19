@@ -1,4 +1,4 @@
-import type { RaBmkgStatus, RaDivision, RaDivisionInput, RaFormula, RaSignoffStep } from '~/composables/useRa'
+import type { RaDivision, RaDivisionInput, RaFormula, RaSignoffStep } from '~/composables/useRa'
 
 /**
  * Administration > RA configuration, like the SCCA one: versions per kind (RA and RA Branch)
@@ -147,24 +147,6 @@ export const raConfigApi = {
     $fetch<RaDivision>(`${BASE}/divisions/${id}`, { method: 'PATCH', body }),
   deleteDivision: (id: number) => $fetch(`${BASE}/divisions/${id}`, { method: 'DELETE' }),
   settings: () => $fetch<RaSettings>(`${BASE}/settings`),
-  bmkg: () => $fetch<RaBmkgStatus>(`${BASE}/bmkg`),
-  saveBmkg: (body: { enabled: boolean, min_magnitude: number, alert_radius_km: number }) =>
-    $fetch<RaBmkgStatus>(`${BASE}/bmkg`, { method: 'PUT', body }),
-  dibi: () => $fetch<RaDibiStatus>(`${BASE}/dibi`),
-  saveDibi: (body: RaDibiInput) => $fetch<RaDibiStatus>(`${BASE}/dibi`, { method: 'PUT', body }),
-  readDibi: () => $fetch<RaDibiStatus>(`${BASE}/dibi/read`, { method: 'POST' }),
-  /** A DIBI download (Excel or CSV), kept by record id. */
-  importDibi: (file: File) => {
-    const body = new FormData()
-    body.append('file', file)
-    return $fetch<{ read: number, kept: number, skipped: number, years: number[], status: RaDibiStatus }>(`${BASE}/dibi/import`, { method: 'POST', body })
-  },
-  outbreaks: () => $fetch<RaOutbreakStatus>(`${BASE}/outbreaks`),
-  saveOutbreaks: (body: RaOutbreakInput) => $fetch<RaOutbreakStatus>(`${BASE}/outbreaks`, { method: 'PUT', body }),
-  readOutbreaks: () => $fetch<RaOutbreakStatus>(`${BASE}/outbreaks/read`, { method: 'POST' }),
-  airQuality: () => $fetch<RaAirQualityStatus>(`${BASE}/air-quality`),
-  saveAirQuality: (body: RaAirQualityInput) => $fetch<RaAirQualityStatus>(`${BASE}/air-quality`, { method: 'PUT', body }),
-  readAirQuality: () => $fetch<RaAirQualityStatus>(`${BASE}/air-quality/read`, { method: 'POST' }),
   saveSettings: (body: RaSettings) => $fetch<RaSettings>(`${BASE}/settings`, { method: 'PUT', body }),
   diagrams: (kind: RaKind) => $fetch<{ items: RaDiagramInfo[] }>(`${BASE}/diagrams?kind=${kind}`),
   uploadDiagram: (kind: RaKind, diagram: RaDiagram, file: File) => {
@@ -268,77 +250,6 @@ export interface RaAccessCheck {
   locations: Partial<Record<RaScopedReason, number>>
   /** Of the rules' LICOM levels, so may be picked as a generated annual review's LICOM. */
   can_be_contributor?: boolean
-}
-
-/** RA configuration > Past disasters: BNPB's DIBI, read on schedule by the backend. */
-export interface RaDibiStatus {
-  enabled: boolean
-  every_days: number
-  years: number
-  /** The last read that worked. */
-  synced_at: string | null
-  tried_at: string | null
-  /** The years the last read couldn't read, and why. */
-  error: string | null
-  rows: number
-  first: string | null
-  last: string | null
-  source: string
-  /** Every DIBI category read (and those mapped but not read yet), with its RA hazard. */
-  categories: { category: string, rows: number, hazard_code: string | null }[]
-}
-
-export interface RaDibiInput {
-  enabled: boolean
-  every_days: number
-  years: number
-  hazards: Record<string, string | null>
-}
-
-/** RA configuration > Past disasters: WHO's Disease Outbreak News, read daily by the backend. */
-export interface RaOutbreakStatus {
-  enabled: boolean
-  hazard_code: string
-  country: string
-  synced_at: string | null
-  tried_at: string | null
-  error: string | null
-  rows: number
-  first: string | null
-  last: string | null
-  source: string
-}
-
-export interface RaOutbreakInput {
-  enabled: boolean
-  hazard_code: string
-}
-
-/** RA configuration > Past disasters: OpenAQ's PM2.5 near each building. */
-export interface RaAirQualityStatus {
-  enabled: boolean
-  /** An OpenAQ API key is set on the server. */
-  configured: boolean
-  hazard_code: string
-  threshold: number
-  every_days: number
-  tried_at: string | null
-  error: string | null
-  /** Active buildings with coordinates. */
-  locations: number
-  /** Read within the interval with the current threshold. */
-  read: number
-  with_station: number
-  last_read_at: string | null
-  per_run: number
-  source: string
-}
-
-export interface RaAirQualityInput {
-  enabled: boolean
-  hazard_code: string
-  threshold: number
-  every_days: number
 }
 
 const ACCESS = `${BASE}/access-rules`

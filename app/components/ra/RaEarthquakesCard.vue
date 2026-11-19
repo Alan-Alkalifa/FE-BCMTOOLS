@@ -71,7 +71,7 @@ function nearText(quake: RaEarthquake) {
         variant="subtle"
         icon="i-lucide-power-off"
         title="Earthquakes from BMKG are switched off"
-        description="BCM switches them on in Administration › RA configuration › Earthquakes."
+        description="BCM switches them on in Administration › Sites configuration › Earthquakes."
       />
       <UAlert
         v-else-if="list?.stale"

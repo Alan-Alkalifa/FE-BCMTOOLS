@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
- * RA configuration > Past disasters. OpenAQ's PM2.5 at the station nearest to each building
- * suggests the Historical of occurrence of one hazard (H10 by default). Each day whose average
+ * Sites configuration > Past disasters. OpenAQ's PM2.5 at the station nearest to each building
+ * is shown on one hazard (H10 by default) over its review years. Each day whose average
  * is above the threshold counts once. The backend reads a few buildings every run and needs an
  * OpenAQ API key (OPENAQ_API_KEY).
  */
-import type { RaAirQualityInput } from '~/composables/useRaConfigAdmin'
+import type { RaAirQualityInput } from '~/composables/useSitesConfigAdmin'
 
 const toast = useToast()
 const { can } = useAuth()
-const editable = computed(() => can('ra.config.manage'))
-const { data, error, refresh } = useAsyncData('ra-config-air-quality', () => raConfigApi.airQuality())
+const editable = computed(() => can('sites.config.manage'))
+const { data, error, refresh } = useAsyncData('sites-config-air-quality', () => sitesConfigApi.airQuality())
 const { data: hazardTypes } = useRaHazardTypes()
 const hazardItems = computed(() => (hazardTypes.value?.items ?? []).map((item) => ({ label: `${item.code} · ${item.short_name}`, value: item.code })))
 
@@ -28,7 +28,7 @@ async function save() {
   errors.value = {}
   busy.value = true
   try {
-    data.value = await raConfigApi.saveAirQuality({ ...form })
+    data.value = await sitesConfigApi.saveAirQuality({ ...form })
     toast.add({ title: 'OpenAQ settings saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (failure) {
     const details = (failure as { data?: { details?: Record<string, string> } }).data?.details
@@ -41,7 +41,7 @@ async function save() {
 async function readAgain() {
   reading.value = true
   try {
-    data.value = await raConfigApi.readAirQuality()
+    data.value = await sitesConfigApi.readAirQuality()
     toast.add({ title: 'Every building will be read again', description: `${data.value.per_run} buildings at each scheduler run.`, color: 'success', icon: 'i-lucide-circle-check' })
   } catch (failure) {
     toast.add({ title: adminErrorText(failure), color: 'error', icon: 'i-lucide-circle-alert' })

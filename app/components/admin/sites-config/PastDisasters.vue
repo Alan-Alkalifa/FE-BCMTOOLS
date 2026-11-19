@@ -1,16 +1,17 @@
 <script setup lang="ts">
 /**
- * RA configuration > Past disasters. BNPB's DIBI (Data Informasi Bencana Indonesia), read by the
- * backend on schedule, suggests each hazard's Historical of occurrence rating from the disasters
- * recorded in the building's regency. BCM switches the read on or off, sets how often and how
- * many years, and which RA hazard each DIBI category counts for (or none).
+ * Sites configuration > Past disasters. BNPB's DIBI (Data Informasi Bencana Indonesia), read by the
+ * backend on schedule, shows each hazard the disasters recorded in the building's regency over
+ * its review years. BCM switches the read on or off, sets how often and how many years (also the
+ * review years when none are picked), and which RA hazard each DIBI category counts for (or
+ * none).
  */
-import type { RaDibiInput } from '~/composables/useRaConfigAdmin'
+import type { RaDibiInput } from '~/composables/useSitesConfigAdmin'
 
 const toast = useToast()
 const { can } = useAuth()
-const editable = computed(() => can('ra.config.manage'))
-const { data, status, error, refresh } = useAsyncData('ra-config-dibi', () => raConfigApi.dibi())
+const editable = computed(() => can('sites.config.manage'))
+const { data, status, error, refresh } = useAsyncData('sites-config-dibi', () => sitesConfigApi.dibi())
 const { data: hazardTypes } = useRaHazardTypes()
 
 const form = reactive<RaDibiInput>({ enabled: true, every_days: 7, years: 10, hazards: {} })
@@ -41,7 +42,7 @@ async function save() {
   errors.value = {}
   busy.value = true
   try {
-    data.value = await raConfigApi.saveDibi({ ...form, hazards: { ...form.hazards } })
+    data.value = await sitesConfigApi.saveDibi({ ...form, hazards: { ...form.hazards } })
     toast.add({ title: 'Past disaster settings saved', description: 'The suggestions follow them right away.', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (failure) {
     const details = (failure as { data?: { details?: Record<string, string> } }).data?.details
@@ -61,7 +62,7 @@ async function importFile(event: Event) {
   if (!file) return
   importing.value = true
   try {
-    const result = await raConfigApi.importDibi(file)
+    const result = await sitesConfigApi.importDibi(file)
     data.value = result.status
     const years = result.years.length ? ` from ${result.years[0]} to ${result.years[result.years.length - 1]}` : ''
     toast.add({
@@ -81,7 +82,7 @@ async function importFile(event: Event) {
 async function readNow() {
   reading.value = true
   try {
-    data.value = await raConfigApi.readDibi()
+    data.value = await sitesConfigApi.readDibi()
     toast.add({ title: 'DIBI will be read shortly', description: 'At the scheduler\'s next run, within 30 minutes.', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (failure) {
     toast.add({ title: adminErrorText(failure), color: 'error', icon: 'i-lucide-circle-alert' })
@@ -148,7 +149,7 @@ async function readNow() {
           </template>
           <div class="space-y-4">
             <p class="text-sm text-muted">
-              Each hazard's Historical of occurrence is suggested from the disasters DIBI recorded in the building's regency over these years, on the workbook's scale.
+              Each hazard page shows the disasters DIBI recorded in the building's regency over the hazard's review years, or over these years when none are picked.
             </p>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField

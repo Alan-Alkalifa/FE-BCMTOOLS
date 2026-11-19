@@ -345,9 +345,9 @@ export const emailStatus = defineStatusScale<OutboxEmail['status']>({
   failed: { label: 'Failed', color: 'error', icon: 'i-lucide-circle-alert' },
 })
 
-const MODULE_LABELS: Record<string, string> = { scca: 'SCCA', ra: 'RA and RA Branch', location: 'Sites', admin: 'Administration' }
+const MODULE_LABELS: Record<string, string> = { scca: 'SCCA', ra: 'RA and RA Branch', sites: 'Sites', admin: 'Administration' }
 /** Permission groups in the order of the sidebar; unknown modules go last. */
-const MODULE_ORDER = ['scca', 'ra', 'location', 'admin']
+const MODULE_ORDER = ['scca', 'ra', 'sites', 'admin']
 
 export function moduleLabel(module: string) {
   return MODULE_LABELS[module] ?? module.toUpperCase()
@@ -546,10 +546,13 @@ export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: Ac
   approval_reminder_sent: { label: 'Approvers reminded', icon: 'i-lucide-bell-ring', tone: 'info' },
   approval_escalated: { label: 'Approval escalated to BCM', icon: 'i-lucide-siren', tone: 'error' },
   guidebook_updated: { label: 'Guidebook steps saved', icon: 'i-lucide-book-marked', tone: 'neutral' },
+  bmkg_settings_updated: { label: 'BMKG earthquake settings saved', icon: 'i-lucide-activity', tone: 'neutral' },
   dibi_settings_updated: { label: 'Past disaster settings saved', icon: 'i-lucide-history', tone: 'neutral' },
   dibi_imported: { label: 'DIBI download imported', icon: 'i-lucide-file-up', tone: 'neutral' },
   outbreak_settings_updated: { label: 'WHO outbreak news settings saved', icon: 'i-lucide-biohazard', tone: 'neutral' },
   air_quality_settings_updated: { label: 'OpenAQ air quality settings saved', icon: 'i-lucide-wind', tone: 'neutral' },
+  weather_settings_updated: { label: 'BMKG weather warning settings saved', icon: 'i-lucide-cloud-lightning', tone: 'neutral' },
+  waqi_settings_updated: { label: 'WAQI settings saved', icon: 'i-lucide-gauge', tone: 'neutral' },
   config_draft_started: { label: 'Configuration draft started', icon: 'i-lucide-file-plus', tone: 'primary' },
   config_changed: { label: 'Configuration changed', icon: 'i-lucide-file-cog', tone: 'neutral' },
   config_publish_requested: { label: 'Configuration publish requested', icon: 'i-lucide-send', tone: 'info' },
@@ -564,6 +567,9 @@ export const RA_ACTIVITY: Record<string, { label: string, icon: string, tone: Ac
   config_diagram_updated: { label: 'Team diagram replaced', icon: 'i-lucide-network', tone: 'neutral' },
   hazard_types_updated: { label: 'Disaster or incident per hazard changed', icon: 'i-lucide-split', tone: 'neutral' },
   config_diagram_reset: { label: 'Team diagram back to the workbook picture', icon: 'i-lucide-rotate-ccw', tone: 'neutral' },
+  migrated: { label: 'Brought in by RA migration', icon: 'i-lucide-file-up', tone: 'primary' },
+  migration_run: { label: 'RA migration run', icon: 'i-lucide-file-up', tone: 'neutral' },
+  migration_undone: { label: 'RA migration run undone', icon: 'i-lucide-undo-2', tone: 'warning' },
 }
 
 /** The groups the RA activity tab filters by (the API's `group`). */
@@ -574,7 +580,7 @@ export const RA_ACTIVITY_GROUPS = [
   { label: 'Sign-off', value: 'signoff' },
   { label: 'Disasters and incidents', value: 'incidents' },
   { label: 'Approvals and reminders', value: 'approvals' },
-  { label: 'RA configuration and guidebook', value: 'configuration' },
+  { label: 'RA and Sites configuration, guidebook', value: 'configuration' },
 ]
 
 export function raActivity(event: string) {
@@ -619,7 +625,21 @@ export function raActivityRecord(row: AuditEvent): { label: string, ref: string 
     const kind = detail.kind === 'branch' ? 'branch' : undefined
     return { label: 'RA configuration', ref: null, to: `/admin/ra-config?tab=diagrams${kind ? `&kind=${kind}` : ''}` }
   }
+  const sitesTab = SITES_CONFIG_EVENTS[row.event.replace(/^ra\./, '')]
+  if (sitesTab) return { label: 'Sites configuration', ref: null, to: `${SITES_CONFIG_PATH}?tab=${sitesTab}` }
   return { label: 'RA configuration', ref: null, to: null }
+}
+
+/** RA activity events about Sites configuration, with the tab they changed. */
+const SITES_CONFIG_EVENTS: Record<string, SitesConfigTab> = {
+  hazard_types_updated: 'hazard-types',
+  bmkg_settings_updated: 'earthquakes',
+  dibi_settings_updated: 'past-disasters',
+  dibi_imported: 'past-disasters',
+  outbreak_settings_updated: 'past-disasters',
+  air_quality_settings_updated: 'past-disasters',
+  weather_settings_updated: 'past-disasters',
+  waqi_settings_updated: 'past-disasters',
 }
 
 /** One line on what an RA action did, e.g. "Changed address, postal code" or "4 → 5 rows". */

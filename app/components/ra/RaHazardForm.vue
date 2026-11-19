@@ -33,7 +33,7 @@ const singleRisk = computed(() => kind.value === 'branch')
 /** The inputs this assessment asks for; the others are never sent. */
 const inputs = computed(() => props.formula.inputs?.length ? props.formula.inputs : RA_KIND_INPUTS[kind.value])
 
-interface HazardState extends RaRatingInputs {
+interface HazardState extends RaRatingInputs, RaReviewYears {
   mitigation: string
   action_plan: string
 }
@@ -51,6 +51,8 @@ function fromAssessment(assessment: RaAssessment): Record<string, HazardState> {
       ...values,
       mitigation: saved?.mitigation ?? '',
       action_plan: saved?.action_plan ?? '',
+      review_from_year: saved?.review_from_year ?? null,
+      review_to_year: saved?.review_to_year ?? null,
     }
   }
   return state
@@ -271,8 +273,34 @@ function payload(code: string): RaRatingUpdate {
     code,
     ...Object.fromEntries(inputs.value.map((key) => [key, hazard[key]])),
     ...blankToNull({ mitigation: hazard.mitigation, action_plan: hazard.action_plan }),
+    review_from_year: hazard.review_from_year,
+    review_to_year: hazard.review_to_year,
   }
 }
+
+// The years each hazard's past occurrences are reviewed over (DIBI, WHO, OpenAQ), saved with its
+// rating. Empty: the last 10 years.
+const yearItems = raYearItems()
+const defaultYears = raDefaultReviewYears()
+const reviewYears = computed(() => ({
+  from: active.value?.review_from_year ?? null,
+  to: active.value?.review_to_year ?? null,
+}))
+/** Cleared stays null (not undefined), so a cleared year is the same as never picked. */
+function yearModel(key: 'review_from_year' | 'review_to_year') {
+  return computed<number | null>({
+    get: () => active.value?.[key] ?? null,
+    set: (value) => {
+      if (active.value) active.value[key] = value ?? null
+    },
+  })
+}
+const reviewFrom = yearModel('review_from_year')
+const reviewTo = yearModel('review_to_year')
+const reviewYearsError = computed(() => {
+  const { from, to } = reviewYears.value
+  return from && to && from > to ? 'Cannot be before the from year.' : undefined
+})
 
 async function save() {
   formError.value = null
@@ -510,12 +538,46 @@ async function save() {
               :disabled="locked"
             />
           </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              label="Review past occurrences from"
+              name="review_from_year"
+            >
+              <USelectMenu
+                v-model="reviewFrom"
+                value-key="value"
+                :items="yearItems"
+                :placeholder="String(defaultYears.from)"
+                :disabled="locked"
+                :search-input="false"
+                :clear="!locked"
+                class="w-full sm:w-40"
+                aria-label="Review past occurrences from"
+              />
+            </UFormField>
+            <UFormField
+              label="to"
+              name="review_to_year"
+              :error="reviewYearsError"
+            >
+              <USelectMenu
+                v-model="reviewTo"
+                value-key="value"
+                :items="yearItems"
+                :placeholder="String(defaultYears.to)"
+                :disabled="locked"
+                :search-input="false"
+                :clear="!locked"
+                class="w-full sm:w-40"
+                aria-label="Review past occurrences to"
+              />
+            </UFormField>
+          </div>
           <RaPastDisasterHint
             :location-id="assessment.location.id"
             :code="activeHazard.code"
-            :current="active.historical"
-            :locked="locked"
-            @use="(rating) => (active!.historical = rating)"
+            :from-year="reviewYears.from"
+            :to-year="reviewYears.to"
           />
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField

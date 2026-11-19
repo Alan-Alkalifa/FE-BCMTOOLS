@@ -242,7 +242,7 @@ type MockAssessment = {
 }
 
 const NOW = '2026-10-20T03:00:00Z'
-const BLANK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+export const BLANK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 
 /** Every role signed by users 1–4 in turn; a complete assessment ready to submit. */
 function readyToSubmit(assessment: MockAssessment) {
@@ -414,7 +414,7 @@ export async function mockRa(
   })
   // Map tiles: a blank 1x1 PNG from a local path, so tests never reach a real tile server.
   await page.route('**/api/ra/map-settings', (route) =>
-    route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
+    route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: false } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   // RA configuration > Team diagrams: the chart images (a blank PNG here).
@@ -489,19 +489,28 @@ export async function mockRa(
       return
     }
     if (url.pathname.endsWith('/past-disasters')) {
-      // BNPB's DIBI, read: floods in the building's regency over the last 10 years.
+      // BNPB's DIBI, read: floods in the building's regency, 12 over the last 10 years and 3 in
+      // narrower review years. WHO's outbreak news (H11) and OpenAQ's air quality (H10), read.
+      const from = Number(url.searchParams.get('from')) || 2017
+      const to = Number(url.searchParams.get('to')) || 2026
+      const narrow = from > 2017 || to < 2026
+      const range = { from_year: from, to_year: to, from: `${from}-01-01`, to: to === 2026 ? '2026-11-17' : `${to}-12-31`, years: to - from + 1 }
       await route.fulfill({ json: {
-        enabled: true, synced_at: '2026-11-16T03:00:00Z', city: 'Jakarta Selatan', years: 10, from: '2016-11-17', to: '2026-11-17',
+        enabled: true, synced_at: '2026-11-16T03:00:00Z', city: 'Jakarta Selatan', ...range, held_from: 2012,
         regency: 'Kota Adm. Jakarta Selatan', province: 'DKI Jakarta',
-        hazards: { H01: { events: 12, rating: 4, last: '2026-02-03T05:00:00Z', kinds: ['Banjir'] } },
-        // WHO's outbreak news (H11) and OpenAQ's air quality (H10), read.
+        hazards: { H01: { events: narrow ? 3 : 12, rating: narrow ? 2 : 4, last: '2026-02-03T05:00:00Z', kinds: ['Banjir'] } },
         outbreaks: {
-          hazard_code: 'H11', enabled: true, synced_at: '2026-11-17T03:00:00Z', country: 'Indonesia', years: 10, from: '2016-11-17', to: '2026-11-17',
+          hazard_code: 'H11', enabled: true, synced_at: '2026-11-17T03:00:00Z', country: 'Indonesia', ...range,
           events: 3, rating: 2, items: [{ title: 'Poliomyelitis - Indonesia', on: '2024-01-11', url: 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500' }],
+        },
+        weather: {
+          hazard_code: 'H06', enabled: true, polled_at: '2026-11-18T03:50:00Z', has_coordinates: true, from_year: from, to_year: to, held_from: '2026-11-18T03:45:00Z',
+          events: 3, days: 2, last: '2026-11-18T03:45:00Z',
+          items: [{ event: 'Hujan Lebat dan Petir', headline: 'Hujan Lebat disertai Petir di DKI Jakarta', effective_at: '2026-11-18T03:45:00Z', expires_at: '2026-11-18T06:00:00Z' }],
         },
         air: {
           hazard_code: 'H10', enabled: true, configured: true, has_coordinates: true, read_at: '2026-11-17T03:00:00Z', station: 'US Embassy Jakarta South',
-          distance_km: 2.5, threshold: 55.4, days: 1001, unhealthy_days: 501, rating: 5, from: '2024-01-01', to: '2026-11-15',
+          distance_km: 2.5, threshold: 55.4, ...range, days: 1001, unhealthy_days: 501, rating: 5, from: '2024-01-01', to: '2026-11-15', held_from: '2024-01-01',
           worst: { value: 140.3, on: '2026-11-15' }, latest: { value: 61.2, on: '2026-11-15' }, error: null,
         },
       } })
@@ -1110,7 +1119,7 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
   const canDeclare = options.declare !== false
   await signIn(page, canDeclare ? {} : { permissions: ['ra.access'] })
   await page.route('**/api/ra/map-settings', (route) =>
-    route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19 } }),
+    route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: false } }),
   )
   await page.route('**/e2e-tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: BLANK_PNG }))
   // RA configuration > Team diagrams: the chart images (a blank PNG here).
@@ -1171,13 +1180,55 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
     },
   }))
   // WHO's outbreak news and OpenAQ's air quality, for the tabs under the map.
-  await page.route('**/api/ra/outbreaks', (route) => route.fulfill({ json: {
-    enabled: true, synced_at: '2026-11-17T03:00:00Z', error: null, country: 'Indonesia', hazard_code: 'H11', total: 154,
-    items: [
-      { id: '2024-DON500', don_id: '2024-DON500', title: 'Poliomyelitis - Indonesia', on: '2024-01-11', url: 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500' },
-      { id: '2023-DON462', don_id: '2023-DON462', title: 'Measles - Indonesia', on: '2023-04-28', url: 'https://www.who.int/emergencies/disease-outbreak-news/item/2023-DON462' },
-    ],
-    source: 'WHO Disease Outbreak News', source_url: 'https://www.who.int/emergencies/disease-outbreak-news',
+  const WHO_ITEMS = [
+    { id: '2024-DON500', don_id: '2024-DON500', title: 'Poliomyelitis - Indonesia', on: '2024-01-11', url: 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500' },
+    { id: '2023-DON462', don_id: '2023-DON462', title: 'Measles - Indonesia', on: '2023-04-28', url: 'https://www.who.int/emergencies/disease-outbreak-news/item/2023-DON462' },
+  ]
+  await page.route(/\/api\/ra\/outbreaks/, (route) => {
+    const url = new URL(route.request().url())
+    const from = Number(url.searchParams.get('from')) || null
+    const to = Number(url.searchParams.get('to')) || null
+    const items = WHO_ITEMS.filter((item) => (!from || Number(item.on.slice(0, 4)) >= from) && (!to || Number(item.on.slice(0, 4)) <= to))
+    return route.fulfill({ json: {
+      enabled: true, synced_at: '2026-11-17T03:00:00Z', error: null, country: 'Indonesia', hazard_code: 'H11', total: 154,
+      matching: items.length, from_year: from, to_year: to, first_year: 1996, last_year: 2024, items,
+      source: 'WHO Disease Outbreak News', source_url: 'https://www.who.int/emergencies/disease-outbreak-news',
+    } })
+  })
+  // BMKG's weather warnings: one active over the Bintaro branch, one elsewhere, and one in the
+  // history (2025).
+  const WEATHER_STATUS = {
+    enabled: true, hazard_code: 'H06', polled_at: '2026-11-18T03:50:00Z', poll_error: null, stale: false,
+    rows: 3, over_places: 2, active: 2, source: 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)', source_url: 'https://www.bmkg.go.id/peringatan-dini',
+  }
+  const warning = (code: string, headline: string, effective: string, expires: string, active: boolean, places: { id: number, code: string, kind: string, name: string }[], polygon: [number, number][]) => ({
+    id: `2.49.0.1.360.0.${code}`, code, event: 'Hujan Lebat dan Petir', headline, description: `${headline}. Kondisi ini berpotensi menimbulkan dampak berupa banjir lokal.`,
+    province: headline.split(' di ').pop(), severity: 'Moderate', urgency: 'Immediate', certainty: 'Observed', sent_at: effective, effective_at: effective, expires_at: expires,
+    active, polygons: [polygon], infographic_url: `https://nowcasting.bmkg.go.id/infografis/${code.slice(0, 3)}/infografis.jpg`, places,
+  })
+  const bintaro = { id: MAP_PLACES[2]!.id, code: MAP_PLACES[2]!.code, kind: MAP_PLACES[2]!.kind, name: MAP_PLACES[2]!.name }
+  const square = (lat: number, lng: number): [number, number][] => [[lat - 0.05, lng - 0.05], [lat - 0.05, lng + 0.05], [lat + 0.05, lng + 0.05], [lat + 0.05, lng - 0.05]]
+  await page.route(/\/api\/ra\/weather-warnings/, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('status') === 'history') {
+      const from = Number(url.searchParams.get('from')) || 2017
+      const items = from <= 2025
+        ? [warning('CBT20250301001', 'Hujan Lebat disertai Petir di Banten', '2025-03-01T07:00:00Z', '2025-03-01T09:00:00Z', false, [bintaro], square(-6.2853, 106.7272))]
+        : []
+      return route.fulfill({ json: { ...WEATHER_STATUS, status: 'history', items, matching: items.length, from_year: from, to_year: Number(url.searchParams.get('to')) || 2026, first_year: 2025 } })
+    }
+    return route.fulfill({ json: {
+      ...WEATHER_STATUS, status: 'active', matching: 2, from_year: null, to_year: null, first_year: 2025,
+      items: [
+        warning('CBT20261118001', 'Hujan Lebat disertai Petir di Banten', '2026-11-18T03:45:00Z', '2026-11-18T06:00:00Z', true, [bintaro], square(-6.2853, 106.7272)),
+        warning('CYG20261118001', 'Hujan Lebat disertai Petir di DI Yogyakarta', '2026-11-18T03:45:00Z', '2026-11-18T06:00:00Z', true, [], square(-7.93, 110.29)),
+      ],
+    } })
+  })
+  // A place's daily PM2.5 for the trend chart: three days.
+  await page.route(/\/api\/ra\/air-quality\/\d+\/days/, (route) => route.fulfill({ json: {
+    location_id: MAP_PLACES[2]!.id, station: 'US Embassy Jakarta South', distance_km: 2.5, threshold: 55.4, from_year: 2017, to_year: 2026,
+    items: [{ day: '2026-11-14', value: 40.1 }, { day: '2026-11-15', value: 98.6 }, { day: '2026-11-16', value: 160.2 }],
   } }))
   await page.route('**/api/ra/air-quality', (route) => route.fulfill({ json: {
     enabled: true, configured: true, threshold: 55.4, hazard_code: 'H10', places: MAP_PLACES.length, tried_at: '2026-11-17T03:00:00Z', error: null,

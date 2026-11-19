@@ -1,14 +1,14 @@
 <script setup lang="ts">
 /**
- * RA configuration > Earthquakes: BMKG's open earthquake data on the building map. BCM switches
+ * Sites configuration > Earthquakes: BMKG's open earthquake data on the building map. BCM switches
  * it on or off, sets the minimum magnitude kept (felt earthquakes are kept whatever their
  * magnitude) and the alert radius: how near a building or branch must be for BCM to be emailed.
  * Live for everyone as soon as it is saved; the last read of BMKG shows beside it.
  */
 const toast = useToast()
 const { can } = useAuth()
-const editable = computed(() => can('ra.config.manage'))
-const { data, status, error, refresh } = useAsyncData('ra-config-bmkg', () => raConfigApi.bmkg())
+const editable = computed(() => can('sites.config.manage'))
+const { data, status, error, refresh } = useAsyncData('sites-config-bmkg', () => sitesConfigApi.bmkg())
 
 const form = reactive({ enabled: true, min_magnitude: 5, alert_radius_km: 100 })
 const busy = ref(false)
@@ -23,7 +23,7 @@ async function save() {
   errors.value = {}
   busy.value = true
   try {
-    data.value = await raConfigApi.saveBmkg({ ...form })
+    data.value = await sitesConfigApi.saveBmkg({ ...form })
     toast.add({ title: 'Earthquake settings saved', description: 'They apply from the next read of BMKG.', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (failure) {
     const details = (failure as { data?: { details?: Record<string, string> } }).data?.details

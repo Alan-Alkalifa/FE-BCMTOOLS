@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Map as LeafletMap, Marker, LeafletMouseEvent } from 'leaflet'
-import type { RaMapCircle, RaMapMarker, RaPin } from '~/composables/useRa'
+import type { RaMapArea, RaMapCircle, RaMapMarker, RaMapStation, RaPin } from '~/composables/useRa'
 import 'leaflet/dist/leaflet.css'
 
 /**
@@ -16,6 +16,8 @@ const props = withDefaults(defineProps<{
   circles?: RaMapCircle[]
   /** A dashed line between two places, e.g. the distance being measured. */
   line?: [RaPin, RaPin] | null
+  /** Areas drawn as polygons, e.g. BMKG's weather warnings. Not part of the fitted view. */
+  areas?: RaMapArea[]
   editable?: boolean
   /** Accessible name of the map region. */
   label: string
@@ -32,10 +34,14 @@ const props = withDefaults(defineProps<{
   /** Zoom with the mouse wheel or trackpad (off by default, so scrolling the page never gets
    *  caught by a map). The + and - buttons and double-click always zoom. */
   scrollZoom?: boolean
+  /** WAQI's air quality stations, each a dot with its AQI and its area. Not part of the fitted
+   *  view. */
+  stations?: RaMapStation[]
 }>(), {
   markers: () => [],
   circles: () => [],
   line: null,
+  areas: () => [],
   editable: false,
   selected: null,
   heightClass: 'h-96',
@@ -44,9 +50,10 @@ const props = withDefaults(defineProps<{
   pinVariant: 'location',
   pinLabel: 'Disaster point',
   scrollZoom: false,
+  stations: () => [],
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
-const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], ready: [] }>()
+const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], area: [id: string], station: [id: number], ready: [] }>()
 
 const { data: settings, error: settingsError } = useRaMapSettings()
 const container = useTemplateRef<HTMLDivElement>('container')
@@ -106,6 +113,23 @@ function branchIcon(level: RaMapMarker['level'], active: boolean, approval?: RaP
   })
 }
 
+/** A WAQI station: its AQI in a dot of its band's colour (grey without a reading). */
+function stationIcon(station: RaMapStation) {
+  const colour = WAQI_BANDS.find((band) => band.code === station.band)
+  const element = document.createElement('span')
+  element.className = 'ra-aqi'
+  element.textContent = station.aqi === null ? '–' : String(station.aqi)
+  element.style.backgroundColor = colour?.hex ?? '#94a3b8'
+  element.style.color = colour?.text ?? '#ffffff'
+  return L!.divIcon({
+    html: element,
+    className: `ra-pin ra-pin-air${station.active ? ' ra-pin-active' : ''}`,
+    iconSize: [30, 20],
+    iconAnchor: [15, 10],
+    tooltipAnchor: [0, -10],
+  })
+}
+
 /** Tooltips take a DOM node, so names are never parsed as HTML. */
 function tooltip(text: string) {
   const element = document.createElement('span')
@@ -116,6 +140,36 @@ function tooltip(text: string) {
 function drawMarkers(fit: boolean) {
   if (!L || !map || !layer) return
   layer.clearLayers()
+  for (const area of props.areas) {
+    for (const ring of area.polygons) {
+      const shape = L.polygon(ring, { className: `ra-area${area.active ? ' ra-area-active' : ''}` })
+      shape.bindTooltip(tooltip(area.label), { sticky: true })
+      shape.on('click', () => emit('area', area.id))
+      layer.addLayer(shape)
+    }
+  }
+  for (const station of props.stations) {
+    const colour = WAQI_BANDS.find((band) => band.code === station.band)
+    layer.addLayer(L.circle([station.lat, station.lng], {
+      radius: station.radiusM,
+      className: `ra-radius-air${station.active ? ' ra-radius-air-active' : ''}`,
+      color: colour?.hex ?? '#94a3b8',
+      fillColor: colour?.hex ?? '#94a3b8',
+      interactive: false,
+    }))
+    const marker = L.marker([station.lat, station.lng], {
+      icon: stationIcon(station),
+      title: station.label,
+      alt: station.label,
+      keyboard: true,
+      riseOnHover: true,
+      // Below the buildings and branches, which stay easy to pick.
+      zIndexOffset: -1000,
+    })
+    marker.bindTooltip(tooltip(station.label), { direction: 'top' })
+    marker.on('click', () => emit('station', station.id))
+    layer.addLayer(marker)
+  }
   for (const ring of props.circles) {
     layer.addLayer(L.circle([ring.lat, ring.lng], {
       radius: ring.radiusM,
@@ -268,8 +322,10 @@ watch(() => props.scrollZoom, (on) => {
   else map?.scrollWheelZoom.disable()
 })
 watch(() => [props.markers, props.circles], () => drawMarkers(props.autoFit), { deep: true })
+watch(() => props.areas, () => drawMarkers(false), { deep: true })
 watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
+watch(() => props.stations, () => drawMarkers(false), { deep: true })
 watch(pin, (value, previous) => {
   // Typed or reset coordinates move the view; a click or drag already shows the spot.
   const moved = !previous || !value || Math.abs(value.lat - previous.lat) > 0.01 || Math.abs(value.lng - previous.lng) > 0.01
@@ -391,6 +447,56 @@ defineExpose({
   stroke-linecap: round;
   fill: var(--ui-warning);
   fill-opacity: 0.05;
+}
+
+/* A WAQI station's area: its band's colour (set on the circle), thin and dashed; the selected
+   one thicker, still dashed so it never reads as a disaster's solid area. */
+.ra-radius-air {
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  fill-opacity: 0.06;
+}
+
+.ra-radius-air-active {
+  stroke-width: 2.5;
+  stroke-dasharray: 6 4;
+  fill-opacity: 0.15;
+}
+
+/* A WAQI station's dot, its AQI inside. */
+.ra-aqi {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ra-pin-air.ra-pin-active .ra-aqi {
+  box-shadow: 0 0 0 2px var(--ui-primary);
+  transform: scale(1.15);
+}
+
+/* A BMKG weather warning's area: blue and dashed; the selected one stronger. */
+.ra-area {
+  stroke: var(--ui-info);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  fill: var(--ui-info);
+  fill-opacity: 0.12;
+}
+
+.ra-area-active {
+  stroke-width: 3;
+  stroke-dasharray: none;
+  fill-opacity: 0.25;
 }
 
 .ra-measure {

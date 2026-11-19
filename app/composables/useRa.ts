@@ -66,7 +66,13 @@ export interface RaRatingTexts {
   action_plan: string | null
 }
 
-export interface RaRating extends RaRatingInputs, RaRatingTexts {
+/** The years a hazard's past occurrences were reviewed over, both included. Empty: the last 10. */
+export interface RaReviewYears {
+  review_from_year: number | null
+  review_to_year: number | null
+}
+
+export interface RaRating extends RaRatingInputs, RaRatingTexts, RaReviewYears {
   code: string
   result: RaHazardResult
   issues: RaIssue[]
@@ -315,6 +321,24 @@ export interface RaMapCircle extends RaPin {
   quake?: boolean
 }
 
+/** A WAQI air quality station: a dot with its AQI in its band's colour, and its area. */
+export interface RaMapStation extends RaPin {
+  id: number
+  label: string
+  aqi: number | null
+  band: RaWaqiBand | null
+  radiusM: number
+  active?: boolean
+}
+
+/** A polygon area on the map: a BMKG weather warning. Each polygon as [[lat, lon], ...]. */
+export interface RaMapArea {
+  id: string
+  label: string
+  polygons: [number, number][][]
+  active?: boolean
+}
+
 /** A pinned building or branch on the location map. */
 export interface RaPlace {
   id: number
@@ -442,7 +466,7 @@ export interface RaEarthquake {
   incidents: { id: number, ref_no: string, status: RaCrisisStatus }[]
 }
 
-/** The BMKG feed's status (RA configuration > Earthquakes). */
+/** The BMKG feed's status (Sites configuration > Earthquakes). */
 export interface RaBmkgStatus {
   enabled: boolean
   min_magnitude: number
@@ -506,7 +530,7 @@ export interface RaMapData {
   unpinned: Record<RaKind, number>
   crises: RaCrisisSummary[]
   can_declare: boolean
-  /** The types the user may declare (`ra.disaster.declare`, `ra.incident.declare`). */
+  /** The types the user may declare (`sites.disaster.declare`, `sites.incident.declare`). */
   declare_types?: RaCrisisType[]
 }
 
@@ -529,6 +553,60 @@ export interface RaMapSettings {
   tile_url: string
   attribution: string
   max_zoom: number
+  /** WAQI's air quality stations can be shown (the backend has a WAQI token). */
+  waqi_enabled: boolean
+}
+
+export type RaWaqiBand = 'good' | 'moderate' | 'sensitive' | 'unhealthy' | 'very_unhealthy' | 'hazardous'
+
+/** A WAQI station over the buildings (`GET /api/ra/waqi`), read live, never stored. */
+export interface RaWaqiStation {
+  id: number
+  name: string | null
+  latitude: number
+  longitude: number
+  /** Null when the station shows no reading. */
+  aqi: number | null
+  band: { code: RaWaqiBand, label: string } | null
+  measured_at: string | null
+  /** A building in its area is affected (its AQI is the limit or more). */
+  affected: boolean
+  /** The buildings in its area that go with it (their nearest station), the nearest first. */
+  places: { id: number, distance_km: number }[]
+}
+
+export interface RaWaqiReport {
+  enabled: boolean
+  radius_km: number
+  threshold: number
+  read_at: string
+  source: string
+  source_url: string
+  message: string | null
+  /** The worst first, those without a reading last. */
+  stations: RaWaqiStation[]
+  /** Each building in a station's area, the worst first. */
+  places: { location_id: number, station_id: number, distance_km: number, aqi: number, affected: boolean }[]
+}
+
+/** One WAQI station as it is now (`GET /api/ra/waqi/stations/{uid}`), never stored. */
+export interface RaWaqiStationDetail {
+  enabled: boolean
+  message: string | null
+  station: {
+    id: number
+    name: string | null
+    url: string | null
+    widget_city: string | null
+    latitude: number | null
+    longitude: number | null
+  } | null
+  aqi?: number | null
+  band?: { code: RaWaqiBand, label: string } | null
+  dominant?: string | null
+  pollutants?: { code: string, label: string, value: number }[]
+  read_at?: string | null
+  attributions?: { name: string, url: string | null }[]
 }
 
 export interface RaLocation extends RaLocationRef {
@@ -630,6 +708,8 @@ export interface RaAssessmentSummary {
   can_open?: boolean
   /** The final RA an Annual review renews. */
   renewal_of?: RaRenewalRef | null
+  /** Brought in by Administration › RA migration. */
+  migrated?: boolean
   /** Manage only. The user's part in it, as SCCA's My role. */
   my_role?: RaMyRole | null
   /** Manage only. What to do next, in a few words. */
@@ -670,6 +750,8 @@ export interface RaAssessment extends RaAssessmentFields, RaWorkflow {
   ratings: RaRating[]
   summary: RaSummary
   signoffs: RaSignoff[]
+  /** Brought in by Administration › RA migration, else null. */
+  migrated?: { at: string, approved_outside_on: string | null, workbook: RaAttachmentRef | null } | null
   is_complete: boolean
   calculated_at: string | null
   created_by: string | null
@@ -702,7 +784,7 @@ export interface RaPage<T> {
   pages: number
 }
 
-export type RaRatingUpdate = { code: string } & Partial<RaRatingInputs & RaRatingTexts>
+export type RaRatingUpdate = { code: string } & Partial<RaRatingInputs & RaRatingTexts & RaReviewYears>
 export type RaAssessmentUpdate = Partial<RaAssessmentFields> & RaTeamInput & { signoffs?: RaSignoffInput[] }
 export type RaAssessmentCreate = Partial<RaAssessmentFields> & RaTeamInput & {
   location_id: number
@@ -782,11 +864,11 @@ export function useRaKinds(level: 'access' | 'edit' | 'manage' = 'access') {
 }
 
 /** The kinds the Location module shows the user: every kind with its own permission
- *  (`location.access`), otherwise the RA sides they hold (`useRaKinds`). */
+ *  (`sites.access`), otherwise the RA sides they hold (`useRaKinds`). */
 export function useLocationKinds() {
   const { can } = useAuth()
   const raKinds = useRaKinds()
-  return computed(() => can('location.access') ? (Object.keys(RA_MODULES) as RaKind[]) : raKinds.value)
+  return computed(() => can('sites.access') ? (Object.keys(RA_MODULES) as RaKind[]) : raKinds.value)
 }
 
 /** Whether the user may open the RAs of a kind: the Location module shows RA references to
@@ -974,6 +1056,13 @@ export interface RaOutbreakReport {
   country: string
   hazard_code: string
   total: number
+  /** Items of the years asked for, all of them (the list stops at 200). */
+  matching: number
+  from_year: number | null
+  to_year: number | null
+  /** The years the items kept span. */
+  first_year: number | null
+  last_year: number | null
   items: { id: string, don_id: string | null, title: string, on: string, url: string }[]
   source: string
   source_url: string
@@ -1009,6 +1098,56 @@ export interface RaAirQualityReport {
   source_url: string
 }
 
+/** GET /api/ra/weather-warnings: BMKG's weather early warnings, active or the history. */
+export interface RaWeatherWarning {
+  id: string
+  code: string | null
+  event: string | null
+  headline: string | null
+  description: string | null
+  province: string | null
+  severity: string | null
+  urgency: string | null
+  certainty: string | null
+  sent_at: string | null
+  effective_at: string
+  expires_at: string
+  active: boolean
+  polygons: [number, number][][]
+  infographic_url: string | null
+  places: { id: number, code: string, kind: RaKind, name: string }[]
+}
+
+export interface RaWeatherReport {
+  status: 'active' | 'history'
+  items: RaWeatherWarning[]
+  matching: number
+  from_year: number | null
+  to_year: number | null
+  first_year: number | null
+  enabled: boolean
+  hazard_code: string
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  rows: number
+  over_places: number
+  active: number
+  source: string
+  source_url: string
+}
+
+/** GET /api/ra/air-quality/{id}/days: the daily PM2.5 at the place's nearest station. */
+export interface RaAirTrend {
+  location_id: number
+  station: string | null
+  distance_km: number | null
+  threshold: number
+  from_year: number
+  to_year: number
+  items: { day: string, value: number }[]
+}
+
 export function useRaCrises(query: MaybeRefOrGetter<{ type?: RaCrisisType, status?: RaCrisisStatus, decided?: 1, q?: string, page: number, per_page?: number }>) {
   return useFetch<RaPage<RaCrisisSummary>>(CRISES, {
     key: computed(() => `ra-crises-${JSON.stringify(toValue(query))}`),
@@ -1033,6 +1172,10 @@ export interface RaPastDisasters {
   years: number
   from: string
   to: string
+  from_year: number
+  to_year: number
+  /** The first year DIBI records are kept for. */
+  held_from: number | null
   regency: string | null
   province: string | null
   hazards: Record<string, { events: number, rating: RaRatingValue, last: string | null, kinds: string[] }>
@@ -1040,6 +1183,24 @@ export interface RaPastDisasters {
   outbreaks?: RaOutbreakSuggestion
   /** PM2.5 at the nearest OpenAQ station, for its hazard (H10). */
   air?: RaAirSuggestion
+  /** BMKG's weather warnings over the building, for its hazard (H06). */
+  weather?: RaWeatherHistory
+}
+
+export interface RaWeatherHistory {
+  hazard_code: string
+  enabled: boolean
+  polled_at: string | null
+  has_coordinates: boolean
+  from_year: number
+  to_year: number
+  /** The first warning kept. */
+  held_from: string | null
+  events: number
+  /** Days (WIB) with a warning over the building. */
+  days: number
+  last: string | null
+  items: { event: string | null, headline: string | null, effective_at: string, expires_at: string }[]
 }
 
 export interface RaOutbreakSuggestion {
@@ -1048,6 +1209,8 @@ export interface RaOutbreakSuggestion {
   synced_at: string | null
   country: string
   years: number
+  from_year: number
+  to_year: number
   from: string
   to: string
   events: number
@@ -1064,19 +1227,25 @@ export interface RaAirSuggestion {
   station: string | null
   distance_km: number | null
   threshold: number
+  from_year: number
+  to_year: number
   days: number
   unhealthy_days: number
   rating: RaRatingValue
   from: string | null
   to: string | null
+  /** The first day the station's averages are kept for. */
+  held_from: string | null
   worst: { value: number, on: string } | null
   latest: { value: number, on: string } | null
   error: string | null
 }
 
-export function useRaPastDisasters(locationId: MaybeRefOrGetter<number>) {
+/** Over the review years (`from`, `to`), or the last 10 years without them. */
+export function useRaPastDisasters(locationId: MaybeRefOrGetter<number>, years: MaybeRefOrGetter<{ from: number | null, to: number | null }> = { from: null, to: null }) {
   return useFetch<RaPastDisasters>(() => `/api/ra/locations/${toValue(locationId)}/past-disasters`, {
-    key: computed(() => `ra-past-disasters-${toValue(locationId)}`),
+    key: computed(() => `ra-past-disasters-${toValue(locationId)}-${toValue(years).from ?? ''}-${toValue(years).to ?? ''}`),
+    query: computed(() => ({ from: toValue(years).from ?? undefined, to: toValue(years).to ?? undefined })),
   })
 }
 
@@ -1103,8 +1272,6 @@ export const raCrisisApi = {
   remove: (id: number) => $fetch(`${CRISES}/${id}`, { method: 'DELETE' }),
   approve: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/approve`, { method: 'POST', body: { note } }),
   reject: (id: number, note: string) => $fetch<RaCrisis>(`${CRISES}/${id}/reject`, { method: 'POST', body: { note } }),
-  saveHazardTypes: (types: Record<string, RaCrisisType>) =>
-    $fetch<{ types: Record<string, RaCrisisType> }>('/api/admin/ra-config/hazard-types', { method: 'PUT', body: { types } }),
   savePlaybook: (code: string, steps: { phase: RaPlaybookPhase, text: string }[]) =>
     $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
@@ -1328,7 +1495,7 @@ export interface RaAssessmentRef {
 
 export type RaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
 
-/** A location with its RA in force (`approved`) and the RA being worked on (`open`). */
+/** A location with its current RA (`approved`) and the RA being worked on (`open`). */
 export interface RaMonitorLocation {
   location: RaLocationRef
   approved: RaAssessmentRef | null
@@ -1337,7 +1504,7 @@ export interface RaMonitorLocation {
   renewal_date: string | null
   days_left: number | null
   bucket: RaRenewalBucket | null
-  /** Who made the RA shown (the one in force, else the open one), as SCCA's Assessor. */
+  /** Who made the RA shown (the current one, else the open one), as SCCA's Assessor. */
   assessor: string | null
   /** That RA's LICOM. */
   licom?: string | null
@@ -1401,7 +1568,7 @@ export interface RaMonitoringFilters {
   region?: string
   level?: RaLevel | 'none'
   state?: 'approved' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none'
-  /** The reason of the building's RA in force or the one being worked on. */
+  /** The reason of the building's current RA or the one being worked on. */
   reason?: RaReason
   // Date range filters (assessment date)
   from?: string

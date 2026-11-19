@@ -6,7 +6,7 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 /**
  * Disaster (or Incident) › Monitoring: what is open and waiting now, the places it affects, and
  * for one year (`?year=`) how many were declared per month and per hazard. Which hazards are a
- * disaster or an incident is set in Administration › RA configuration › Disaster or incident.
+ * disaster or an incident is set in Administration › Sites configuration › Disaster or incident.
  */
 const props = defineProps<{ type: RaCrisisType }>()
 const t = computed(() => RA_CRISIS_TYPES[props.type])

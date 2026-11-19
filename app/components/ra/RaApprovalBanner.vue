@@ -4,7 +4,7 @@ import type { RaApprovalCan } from '~/composables/useRa'
 /**
  * Four-eyes approval of a building (a new one, or making it inactive) or of a declared
  * disaster or incident, like publishing an RA configuration version: one person asks, someone
- * else with ra.location.approve approves or rejects it with a reason. Shows where it stands and the
+ * else with sites.approve approves or rejects it with a reason. Shows where it stands and the
  * buttons the current user may use; the parent does the request and refreshes.
  */
 const props = defineProps<{

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Import from Excel is a dialog on Master building now: old links open it there.
-definePageMeta({ permission: 'location.master' })
+// Import from Excel is a dialog on RA HO and RA Branch › Manage now: old links open it there.
 const route = useRoute()
-await navigateTo({ path: MASTER_BUILDINGS_PATH, query: { ...route.query, import: route.query.kind === 'branch' ? 'branch' : 'head_office' } }, { replace: true })
+const kind: RaKind = route.query.kind === 'branch' || route.query.import === 'branch' ? 'branch' : 'head_office'
+await navigateTo({ path: raPath(kind, 'manage'), query: { import: '1' } }, { replace: true })
 </script>
 
 <template>
