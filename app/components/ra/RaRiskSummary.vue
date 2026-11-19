@@ -2,7 +2,7 @@
 import type { RaAssessment, RaFormula, RaRating } from '~/composables/useRa'
 
 /**
- * The Risk Summary tab: the Risk Summary note (the CIM follow-up), the Type of Hazard counted by
+ * The Risk Summary tab: the Risk Summary note (the CIM follow-up), the Type of hazard counted by
  * residual risk (High, Medium, Low, NA), each level opening to its hazards with their existing
  * mitigation measures, and the Risk Matrix as two tables, gross and residual side by side (RA Branch
  * rates one residual risk, so it has only that one). Text is left-aligned, numbers right.
@@ -105,7 +105,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
           Risk Summary
         </h2>
         <p class="text-sm text-muted">
-          The Type of Hazard by residual risk. Open a level to see its hazards and their existing mitigation measures.
+          The Type of hazard by residual risk. Open a level to see its hazards and their existing mitigation measures.
           <template v-if="unrated">
             {{ formatNumber(unrated, 0) }} {{ unrated === 1 ? 'hazard is' : 'hazards are' }} not rated yet.
           </template>
@@ -125,7 +125,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
                 scope="col"
                 class="px-4 py-2 text-right font-medium"
               >
-                Type of Hazard
+                Type of hazard
               </th>
               <template v-if="anyOpen">
                 <th
@@ -312,7 +312,7 @@ const matrixOpen = ref<Record<string, boolean>>({ gross: false, residual: false 
                     scope="col"
                     class="px-4 py-2 font-medium"
                   >
-                    Type of Hazard
+                    Type of hazard
                   </th>
                   <th
                     scope="col"

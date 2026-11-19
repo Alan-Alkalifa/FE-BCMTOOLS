@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
@@ -21,6 +21,7 @@ definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'
 
 const route = useRoute()
 const router = useRouter()
+const { can } = useAuth()
 const { data, status, error, refresh } = useRaMap()
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const crisisModal = useOverlay().create(RaCrisisModal)
@@ -98,7 +99,7 @@ async function declareFromQuake(quake: RaEarthquake) {
       source: list.source,
     },
   }).result
-  if (crisis) await navigateTo(crisisPath(crisis.id))
+  if (crisis) await navigateTo(crisisPath(crisis.id, crisis.type))
 }
 /** Zoom the map with the mouse wheel or trackpad (on by default here; the page still scrolls
  *  outside the map). */
@@ -149,7 +150,10 @@ function select(id: number) {
 }
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
-  if (variant === 'crisis') return navigateTo(crisisPath(Number(id)))
+  if (variant === 'crisis') {
+    const crisis = data.value?.crises.find((item) => item.id === Number(id))
+    return navigateTo(crisisPath(Number(id), crisis?.type))
+  }
   autoFit.value = false
   if (variant === 'quake') {
     const quake = quakes.value.find((item) => item.id === id)
@@ -229,7 +233,7 @@ const markers = computed<RaMapMarker[]>(() => [
     id: crisis.id,
     lat: crisis.latitude,
     lng: crisis.longitude,
-    label: `${crisis.status === 'pending' ? 'Pending approval: Disaster' : 'Disaster'} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
+    label: `${crisis.status === 'pending' ? 'Pending approval: ' : ''}${RA_CRISIS_TYPES[crisis.type].label} ${crisis.ref_no}: ${crisis.hazard.short_name}. Open its instructions.`,
     variant: 'crisis' as const,
     pending: crisis.status === 'pending',
   })),
@@ -268,10 +272,16 @@ const circles = computed(() => [
 
 const line = computed<[RaPin, RaPin] | null>(() => (from.value && to.value ? [pinOf(from.value), pinOf(to.value)] : null))
 
-async function declare(locationId?: number) {
-  const crisis = await crisisModal.open({ places: places.value, locationId: locationId ?? null }).result
+/** The crisis types the user may declare (`ra.disaster.declare`, `ra.incident.declare`), in `order`. */
+function declareTypes(order: RaCrisisType[]) {
+  const allowed = data.value?.declare_types ?? order
+  return order.filter((type) => allowed.includes(type))
+}
+
+async function declare(type: RaCrisisType, locationId?: number) {
+  const crisis = await crisisModal.open({ places: places.value, locationId: locationId ?? null, type }).result
   if (crisis) {
-    await navigateTo(crisisPath(crisis.id))
+    await navigateTo(crisisPath(crisis.id, crisis.type))
   }
 }
 
@@ -296,8 +306,8 @@ const unpinnedLinks = computed(() => {
   const unpinned = data.value?.unpinned
   if (!unpinned) return []
   return [
-    ...(unpinned.head_office ? [{ to: `${LOCATIONS_PATH}?type=head_office`, label: `${unpinned.head_office} ${unpinned.head_office === 1 ? 'building' : 'buildings'}` }] : []),
-    ...(unpinned.branch ? [{ to: `${LOCATIONS_PATH}?type=branch`, label: `${unpinned.branch} ${unpinned.branch === 1 ? 'branch' : 'branches'}` }] : []),
+    ...(unpinned.head_office ? [{ type: 'head_office', label: `${unpinned.head_office} ${unpinned.head_office === 1 ? 'building' : 'buildings'}` }] : []),
+    ...(unpinned.branch ? [{ type: 'branch', label: `${unpinned.branch} ${unpinned.branch === 1 ? 'branch' : 'branches'}` }] : []),
   ]
 })
 
@@ -307,7 +317,7 @@ watch(line, (pins) => {
 })
 
 function locationUrl(place: { id: number, kind: string }) {
-  return locationPath(place.id)
+  return masterBuildingPath(place.id)
 }
 
 function assessmentUrl(place: RaMapPlace) {
@@ -323,19 +333,17 @@ const canOpenRa = useCanOpenRa()
     :crumbs="[{ label: BUILDINGS_GROUP }, { label: 'Building map' }]"
   >
     <template #actions>
-      <UButton
-        :to="CRISES_PATH"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-history"
-        label="Disaster history"
-      />
-      <UButton
-        v-if="data?.can_declare"
-        icon="i-lucide-siren"
-        label="Declare Disaster"
-        @click="declare(selected?.id)"
-      />
+      <template v-if="data?.can_declare">
+        <UButton
+          v-for="type in declareTypes(['incident', 'disaster'])"
+          :key="type"
+          :color="type === 'disaster' ? 'primary' : 'neutral'"
+          :variant="type === 'disaster' ? 'solid' : 'outline'"
+          :icon="RA_CRISIS_TYPES[type].icon"
+          :label="`Declare ${RA_CRISIS_TYPES[type].label}`"
+          @click="declare(type, selected?.id)"
+        />
+      </template>
     </template>
 
     <SkeletonGroup
@@ -367,7 +375,7 @@ const canOpenRa = useCanOpenRa()
     <template v-else-if="data">
       <section
         v-if="data.crises.length"
-        aria-label="Open and pending disasters"
+        aria-label="Open and pending disasters and incidents"
         class="space-y-2"
       >
         <UAlert
@@ -381,7 +389,7 @@ const canOpenRa = useCanOpenRa()
         >
           <template #actions>
             <UButton
-              :to="crisisPath(crisis.id)"
+              :to="crisisPath(crisis.id, crisis.type)"
               color="neutral"
               variant="outline"
               trailing-icon="i-lucide-arrow-right"
@@ -461,11 +469,12 @@ const canOpenRa = useCanOpenRa()
             />
             <span>Not on the map yet (no pin): <template
               v-for="(item, index) in unpinnedLinks"
-              :key="item.to"
+              :key="item.type"
             ><template v-if="index"> and </template><NuxtLink
-              :to="item.to"
+              v-if="can('location.master')"
+              :to="{ path: MASTER_BUILDINGS_PATH, query: { type: item.type } }"
               class="text-primary hover:underline"
-            >{{ item.label }}</NuxtLink></template>. Set the pin on their Map tab.</span>
+            >{{ item.label }}</NuxtLink><template v-else>{{ item.label }}</template></template>. Set the pin on their Map tab.</span>
           </p>
         </UCard>
 
@@ -592,7 +601,7 @@ const canOpenRa = useCanOpenRa()
                 <span class="text-muted">Latest RA:</span>
                 <template v-if="selected.latest">
                   <NuxtLink
-                    v-if="canOpenRa(selected.kind)"
+                    v-if="canOpenRa(selected.kind, selected.latest)"
                     :to="assessmentUrl(selected)"
                     class="text-primary hover:underline"
                   >
@@ -623,15 +632,18 @@ const canOpenRa = useCanOpenRa()
                   label="Measure to here"
                   @click="measureTo(selected.id)"
                 />
-                <UButton
-                  v-if="data.can_declare"
-                  color="neutral"
-                  variant="outline"
-                  size="sm"
-                  icon="i-lucide-siren"
-                  label="Declare Disaster here"
-                  @click="declare(selected.id)"
-                />
+                <template v-if="data.can_declare">
+                  <UButton
+                    v-for="type in declareTypes(['disaster', 'incident'])"
+                    :key="type"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    :icon="RA_CRISIS_TYPES[type].icon"
+                    :label="`Declare ${RA_CRISIS_TYPES[type].label} here`"
+                    @click="declare(type, selected.id)"
+                  />
+                </template>
               </div>
               <div>
                 <div class="mb-2 flex items-center justify-between gap-2">
@@ -676,7 +688,10 @@ const canOpenRa = useCanOpenRa()
                 </p>
               </div>
             </div>
-            <template #footer>
+            <template
+              v-if="can('location.master')"
+              #footer
+            >
               <UButton
                 :to="locationUrl(selected)"
                 variant="link"

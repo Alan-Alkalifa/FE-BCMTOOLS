@@ -1,3 +1,5 @@
+import type { BiancaListItems, BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
+
 import type { BiancaStatus } from '~/utils/bianca'
 
 /** One workbook cell the upload reader or the completeness check names. */
@@ -96,8 +98,15 @@ export type BiancaHeader
   = { [K in typeof BIANCA_HEADER_TEXT[number]]: string | undefined }
     & { [K in typeof BIANCA_HEADER_BOOL[number]]: boolean | undefined }
     & { [K in typeof BIANCA_STAFF[number]]: number | undefined }
-    & { main_location_id: number | undefined, alt_location_id: number | undefined }
-    & { bcm_coordinator_id: number | undefined, bcm_alternate_id: number | undefined }
+    & {
+      main_location_id: number | undefined
+      alt_location_id: number | undefined
+      bcm_coordinator_id: number | undefined
+      bcm_alternate_id: number | undefined
+      personnel_counts: Record<string, number | undefined>
+      personnel_notes: Record<string, string | undefined>
+      signoff_users: Record<string, number | null>
+    }
 
 export interface BiancaSummary {
   id: number
@@ -115,6 +124,10 @@ export interface BiancaSummary {
 }
 
 export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, BiancaHeader {
+  config_version_id: number | null
+  config_version: string
+  approval_problems: string[]
+  signoffs: { role: string, user_id: number | null, name: string | null, status: string | null, decided_at: string | null }[]
   main_location: BiancaPlace | null
   /** The BCM Coordinator / Alternate as the user directory has them; null when typed. */
   bcm_coordinator_user: BiancaPerson | null
@@ -135,12 +148,21 @@ export interface BiancaPlace { id: number, code: string | null, name: string, la
 export interface BiancaApplication { id: number, code: string, name: string, label: string, category: string | null, rto: string | null, rpo: string | null }
 
 export interface BiancaLookups {
+  list_items?: BiancaListItems
+  signer_profiles?: Record<string, BiancaSigner>
+  config_version_id: number | null
+  config_version: string
+  personnel_grades: BiancaGrade[]
+  signoff_steps: BiancaStep[]
+  guides: Record<string, string>
+  score_alert: number
   periods: string[]
   suggested_mtd: string[]
-  expected_mtd: { value: string, category: string | null, hours: number | null }[]
+  expected_mtd: { value: string, category: string | null }[]
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
+  downstream_capacity?: string[]
   yes_no: string[]
   system_usage: string[]
   alt_site_strategies: string[]
@@ -209,7 +231,7 @@ export interface BiancaMainLocation {
   source: 'location' | 'occupants' | 'people' | null
 }
 
-export type BiancaInput = Partial<BiancaHeader> & Partial<BiancaOrg> & { functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[] }
+export type BiancaInput = Partial<BiancaHeader> & Partial<BiancaOrg> & { config_version_id?: number | null, functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[] }
 
 export function useBiancaAssessments(query: MaybeRefOrGetter<BiancaListQuery>) {
   return useFetch<BiancaPage<BiancaSummary>>('/api/bianca/assessments', {
@@ -223,8 +245,11 @@ export function useBiancaAssessment(id: MaybeRefOrGetter<number>) {
   })
 }
 
-export function useBiancaLookups() {
-  return useFetch<BiancaLookups>('/api/bianca/lookups', { key: 'bianca-lookups' })
+export function useBiancaLookups(assessmentId?: MaybeRefOrGetter<number | undefined>) {
+  return useFetch<BiancaLookups>('/api/bianca/lookups', {
+    key: computed(() => `bianca-lookups-${toValue(assessmentId) ?? 'active'}`),
+    query: computed(() => ({ assessment_id: toValue(assessmentId) })),
+  })
 }
 
 function upload(file: File) {
@@ -258,7 +283,7 @@ export const biancaApi = {
   people: (q: string, orgGroup?: string) => $fetch<{ items: BiancaPerson[] }>('/api/bianca/people', {
     query: { q: q || undefined, org_group: orgGroup || undefined },
   }),
-  calculate: (body: BiancaInput) => $fetch<BiancaPreview>('/api/bianca/calculate', { method: 'POST', body }),
+  calculate: (body: BiancaInput, assessmentId?: number) => $fetch<BiancaPreview>('/api/bianca/calculate', { method: 'POST', body, query: { assessment_id: assessmentId } }),
   create: (body: BiancaInput) => $fetch<BiancaAssessment>(BASE, { method: 'POST', body }),
   update: (id: number, body: BiancaInput) => $fetch<BiancaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
   remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),

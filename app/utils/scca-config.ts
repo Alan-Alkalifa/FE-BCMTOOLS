@@ -8,6 +8,7 @@
  * approval board, the audit log) use the configured titles.
  */
 import { reactive } from 'vue'
+import type { SccaDrConfig } from '~/utils/scca-dr'
 
 export const SCCA_LIST_NAMES = [
   'assessment_reason',
@@ -106,6 +107,8 @@ export interface SccaConfig {
   list_labels: Record<SccaListName, string>
   steps: SccaConfigStep[]
   rating_notes: SccaRatingNote[]
+  /** DR decision: settings, DR type catalogue and system characteristics (Lampiran 8-10). */
+  dr?: SccaDrConfig
 }
 
 /** Step titles and list labels from the configurations loaded so far (newest load wins). */

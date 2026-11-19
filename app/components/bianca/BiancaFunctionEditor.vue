@@ -89,7 +89,7 @@ const altSite = computed(() => {
   }
 })
 
-/** The choices of Master MTD, plus the value already chosen when it is no longer offered. */
+/** The choices of the BIA configuration, plus the value already chosen when it is no longer offered. */
 function withCurrent(items: readonly string[], value: string | null | undefined) {
   return value && !items.includes(value) ? [value, ...items] : [...items]
 }
@@ -190,6 +190,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
                   :items="lookups.scores"
                   size="sm"
                   class="w-full"
+                  :ui="fn.regulatory_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
                   :disabled="disabled"
                   :aria-label="`Regulatory score ${periods[i]}`"
                 />
@@ -216,6 +217,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
                   :items="lookups.scores"
                   size="sm"
                   class="w-full"
+                  :ui="fn.customer_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
                   :disabled="disabled"
                   :aria-label="`Customer score ${periods[i]}`"
                 />
@@ -237,6 +239,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       <BiancaField
         label="Suggested MTD"
         note="suggested_mtd"
+        :note-text="lookups.guides?.suggested_mtd || undefined"
         class="max-w-md"
       >
         <USelect
@@ -557,7 +560,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row[`${side.key}_capacity`]"
-                :items="lookups.upstream_capacity"
+                :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
                 class="w-full"
                 :disabled="disabled"
               />

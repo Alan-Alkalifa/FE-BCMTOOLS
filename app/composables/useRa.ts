@@ -20,8 +20,9 @@ export interface RaGuide {
   guidance: string
 }
 
-/** A sign-off step as RA configuration sets it: "Prepared by" signed by the "Location
- *  Disaster Coordinator (LIC)", in approval order. `role` repeats `code`. */
+/** A sign-off step as RA configuration sets it, in approval order, with a title (`label`,
+ *  "Prepared by Location Incident Coordinator (LIC)") and a short name (`title`, "LIC") like
+ *  SCCA's. `role` repeats `code`. */
 export interface RaSignoffStep {
   code: RaSignoffRole
   role?: RaSignoffRole
@@ -330,7 +331,7 @@ export interface RaMapPlace extends RaPlace {
   is_active?: boolean
   /** Active and approved (a deactivation waiting still counts): see raInService. */
   in_service?: boolean
-  latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null } | null
+  latest: { id: number, ref_no: string | null, period_year: number, status: RaStatus, highest_residual_level: RaLevel | null, can_open?: boolean } | null
   /** Where its four-eyes approval stands: a new building waiting (pending, register), a
    *  deactivation waiting (pending, deactivate), rejected or approved. */
   approval?: { status: 'pending' | 'approved' | 'rejected', action: 'register' | 'deactivate' | null } | null
@@ -346,6 +347,31 @@ export interface RaHazardRef {
 
 /** pending: declared, waiting for someone else's approval; rejected: not confirmed. */
 export type RaCrisisStatus = 'pending' | 'open' | 'closed' | 'rejected'
+
+/** Every hazard is a disaster or an incident (Administration › RA configuration › Disaster or
+ *  incident); each has its own menu: Monitoring, Manage, Approval. */
+export type RaCrisisType = 'disaster' | 'incident'
+
+/** GET /api/ra/hazard-types: each hazard's type and its default. */
+export interface RaHazardTypes {
+  items: (RaHazardRef & { type: RaCrisisType, default_type: RaCrisisType })[]
+  updated_at: string | null
+  updated_by: string | null
+  can_edit: boolean
+}
+
+/** Disaster (or Incident) › Monitoring, for one year. */
+export interface RaCrisisMonitoring {
+  type: RaCrisisType
+  year: number
+  years: number[]
+  counts: { total: number, pending: number, open: number, closed: number, rejected: number, open_now: number, pending_now: number }
+  affected_now: number
+  by_month: number[]
+  by_hazard: { code: string, hazard: RaHazardRef, total: number, pending: number, open: number, closed: number, rejected: number }[]
+  active: RaCrisisSummary[]
+  can_declare: boolean
+}
 
 /** What the current user can do with a pending approval (building or disaster). */
 export interface RaApprovalCan {
@@ -365,10 +391,12 @@ export interface RaPlaybookSteps {
   updated_by: string | null
 }
 
-export type RaPlaybookEntry = RaHazardRef & RaPlaybookSteps
+/** A hazard's guidebook steps, with its type (each type has its own guidebook). */
+export type RaPlaybookEntry = RaHazardRef & RaPlaybookSteps & { type: RaCrisisType }
 
 export interface RaCrisisSummary {
   id: number
+  type: RaCrisisType
   ref_no: string
   hazard_code: string
   hazard: RaHazardRef
@@ -445,6 +473,8 @@ export interface RaCrisisPlace {
     ref_no: string | null
     period_year: number
     status: RaStatus
+    /** The user may open it: a link, else plain text. */
+    can_open?: boolean
     rating: {
       gross_level: RaLevel | null
       residual_probability: number | null
@@ -476,9 +506,13 @@ export interface RaMapData {
   unpinned: Record<RaKind, number>
   crises: RaCrisisSummary[]
   can_declare: boolean
+  /** The types the user may declare (`ra.disaster.declare`, `ra.incident.declare`). */
+  declare_types?: RaCrisisType[]
 }
 
 export interface RaCrisisInput {
+  /** Declaring from the Disaster or Incident menu: the hazard must be of it. */
+  type?: RaCrisisType
   hazard_code?: string
   location_id?: number | null
   latitude?: number | null
@@ -592,6 +626,25 @@ export interface RaAssessmentSummary {
   renewal_date?: string | null
   created_by: string | null
   updated_at: string
+  /** The user may open it (its assessor, LICOM, signers, BCM, or a directorate view). */
+  can_open?: boolean
+  /** The final RA an Annual review renews. */
+  renewal_of?: RaRenewalRef | null
+  /** Manage only. The user's part in it, as SCCA's My role. */
+  my_role?: RaMyRole | null
+  /** Manage only. What to do next, in a few words. */
+  next_step?: string | null
+}
+
+/** assessor (its creator, the LIC), licom, or directorate (a generated annual review the
+ *  access scope shows read-only). */
+export type RaMyRole = 'assessor' | 'licom' | 'directorate'
+
+export interface RaRenewalRef {
+  id: number
+  ref_no: string | null
+  status: RaStatus
+  can_open: boolean
 }
 
 export interface RaAssessment extends RaAssessmentFields, RaWorkflow {
@@ -634,7 +687,8 @@ export interface RaListQuery {
   reason?: RaReason
   status?: RaStatus
   awaiting?: 'me'
-  /** Only the assessments the user created (Manage). */
+  /** Manage. The RAs the user is the assessor or LICOM of, and the generated annual reviews
+   *  their access scope opens. */
   mine?: '1'
   page: number
   per_page: number
@@ -655,6 +709,14 @@ export type RaAssessmentCreate = Partial<RaAssessmentFields> & RaTeamInput & {
   period_year: number
   assessment_date: string
   copy_from_id?: number | null
+}
+/** RA › New with the reason New building: the building and its profile, saved with the RA. */
+export type RaNewBuildingAssessmentCreate = Omit<RaAssessmentCreate, 'location_id' | 'copy_from_id' | 'reason'> & {
+  location: RaLocationInput
+  contacts: RaContact[]
+  occupants: Omit<RaOccupant, 'seq' | 'critical_rating'>[]
+  recovery_team: Record<string, string | number | null>[]
+  call_tree: Record<string, string | number | null>[]
 }
 export interface RaLocationInput {
   /** On create only. */
@@ -729,9 +791,12 @@ export function useLocationKinds() {
 
 /** Whether the user may open the RAs of a kind: the Location module shows RA references to
  *  people without RA access, as plain text. */
+/** Whether the user may open an RA. Its side's access, and the API's `can_open` when the
+ *  record carries it (its assessor, LICOM, signers and BCM, as SCCA's). */
 export function useCanOpenRa() {
   const { can } = useAuth()
-  return (kind: RaKind | string) => can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access')
+  return (kind: RaKind | string, record?: { can_open?: boolean } | null) =>
+    can(RA_MODULES[kind as RaKind]?.perm.access ?? 'ra.access') && record?.can_open !== false
 }
 
 /** Tile server for the maps, set per environment on the backend. */
@@ -901,11 +966,22 @@ export function useRaEarthquakes(days: MaybeRefOrGetter<number> = 7) {
   })
 }
 
-export function useRaCrises(query: MaybeRefOrGetter<{ status?: RaCrisisStatus, q?: string, page: number, per_page?: number }>) {
+export function useRaCrises(query: MaybeRefOrGetter<{ type?: RaCrisisType, status?: RaCrisisStatus, decided?: 1, q?: string, page: number, per_page?: number }>) {
   return useFetch<RaPage<RaCrisisSummary>>(CRISES, {
     key: computed(() => `ra-crises-${JSON.stringify(toValue(query))}`),
     query: computed(() => toValue(query)),
   })
+}
+
+export function useRaCrisisMonitoring(type: MaybeRefOrGetter<RaCrisisType>, year: MaybeRefOrGetter<number | undefined>) {
+  return useFetch<RaCrisisMonitoring>(`${CRISES}/monitoring`, {
+    key: computed(() => `ra-crisis-monitoring-${toValue(type)}-${toValue(year) ?? ''}`),
+    query: computed(() => ({ type: toValue(type), year: toValue(year) })),
+  })
+}
+
+export function useRaHazardTypes() {
+  return useFetch<RaHazardTypes>('/api/ra/hazard-types', { key: 'ra-hazard-types' })
 }
 
 export function useRaCrisis(id: MaybeRefOrGetter<number>) {
@@ -927,6 +1003,8 @@ export const raCrisisApi = {
   remove: (id: number) => $fetch(`${CRISES}/${id}`, { method: 'DELETE' }),
   approve: (id: number, note: string | null) => $fetch<RaCrisis>(`${CRISES}/${id}/approve`, { method: 'POST', body: { note } }),
   reject: (id: number, note: string) => $fetch<RaCrisis>(`${CRISES}/${id}/reject`, { method: 'POST', body: { note } }),
+  saveHazardTypes: (types: Record<string, RaCrisisType>) =>
+    $fetch<{ types: Record<string, RaCrisisType> }>('/api/admin/ra-config/hazard-types', { method: 'PUT', body: { types } }),
   savePlaybook: (code: string, steps: { phase: RaPlaybookPhase, text: string }[]) =>
     $fetch<RaPlaybookEntry>(`/api/ra/playbook/${code}`, { method: 'PUT', body: { steps } }),
 }
@@ -1033,7 +1111,7 @@ export interface RaImportOptions {
 }
 export interface RaImportResult {
   location: { id: number, code: string, name: string, kind: RaKind, created: boolean }
-  assessment: { id: number, ref_no: string, kind: RaKind } | null
+  assessment: { id: number, ref_no: string, kind: RaKind, can_open?: boolean } | null
   saved: Partial<Record<'contacts' | 'occupants' | 'recovery_team' | 'call_tree', number>>
   ratings: number
   warnings: RaImportWarning[]
@@ -1053,8 +1131,8 @@ export const raApi = {
   },
   createLocation: (body: RaLocationInput) => $fetch<RaLocationDetail>(LOCATIONS, { method: 'POST', body }),
   /** Renewals > Generate annual review for the last final RAs. */
-  generateRenewals: (assessmentIds: number[]) =>
-    $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds } }),
+  generateRenewals: (assessmentIds: number[], licomUserId: number) =>
+    $fetch<RaGenerateResult>('/api/ra/monitoring/renewals/generate', { method: 'POST', body: { assessment_ids: assessmentIds, licom_user_id: licomUserId } }),
   /** New assessment: the locations the access scope opens for a reason (`all` for BCM). */
   /** The buildings the access scope opens for an Annual review or a Structural change, and why
    *  a building can't be picked for it (`problems` by id, as SCCA's application lookup).
@@ -1084,6 +1162,8 @@ export const raApi = {
     $fetch<RaLocationDetail>(`${LOCATIONS}/${id}/call-tree`, { method: 'PUT', body: { entries } }),
   get: (id: number) => $fetch<RaAssessment>(`${BASE}/${id}`),
   create: (body: RaAssessmentCreate) => $fetch<RaAssessment>(BASE, { method: 'POST', body }),
+  createWithBuilding: (body: RaNewBuildingAssessmentCreate) =>
+    $fetch<RaAssessment>(`${BASE}/new-building`, { method: 'POST', body }),
   /** A draft on an older configuration version moves to the active one, as SCCA's. */
   acceptRevision: (id: number) => $fetch<RaAssessment>(`/api/ra/assessments/${id}/accept-revision`, { method: 'POST' }),
   moveVersion: (id: number) => $fetch<RaAssessment & { cleared: string[] }>(`/api/ra/assessments/${id}/move-version`, { method: 'POST' }),
@@ -1142,6 +1222,8 @@ export interface RaAssessmentRef {
   approved_at: string | null
   is_returned: boolean
   revision_state?: RaRevisionState | null
+  /** The user may open it: a link, else plain text. */
+  can_open?: boolean
 }
 
 export type RaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
@@ -1159,6 +1241,8 @@ export interface RaMonitorLocation {
   assessor: string | null
   /** That RA's LICOM. */
   licom?: string | null
+  /** The last final's LICOM, suggested by Generate annual review. */
+  licom_user_id?: number | null
   history: RaAssessmentRef[]
   /** Renewals only: the open RA's status, or `not_started`. */
   renewal_status?: RaStatus | 'not_started'
@@ -1255,6 +1339,8 @@ export interface RaOverview {
 export interface RaStepAverage {
   step: RaSignoffRole
   step_title: string
+  /** Its short name ("LIC"), as the chart names the step. */
+  step_short?: string | null
   approvals: number
   average_working_days: number | null
 }
@@ -1276,7 +1362,10 @@ export function useRaOverview(filters: MaybeRefOrGetter<RaMonitoringFilters>) {
 }
 
 export function useRaRenewals(query: Paged<RaMonitoringFilters>) {
-  return useRaList<RaMonitorLocation>('/api/ra/monitoring/renewals', query)
+  return useFetch<RaPage<RaMonitorLocation> & { counts?: Record<string, number>, contributor_levels?: string[] }>('/api/ra/monitoring/renewals', {
+    key: computed(() => `/api/ra/monitoring/renewals-${JSON.stringify(toValue(query))}`),
+    query: computed(() => toValue(query) as unknown as Record<string, unknown>),
+  })
 }
 
 export function useRaRegister(query: Paged<RaMonitoringFilters>) {

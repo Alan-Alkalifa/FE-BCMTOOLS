@@ -3,16 +3,16 @@ import type { RaApprovalCan } from '~/composables/useRa'
 
 /**
  * Four-eyes approval of a building (a new one, or making it inactive) or of a declared
- * disaster, like publishing an RA configuration version: one person asks, someone else with
- * ra.location.approve approves or rejects it with a reason. Shows where it stands and the
+ * disaster or incident, like publishing an RA configuration version: one person asks, someone
+ * else with ra.location.approve approves or rejects it with a reason. Shows where it stands and the
  * buttons the current user may use; the parent does the request and refreshes.
  */
 const props = defineProps<{
-  /** "building", "branch" or "disaster". */
+  /** "building", "branch", "disaster" or "incident". */
   noun: string
   /** pending / rejected (approved shows nothing, unless a decision note is worth showing). */
   status: 'pending' | 'approved' | 'rejected' | 'open' | 'closed'
-  /** register (a new building) or deactivate; null for a disaster. */
+  /** register (a new building) or deactivate; null for a disaster or incident. */
   action?: 'register' | 'deactivate' | null
   requestedBy: string | null
   requestedAt: string | null
@@ -31,17 +31,18 @@ const dialogs = useRaApprovalDialogs()
 const busy = ref<string | null>(null)
 const failure = ref<string | null>(null)
 
+const crisis = computed(() => props.noun === 'disaster' || props.noun === 'incident')
 const what = computed(() => (props.action === 'deactivate' ? `Making this ${props.noun} inactive` : `This ${props.noun}`))
 const asked = computed(() => {
   const when = props.requestedAt ? ` on ${formatDateTime(props.requestedAt)}` : ''
   if (props.action === 'deactivate') return `${props.requestedBy ?? 'Someone'} asked to make this ${props.noun} inactive${when}.`
-  if (props.noun === 'disaster') return `${props.requestedBy ?? 'Someone'} declared this disaster${when}.`
+  if (crisis.value) return `${props.requestedBy ?? 'Someone'} declared this ${props.noun}${when}.`
   return `${props.requestedBy ?? 'Someone'} added this ${props.noun}${when}.`
 })
 const waiting = computed(() => {
   if (props.can?.approve) return 'Please review the details, then approve or reject this request. A reason is required for a rejection.'
-  const until = props.noun === 'disaster'
-    ? 'Until then, the disaster is shown on the map as pending and cannot be updated or closed.'
+  const until = crisis.value
+    ? `Until then, the ${props.noun} is shown on the map as pending and cannot be updated or closed.`
     : props.action === 'deactivate'
       ? `The ${props.noun} remains active until the request is approved.`
       : 'Its risk assessments can be made and submitted in the meantime. While it waits, the building approver signs them too.'
@@ -124,7 +125,7 @@ async function onReject() {
       variant="subtle"
       icon="i-lucide-circle-x"
       :title="`Rejected by ${decidedBy ?? 'an approver'}${decidedAt ? ` on ${formatDateTime(decidedAt)}` : ''}.`"
-      :description="noun === 'disaster'
+      :description="crisis
         ? (note ?? undefined)
         : `${note ? `Reason: ${note}\n` : ''}Fix the ${noun} on its tabs, then submit it for approval again.`"
       :ui="{ description: 'whitespace-pre-line' }"

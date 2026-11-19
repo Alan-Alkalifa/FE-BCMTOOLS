@@ -9,8 +9,6 @@ const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 const ra = useRaModule()
 /** In sign-off or approved: shown, not edited. */
 const locked = computed(() => !props.assessment.can_edit)
-/** The location's pin, shown for reference; it is edited on the location's Map tab. */
-const locationPin = computed(() => raPin(props.assessment.location))
 const toast = useToast()
 const form = useTemplateRef('form')
 const dirty = useRaDirty()
@@ -182,26 +180,26 @@ async function onSubmit() {
 </script>
 
 <template>
-  <UForm
-    id="ra-form-details"
-    ref="form"
-    :schema="schema"
-    :state="state"
-    class="space-y-6"
-    @submit="onSubmit"
-  >
-    <UAlert
-      v-if="formError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Couldn't save the assessment"
-      :description="formError"
-      :ui="{ description: 'whitespace-pre-line' }"
-    />
+  <div class="space-y-6">
+    <UForm
+      id="ra-form-details"
+      ref="form"
+      :schema="schema"
+      :state="state"
+      class="space-y-6"
+      @submit="onSubmit"
+    >
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Couldn't save the assessment"
+        :description="formError"
+        :ui="{ description: 'whitespace-pre-line' }"
+      />
 
-    <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <div class="space-y-6">
+      <div class="grid items-start gap-6 lg:grid-cols-2">
         <UCard>
           <template #header>
             <h2 class="text-lg font-semibold">
@@ -209,7 +207,7 @@ async function onSubmit() {
             </h2>
           </template>
           <!-- As SCCA: the reason first (the select half width, its help the full row); the
-               other fields stay disabled until a reason is chosen. -->
+             other fields stay disabled until a reason is chosen. -->
           <UFormField
             label="Reason for assessment"
             name="reason"
@@ -315,80 +313,13 @@ async function onSubmit() {
           </div>
         </UCard>
       </div>
+    </UForm>
 
-      <UCard>
-        <template #header>
-          <h2 class="text-lg font-semibold">
-            {{ ra.location.single }}
-          </h2>
-        </template>
-        <div class="mb-4">
-          <RaMap
-            v-if="locationPin"
-            :markers="[{ id: assessment.location.id, label: assessment.location.name, level: assessment.summary.highest_residual_level ?? 'none', ...locationPin }]"
-            :label="`Map of ${assessment.location.name}`"
-            height-class="h-48"
-          />
-          <p
-            v-else
-            class="flex items-start gap-2 rounded-md bg-elevated p-3 text-sm text-muted"
-          >
-            <UIcon
-              name="i-lucide-map-pin-off"
-              class="mt-0.5 size-4 shrink-0"
-            />
-            <span>
-              No map pin yet.
-              <NuxtLink
-                :to="locationPath(assessment.location.id, 'map')"
-                class="text-primary hover:underline"
-              >Add it on the {{ ra.location.lower }}'s Map tab</NuxtLink>.
-            </span>
-          </p>
-        </div>
-        <dl class="space-y-3 text-sm">
-          <div>
-            <dt class="text-muted">
-              {{ ra.kind === 'branch' ? 'Branch' : 'Building' }}
-            </dt>
-            <dd class="font-medium text-highlighted">
-              {{ assessment.location.name }}
-            </dd>
-          </div>
-          <div v-if="ra.hasRegion">
-            <dt class="text-muted">
-              Region
-            </dt>
-            <dd>{{ assessment.location.region || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-muted">
-              Address
-            </dt>
-            <dd>{{ assessment.location.address || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-muted">
-              Formula version
-            </dt>
-            <dd>{{ assessment.formula_version }}</dd>
-          </div>
-        </dl>
-        <p class="mt-4 text-sm text-muted">
-          {{ ra.hasLcp
-            ? 'Emergency contacts, divisions, the recovery team and the call tree are kept on the building and shared by every RA cycle.'
-            : 'Emergency contacts are kept on the branch and shared by every RA cycle.' }}
-        </p>
-        <template #footer>
-          <UButton
-            :to="locationPath(assessment.location.id)"
-            variant="link"
-            trailing-icon="i-lucide-arrow-right"
-            :label="`Open ${ra.location.lower} profile`"
-            class="px-0"
-          />
-        </template>
-      </UCard>
-    </div>
-  </UForm>
+    <!-- Outside the form above: the building's tabs have forms of their own. -->
+    <RaBuildingSection
+      :location-id="assessment.location.id"
+      :assessment-id="assessment.id"
+      :editable="!locked"
+    />
+  </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FormError } from '@nuxt/ui'
 import { z } from 'zod'
 import type { RaLocationDetail, RaNetworkHead, RaOrgValues } from '~/composables/useRa'
 
@@ -24,10 +25,13 @@ const props = withDefaults(defineProps<{
   cancelTo?: string
   /** The type can't be changed (given by the link, or a saved building). */
   kindLocked?: boolean
+  /** Not saved here: the page collects the fields (`collect`) and saves them with the rest. */
+  draft?: boolean
 }>(), {
   location: undefined,
   cancelTo: undefined,
   kindLocked: false,
+  draft: false,
 })
 const emit = defineEmits<{ saved: [location: RaLocationDetail] }>()
 const kind = defineModel<RaKind | undefined>('kind')
@@ -210,25 +214,37 @@ watch(state, () => {
   if (dirty) dirty.value = JSON.stringify(state) !== snapshot.value
 }, { deep: true })
 
+function payload() {
+  const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, is_active: isActive, ...fields } = state
+  return blankToNull({
+    ...fields,
+    // Locked while a new building waits for approval: approving it makes it active.
+    ...(waitingApproval.value ? {} : { is_active: isActive }),
+    name: state.name.trim(),
+    // Cleared, the capacity is sent as null.
+    onsite_capacity: state.onsite_capacity ?? null,
+    // With the region directory, a branch sends its region and area: its Sub Directorate and
+    // Group follow them and its Directorate comes from there (the backend sets them). Without
+    // it, the Sub Directorate and Group are sent and the region and area follow them.
+    ...(orgLocked('sub_directorate') ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate, org_group: orgGroup }),
+    ...(orgLocked('directorate') ? {} : { directorate }),
+    // A branch's own words for its region; head office buildings have none.
+    ...(isBranch.value ? { region_description: regionDescription.trim() } : {}),
+  })
+}
+
+/** The new building's fields, or null when some need attention (the messages show). */
+async function collect() {
+  formError.value = null
+  if (!(await form.value?.validate({ silent: true }))) return null
+  return { ...payload(), kind: ra.value.kind }
+}
+defineExpose({ collect, state, setErrors: (errors: FormError[]) => form.value?.setErrors(errors) })
+
 async function onSubmit() {
   formError.value = null
   try {
-    const { region, area, directorate, sub_directorate: subDirectorate, org_group: orgGroup, region_description: regionDescription, is_active: isActive, ...fields } = state
-    const body = blankToNull({
-      ...fields,
-      // Locked while a new building waits for approval: approving it makes it active.
-      ...(waitingApproval.value ? {} : { is_active: isActive }),
-      name: state.name.trim(),
-      // Cleared, the capacity is sent as null.
-      onsite_capacity: state.onsite_capacity ?? null,
-      // With the region directory, a branch sends its region and area: its Sub Directorate and
-      // Group follow them and its Directorate comes from there (the backend sets them). Without
-      // it, the Sub Directorate and Group are sent and the region and area follow them.
-      ...(orgLocked('sub_directorate') ? { region: region.trim(), area: area.trim() } : { sub_directorate: subDirectorate, org_group: orgGroup }),
-      ...(orgLocked('directorate') ? {} : { directorate }),
-      // A branch's own words for its region; head office buildings have none.
-      ...(isBranch.value ? { region_description: regionDescription.trim() } : {}),
-    })
+    const body = payload()
     const saved = props.location
       ? await raApi.updateLocation(props.location.id, body)
       : await raApi.createLocation({ ...body, kind: ra.value.kind })
@@ -511,10 +527,13 @@ async function onSubmit() {
       </div>
     </div>
 
-    <div class="flex justify-end gap-2">
+    <div
+      v-if="!draft"
+      class="flex justify-end gap-2"
+    >
       <UButton
         v-if="!location"
-        :to="cancelTo ?? LOCATIONS_PATH"
+        :to="cancelTo ?? MASTER_BUILDINGS_PATH"
         color="neutral"
         variant="outline"
         label="Cancel"

@@ -17,12 +17,12 @@ export interface MasterDataEntry {
 
 export const MASTER_DATA: MasterDataEntry[] = [
   {
-    key: 'mtd',
-    title: 'Master MTD',
-    description: 'The MTD choices of the BIA: the Expected MTD of a business function (with its category) and the MTD of an upstream or downstream.',
-    icon: 'i-lucide-timer',
-    to: '/masterdata/mastermtd',
-    permission: ['masterdata.access', 'master.mtd.manage'],
+    key: 'bia-config',
+    title: 'BIA configuration',
+    description: 'The parameters of the BIA, versioned: Expected MTD with its business function category, upstream / downstream MTD, impact periods, personnel grades, the drop-down lists and the sign-off steps.',
+    icon: 'i-lucide-sliders-horizontal',
+    to: '/admin/bianca-config',
+    permission: ['bianca.config.view', 'bianca.config.manage'],
     usedBy: 'BIANCA',
   },
   {

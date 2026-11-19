@@ -5,7 +5,6 @@
 
 @theme static {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-
   /* CIMB red, built around the logo colours #ED3024 (500) and #790008 (900).
      Approximation pending confirmation by the CIMB Niaga brand team. */
   --color-cimb-50: #fef3f2;
@@ -46,7 +45,6 @@
   --ui-radius: 0.25rem;
   --ui-bg: var(--color-white);
   --ui-bg-muted: var(--ui-color-neutral-50);
-  
 }
 
 body {

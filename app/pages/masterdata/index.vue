@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Administration › Master data: the masters the user may open, one card each. */
-definePageMeta({ permission: ['masterdata.access', 'master.mtd.manage', 'location.master'] })
+definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'location.master'] })
 
 const { can } = useAuth()
 const masters = computed(() => MASTER_DATA.filter((entry) => can(...entry.permission)))

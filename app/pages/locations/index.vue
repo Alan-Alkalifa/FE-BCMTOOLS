@@ -1,7 +1,11 @@
 <script setup lang="ts">
-definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
+/** The Buildings register is in Administration › Master building now: old links open it there. */
+definePageMeta({
+  permission: 'location.master',
+  redirect: (to) => ({ path: '/masterdata/masterbuilding', query: to.query }),
+})
 </script>
 
 <template>
-  <RaLocationsPage />
+  <div />
 </template>

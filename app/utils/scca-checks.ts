@@ -22,7 +22,6 @@ const HEADER_FIELDS: [keyof SccaAssessment, string][] = [
   ['assessment_reason', 'Reason for assessment'],
   ['assessment_date', 'Assessment date'],
   ['application_owner', 'Application owner'],
-  ['contributor_id', 'Contributor (IT support)'],
   ['business_stakeholders', 'Business stakeholder'],
   ['country', 'Country'],
   ['vendor_name', 'Vendor'],
@@ -88,6 +87,10 @@ export function sccaMissing(assessment: SccaAssessment, config?: SccaConfig | nu
     }
   }
 
+  if (assessment.dr_decision?.status === 'needs_answer') {
+    missing.recovery.push('Answer the DR decision questions')
+  }
+
   if (assessment.override_type) {
     if (empty(assessment.override_category)) missing.result.push('New category')
     if (empty(assessment.justification)) missing.result.push('Justification')
@@ -141,5 +144,9 @@ export function sccaGaps(
     standards,
     config,
   })
+  if (config?.dr) {
+    const final = assessment.recovery_values.find((row) => row.kind === 'final')
+    gaps.recovery.push(...drGapMessages(config.dr, assessment.dr_decision, final?.rto, final?.dr_type))
+  }
   return gaps
 }

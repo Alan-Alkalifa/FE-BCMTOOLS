@@ -2,7 +2,7 @@
 import type { RaConfigVersion, RaHazardsInput } from '~/composables/useRaConfigAdmin'
 
 /**
- * The hazard groups and the Type of Hazard in each, in order. Codes are kept (disasters and the
+ * The hazard groups and the Type of hazard in each, in order. Codes are kept (disasters and the
  * disaster guidebook refer to them); a new hazard or group gets the next free code when saved;
  * a hazard left out is removed from this version only.
  */
@@ -63,10 +63,10 @@ function removeGroup(groupIndex: number) {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 class="font-semibold text-highlighted">
-            Hazard groups and Type of Hazard
+            Hazard groups and Type of hazard
           </h2>
           <p class="mt-1 max-w-3xl text-sm text-muted">
-            The hazards every assessment of this version rates, in order. The short name is the Type of Hazard shown in the tables; the full name is shown on the hazard's page.
+            The hazards every assessment of this version rates, in order. The short name is the Type of hazard shown in the tables; the full name is shown on the hazard's page.
           </p>
         </div>
         <div
@@ -156,8 +156,8 @@ function removeGroup(groupIndex: number) {
             <span class="pt-2 text-right text-sm text-muted tabular-nums">{{ numbers[groupIndex]?.[index] }}</span>
             <UInput
               v-model="hazard.short_name"
-              :aria-label="`Type of Hazard ${numbers[groupIndex]?.[index]}`"
-              placeholder="Type of Hazard"
+              :aria-label="`Type of hazard ${numbers[groupIndex]?.[index]}`"
+              placeholder="Type of hazard"
               class="w-full"
             />
             <UTextarea

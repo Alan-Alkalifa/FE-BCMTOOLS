@@ -1,6 +1,7 @@
 /** Administration > SCCA configuration: versions, the draft's edits, four-eyes publish, the
  * calculator, impact and diff, and the live default and fixed signers (picked on the Sign-off steps tab). */
 import type { SccaPreview } from '~/composables/useScca'
+import type { SccaDrConfig } from '~/utils/scca-dr'
 
 export interface SccaConfigVersionMeta {
   id: number
@@ -87,6 +88,8 @@ export const sccaConfigApi = {
     $fetch<SccaConfigVersion>(`${BASE}/${code}/steps`, { method: 'PUT', body: { steps } }),
   setFormula: (code: string, body: Partial<Pick<SccaConfig, 'weights' | 'thresholds' | 'matrix' | 'recovery_standards'>>) =>
     $fetch<SccaConfigVersion>(`${BASE}/${code}/formula`, { method: 'PUT', body }),
+  setDr: (code: string, dr: SccaDrConfig) =>
+    $fetch<SccaConfigVersion>(`${BASE}/${code}/dr`, { method: 'PUT', body: dr }),
   setNotes: (code: string, notes: SccaRatingNote[]) =>
     $fetch<SccaConfigVersion>(`${BASE}/${code}/notes`, { method: 'PUT', body: { notes } }),
   calculate: (code: string, ratings: Record<string, number>) =>

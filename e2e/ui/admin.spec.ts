@@ -19,9 +19,13 @@ const PERMISSIONS = [
   { code: 'admin.settings.mail', module: 'admin', description: 'Edit the SMTP settings and send a test email' },
   { code: 'admin.audit.view', module: 'admin', description: 'Read the sign-in, admin and email logs' },
   { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
-  { code: 'ra.crisis.declare', module: 'ra', description: 'Declare, update and close disasters on the location map' },
   { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
   { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the disaster guidebook' },
+  { code: 'ra.disaster.declare', module: 'location', description: 'Declare disasters' },
+  { code: 'ra.disaster.update', module: 'location', description: 'Update, close and reopen disasters' },
+  { code: 'ra.incident.declare', module: 'location', description: 'Declare incidents' },
+  { code: 'ra.incident.update', module: 'location', description: 'Update, close and reopen incidents' },
+  { code: 'ra.location.approve', module: 'location', description: 'Approve or reject new buildings, building deactivations and declared disasters and incidents requested by someone else' },
   { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
   { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
   { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
@@ -301,11 +305,27 @@ test('a role is given more permissions', async ({ page }) => {
   expect(save.body).toMatchObject({ name: 'Viewer', permissions: ['scca.access', 'scca.create'] })
 })
 
-test('RA permissions are their own group, between SCCA and Administration', async ({ page }) => {
+test('each role shows its code in the list and above its permissions', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/roles')
+  await expect(page.getByRole('button', { name: /^BCM Admin/ })).toContainText('bcm_admin', { timeout: 30_000 })
+  await expect(page.getByRole('button', { name: /^Administrator/ })).toContainText('administrator')
+  await page.getByRole('button', { name: /^Viewer/ }).click()
+  await expect(page.getByTestId('role-code')).toHaveText('viewer')
+})
+
+test('RA and Sites permissions are their own groups, between SCCA and Administration', async ({ page }) => {
   const { calls } = await mockAdmin(page)
   await page.goto('/admin/roles')
   await page.getByRole('button', { name: /^Viewer/ }).click({ timeout: 30_000 })
-  await expect(page.getByRole('heading', { level: 3 })).toHaveText(['SCCA', 'RA and RA Branch', 'Administration'])
+  await expect(page.getByRole('heading', { level: 3 })).toHaveText(['SCCA', 'RA and RA Branch', 'Sites', 'Administration'])
+  // Declaring and approving disasters and incidents are Sites permissions.
+  const sites = page.locator('section').filter({ has: page.getByRole('heading', { level: 3, name: 'Sites' }) })
+  await expect(sites.getByRole('checkbox', { name: 'Declare disasters' })).toBeVisible()
+  await expect(sites.getByRole('checkbox', { name: 'Update, close and reopen disasters' })).toBeVisible()
+  await expect(sites.getByRole('checkbox', { name: 'Declare incidents' })).toBeVisible()
+  await expect(sites.getByRole('checkbox', { name: 'Update, close and reopen incidents' })).toBeVisible()
+  await expect(sites.getByRole('checkbox', { name: /^Approve or reject new buildings/ })).toBeVisible()
   await page.getByRole('checkbox', { name: 'Create and edit RA locations and assessments; delete what you created' }).click()
   await page.getByRole('button', { name: 'Save role' }).click()
   await expect(page.getByText('Role saved', { exact: true })).toBeVisible()
@@ -333,7 +353,7 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
   const order = calls.find((call) => call.url === '/api/admin/menus/order')!.body as { items: { id: number }[] }
-  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 26, 28])
+  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 32, 34])
   await expect(page.getByRole('button', { name: 'Home is built in' })).toBeDisabled()
 })
 
@@ -461,7 +481,7 @@ test('RA activity shows every edit of a building, its profile, its RAs and disas
   await expect(table.getByText('2 hazards: H01, H03')).toBeVisible()
   await expect(table.getByText('Approvers reminded')).toBeVisible()
   await expect(table.getByText('BCM Tools', { exact: true })).toBeVisible()
-  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toHaveAttribute('href', '/locations/1')
+  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toHaveAttribute('href', '/admin/buildings/1')
   await expect(table.getByRole('row', { name: /Hazard ratings saved/ }).getByRole('link', { name: 'Menara Sentraya' })).toHaveAttribute('href', '/ra/manage/9')
 
   await page.getByLabel('Activity', { exact: true }).click()

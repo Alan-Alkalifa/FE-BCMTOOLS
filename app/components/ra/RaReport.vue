@@ -367,7 +367,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
                   Hazard group
                 </th>
                 <th class="min-w-48 px-2 py-2 print:min-w-[26mm]">
-                  Type of Hazard
+                  Type of hazard
                 </th>
                 <template v-if="!singleRisk">
                   <th class="px-2 py-2 text-right whitespace-nowrap">

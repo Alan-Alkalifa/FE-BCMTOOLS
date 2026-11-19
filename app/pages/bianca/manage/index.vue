@@ -73,7 +73,7 @@ function onImported(assessment: { id: number }) {
   <AppPage
     title="Manage BIA"
     icon="i-lucide-list-checks"
-    description="Your drafts: the business impact analyses you prepare, until you submit them. Submitted and final BIAs are in Monitoring; the ones you sign off are in Approval."
+    description="Your Group's BIA drafts, until you submit them. Submitted records become read-only. Assessment approval execution and Monitoring are delivered separately."
     :crumbs="[{ label: 'BIANCA' }, { label: 'Manage' }]"
   >
     <template #actions>

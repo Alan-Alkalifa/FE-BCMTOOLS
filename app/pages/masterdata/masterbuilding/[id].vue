@@ -1,9 +1,9 @@
 <script setup lang="ts">
-/** A building's page under Master data › Master building (the same page as Location ›
- *  Buildings › the building, with Master building's crumbs and links). */
+/** A building's page, under Administration › Master data › Master building (its only page:
+ *  old /locations/{id} and /admin/buildings/{id} links open it). */
 definePageMeta({ permission: ['location.master'] })
 </script>
 
 <template>
-  <RaLocationPage master />
+  <RaLocationPage />
 </template>

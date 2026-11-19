@@ -36,7 +36,8 @@ function resetOrg() {
   }
 }
 watch(lookups, resetOrg, { immediate: true })
-const templateUrl = computed(() => biancaTemplateUrl(draft.value ?? org.value))
+// A draft's own template carries its Group and its BIA configuration version.
+const templateUrl = computed(() => biancaTemplateUrl(org.value))
 const templateReady = computed(() => !!(draft.value?.org_group ?? org.value.org_group))
 
 watch(open, (value) => {
@@ -132,7 +133,7 @@ function where(problem: { sheet: string | null, cell: string | null }) {
             v-model="org"
           />
           <UButton
-            :to="templateUrl"
+            :to="draft ? `${BIANCA_TEMPLATE_URL}?assessment_id=${draft.id}` : templateUrl"
             external
             download
             color="neutral"

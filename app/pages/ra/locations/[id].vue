@@ -1,8 +1,8 @@
 <script setup lang="ts">
-/** Location profiles moved to /locations/{id}. */
+/** A building's page is in Administration › Master building now. */
 definePageMeta({
   permission: 'ra.access',
-  redirect: (to) => ({ path: `/locations/${String(to.params.id)}`, query: to.query }),
+  redirect: (to) => ({ path: `/masterdata/masterbuilding/${String(to.params.id)}`, query: to.query }),
 })
 </script>
 

@@ -15,7 +15,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { can } = useAuth()
 
-const TABS = ['versions', 'lists', 'questions', 'steps', 'formula', 'notes', 'reminders', 'access', 'changes'] as const
+const TABS = ['versions', 'lists', 'questions', 'steps', 'formula', 'dr', 'notes', 'reminders', 'access', 'changes'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>({
   get: () => {
@@ -32,6 +32,7 @@ const tabItems = computed(() => [
   { label: 'Questions and guides', value: 'questions', icon: 'i-lucide-list-checks', slot: 'questions' },
   { label: 'Sign-off steps', value: 'steps', icon: 'i-lucide-signature', slot: 'steps' },
   { label: 'Formula', value: 'formula', icon: 'i-lucide-calculator', slot: 'formula' },
+  { label: 'DR decision', value: 'dr', icon: 'i-lucide-shield-check', slot: 'dr' },
   { label: 'Rating notes', value: 'notes', icon: 'i-lucide-message-square-warning', slot: 'notes' },
   ...(can('scca.settings.manage')
     ? [{ label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring', slot: 'reminders' }]
@@ -268,6 +269,7 @@ async function discard() {
         :items="tabItems"
         variant="link"
         class="min-w-0"
+        :ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"
       >
         <template #versions>
           <AdminSccaConfigVersions
@@ -301,6 +303,13 @@ async function discard() {
         </template>
         <template #formula>
           <AdminSccaConfigFormula
+            class="mt-4"
+            :version="version"
+            @saved="onSaved"
+          />
+        </template>
+        <template #dr>
+          <AdminSccaConfigDrDecision
             class="mt-4"
             :version="version"
             @saved="onSaved"

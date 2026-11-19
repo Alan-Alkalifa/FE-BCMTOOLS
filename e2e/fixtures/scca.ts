@@ -90,11 +90,11 @@ export const FORMULA = {
 export const STANDARDS = {
   items: [
     // Critical sets the CIMBN block's values (read-only on the Recovery tab).
-    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%', rto_to_h: 2, uptime_min_pct: 99.5, rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: 100, dr_type: 'Hot DR' },
-    { category: 'Very Important', mtd: '(4 - 12 jam)', rto: '( 2 - 6 jam)', uptime: '99%' },
-    { category: 'Important', mtd: '(12 - 24 jam)', rto: '( 6 - 12 jam)', uptime: '98%' },
-    { category: 'Necessary', mtd: '(24 - 48 jam)', rto: '(12 - 24 jam)', uptime: '95% atau kurang' },
-    { category: 'Other', mtd: '( > 48 jam)', rto: '( > 24 jam)', uptime: 'Not applicable' },
+    { category: 'Critical', mtd: '(0 - 4 jam)', rto: '(0 - 2 jam)', uptime: '99.5%', mtd_to_h: 4, rto_to_h: 2, uptime_min_pct: 99.5, rpo: 'LST', ha: 'Yes (Prod)', dr_capacity: 100, dr_type: 'Hot DR' },
+    { category: 'Very Important', mtd: '(4 - 12 jam)', rto: '( 2 - 6 jam)', uptime: '99%', mtd_to_h: 12 },
+    { category: 'Important', mtd: '(12 - 24 jam)', rto: '( 6 - 12 jam)', uptime: '98%', mtd_to_h: 24 },
+    { category: 'Necessary', mtd: '(24 - 48 jam)', rto: '(12 - 24 jam)', uptime: '95% atau kurang', mtd_to_h: 48 },
+    { category: 'Other', mtd: '( > 48 jam)', rto: '( > 24 jam)', uptime: 'Not applicable', mtd_from_h: 48 },
   ],
 }
 
@@ -159,7 +159,7 @@ export function assessment(overrides: Record<string, unknown> = {}) {
     submitted_at: null,
     finalised_at: null,
     assessor_user: { id: 9, display_name: 'Test User', email: 'test@example.com', job_title: null, department: null },
-    // The contributor is the IT support (needed to submit).
+    // The contributor is the IT support (optional).
     contributor: { id: 2, display_name: 'IT Support', email: 'it@example.com', job_title: 'Engineer', department: 'IT' } as Record<string, unknown> | null,
     contributor_id: 2 as number | null,
     comments: [] as Record<string, unknown>[],
@@ -186,6 +186,12 @@ export function assessment(overrides: Record<string, unknown> = {}) {
     override_category: null,
     justification: null,
     cim_ref_no: null,
+    dr_alt_process: null as boolean | null,
+    dr_alt_process_note: null as string | null,
+    dr_business_accepts: null as boolean | null,
+    dr_accept_note: null as string | null,
+    dr_accepted_by: null as string | null,
+    dr_decision: null as Record<string, unknown> | null,
     answers: Object.entries(SAMPLE_RATINGS).map(([code, rating]) => ({
       code,
       rating,

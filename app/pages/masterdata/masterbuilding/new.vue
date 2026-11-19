@@ -5,5 +5,5 @@ definePageMeta({ permission: ['location.master'] })
 </script>
 
 <template>
-  <RaNewLocationPage master />
+  <RaNewLocationPage />
 </template>

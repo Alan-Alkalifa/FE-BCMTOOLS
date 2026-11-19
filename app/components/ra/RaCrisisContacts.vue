@@ -7,6 +7,7 @@ import type { RaCrisisPlace } from '~/composables/useRa'
  * contacts) and in its print view (`print`: plain text, nothing to click).
  */
 const props = defineProps<{ place: RaCrisisPlace, print?: boolean }>()
+const { can } = useAuth()
 
 const contacts = computed(() => RA_CONTACT_KINDS.flatMap((kind) => props.place.contacts
   .filter((contact) => contact.kind === kind.value)
@@ -98,9 +99,9 @@ const cellClass = 'px-3 py-2 align-top print:px-2 print:py-1'
         v-else
         class="mt-2 text-sm text-muted"
       >
-        None recorded.<template v-if="!print">
+        None recorded.<template v-if="!print && can('location.master')">
           <NuxtLink
-            :to="`${locationPath(place.location.id)}?tab=contacts`"
+            :to="masterBuildingPath(place.location.id, 'contacts')"
             class="text-primary hover:underline"
           >Add them</NuxtLink>.
         </template>
