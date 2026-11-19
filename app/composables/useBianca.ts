@@ -1,5 +1,6 @@
 import type { BiancaListItems, BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
 
+import type { BiancaEvent, BiancaSignoffRow } from '~/composables/useBiancaApproval'
 import type { BiancaStatus } from '~/utils/bianca'
 
 /** One workbook cell the upload reader or the completeness check names. */
@@ -101,6 +102,8 @@ export type BiancaHeader
     & {
       main_location_id: number | undefined
       alt_location_id: number | undefined
+      bcm_coordinator_id: number | undefined
+      bcm_alternate_id: number | undefined
       personnel_counts: Record<string, number | undefined>
       personnel_notes: Record<string, string | undefined>
       signoff_users: Record<string, number | null>
@@ -125,8 +128,16 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   config_version_id: number | null
   config_version: string
   approval_problems: string[]
-  signoffs: { role: string, user_id: number | null, name: string | null, status: string | null, decided_at: string | null }[]
+  signoffs: BiancaSignoffRow[]
+  events: BiancaEvent[]
+  submitted_at: string | null
+  finalised_at: string | null
+  /** The signed-in user signs the step the BIA waits on now. */
+  can_decide: boolean
   main_location: BiancaPlace | null
+  /** The BCM Coordinator / Alternate as the user directory has them; null when typed. */
+  bcm_coordinator_user: BiancaPerson | null
+  bcm_alternate_user: BiancaPerson | null
   alt_location: BiancaPlace | null
   total_staff: number
   loss_totals: number[]
@@ -153,7 +164,7 @@ export interface BiancaLookups {
   score_alert: number
   periods: string[]
   suggested_mtd: string[]
-  expected_mtd: { value: string, category: string }[]
+  expected_mtd: { value: string, category: string | null }[]
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
@@ -194,7 +205,39 @@ export interface BiancaListQuery {
 }
 
 /** What the API accepts: every field optional, `functions` replaces the whole list. */
-export type BiancaInput = Partial<BiancaHeader> & { config_version_id?: number | null, functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[] }
+/** Directorate > Sub Directorate > Group, picked from the organisation in the database. */
+export interface BiancaOrg {
+  directorate: string | undefined
+  sub_directorate: string | undefined
+  org_group: string | undefined
+}
+
+export interface BiancaOrgOptions {
+  directorates: string[]
+  sub_directorates: string[]
+  groups: string[]
+}
+
+/** Someone to pick as BCM Coordinator, with what the form fills from them. */
+export interface BiancaPerson {
+  id: number
+  name: string
+  nik: string | null
+  email: string | null
+  phone: string | null
+  job_title: string | null
+  org_group: string | null
+  label: string
+}
+
+export interface BiancaMainLocation {
+  location: BiancaPlace | null
+  floor: string | null
+  /** Where it was found: the location's own Group, the building's occupants, or the Group's people. */
+  source: 'location' | 'occupants' | 'people' | null
+}
+
+export type BiancaInput = Partial<BiancaHeader> & Partial<BiancaOrg> & { config_version_id?: number | null, functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[] }
 
 export function useBiancaAssessments(query: MaybeRefOrGetter<BiancaListQuery>) {
   return useFetch<BiancaPage<BiancaSummary>>('/api/bianca/assessments', {
@@ -225,9 +268,27 @@ const BASE = '/api/bianca/assessments'
 
 export const BIANCA_TEMPLATE_URL = '/api/bianca/imports/template'
 
+/** The template for a Group; without one, the signed-in user's own Group. */
+export function biancaTemplateUrl(org?: Partial<Record<keyof BiancaOrg, string | null | undefined>> | null) {
+  if (!org?.org_group || !org.directorate || !org.sub_directorate) return BIANCA_TEMPLATE_URL
+  const query = new URLSearchParams({
+    directorate: org.directorate,
+    sub_directorate: org.sub_directorate,
+    org_group: org.org_group,
+  })
+  return `${BIANCA_TEMPLATE_URL}?${query}`
+}
+
 export const biancaApi = {
   applications: (q: string) => $fetch<{ items: BiancaApplication[] }>('/api/bianca/applications', { query: { q } }),
   locations: (q: string) => $fetch<{ items: BiancaPlace[] }>('/api/bianca/locations', { query: { q } }),
+  orgOptions: (directorate?: string, subDirectorate?: string) => $fetch<BiancaOrgOptions>('/api/bianca/org-options', {
+    query: { directorate: directorate || undefined, sub_directorate: subDirectorate || undefined },
+  }),
+  mainLocation: (org: BiancaOrg) => $fetch<BiancaMainLocation>('/api/bianca/main-location', { query: { ...org } }),
+  people: (q: string, orgGroup?: string) => $fetch<{ items: BiancaPerson[] }>('/api/bianca/people', {
+    query: { q: q || undefined, org_group: orgGroup || undefined },
+  }),
   calculate: (body: BiancaInput, assessmentId?: number) => $fetch<BiancaPreview>('/api/bianca/calculate', { method: 'POST', body, query: { assessment_id: assessmentId } }),
   create: (body: BiancaInput) => $fetch<BiancaAssessment>(BASE, { method: 'POST', body }),
   update: (id: number, body: BiancaInput) => $fetch<BiancaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),

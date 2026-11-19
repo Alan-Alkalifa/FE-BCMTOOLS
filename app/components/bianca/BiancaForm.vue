@@ -4,8 +4,12 @@ import type {
   BiancaFunction,
   BiancaHeader,
   BiancaInput,
+  BiancaOrg,
+  BiancaPerson,
+  BiancaPlace,
   BiancaPreview,
 } from '~/composables/useBianca'
+import type { BiancaNoteKey } from '~/utils/biancaNotes'
 
 /**
  * The BIA on the web: Sign Off Page, RA Questionnaire, the business functions (Part 1 to 4) and
@@ -44,6 +48,8 @@ function blankHeader(): BiancaHeader {
   for (const name of BIANCA_STAFF) header[name] = undefined
   header.main_location_id = undefined
   header.alt_location_id = undefined
+  header.bcm_coordinator_id = undefined
+  header.bcm_alternate_id = undefined
   header.personnel_counts = {}
   header.personnel_notes = {}
   header.signoff_users = {}
@@ -51,6 +57,13 @@ function blankHeader(): BiancaHeader {
 }
 
 const header = reactive<BiancaHeader>(blankHeader())
+const org = ref<BiancaOrg>({ directorate: undefined, sub_directorate: undefined, org_group: undefined })
+/** How the main location reads in its picker, also when it was filled from the database. */
+const mainPlace = ref<BiancaPlace | null>(null)
+const mainHint = ref<{ text: string, color: 'muted' | 'warning' } | null>(null)
+type PersonKey = 'bcm_coordinator' | 'bcm_alternate'
+/** The picked users, as the directory has them (null: none, or typed before). */
+const persons = reactive<Record<PersonKey, BiancaPerson | null>>({ bcm_coordinator: null, bcm_alternate: null })
 const functions = ref<BiancaFunction[]>([])
 const selected = ref(0)
 const preview = ref<BiancaPreview | null>(null)
@@ -62,6 +75,14 @@ function hydrate(source: BiancaAssessment | null) {
       (header as Record<string, unknown>)[name] = nullToUndefined(source[name])
     }
     functions.value = nullToUndefined(structuredClone(toRaw(source.functions))) as BiancaFunction[]
+    org.value = {
+      directorate: source.directorate ?? undefined,
+      sub_directorate: source.sub_directorate ?? undefined,
+      org_group: source.org_group ?? undefined,
+    }
+    mainPlace.value = source.main_location
+    persons.bcm_coordinator = source.bcm_coordinator_user
+    persons.bcm_alternate = source.bcm_alternate_user
   } else if (!functions.value.length) {
     functions.value = [emptyBiancaFunction(lookups.value?.periods.length ?? 8)]
   }
@@ -71,14 +92,85 @@ function hydrate(source: BiancaAssessment | null) {
   })
 }
 hydrate(props.assessment ?? null)
-watch(lookups, () => {
-  if (!props.assessment && functions.value.length === 1 && !functions.value[0]!.name) {
-    functions.value = [emptyBiancaFunction(lookups.value?.periods.length ?? 8)]
-    nextTick(() => {
-      dirty.value = false
-    })
+/** A new BIA starts with the user's own Group and, from the database, where it works. */
+let started = false
+async function startNew() {
+  if (started || props.assessment || !lookups.value) return
+  started = true
+  if (functions.value.length === 1 && !functions.value[0]!.name) {
+    functions.value = [emptyBiancaFunction(lookups.value.periods.length)]
   }
-}, { once: true })
+  const own = lookups.value.organisation
+  if (!org.value.org_group && own.org_group) {
+    org.value = {
+      directorate: own.directorate ?? undefined,
+      sub_directorate: own.sub_directorate ?? undefined,
+      org_group: own.org_group ?? undefined,
+    }
+    await fillMainLocation(org.value)
+  }
+  nextTick(() => {
+    dirty.value = false
+  })
+}
+watch(lookups, startNew, { immediate: true })
+
+/** Main location (and its floor, when the building's occupants list has it) from the database. */
+async function fillMainLocation(picked: BiancaOrg) {
+  mainHint.value = null
+  try {
+    const found = await biancaApi.mainLocation(picked)
+    if (!found.location) {
+      // The location of the Group picked before doesn't belong to this one.
+      header.main_location_id = undefined
+      header.main_floor = undefined
+      mainPlace.value = null
+      mainHint.value = { text: `No location is known for ${picked.org_group} yet: pick it below.`, color: 'warning' }
+      return
+    }
+    mainPlace.value = found.location
+    header.main_location_id = found.location.id
+    if (found.floor) header.main_floor = found.floor
+    const from = {
+      location: 'the location registered to the Group',
+      occupants: 'the building\'s occupant list',
+      people: 'where most of the Group\'s people work',
+    }[found.source ?? 'location']
+    mainHint.value = { text: `Filled from ${from}. Change it if it's wrong.`, color: 'muted' }
+  } catch {
+    mainHint.value = { text: 'The main location couldn\'t be looked up: pick it below.', color: 'warning' }
+  }
+}
+
+function onOrgPicked(picked: BiancaOrg) {
+  fillMainLocation(picked)
+}
+
+/**
+ * The BCM Coordinator and Alternate are picked from the user directory. What the directory has
+ * (name, NIK, phone, email) is filled in and locked; only what it lacks is typed. The API applies
+ * the same rule when it saves.
+ */
+function onPerson(key: PersonKey, person: BiancaPerson | null) {
+  persons[key] = person
+  header[`${key}_id`] = person?.id
+  header[key] = person?.name
+  header[`${key}_nik`] = person?.nik ?? undefined
+  header[`${key}_phone`] = person?.phone ?? undefined
+  header[`${key}_email`] = person?.email ?? undefined
+}
+
+const PERSON_FIELDS = { nik: '_nik', phone: '_phone', email: '_email' } as const
+
+/** From the directory, so not typed: the person was picked and the directory has a value. */
+function locked(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
+  return !!persons[key]?.[field]
+}
+
+function personHelp(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
+  if (!persons[key]) return undefined
+  return locked(key, field) ? undefined : 'Not in the user directory: type it.'
+}
 
 const READ_ONLY = new Set(['category', 'within_suggested_mtd', 'daat_hours', 'daat_warnings', 'rpo_code', 'id', 'seq'])
 
@@ -102,7 +194,7 @@ function blankRow(row: object) {
 function toInput(): BiancaInput {
   const legacyFields = new Set<string>(BIANCA_STAFF)
   const raw = Object.fromEntries(Object.entries(toRaw(header)).filter(([name]) => !legacyFields.has(name)))
-  const body = clean({ ...raw, config_version_id: lookups.value?.config_version_id, functions: toRaw(functions.value) }) as BiancaInput
+  const body = clean({ ...raw, ...toRaw(org.value), config_version_id: lookups.value?.config_version_id, functions: toRaw(functions.value) }) as BiancaInput
   for (const fn of body.functions ?? []) {
     fn.it_dependencies = fn.it_dependencies.filter((row) => !blankRow(row))
     fn.dependencies = fn.dependencies.filter((row) => !blankRow(row))
@@ -121,7 +213,7 @@ function previewInput(): BiancaInput {
 
 let timer: ReturnType<typeof setTimeout> | undefined
 let previewSequence = 0
-watch([header, functions], () => {
+watch([header, org, functions], () => {
   dirty.value = true
   clearTimeout(timer)
   const sequence = ++previewSequence
@@ -145,7 +237,10 @@ onBeforeUnmount(() => clearTimeout(timer))
 
 const totalStaff = computed(() => Object.values(header.personnel_counts).reduce<number>((sum, count) => sum + (Number(count) || 0), 0))
 const grades = computed(() => lookups.value?.personnel_grades.filter((g) => g.active || (header.personnel_counts[g.code] ?? 0) > 0) ?? [])
-const organisation = computed(() => saved.value ?? lookups.value?.organisation ?? null)
+/** The workbook's note on a personnel grade, when it has one. */
+function gradeNote(code: string) {
+  return code in BIANCA_NOTES ? code as BiancaNoteKey : undefined
+}
 
 function addFunction() {
   if (!lookups.value || functions.value.length >= lookups.value.max_functions) return
@@ -389,44 +484,25 @@ const people = [
     >
       <UCard>
         <template #header>
-          <h2 class="text-sm font-semibold">
+          <h2 class="flex items-center gap-1.5 text-sm font-semibold">
             Section A · Group
+            <BiancaNote
+              note="group"
+              label="Section A"
+            />
           </h2>
         </template>
         <div class="space-y-4">
-          <div class="grid gap-4 sm:grid-cols-3">
-            <UFormField
-              label="Directorate"
-              help="From your profile"
-            >
-              <UInput
-                :model-value="organisation?.directorate ?? ''"
-                readonly
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Sub directorate"
-              help="From your profile"
-            >
-              <UInput
-                :model-value="organisation?.sub_directorate ?? ''"
-                readonly
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Group"
-              help="From your profile"
-            >
-              <UInput
-                :model-value="organisation?.org_group ?? ''"
-                readonly
-                class="w-full"
-              />
-            </UFormField>
-          </div>
-          <UFormField label="Group description">
+          <BiancaOrgPicker
+            v-model="org"
+            :disabled="!editable"
+            help="From the organisation in the system. Picking a Group fills the main location."
+            @picked="onOrgPicked"
+          />
+          <BiancaField
+            label="Group description"
+            note="group_description"
+          >
             <UTextarea
               v-model="header.group_description"
               class="w-full"
@@ -434,17 +510,28 @@ const people = [
               :maxlength="long"
               :disabled="!editable"
             />
-          </UFormField>
+          </BiancaField>
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Main location">
+            <BiancaField
+              label="Main location"
+              note="main_location"
+            >
               <BiancaPicker
                 v-model="header.main_location_id"
                 kind="locations"
-                :selected="saved?.main_location ?? null"
+                :selected="mainPlace"
                 :disabled="!editable"
                 aria-label="Main location"
+                @pick="mainHint = null"
               />
-            </UFormField>
+              <p
+                v-if="mainHint && editable"
+                class="mt-1 text-xs"
+                :class="mainHint.color === 'warning' ? 'text-warning' : 'text-muted'"
+              >
+                {{ mainHint.text }}
+              </p>
+            </BiancaField>
             <UFormField label="Main location floor">
               <UInput
                 v-model="header.main_floor"
@@ -453,7 +540,10 @@ const people = [
                 :disabled="!editable"
               />
             </UFormField>
-            <UFormField label="Alternate location">
+            <BiancaField
+              label="Alternate location"
+              note="alt_location"
+            >
               <BiancaPicker
                 v-model="header.alt_location_id"
                 kind="locations"
@@ -461,7 +551,7 @@ const people = [
                 :disabled="!editable"
                 aria-label="Alternate location"
               />
-            </UFormField>
+            </BiancaField>
             <UFormField label="Alternate location floor">
               <UInput
                 v-model="header.alt_floor"
@@ -471,7 +561,10 @@ const people = [
               />
             </UFormField>
           </div>
-          <UFormField label="Recovery strategy">
+          <BiancaField
+            label="Recovery strategy"
+            note="recovery_strategy"
+          >
             <UTextarea
               v-model="header.recovery_strategy"
               class="w-full"
@@ -479,7 +572,7 @@ const people = [
               :maxlength="long"
               :disabled="!editable"
             />
-          </UFormField>
+          </BiancaField>
         </div>
       </UCard>
 
@@ -493,37 +586,37 @@ const people = [
           </h2>
         </template>
         <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Name">
-            <UInput
-              v-model="header[person.key]"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.name"
+          <BiancaField
+            label="Name"
+            note="bcm_person"
+            class="sm:col-span-2"
+            :help="!header[`${person.key}_id`] && header[person.key]
+              ? 'Typed, not from the user directory. Pick the person to fill the rest from it.'
+              : 'Pick from the user directory; the people of the chosen Group come first.'"
+          >
+            <BiancaPersonPicker
+              v-model="header[`${person.key}_id`]"
+              :selected="persons[person.key]"
+              :typed-name="header[`${person.key}_id`] ? undefined : header[person.key]"
+              :group="org.org_group"
               :disabled="!editable"
+              :aria-label="person.title"
+              @pick="onPerson(person.key, $event)"
             />
-          </UFormField>
-          <UFormField label="NIK">
+          </BiancaField>
+          <UFormField
+            v-for="field in ([['nik', 'NIK'], ['phone', 'Phone'], ['email', 'Email']] as const)"
+            :key="field[0]"
+            :label="field[1]"
+            :help="personHelp(person.key, field[0])"
+          >
             <UInput
-              v-model="header[`${person.key}_nik`]"
+              v-model="header[`${person.key}${PERSON_FIELDS[field[0]]}`]"
+              :type="field[0] === 'email' ? 'email' : 'text'"
               class="w-full"
-              :maxlength="TEXT_LIMITS.medium"
-              :disabled="!editable"
-            />
-          </UFormField>
-          <UFormField label="Phone">
-            <UInput
-              v-model="header[`${person.key}_phone`]"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.medium"
-              :disabled="!editable"
-            />
-          </UFormField>
-          <UFormField label="Email">
-            <UInput
-              v-model="header[`${person.key}_email`]"
-              type="email"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.name"
-              :disabled="!editable"
+              :maxlength="field[0] === 'email' ? TEXT_LIMITS.name : TEXT_LIMITS.medium"
+              :disabled="!editable || locked(person.key, field[0])"
+              :trailing-icon="locked(person.key, field[0]) ? 'i-lucide-lock' : undefined"
             />
           </UFormField>
         </div>
@@ -537,7 +630,10 @@ const people = [
         </template>
         <div class="space-y-4">
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Does the risk assessment consider business continuity?">
+            <BiancaField
+              label="Does the risk assessment consider business continuity?"
+              note="ra_considers_bc"
+            >
               <USelect
                 :model-value="header.ra_considers_bc == null ? undefined : header.ra_considers_bc ? 'Yes' : 'No'"
                 :items="lookups.yes_no"
@@ -545,8 +641,11 @@ const people = [
                 :disabled="!editable"
                 @update:model-value="header.ra_considers_bc = $event === 'Yes'"
               />
-            </UFormField>
-            <UFormField label="Are the controls included in the risk assessment?">
+            </BiancaField>
+            <BiancaField
+              label="Are the controls included in the risk assessment?"
+              note="ra_controls_included"
+            >
               <USelect
                 :model-value="header.ra_controls_included == null ? undefined : header.ra_controls_included ? 'Yes' : 'No'"
                 :items="lookups.yes_no"
@@ -554,9 +653,12 @@ const people = [
                 :disabled="!editable"
                 @update:model-value="header.ra_controls_included = $event === 'Yes'"
               />
-            </UFormField>
+            </BiancaField>
           </div>
-          <UFormField label="Risk assessment tools">
+          <BiancaField
+            label="Risk assessment tools"
+            note="ra_tools"
+          >
             <UTextarea
               v-model="header.ra_tools"
               class="w-full"
@@ -564,9 +666,10 @@ const people = [
               :maxlength="long"
               :disabled="!editable"
             />
-          </UFormField>
-          <UFormField
+          </BiancaField>
+          <BiancaField
             label="Justification"
+            note="ra_justification"
             help="Needed when neither answer above is Yes."
           >
             <UTextarea
@@ -576,7 +679,7 @@ const people = [
               :maxlength="long"
               :disabled="!editable"
             />
-          </UFormField>
+          </BiancaField>
         </div>
       </UCard>
     </div>
@@ -590,10 +693,11 @@ const people = [
       </template>
       <div class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <UFormField
+          <BiancaField
             v-for="grade in grades"
             :key="grade.code"
             :label="biancaGradeLabel(grade)"
+            :note="gradeNote(grade.code)"
           >
             <UInput
               v-model.number="header.personnel_counts[grade.code]"
@@ -602,12 +706,13 @@ const people = [
               class="w-full"
               :disabled="!editable"
             />
-          </UFormField>
+          </BiancaField>
         </div>
-        <UFormField
+        <BiancaField
           v-for="grade in grades.filter(g => g.requires_note)"
           :key="grade.code"
           :label="`${grade.label}: please specify`"
+          :note="gradeNote(grade.code)"
           class="max-w-md"
         >
           <UInput
@@ -616,13 +721,19 @@ const people = [
             :maxlength="TEXT_LIMITS.name"
             :disabled="!editable"
           />
-        </UFormField>
+        </BiancaField>
         <p class="text-sm">
           <span class="font-medium">Total staff:</span> <span class="tabular-nums">{{ totalStaff }}</span>
           <span class="ms-1 text-muted">(configured categories · {{ lookups.config_version }})</span>
+          <BiancaNote
+            note="staff_total"
+            label="Total staff"
+            class="ms-1 align-middle"
+          />
         </p>
-        <UFormField
+        <BiancaField
           label="Is the Business Continuity Risk Assessment of the location done?"
+          note="ra_completed"
           class="max-w-md"
         >
           <USelect
@@ -632,7 +743,7 @@ const people = [
             :disabled="!editable"
             @update:model-value="header.ra_completed = $event === 'Yes'"
           />
-        </UFormField>
+        </BiancaField>
       </div>
     </UCard>
 
@@ -773,8 +884,26 @@ const people = [
             @update:model-value="header.signoff_users[step.code] = $event ?? null"
           />
         </UFormField>
-        <p class="text-sm text-muted">
-          This release configures and assigns the approval template. Assessment approve/reject execution is not available yet.
+        <template v-if="saved?.signoffs?.length">
+          <USeparator />
+          <h3 class="text-sm font-semibold">
+            Where the sign-off stands
+          </h3>
+          <BiancaSignoffSteps :steps="saved.signoffs" />
+          <UButton
+            v-if="saved.status === 'in_approval'"
+            :to="biancaApprovalPath(saved.id)"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-badge-check"
+            :label="saved.can_decide ? 'Open it in Approval to decide' : 'Open it in Approval'"
+          />
+        </template>
+        <p
+          v-else
+          class="text-sm text-muted"
+        >
+          After Submit, each signer approves the BIA in turn (BIANCA > Approval), or returns it to you for changes.
         </p>
       </div>
     </UCard>

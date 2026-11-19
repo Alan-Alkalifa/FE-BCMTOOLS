@@ -69,6 +69,32 @@ const sides = [
   { key: 'down', label: 'Downstream' },
 ] as const
 const long = TEXT_LIMITS.long
+
+/** Part 1's rule for the Suggested MTD, worked out from the impact typed so far. */
+const ruleMtd = computed(() => biancaSuggestedMtd(fn.value, {
+  suggested: props.lookups.suggested_mtd,
+  lossAlert: props.lookups.loss_alert_idr,
+}))
+
+/** Part 3: the alternate site strategies the workbook recommends for the function's category. */
+const altSite = computed(() => {
+  const category = props.preview?.category
+  const recommended = category ? BIANCA_ALT_SITE_BY_CATEGORY[category] : undefined
+  if (!category || !recommended) return null
+  const chosen = fn.value.alt_site_strategy
+  return {
+    category,
+    strategies: recommended.strategies,
+    off: !!chosen && !recommended.strategies.includes(chosen),
+  }
+})
+
+/** The choices of the BIA configuration, plus the value already chosen when it is no longer offered. */
+function withCurrent(items: readonly string[], value: string | null | undefined) {
+  return value && !items.includes(value) ? [value, ...items] : [...items]
+}
+
+const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2a', 'p3'].includes(value)
 </script>
 
 <template>
@@ -81,6 +107,15 @@ const long = TEXT_LIMITS.long
       size="sm"
       class="overflow-x-auto"
     />
+    <div
+      v-if="hasReference(part)"
+      class="-mt-2 flex justify-end"
+    >
+      <BiancaReference
+        :part="part"
+        :category-by-mtd="lookups.expected_mtd"
+      />
+    </div>
 
     <!-- Part 1 -->
     <section
@@ -88,7 +123,7 @@ const long = TEXT_LIMITS.long
       class="space-y-4"
     >
       <p class="text-sm text-muted">
-        Cumulative financial loss (IDR) and the regulatory and customer service scores (1–3) if this function is down, for each period.
+        Impact if this function STOPS TOTALLY, from the point of disruption to the end of week 4: the cumulative financial loss (IDR) and the regulatory and customer service scores (1–3) for each period.
       </p>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[56rem] text-sm">
@@ -109,7 +144,13 @@ const long = TEXT_LIMITS.long
           <tbody>
             <tr>
               <th class="py-1 pe-2 text-left font-medium">
-                Cumulative financial loss (IDR)
+                <span class="inline-flex items-center gap-1.5">
+                  Cumulative financial loss (IDR)
+                  <BiancaNote
+                    note="loss"
+                    label="Cumulative financial loss (IDR)"
+                  />
+                </span>
               </th>
               <td
                 v-for="(_, i) in periods"
@@ -130,7 +171,13 @@ const long = TEXT_LIMITS.long
             </tr>
             <tr>
               <th class="py-1 pe-2 text-left font-medium">
-                Regulatory score
+                <span class="inline-flex items-center gap-1.5">
+                  Regulatory score
+                  <BiancaNote
+                    note="regulatory_score"
+                    label="Regulatory score"
+                  />
+                </span>
               </th>
               <td
                 v-for="(_, i) in periods"
@@ -151,7 +198,13 @@ const long = TEXT_LIMITS.long
             </tr>
             <tr>
               <th class="py-1 pe-2 text-left font-medium">
-                Customer service score
+                <span class="inline-flex items-center gap-1.5">
+                  Customer service score
+                  <BiancaNote
+                    note="customer_score"
+                    label="Customer service score"
+                  />
+                </span>
               </th>
               <td
                 v-for="(_, i) in periods"
@@ -183,18 +236,37 @@ const long = TEXT_LIMITS.long
         />
         A loss above IDR {{ formatIdr(lookups.loss_alert_idr) }} is highlighted in the workbook.
       </p>
-      <UFormField
+      <BiancaField
         label="Suggested MTD"
-        :help="lookups.guides.suggested_mtd"
-        class="max-w-xs"
+        note="suggested_mtd"
+        :note-text="lookups.guides?.suggested_mtd || undefined"
+        class="max-w-md"
       >
         <USelect
           v-model="fn.suggested_mtd"
           :items="lookups.suggested_mtd"
-          class="w-full"
+          class="w-full max-w-xs"
           :disabled="disabled"
         />
-      </UFormField>
+        <template #help>
+          <span v-if="!ruleMtd">The maximum tolerable downtime suggested by the impact above.</span>
+          <span v-else-if="ruleMtd === fn.suggested_mtd">Matches the workbook's rule for the impact above.</span>
+          <span
+            v-else
+            class="inline-flex flex-wrap items-center gap-x-2"
+          >
+            By the workbook's rule, the impact above suggests <strong class="text-default">{{ ruleMtd }}</strong>.
+            <UButton
+              v-if="!disabled"
+              size="xs"
+              variant="link"
+              label="Use it"
+              class="px-0"
+              @click="fn.suggested_mtd = ruleMtd"
+            />
+          </span>
+        </template>
+      </BiancaField>
     </section>
 
     <!-- Part 2a -->
@@ -203,18 +275,19 @@ const long = TEXT_LIMITS.long
       class="space-y-4"
     >
       <div class="flex flex-wrap items-end gap-4">
-        <UFormField
+        <BiancaField
           label="Expected MTD"
+          note="expected_mtd"
           help="Should be equal to or shorter than the Suggested MTD."
           class="w-56"
         >
           <USelect
             v-model="fn.expected_mtd"
-            :items="lookups.expected_mtd.map(item => item.value)"
+            :items="withCurrent(lookups.expected_mtd.map(item => item.value), fn.expected_mtd)"
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
+        </BiancaField>
         <div class="pb-2">
           <StatusBadge
             v-if="preview?.category"
@@ -255,7 +328,10 @@ const long = TEXT_LIMITS.long
           </div>
         </template>
         <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Kind of system">
+          <BiancaField
+            label="Kind of system"
+            note="it_system"
+          >
             <USelect
               :model-value="modeOf(row)"
               :items="modes"
@@ -263,7 +339,7 @@ const long = TEXT_LIMITS.long
               :disabled="disabled"
               @update:model-value="setMode(row, $event as Mode)"
             />
-          </UFormField>
+          </BiancaField>
           <UFormField
             v-if="modeOf(row) === 'master'"
             label="IT application system"
@@ -292,8 +368,9 @@ const long = TEXT_LIMITS.long
 
         <template v-if="modeOf(row) !== 'na'">
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <UFormField
+            <BiancaField
               label="RTO"
+              note="rto"
               :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
             >
               <UInput
@@ -304,9 +381,10 @@ const long = TEXT_LIMITS.long
                 :disabled="disabled"
                 placeholder="e.g. 6 hrs"
               />
-            </UFormField>
-            <UFormField
+            </BiancaField>
+            <BiancaField
               label="RPO"
+              note="rpo"
               :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
             >
               <UInput
@@ -317,16 +395,22 @@ const long = TEXT_LIMITS.long
                 :disabled="disabled"
                 placeholder="LDB, LST, LSB or NA"
               />
-            </UFormField>
-            <UFormField label="Workaround available">
+            </BiancaField>
+            <BiancaField
+              label="Workaround available"
+              note="workaround"
+            >
               <USelect
                 v-model="row.workaround"
                 :items="lookups.yes_no"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="Time to clear backlog (hours)">
+            </BiancaField>
+            <BiancaField
+              label="Time to clear backlog (hours)"
+              note="backlog"
+            >
               <UInput
                 v-model.number="row.backlog_hours"
                 type="number"
@@ -334,19 +418,23 @@ const long = TEXT_LIMITS.long
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
+            </BiancaField>
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="System usage">
+            <BiancaField
+              label="System usage"
+              note="system_usage"
+            >
               <USelect
                 v-model="row.system_usage"
                 :items="lookups.system_usage"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField
+            </BiancaField>
+            <BiancaField
               label="Workaround critical gaps"
+              note="gaps"
               :help="daat(index)?.gaps_required ? 'Required: RTO is longer than the MTD, there is no workaround and the system is a full dependency.' : 'Needed only if RTO > MTD, no workaround and full dependency.'"
               :error="daat(index)?.gaps_required && !row.gaps ? 'Required' : undefined"
             >
@@ -357,14 +445,17 @@ const long = TEXT_LIMITS.long
                 :maxlength="long"
                 :disabled="disabled"
               />
-            </UFormField>
+            </BiancaField>
           </div>
           <div
             v-if="daat(index)"
             class="rounded-md bg-elevated/50 p-3 text-sm"
           >
-            <p>
-              <span class="font-medium">DAAT:</span>
+            <p class="flex flex-wrap items-center gap-x-1">
+              <span class="inline-flex items-center gap-1 font-medium">DAAT <BiancaNote
+                note="daat"
+                label="DAAT"
+              />:</span>
               <span :class="[nonNumeric, (daat(index)?.daat_hours ?? 0) < 0 ? 'font-semibold text-error' : '']">
                 {{ daat(index)?.daat_hours == null ? '—' : `${daat(index)?.daat_hours} hours` }}
               </span>
@@ -412,8 +503,9 @@ const long = TEXT_LIMITS.long
       <p class="text-sm text-muted">
         Internal and external critical dependencies. Write NA in the name when there is none.
       </p>
-      <UFormField
+      <BiancaField
         label="Function planned capacity"
+        note="planned_capacity"
         class="max-w-xs"
       >
         <USelect
@@ -422,7 +514,7 @@ const long = TEXT_LIMITS.long
           class="w-full"
           :disabled="disabled"
         />
-      </UFormField>
+      </BiancaField>
       <UCard
         v-for="(row, index) in fn.dependencies"
         :key="index"
@@ -451,54 +543,72 @@ const long = TEXT_LIMITS.long
             {{ side.label }}
           </h4>
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <UFormField label="Name">
+            <BiancaField
+              label="Name"
+              :note="side.key === 'up' ? 'upstream' : 'downstream'"
+            >
               <UInput
                 v-model="row[`${side.key}_name`]"
                 class="w-full"
                 :maxlength="TEXT_LIMITS.name"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="Planned capacity">
+            </BiancaField>
+            <BiancaField
+              label="Planned capacity"
+              note="dependency_capacity"
+            >
               <USelect
                 v-model="row[`${side.key}_capacity`]"
                 :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="MTD">
+            </BiancaField>
+            <BiancaField
+              label="MTD"
+              note="dependency_mtd"
+            >
               <USelect
                 v-model="row[`${side.key}_mtd`]"
-                :items="lookups.dependency_mtd"
+                :items="withCurrent(lookups.dependency_mtd, row[`${side.key}_mtd`])"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="SLA">
+            </BiancaField>
+            <BiancaField
+              label="SLA"
+              note="sla"
+            >
               <UInput
                 v-model="row[`${side.key}_sla`]"
                 class="w-full"
                 :maxlength="TEXT_LIMITS.medium"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="Outsourced">
+            </BiancaField>
+            <BiancaField
+              label="Outsourced"
+              note="outsourced"
+            >
               <USelect
                 v-model="row[`${side.key}_outsourced`]"
                 :items="lookups.yes_no"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
-            <UFormField label="Material">
+            </BiancaField>
+            <BiancaField
+              label="Material"
+              note="material"
+            >
               <USelect
                 v-model="row[`${side.key}_material`]"
                 :items="lookups.yes_no"
                 class="w-full"
                 :disabled="disabled"
               />
-            </UFormField>
+            </BiancaField>
           </div>
         </div>
       </UCard>
@@ -518,7 +628,10 @@ const long = TEXT_LIMITS.long
       class="space-y-4"
     >
       <div class="grid gap-4 sm:grid-cols-3">
-        <UFormField label="Total staff">
+        <BiancaField
+          label="Total staff"
+          note="total_staff"
+        >
           <UInput
             v-model.number="fn.total_staff"
             type="number"
@@ -526,8 +639,11 @@ const long = TEXT_LIMITS.long
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
-        <UFormField label="Staff required">
+        </BiancaField>
+        <BiancaField
+          label="Staff required"
+          note="staff_required"
+        >
           <UInput
             v-model.number="fn.staff_required"
             type="number"
@@ -535,17 +651,23 @@ const long = TEXT_LIMITS.long
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
-        <UFormField label="Recovery level">
+        </BiancaField>
+        <BiancaField
+          label="Recovery level"
+          note="recovery_level"
+        >
           <USelect
             v-model="fn.recovery_level"
             :items="lookups.percentages"
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
+        </BiancaField>
       </div>
-      <UFormField label="Prioritization strategy">
+      <BiancaField
+        label="Prioritization strategy"
+        note="prioritization_strategy"
+      >
         <UTextarea
           v-model="fn.prioritization_strategy"
           class="w-full"
@@ -553,8 +675,11 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
-      <UFormField label="Outstanding strategy">
+      </BiancaField>
+      <BiancaField
+        label="Outstanding strategy"
+        note="outstanding_strategy"
+      >
         <UTextarea
           v-model="fn.outstanding_strategy"
           class="w-full"
@@ -562,20 +687,33 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
-      <UFormField
+      </BiancaField>
+      <BiancaField
         label="Recommended alternate site strategy"
+        note="alt_site_strategy"
         class="max-w-xl"
       >
+        <template
+          v-if="altSite"
+          #help
+        >
+          <span :class="altSite.off ? 'text-warning' : ''">
+            {{ altSite.off ? 'Not what the workbook recommends for' : 'Recommended for' }} {{ altSite.category }}:
+            {{ altSite.strategies.join(' or ') }}.
+          </span>
+        </template>
         <USelect
           v-model="fn.alt_site_strategy"
           :items="lookups.alt_site_strategies"
           class="w-full"
           :disabled="disabled"
         />
-      </UFormField>
+      </BiancaField>
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <UFormField label="Current seats">
+        <BiancaField
+          label="Current seats"
+          note="seats_current"
+        >
           <UInput
             v-model.number="fn.seats_current"
             type="number"
@@ -583,8 +721,11 @@ const long = TEXT_LIMITS.long
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
-        <UFormField label="Seats required">
+        </BiancaField>
+        <BiancaField
+          label="Seats required"
+          note="seats_required"
+        >
           <UInput
             v-model.number="fn.seats_required"
             type="number"
@@ -592,8 +733,15 @@ const long = TEXT_LIMITS.long
             class="w-full"
             :disabled="disabled"
           />
-        </UFormField>
+        </BiancaField>
       </div>
+      <p class="flex items-center gap-1.5 text-sm font-medium">
+        Resources at the alternate site
+        <BiancaNote
+          note="resources"
+          label="Resources at the alternate site"
+        />
+      </p>
       <div class="grid gap-4 sm:grid-cols-4">
         <UFormField label="PC">
           <UInput
@@ -632,7 +780,10 @@ const long = TEXT_LIMITS.long
           />
         </UFormField>
       </div>
-      <UFormField label="Other resources">
+      <BiancaField
+        label="Other resources"
+        note="res_others"
+      >
         <UTextarea
           v-model="fn.res_others"
           class="w-full"
@@ -640,9 +791,12 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
+      </BiancaField>
       <div class="grid gap-4 sm:grid-cols-2">
-        <UFormField label="Vital records">
+        <BiancaField
+          label="Vital records"
+          note="vital_record"
+        >
           <UTextarea
             v-model="fn.vital_record"
             class="w-full"
@@ -650,7 +804,7 @@ const long = TEXT_LIMITS.long
             :maxlength="long"
             :disabled="disabled"
           />
-        </UFormField>
+        </BiancaField>
         <UFormField label="Vital records location">
           <UTextarea
             v-model="fn.vital_record_location"
@@ -668,7 +822,10 @@ const long = TEXT_LIMITS.long
       v-show="part === 'p4'"
       class="space-y-4"
     >
-      <UFormField label="Function description">
+      <BiancaField
+        label="Function description"
+        note="description"
+      >
         <UTextarea
           v-model="fn.description"
           class="w-full"
@@ -676,9 +833,10 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
-      <UFormField
+      </BiancaField>
+      <BiancaField
         label="Frequency"
+        note="frequency"
         class="max-w-xs"
       >
         <USelect
@@ -687,8 +845,11 @@ const long = TEXT_LIMITS.long
           class="w-full"
           :disabled="disabled"
         />
-      </UFormField>
-      <UFormField label="Critical timings">
+      </BiancaField>
+      <BiancaField
+        label="Critical timings"
+        note="critical_timings"
+      >
         <UTextarea
           v-model="fn.critical_timings"
           class="w-full"
@@ -696,8 +857,11 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
-      <UFormField label="Critical activity">
+      </BiancaField>
+      <BiancaField
+        label="Critical activity"
+        note="critical_activity"
+      >
         <UTextarea
           v-model="fn.critical_activity"
           class="w-full"
@@ -705,7 +869,7 @@ const long = TEXT_LIMITS.long
           :maxlength="long"
           :disabled="disabled"
         />
-      </UFormField>
+      </BiancaField>
     </section>
   </div>
 </template>

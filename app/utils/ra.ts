@@ -804,10 +804,8 @@ export const RA_CRISIS_TYPES: Record<RaCrisisType, { label: string, plural: stri
   incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-triangle-alert' },
 }
 
-/** Administration › Master building, and a building's page there, on a tab (`map`,
- *  `contacts`, ...) when given: the only page of a building (`location.master`). Show a link to
- *  it only to who may open it (`can('location.master')`). */
-export const MASTER_BUILDINGS_PATH = '/admin/buildings'
+/** Administration › Master data › Master building, and a building's page there. */
+export const MASTER_BUILDINGS_PATH = '/masterdata/masterbuilding'
 export function masterBuildingPath(id: number, tab?: string) {
   return `${MASTER_BUILDINGS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
 }

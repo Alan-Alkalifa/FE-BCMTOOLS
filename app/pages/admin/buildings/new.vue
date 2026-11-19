@@ -1,9 +1,8 @@
 <script setup lang="ts">
-/** Input building data from Administration › Master building: saved, the building opens in
- *  Master building. */
-definePageMeta({ permission: ['location.master'] })
+/** Master building moved to Administration › Master data (/masterdata/masterbuilding/new). */
+definePageMeta({ redirect: (to) => ({ path: '/masterdata/masterbuilding/new', query: to.query }) })
 </script>
 
 <template>
-  <RaNewLocationPage />
+  <div />
 </template>

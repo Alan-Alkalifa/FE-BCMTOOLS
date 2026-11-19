@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BiancaAssessment, BiancaImportResult } from '~/composables/useBianca'
+import type { BiancaAssessment, BiancaImportResult, BiancaOrg } from '~/composables/useBianca'
 
 /**
  * Upload Excel: a BIA from the BIANCA template.
@@ -7,8 +7,8 @@ import type { BiancaAssessment, BiancaImportResult } from '~/composables/useBian
  *   in Excel, choose the file. The review lists what is missing or wrong, cell by cell; Create
  *   draft is enabled only when nothing is.
  * - With `assessment` (an open draft): the file replaces the draft's content.
- * The file is recognised by its content, so its name doesn't matter, but it has to be the
- * template of your own Group.
+ * The file is recognised by its content, so its name doesn't matter. A new BIA takes the Group the
+ * template was downloaded for; a draft takes only the template of its own Group.
  */
 const props = defineProps<{ assessment?: BiancaAssessment | null }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -23,12 +23,29 @@ const reading = ref(false)
 const saving = ref(false)
 const failure = ref<string | null>(null)
 const draft = computed(() => props.assessment ?? null)
+const { data: lookups } = useBiancaLookups()
+/** A new BIA's template is for the Group picked here (the user's own to start with); a draft's,
+ * for the draft's Group as last saved. */
+const org = ref<BiancaOrg>({ directorate: undefined, sub_directorate: undefined, org_group: undefined })
+function resetOrg() {
+  const own = lookups.value?.organisation
+  org.value = {
+    directorate: own?.directorate ?? undefined,
+    sub_directorate: own?.sub_directorate ?? undefined,
+    org_group: own?.org_group ?? undefined,
+  }
+}
+watch(lookups, resetOrg, { immediate: true })
+// A draft's own template carries its Group and its BIA configuration version.
+const templateUrl = computed(() => biancaTemplateUrl(org.value))
+const templateReady = computed(() => !!(draft.value?.org_group ?? org.value.org_group))
 
 watch(open, (value) => {
   if (!value) return
   file.value = null
   result.value = null
   failure.value = null
+  if (!draft.value) resetOrg()
 })
 
 async function read(chosen: File) {
@@ -103,16 +120,27 @@ function where(problem: { sheet: string | null, cell: string | null }) {
             1. Fill in the template
           </h3>
           <p class="text-sm text-muted">
-            Use the template downloaded here, for your own Group: its application systems and office locations come from the system. Fill every white cell and pick values from the dropdowns. The file name doesn't matter.
+            <template v-if="draft">
+              Use the template downloaded here, for this draft's Group ({{ draft.org_group || '-' }}).
+            </template>
+            <template v-else>
+              Pick the Group, then download its template. The draft is made for that Group.
+            </template>
+            It is the BIA workbook (Template BIA ver 2.4) with its drop-downs taken from the system when you download it: buildings, application systems, MTDs and Groups. Fill the input boxes (the floor goes in the box under each building) and pick values from the drop-downs. The file name doesn't matter.
           </p>
+          <BiancaOrgPicker
+            v-if="!draft && open"
+            v-model="org"
+          />
           <UButton
-            :to="draft ? `${BIANCA_TEMPLATE_URL}?assessment_id=${draft.id}` : BIANCA_TEMPLATE_URL"
+            :to="draft ? `${BIANCA_TEMPLATE_URL}?assessment_id=${draft.id}` : templateUrl"
             external
             download
             color="neutral"
             variant="outline"
             icon="i-lucide-download"
             label="Download template"
+            :disabled="!templateReady"
           />
         </section>
 

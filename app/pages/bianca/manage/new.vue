@@ -12,7 +12,7 @@ function onSaved(assessment: { id: number }) {
   <AppPage
     icon="i-lucide-file-plus"
     title="New BIA"
-    description="Fill the BIA here, or upload the Excel template. Your Group comes from your profile."
+    description="Fill the BIA here, or upload the Excel template. Your own Group is filled in; pick another if the BIA is for one."
     :crumbs="[
       { label: 'BIANCA' },
       { label: 'Manage', to: '/bianca/manage' },
