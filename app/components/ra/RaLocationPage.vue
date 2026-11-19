@@ -61,19 +61,8 @@ async function selectTab(next: string | number) {
   formKey.value += 1
 }
 
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return
-  if (!(await confirmLeave())) return false
-})
-
-function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: confirmLeave })
 
 function onSaved(saved: RaLocationDetail) {
   location.value = saved

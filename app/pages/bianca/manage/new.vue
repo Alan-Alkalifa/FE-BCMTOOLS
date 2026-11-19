@@ -4,7 +4,7 @@ definePageMeta({ permission: 'bianca.create' })
 useHead({ title: 'New BIA · BCM Tools' })
 
 function onSaved(assessment: { id: number }) {
-  return navigateTo(biancaPath(assessment.id))
+  return navigateTo(biancaPath(assessment.id), { replace: true })
 }
 </script>
 

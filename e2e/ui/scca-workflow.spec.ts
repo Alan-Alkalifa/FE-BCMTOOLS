@@ -25,7 +25,7 @@ test('Monitoring shows the KPI cards, and a card opens the view it counts', asyn
   await expect(renewals.getByText('34 days overdue')).toBeVisible()
   await expect(renewals.getByText('Not started')).toBeVisible()
 
-  await page.getByLabel('Department').click()
+  await page.getByLabel('Department', { exact: true }).click()
   await page.getByRole('option', { name: 'DBCC' }).click()
   await expect(page).toHaveURL(/department=DBCC/)
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/scca/monitoring/renewals.xlsx?department=DBCC')
@@ -37,7 +37,9 @@ test('the register lists one row per application with its history, and bottlenec
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'HR Portal' })).toBeVisible({ timeout: 60_000 })
   await expect(table.getByText('Not final yet')).toBeVisible()
-  await expect(table.getByRole('columnheader', { name: 'Directorate' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Directorate owner' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Owner sub-directorate' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Current approval step' })).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Latest final SCCA date' })).toBeVisible()
   await table.getByRole('button', { name: 'SCCA history of CC Omni Channel' }).click()
   const history = page.getByRole('dialog', { name: 'SCCAs of CC Omni Channel' })
@@ -167,7 +169,11 @@ test('Approval: my inbox, coming up and my history', async ({ page }) => {
   await page.goto('/scca/approval')
   await expect(page.getByRole('heading', { name: 'Waiting for my approval' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('table').getByText('Escalated')).toBeVisible()
-  await expect(page.getByText('3 reminders')).toBeVisible()
+  const inbox = page.getByRole('table').first()
+  for (const name of ['Application name', 'SCCA ref. no.', 'Submitted date', 'Submitted by', 'Status', 'Working days', 'Reminders sent']) {
+    await expect(inbox.getByRole('columnheader', { name })).toBeVisible()
+  }
+  await expect(inbox.getByRole('cell', { name: '3', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Coming up' })).toBeVisible()
   await expect(page.getByText('7 steps away')).toBeVisible()
 
@@ -290,13 +296,26 @@ test('Renewals, Register and Bottlenecks are paged by the server, 20 a page', as
   await expect(page.getByRole('navigation', { name: 'Bottlenecks pages' }).getByText('Showing 1–2 of 2')).toBeVisible({ timeout: 60_000 })
 })
 
+test('table columns sort on the server and keep the sort in the URL', async ({ page }) => {
+  await mockScca(page)
+  await page.goto('/scca/monitoring?tab=register')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('link', { name: 'HR Portal' })).toBeVisible({ timeout: 60_000 })
+  const request = page.waitForRequest((req) => req.url().includes('/api/scca/monitoring/register') && req.url().includes('sort=application_name'))
+  await table.getByRole('button', { name: 'Sort by Application name' }).click()
+  await request
+  await expect(page).toHaveURL(/sort=application_name&dir=asc/)
+  await table.getByRole('button', { name: /Application name, sorted ascending/ }).click()
+  await expect(page).toHaveURL(/dir=desc/)
+})
+
 test('Renewals: the Act menu and Generate annual review for the selected rows', async ({ page }) => {
   const { calls } = await mockScca(page)
   await page.goto('/scca/monitoring?tab=renewals')
   const table = page.getByRole('table')
   await expect(table.getByRole('link', { name: 'Payment Gateway' })).toBeVisible({ timeout: 60_000 })
-  for (const name of ['Application code', 'Last final SCCA date', 'Owner', 'Assessor', 'Contributor']) {
-    await expect(table.getByRole('columnheader', { name, exact: true })).toBeVisible()
+  for (const name of ['Application code', 'Latest final SCCA ref. no.', 'Latest final SCCA date', 'Directorate owner', 'Owner sub-directorate', 'Owner department', 'Assessor', 'Contributor', 'Renewal status', 'Renewal SCCA ref. no.', 'Current renewal step']) {
+    await expect(table.getByRole('columnheader', { name })).toBeVisible()
   }
   // CC Omni Channel already has a renewal in approval: it can't be picked.
   await expect(table.getByRole('checkbox', { name: 'Select CC Omni Channel' })).toBeDisabled()

@@ -37,8 +37,24 @@ const showQuakes = ref(true)
 const { data: quakeList, error: quakeError, refresh: refreshQuakes } = useRaEarthquakes(7)
 const quakes = computed(() => quakeList.value?.items ?? [])
 let quakeTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
+function startQuakes() {
+  clearInterval(quakeTimer)
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
+}
+// In a background in-app tab (docs/tabs.md) the map stops asking; back in front, it catches up.
+let paused = false
+onDeactivated(() => {
+  paused = true
+  clearInterval(quakeTimer)
+})
+onActivated(() => {
+  if (!paused) return
+  paused = false
+  void refreshQuakes()
+  startQuakes()
+})
+onMounted(() => {
+  startQuakes()
   // The map data is shared with the disaster page (the same key): read it again on arrival, so
   // a disaster approved, rejected or closed meanwhile is shown as it stands now.
   if (data.value) refresh()

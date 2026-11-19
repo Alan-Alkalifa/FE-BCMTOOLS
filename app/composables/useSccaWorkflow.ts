@@ -17,6 +17,8 @@ export interface SccaMonitoringFilters {
   bucket?: 'overdue' | 'due_30' | 'due_90'
   page?: number
   per_page?: number
+  sort?: string
+  dir?: 'asc' | 'desc'
 }
 
 /** A short reference to an SCCA inside a Monitoring row. */
@@ -58,6 +60,7 @@ export interface SccaRenewalRow {
   application_id: number | null
   department: string | null
   directorate: string | null
+  sub_directorate: string | null
   category: SccaCategory | null
   last_final: SccaMonitorRef
   renewal_date: string
@@ -80,6 +83,7 @@ export interface SccaRegisterRow {
   application_id: number | null
   department: string | null
   directorate: string | null
+  sub_directorate: string | null
   contributor: string | null
   category: SccaCategory | null
   latest_final: SccaMonitorRef | null
@@ -300,7 +304,7 @@ export function sccaExportUrl(view: 'register' | 'renewals' | 'bottlenecks', fil
 }
 
 /** Every approval list is server-paginated: `page` and `per_page` go to the API. */
-type PageQuery = { page?: number, per_page?: number }
+type PageQuery = { page?: number, per_page?: number, sort?: string, dir?: 'asc' | 'desc' }
 
 export function useSccaInbox(query: MaybeRefOrGetter<PageQuery> = {}) {
   return useFetch<Paged<SccaInboxRow>>('/api/scca/approvals/inbox', {

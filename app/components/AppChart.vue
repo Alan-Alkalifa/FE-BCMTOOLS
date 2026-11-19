@@ -20,6 +20,10 @@ const props = withDefaults(defineProps<{
   height?: number
 }>(), { summary: '', loading: false, empty: null, height: 280 })
 
+// Back from another in-app tab (docs/tabs.md): the chart was drawn off screen, size it again.
+const chart = ref<{ resize?: () => void } | null>(null)
+onActivated(() => nextTick(() => chart.value?.resize?.()))
+
 // ECharts is large: load it with the first chart on the page, not with the app. If the chunk
 // can't be fetched (a dropped connection, or a dev server that rebuilt its dependencies), try
 // twice more, then say so instead of leaving an empty card; "View as table" still works.
@@ -144,6 +148,7 @@ const showSkeleton = useDelayedLoading(() => props.loading)
       :aria-describedby="summary ? `${id}-summary` : undefined"
     >
       <VChart
+        ref="chart"
         theme="bcm"
         :option="option"
         autoresize
