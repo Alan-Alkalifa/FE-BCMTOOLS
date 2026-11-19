@@ -51,6 +51,32 @@ const EVENT_LABELS: Record<string, string> = {
   escalated: 'Escalated to BCM',
 }
 
+// How each history event looks: its icon and colour. Reminders are quiet, decisions stand out.
+const EVENT_LOOK: Record<string, { icon: string, tone: string }> = {
+  submitted: { icon: 'i-lucide-send', tone: 'primary' },
+  approved: { icon: 'i-lucide-circle-check', tone: 'success' },
+  approved_on_behalf: { icon: 'i-lucide-user-check', tone: 'success' },
+  finalised: { icon: 'i-lucide-badge-check', tone: 'success' },
+  rejected: { icon: 'i-lucide-circle-x', tone: 'error' },
+  recalled: { icon: 'i-lucide-undo-2', tone: 'warning' },
+  reassigned: { icon: 'i-lucide-arrow-left-right', tone: 'info' },
+  nudged: { icon: 'i-lucide-bell-ring', tone: 'warning' },
+  escalated: { icon: 'i-lucide-triangle-alert', tone: 'warning' },
+  reminded: { icon: 'i-lucide-bell', tone: 'neutral' },
+}
+const TONES: Record<string, string> = {
+  primary: 'bg-primary/10 text-primary ring-primary/25',
+  success: 'bg-success/10 text-success ring-success/25',
+  error: 'bg-error/10 text-error ring-error/25',
+  warning: 'bg-warning/10 text-warning ring-warning/25',
+  info: 'bg-info/10 text-info ring-info/25',
+  neutral: 'bg-elevated text-muted ring-default',
+}
+function eventLook(action: string) {
+  const look = EVENT_LOOK[action] ?? { icon: 'i-lucide-circle-dot', tone: 'neutral' }
+  return { icon: look.icon, tone: TONES[look.tone] }
+}
+
 const history = computed(() => [...props.assessment.events].reverse())
 
 function emailNote(result: SccaApprovalResult, who: string) {
@@ -140,10 +166,16 @@ async function reject() {
     <div class="space-y-4">
       <p
         v-if="assessment.status === 'in_approval'"
-        class="text-sm"
+        class="flex items-start gap-2 rounded-md bg-elevated px-3 py-2 text-sm ring-1 ring-inset ring-default"
       >
-        Waiting for <span class="font-medium">{{ signoffRoleLabel(assessment.pending_role) }}</span>:
-        {{ pendingSignoff?.name || 'no user picked' }}.
+        <UIcon
+          name="i-lucide-hourglass"
+          class="mt-0.5 size-4 shrink-0 text-warning"
+        />
+        <span>
+          Waiting for <span class="font-medium">{{ signoffRoleLabel(assessment.pending_role) }}</span>:
+          {{ pendingSignoff?.name || 'no user picked' }}.
+        </span>
       </p>
       <p
         v-else-if="assessment.status === 'final'"
@@ -231,53 +263,88 @@ async function reject() {
       </div>
 
       <div v-if="history.length">
-        <h3 class="mb-2 text-sm font-medium">
-          History
-        </h3>
-        <ol class="space-y-2 text-sm">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h3 class="text-sm font-medium">
+            History
+          </h3>
+          <span class="text-xs text-muted">{{ history.length }} {{ history.length === 1 ? 'event' : 'events' }}, newest first</span>
+        </div>
+        <ol class="text-sm">
           <li
             v-for="(event, index) in history"
             :key="index"
-            class="border-l-2 border-default pl-3"
+            class="relative flex gap-3 pb-5 before:absolute before:bottom-0 before:left-3.5 before:top-8 before:w-px before:bg-(--ui-border) last:pb-0 last:before:hidden"
+            :class="event.action === 'reminded' ? 'opacity-80' : ''"
           >
-            <p>
-              <span class="font-medium">{{ EVENT_LABELS[event.action] ?? event.action }}</span>
-              <span v-if="event.role"> · {{ signoffRoleLabel(event.role, true) }}</span>
-              <span v-if="event.actor"> · {{ event.actor }}</span>
-            </p>
-            <p
-              v-if="event.action === 'reassigned' && (event.from_user || event.to_user)"
-              class="text-xs"
-            >
-              From {{ event.from_user || '—' }} to {{ event.to_user || '—' }}
-            </p>
-            <p
-              v-else-if="event.action === 'approved_on_behalf' && event.from_user"
-              class="text-xs"
-            >
-              For {{ event.from_user }}
-            </p>
-            <a
-              v-if="event.attachment"
-              :href="event.attachment.url"
-              class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-              download
+            <span
+              class="relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full ring-1 ring-inset"
+              :class="eventLook(event.action).tone"
             >
               <UIcon
-                name="i-lucide-paperclip"
-                class="size-3.5"
+                :name="eventLook(event.action).icon"
+                class="size-4"
               />
-              {{ event.attachment.filename }}
-            </a>
-            <p class="text-xs text-muted">
-              {{ formatDateTime(event.created_at) }}
-            </p>
-            <p
-              v-if="event.note"
-              class="mt-0.5 whitespace-pre-line"
-            >
-              {{ event.note }}
-            </p>
+            </span>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span class="font-medium">{{ EVENT_LABELS[event.action] ?? event.action }}</span>
+                  <UBadge
+                    v-if="event.role"
+                    :label="signoffRoleLabel(event.role, true)"
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                  />
+                </p>
+                <time class="shrink-0 text-xs tabular-nums text-muted">{{ formatDateTime(event.created_at) }}</time>
+              </div>
+              <p
+                v-if="event.actor"
+                class="mt-0.5 flex items-center gap-1 text-xs text-muted"
+              >
+                <UIcon
+                  name="i-lucide-user-round"
+                  class="size-3.5"
+                />
+                {{ event.actor }}
+              </p>
+              <p
+                v-if="event.action === 'reassigned' && (event.from_user || event.to_user)"
+                class="mt-1 flex flex-wrap items-center gap-1.5 text-xs"
+              >
+                <span class="rounded bg-elevated px-1.5 py-0.5">{{ event.from_user || '—' }}</span>
+                <UIcon
+                  name="i-lucide-arrow-right"
+                  class="size-3.5 text-muted"
+                />
+                <span class="rounded bg-elevated px-1.5 py-0.5 font-medium">{{ event.to_user || '—' }}</span>
+              </p>
+              <p
+                v-else-if="event.action === 'approved_on_behalf' && event.from_user"
+                class="mt-1 text-xs"
+              >
+                For <span class="font-medium">{{ event.from_user }}</span>
+              </p>
+              <a
+                v-if="event.attachment"
+                :href="event.attachment.url"
+                class="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                download
+              >
+                <UIcon
+                  name="i-lucide-paperclip"
+                  class="size-3.5"
+                />
+                {{ event.attachment.filename }}
+              </a>
+              <p
+                v-if="event.note"
+                class="mt-2 whitespace-pre-line rounded-md border-l-2 border-default bg-elevated/60 px-3 py-2 text-sm"
+              >
+                {{ event.note }}
+              </p>
+            </div>
           </li>
         </ol>
       </div>
