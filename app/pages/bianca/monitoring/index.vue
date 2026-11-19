@@ -227,6 +227,63 @@ function cardLink(target: Record<string, string | undefined>) {
   return { query: { ...route.query, ...target, page: undefined } }
 }
 
+const existingStatusBarTone: Record<string, string> = {
+  overdue: 'bg-error',
+  due_soon: 'bg-warning',
+  renewal_due: 'bg-info',
+  approved: 'bg-success',
+  no_final: 'bg-neutral-400 dark:bg-neutral-500',
+  not_started: 'bg-neutral-300 dark:bg-neutral-600',
+}
+
+const existingStatusTarget: Record<string, Record<string, string | undefined>> = {
+  overdue: { tab: 'renewals', bucket: 'overdue', state: undefined },
+  due_soon: { tab: 'renewals', bucket: 'due_30', state: undefined },
+  renewal_due: { tab: 'renewals', bucket: 'due_90', state: undefined },
+  approved: { tab: 'register', state: 'approved', bucket: undefined },
+  no_final: { tab: 'register', state: 'none', bucket: undefined },
+  not_started: { tab: 'register', state: 'none', bucket: undefined },
+}
+
+const openStatusBarTone: Record<string, string> = {
+  in_signoff: 'bg-warning',
+  need_revision: 'bg-error',
+  in_revision: 'bg-warning',
+  draft: 'bg-neutral-400 dark:bg-neutral-500',
+}
+
+const openStatusTarget: Record<string, Record<string, string | undefined>> = {
+  in_signoff: { tab: 'bottlenecks', state: undefined, bucket: undefined },
+  draft: { tab: 'register', state: 'draft', bucket: undefined },
+  in_revision: { tab: 'register', state: 'in_revision', bucket: undefined },
+  need_revision: { tab: 'register', state: 'need_revision', bucket: undefined },
+}
+
+const existingStatusRows = computed(() => {
+  const rows = overview.data.value?.by_existing_status ?? []
+  const total = rows.reduce((sum, r) => sum + r.groups, 0)
+  return rows.map((row) => ({
+    ...row,
+    pct: total ? Math.round((row.groups / total) * 100) : 0,
+    tone: existingStatusBarTone[row.status] ?? 'bg-neutral-400',
+    to: existingStatusTarget[row.status] ?? { tab: 'register' },
+  }))
+})
+
+const openStatusRows = computed(() => {
+  const rows = overview.data.value?.by_open_status ?? []
+  const total = rows.reduce((sum, r) => sum + r.groups, 0)
+  return rows.map((row) => ({
+    ...row,
+    pct: total ? Math.round((row.groups / total) * 100) : 0,
+    tone: openStatusBarTone[row.status] ?? 'bg-neutral-400',
+    to: openStatusTarget[row.status] ?? { tab: 'register' },
+  }))
+})
+
+const totalExistingGroups = computed(() => existingStatusRows.value.reduce((sum, r) => sum + r.groups, 0))
+const totalOpenBiaCount = computed(() => openStatusRows.value.reduce((sum, r) => sum + r.groups, 0))
+
 const categoryBars = computed(() =>
   (overview.data.value?.by_category ?? []).map((row) => ({
     label: row.category === 'none' ? 'Not rated' : biaCategory[row.category].label,
@@ -665,6 +722,109 @@ function record(id: number) {
                 </div>
               </ULink>
             </div>
+          </div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <UCard>
+              <template #header>
+                <div class="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 class="text-sm font-semibold text-highlighted">
+                      Existing BIA status (most first)
+                    </h3>
+                    <p class="mt-0.5 text-xs text-muted">
+                      Sorted from highest to lowest across {{ plural(totalExistingGroups, 'group') }}. Click a status to inspect.
+                    </p>
+                  </div>
+                </div>
+              </template>
+              <div
+                v-if="existingStatusRows.length"
+                class="space-y-2.5"
+              >
+                <ULink
+                  v-for="item in existingStatusRows"
+                  :key="`ex-${item.status}`"
+                  :to="cardLink(item.to)"
+                  class="block rounded-md px-2 py-1.5 transition hover:bg-elevated/60"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <StatusBadge
+                      :scale="biaGroupStatus"
+                      :value="item.status"
+                      size="sm"
+                    />
+                    <span class="text-xs font-medium tabular-nums text-highlighted">
+                      {{ plural(item.groups, 'group') }}
+                      <span class="font-normal text-muted">({{ item.pct }}%)</span>
+                    </span>
+                  </div>
+                  <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      class="h-full rounded-full transition-all"
+                      :class="item.tone"
+                      :style="{ width: `${item.groups ? Math.max(item.pct, 3) : 0}%` }"
+                    />
+                  </div>
+                </ULink>
+              </div>
+              <p
+                v-else
+                class="py-4 text-center text-xs text-muted"
+              >
+                No groups match these filters.
+              </p>
+            </UCard>
+
+            <UCard>
+              <template #header>
+                <div class="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 class="text-sm font-semibold text-highlighted">
+                      Open BIA status (most first)
+                    </h3>
+                    <p class="mt-0.5 text-xs text-muted">
+                      Active submissions &amp; renewals sorted from highest to lowest ({{ plural(totalOpenBiaCount, 'open BIA') }}).
+                    </p>
+                  </div>
+                </div>
+              </template>
+              <div
+                v-if="openStatusRows.length"
+                class="space-y-2.5"
+              >
+                <ULink
+                  v-for="item in openStatusRows"
+                  :key="`op-${item.status}`"
+                  :to="cardLink(item.to)"
+                  class="block rounded-md px-2 py-1.5 transition hover:bg-elevated/60"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <StatusBadge
+                      :scale="biaStatus"
+                      :value="item.status"
+                      size="sm"
+                    />
+                    <span class="text-xs font-medium tabular-nums text-highlighted">
+                      {{ plural(item.groups, 'BIA') }}
+                      <span class="font-normal text-muted">({{ item.pct }}%)</span>
+                    </span>
+                  </div>
+                  <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      class="h-full rounded-full transition-all"
+                      :class="item.tone"
+                      :style="{ width: `${item.groups ? Math.max(item.pct, 3) : 0}%` }"
+                    />
+                  </div>
+                </ULink>
+              </div>
+              <p
+                v-else
+                class="py-4 text-center text-xs text-muted"
+              >
+                No open BIA submissions.
+              </p>
+            </UCard>
           </div>
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart

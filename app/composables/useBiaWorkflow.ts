@@ -1,4 +1,4 @@
-import type { BiaCategory, BiaReason, BiaRevisionState, BiaStatus, BiaWaitLevel } from '~/utils/bia'
+import type { BiaCategory, BiaGroupStatusKey, BiaReason, BiaRevisionState, BiaStatus, BiaStatusKey, BiaWaitLevel } from '~/utils/bia'
 
 export type BiaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
 
@@ -296,6 +296,8 @@ export interface BiaOverviewResponse {
     business_critical: number
     stuck_approvals: number
   }
+  by_existing_status?: { status: BiaGroupStatusKey, groups: number }[]
+  by_open_status?: { status: BiaStatusKey, groups: number }[]
   by_category: { category: BiaCategory | 'none', groups: number }[]
   approved_per_month: { month: string, assessments: number }[]
 }
