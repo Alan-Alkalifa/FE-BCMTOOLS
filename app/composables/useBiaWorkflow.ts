@@ -104,6 +104,12 @@ export interface BiaFunctionItem {
   name: string
   suggested_mtd: string
   expected_mtd: string
+  computed_suggested_mtd?: string | null
+  suggested_trigger_index?: number | null
+  suggested_trigger_period?: string | null
+  suggested_triggers?: ('loss' | 'regulatory' | 'customer')[]
+  suggested_mtd_matches?: boolean | null
+  expected_within_suggested?: boolean | null
   category: BiaCategory
   planned_capacity: string
   fin_loss_4h: number
@@ -158,6 +164,7 @@ export interface BiaAssessmentDetail {
     financial_bands: { code: string, label: string, description: string }[]
     impact_matrix: { score: number, regulatory: string, customer: string }[]
   }
+  guides?: Record<string, string>
   loss_totals?: {
     fin_loss_4h: number
     fin_loss_d1: number

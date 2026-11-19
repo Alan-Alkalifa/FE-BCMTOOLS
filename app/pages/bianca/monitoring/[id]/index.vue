@@ -109,11 +109,32 @@ function impactScoreTitle(kind: 'regulatory' | 'customer', score: number | null 
   return `Score ${row.score}: ${kind === 'regulatory' ? row.regulatory : row.customer}`
 }
 
+function triggerSummary(fn: BiaFunctionItem) {
+  const triggers = fn.suggested_triggers ?? []
+  if (!triggers.length) {
+    return fn.computed_suggested_mtd ? `No threshold met · fallback: ${fn.computed_suggested_mtd}` : null
+  }
+  const alertIdr = detail.value?.impact_reference?.loss_alert_idr
+  const alertScore = detail.value?.impact_reference?.score_alert ?? 3
+  const labels = triggers.map((t) => {
+    if (t === 'loss') return alertIdr != null ? `Loss > ${formatCurrency(alertIdr)}` : 'Loss'
+    if (t === 'regulatory') return `Regulatory ≥ ${alertScore}`
+    return `Customer ≥ ${alertScore}`
+  })
+  return `Triggered at ${fn.suggested_trigger_period || fn.computed_suggested_mtd} (${labels.join(', ')})`
+}
+
+function isTriggerPeriod(fn: BiaFunctionItem, idx: number) {
+  return Boolean(fn.suggested_triggers?.length) && fn.suggested_trigger_index === idx
+}
+
 const detailSummary = computed(() => {
   const fns = detail.value?.functions ?? []
   let itGapCount = 0
   let seatGap = 0
   let missingVitalCritical = 0
+  let mtdExceedCount = 0
+  let suggestedMismatchCount = 0
   let critical = 0
   let important = 0
   let others = 0
@@ -122,6 +143,9 @@ const detailSummary = computed(() => {
     if (fn.category === 'Business Critical') critical += 1
     else if (fn.category === 'Important') important += 1
     else others += 1
+
+    if (fn.expected_within_suggested === false) mtdExceedCount += 1
+    if (fn.suggested_mtd_matches === false) suggestedMismatchCount += 1
 
     for (const dep of fn.it_dependencies) {
       if (dep.daat_negative || dep.daat.startsWith('-')) itGapCount += 1
@@ -134,12 +158,28 @@ const detailSummary = computed(() => {
     }
   }
 
-  return { fnCount: fns.length, critical, important, others, itGapCount, seatGap, missingVitalCritical }
+  return {
+    fnCount: fns.length,
+    critical,
+    important,
+    others,
+    itGapCount,
+    seatGap,
+    missingVitalCritical,
+    mtdExceedCount,
+    suggestedMismatchCount,
+  }
 })
 
 const attentionItems = computed(() => {
   const s = detailSummary.value
   const items: { text: string, targetTab: DetailTab }[] = []
+  if (s.mtdExceedCount > 0) {
+    items.push({ text: `${s.mtdExceedCount} business function(s) have Expected MTD longer than Suggested MTD`, targetTab: 'impact' })
+  }
+  if (s.suggestedMismatchCount > 0) {
+    items.push({ text: `${s.suggestedMismatchCount} business function(s) have stored Suggested MTD different from the rule calculation`, targetTab: 'impact' })
+  }
   if (s.itGapCount > 0) {
     items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
   }
@@ -610,6 +650,45 @@ const lossPeriodTotals = computed(() =>
               <template #name-cell="{ row }">
                 <span class="font-medium text-highlighted">{{ row.original.name }}</span>
               </template>
+              <template #suggested_mtd-cell="{ row }">
+                <div class="inline-flex items-center gap-1.5">
+                  <span>{{ row.original.suggested_mtd }}</span>
+                  <UTooltip
+                    v-if="row.original.suggested_mtd_matches === false && row.original.computed_suggested_mtd"
+                    :text="`Stored (${row.original.suggested_mtd}) differs from calculated (${row.original.computed_suggested_mtd})`"
+                  >
+                    <UIcon
+                      name="i-lucide-triangle-alert"
+                      class="size-3.5 text-warning"
+                    />
+                  </UTooltip>
+                </div>
+              </template>
+              <template #expected_mtd-cell="{ row }">
+                <div class="inline-flex items-center gap-1.5">
+                  <span :class="row.original.expected_within_suggested === false ? 'font-medium text-error' : ''">
+                    {{ row.original.expected_mtd }}
+                  </span>
+                  <UTooltip
+                    v-if="row.original.expected_within_suggested === true"
+                    text="Expected MTD is equal to or shorter than Suggested MTD"
+                  >
+                    <UIcon
+                      name="i-lucide-circle-check"
+                      class="size-3.5 text-success"
+                    />
+                  </UTooltip>
+                  <UTooltip
+                    v-else-if="row.original.expected_within_suggested === false"
+                    text="Expected MTD exceeds Suggested MTD"
+                  >
+                    <UIcon
+                      name="i-lucide-triangle-alert"
+                      class="size-3.5 text-error"
+                    />
+                  </UTooltip>
+                </div>
+              </template>
               <template #category-cell="{ row }">
                 <StatusBadge
                   :scale="biaCategory"
@@ -675,7 +754,7 @@ const lossPeriodTotals = computed(() =>
                       v-for="(periodLabel, idx) in impactPeriods"
                       :key="`loss-${fn.seq_no}-${periodLabel}`"
                       class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
-                      :class="lossTone(fn.losses?.[idx])"
+                      :class="[lossTone(fn.losses?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                       :title="lossCellTitle(fn.losses?.[idx])"
                     >
                       {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
@@ -760,16 +839,30 @@ const lossPeriodTotals = computed(() =>
                         v-for="(periodLabel, idx) in impactPeriods"
                         :key="`reg-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
-                        :class="scoreTone(fn.regulatory_scores?.[idx])"
+                        :class="[scoreTone(fn.regulatory_scores?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                         :title="impactScoreTitle('regulatory', fn.regulatory_scores?.[idx])"
                       >
                         {{ fn.regulatory_scores?.[idx] ?? '—' }}
                       </td>
                       <td
                         rowspan="2"
-                        class="py-3 px-3 text-right align-top font-medium text-highlighted whitespace-nowrap"
+                        class="py-3 px-3 text-right align-top"
                       >
-                        {{ fn.suggested_mtd }}
+                        <p class="font-medium text-highlighted whitespace-nowrap">
+                          {{ fn.suggested_mtd }}
+                        </p>
+                        <p
+                          v-if="triggerSummary(fn)"
+                          class="mt-1 max-w-56 text-[11px] leading-snug text-muted"
+                        >
+                          {{ triggerSummary(fn) }}
+                        </p>
+                        <p
+                          v-if="fn.suggested_mtd_matches === false && fn.computed_suggested_mtd"
+                          class="mt-1 text-[11px] font-medium text-warning"
+                        >
+                          Calculated: {{ fn.computed_suggested_mtd }}
+                        </p>
                       </td>
                     </tr>
                     <tr class="bg-elevated/30">
@@ -780,7 +873,7 @@ const lossPeriodTotals = computed(() =>
                         v-for="(periodLabel, idx) in impactPeriods"
                         :key="`cust-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
-                        :class="scoreTone(fn.customer_scores?.[idx])"
+                        :class="[scoreTone(fn.customer_scores?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                         :title="impactScoreTitle('customer', fn.customer_scores?.[idx])"
                       >
                         {{ fn.customer_scores?.[idx] ?? '—' }}
@@ -848,6 +941,17 @@ const lossPeriodTotals = computed(() =>
                   </div>
                 </div>
               </div>
+            </div>
+            <div
+              v-if="detail.guides?.suggested_mtd || detail.guides?.expected_mtd"
+              class="mt-4 space-y-1.5 border-t border-default pt-3 text-xs text-muted"
+            >
+              <p v-if="detail.guides?.suggested_mtd">
+                <span class="font-medium text-highlighted">Suggested MTD guide:</span> {{ detail.guides.suggested_mtd }}
+              </p>
+              <p v-if="detail.guides?.expected_mtd">
+                <span class="font-medium text-highlighted">Expected MTD guide:</span> {{ detail.guides.expected_mtd }}
+              </p>
             </div>
           </UCard>
 
@@ -1142,9 +1246,15 @@ const lossPeriodTotals = computed(() =>
           class="mt-4"
           :ui="{ body: 'p-0 sm:p-0' }"
         >
-          <div class="border-b border-default p-4">
+          <div class="space-y-1.5 border-b border-default p-4">
             <p class="text-sm text-muted">
               Part 3: recovery prioritization, alternate site strategy, BCP seats at the alternate site, and vital records.
+            </p>
+            <p
+              v-if="detail.guides?.recovery"
+              class="text-xs text-muted"
+            >
+              <span class="font-medium text-highlighted">Guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
             </p>
           </div>
           <UTable
@@ -1228,45 +1338,57 @@ const lossPeriodTotals = computed(() =>
       </template>
 
       <template #signoff>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <UCard
-            v-for="step in detail.signoffs"
-            :key="step.role"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-wide text-muted">
-                  {{ step.label }}
-                </p>
-                <p class="mt-0.5 text-sm font-semibold text-highlighted">
-                  {{ step.title }}
-                </p>
-                <p class="mt-2 text-sm text-default">
-                  {{ step.signer_name }}
-                </p>
-                <p class="text-xs text-muted">
-                  {{ step.signer_title }}
-                </p>
-                <p
-                  v-if="step.signed_at"
-                  class="mt-2 text-xs text-muted"
-                >
-                  Signed {{ formatDateTime(step.signed_at) }}
-                </p>
-                <p
-                  v-if="step.decision_note"
-                  class="mt-1 text-xs text-error"
-                >
-                  Note: {{ step.decision_note }}
-                </p>
-              </div>
-              <StatusBadge
-                :scale="signoffStatus"
-                :value="step.status"
-                size="sm"
-              />
-            </div>
+        <div class="mt-4 space-y-4">
+          <UCard v-if="detail.guides?.attestation">
+            <template #header>
+              <h2 class="text-base font-semibold text-highlighted">
+                Management attestation (Config {{ detail.config_version || 'active' }})
+              </h2>
+            </template>
+            <p class="whitespace-pre-line text-xs leading-relaxed text-muted">
+              {{ detail.guides.attestation }}
+            </p>
           </UCard>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UCard
+              v-for="step in detail.signoffs"
+              :key="step.role"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs uppercase tracking-wide text-muted">
+                    {{ step.label }}
+                  </p>
+                  <p class="mt-0.5 text-sm font-semibold text-highlighted">
+                    {{ step.title }}
+                  </p>
+                  <p class="mt-2 text-sm text-default">
+                    {{ step.signer_name }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    {{ step.signer_title }}
+                  </p>
+                  <p
+                    v-if="step.signed_at"
+                    class="mt-2 text-xs text-muted"
+                  >
+                    Signed {{ formatDateTime(step.signed_at) }}
+                  </p>
+                  <p
+                    v-if="step.decision_note"
+                    class="mt-1 text-xs text-error"
+                  >
+                    Note: {{ step.decision_note }}
+                  </p>
+                </div>
+                <StatusBadge
+                  :scale="signoffStatus"
+                  :value="step.status"
+                  size="sm"
+                />
+              </div>
+            </UCard>
+          </div>
         </div>
       </template>
     </UTabs>
