@@ -107,6 +107,7 @@ export interface BiaFunctionItem {
   seq_no: number
   name: string
   suggested_mtd: string
+  stored_suggested_mtd?: string | null
   expected_mtd: string
   computed_suggested_mtd?: string | null
   suggested_trigger_index?: number | null

@@ -187,9 +187,6 @@ const attentionItems = computed(() => {
   if (s.mtdExceedCount > 0) {
     items.push({ text: `${s.mtdExceedCount} business function(s) have Expected MTD longer than Suggested MTD`, targetTab: 'impact' })
   }
-  if (s.suggestedMismatchCount > 0) {
-    items.push({ text: `${s.suggestedMismatchCount} business function(s) have stored Suggested MTD different from the rule calculation`, targetTab: 'impact' })
-  }
   if (s.itGapCount > 0) {
     items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
   }
@@ -676,14 +673,14 @@ const lossPeriodTotals = computed(() =>
               </template>
               <template #suggested_mtd-cell="{ row }">
                 <div class="inline-flex items-center gap-1.5">
-                  <span>{{ row.original.suggested_mtd }}</span>
+                  <span>{{ row.original.computed_suggested_mtd || row.original.suggested_mtd }}</span>
                   <UTooltip
-                    v-if="row.original.suggested_mtd_matches === false && row.original.computed_suggested_mtd"
-                    :text="`Stored (${row.original.suggested_mtd}) differs from calculated (${row.original.computed_suggested_mtd})`"
+                    v-if="triggerSummary(row.original)"
+                    :text="triggerSummary(row.original)!"
                   >
                     <UIcon
-                      name="i-lucide-triangle-alert"
-                      class="size-3.5 text-warning"
+                      name="i-lucide-calculator"
+                      class="size-3.5 text-muted"
                     />
                   </UTooltip>
                 </div>
@@ -873,7 +870,7 @@ const lossPeriodTotals = computed(() =>
                         class="py-3 px-3 text-right align-top"
                       >
                         <p class="font-medium text-highlighted whitespace-nowrap">
-                          {{ fn.suggested_mtd }}
+                          {{ fn.computed_suggested_mtd || fn.suggested_mtd }}
                         </p>
                         <p
                           v-if="triggerSummary(fn)"
@@ -882,10 +879,10 @@ const lossPeriodTotals = computed(() =>
                           {{ triggerSummary(fn) }}
                         </p>
                         <p
-                          v-if="fn.suggested_mtd_matches === false && fn.computed_suggested_mtd"
-                          class="mt-1 text-[11px] font-medium text-warning"
+                          v-if="fn.suggested_mtd_matches === false && fn.stored_suggested_mtd"
+                          class="mt-1 text-[11px] text-dimmed"
                         >
-                          Calculated: {{ fn.computed_suggested_mtd }}
+                          Form input: {{ fn.stored_suggested_mtd }}
                         </p>
                       </td>
                     </tr>
