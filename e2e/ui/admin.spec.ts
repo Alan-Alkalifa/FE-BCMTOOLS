@@ -307,6 +307,15 @@ test('a role is given more permissions', async ({ page }) => {
   expect(save.body).toMatchObject({ name: 'Viewer', permissions: ['scca.access', 'scca.create'] })
 })
 
+test('each role shows its code in the list and above its permissions', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/roles')
+  await expect(page.getByRole('button', { name: /^BCM Admin/ })).toContainText('bcm_admin', { timeout: 30_000 })
+  await expect(page.getByRole('button', { name: /^Administrator/ })).toContainText('administrator')
+  await page.getByRole('button', { name: /^Viewer/ }).click()
+  await expect(page.getByTestId('role-code')).toHaveText('viewer')
+})
+
 test('RA and Sites permissions are their own groups, between SCCA and Administration', async ({ page }) => {
   const { calls } = await mockAdmin(page)
   await page.goto('/admin/roles')

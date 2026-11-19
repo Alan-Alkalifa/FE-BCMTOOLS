@@ -22,7 +22,6 @@ const HEADER_FIELDS: [keyof SccaAssessment, string][] = [
   ['assessment_reason', 'Reason for assessment'],
   ['assessment_date', 'Assessment date'],
   ['application_owner', 'Application owner'],
-  ['contributor_id', 'Contributor (IT support)'],
   ['business_stakeholders', 'Business stakeholder'],
   ['country', 'Country'],
   ['vendor_name', 'Vendor'],

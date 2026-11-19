@@ -593,11 +593,10 @@ async function onSubmit() {
             />
           </UFormField>
           <UFormField
-            label="Contributor (IT support)"
+            label="Contributor (IT support, optional)"
             name="contributor_id"
-            required
             :help="canSetContributor
-              ? `The application's IT support, who edits this SCCA with you. Needed to submit.${assessment?.it_support ? ` Printed as IT support: ${assessment.it_support}.` : ''}`
+              ? `The application's IT support, who edits this SCCA with you. Optional.${assessment?.it_support ? ` Printed as IT support: ${assessment.it_support}.` : ''}`
               : `Set by the assessor.${assessment?.it_support ? ` Printed as IT support: ${assessment.it_support}.` : ''}`"
           >
             <UserPicker

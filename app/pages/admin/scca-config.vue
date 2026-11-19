@@ -269,6 +269,7 @@ async function discard() {
         :items="tabItems"
         variant="link"
         class="min-w-0"
+        :ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"
       >
         <template #versions>
           <AdminSccaConfigVersions
