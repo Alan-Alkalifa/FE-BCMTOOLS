@@ -334,7 +334,7 @@ const trendSummary = computed(() => {
         </p>
 
         <p class="text-xs text-muted">
-          Source. {{ report?.source ?? 'OpenAQ' }},
+          Source: {{ report?.source ?? 'OpenAQ' }},
           <a
             :href="report?.source_url ?? 'https://explore.openaq.org'"
             target="_blank"

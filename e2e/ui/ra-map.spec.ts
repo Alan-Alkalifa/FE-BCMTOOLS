@@ -492,10 +492,10 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await page.goto('/locations/map')
   const list = page.getByTestId('ra-earthquakes')
   await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
-  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within the earthquake\'s alert radius, e(M ÷ 1,01 − 0,13) km (124 km at M5,0).')
+  await expect(list).toContainText('The last 7 days, magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within the earthquake\'s alert radius, e(M ÷ 1,01 − 0,13) km (124 km at M5,0).')
   await expect(list).toContainText('Updated 6 Nov 2026, 13:44 WIB')
   // BMKG is credited next to the map and under the list.
-  await expect(page.getByText('Earthquake and weather warning data: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
+  await expect(page.getByText('Source: Earthquakes and weather warnings, BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
   await expect(list.getByRole('link', { name: 'data.bmkg.go.id' })).toHaveAttribute('href', 'https://data.bmkg.go.id/gempabumi/')
   await expect(page.getByText('Earthquakes, BMKG (2)')).toBeVisible()
   await expect(page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ })).toBeChecked()
@@ -617,7 +617,7 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   await page.getByRole('tab', { name: 'Weather warnings (BMKG)' }).click()
   await expect(page).toHaveURL(/report=weather/)
   const tab = page.getByTestId('ra-weather')
-  await expect(tab.getByRole('heading', { name: 'Weather early warnings (BMKG)' })).toBeVisible()
+  await expect(tab.getByRole('heading', { name: 'Weather warnings (BMKG)' })).toBeVisible()
   await expect(tab.getByRole('tab', { name: 'Active (2)' })).toBeVisible()
   // The one over a branch first, with the branch.
   const first = tab.locator('li').first()
@@ -633,7 +633,7 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   await first.getByRole('button', { name: 'Show on map' }).click()
   await expect(page).toHaveURL(/warning=CBT20261118001/)
   await expect(page.locator('path.ra-area-active')).toHaveCount(1)
-  await expect(tab).toContainText('Source. BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)')
+  await expect(tab).toContainText('Source: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)')
 
   // The history: the warnings over a place, filtered by year.
   await tab.getByRole('tab', { name: 'History' }).click()
@@ -736,7 +736,7 @@ test('WAQI\'s stations are drawn with their areas, and the WAQI tab lists the bu
   await expect(legend).toContainText('Air quality, WAQI')
   await expect(legend).toContainText('Unhealthy 151–200')
   await expect(legend).toContainText('Dashed ring for a station\'s area')
-  await expect(page.getByText('Air quality from the World Air Quality Index Project and the stations\' own sources.')).toBeVisible()
+  await expect(page.getByText('Air quality, World Air Quality Index Project and the stations\' own sources.')).toBeVisible()
 
   // A station clicked on the map opens its row in the WAQI tab, with its details.
   await page.locator('.leaflet-marker-icon.ra-pin-air').first().dispatchEvent('click')

@@ -47,7 +47,7 @@ function when(warning: RaWeatherWarning) {
       <div class="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 class="text-lg font-semibold">
-            Weather early warnings (BMKG)
+            Weather warnings (BMKG)
           </h2>
           <p
             v-if="active?.polled_at"
@@ -221,7 +221,7 @@ function when(warning: RaWeatherWarning) {
       </p>
 
       <p class="text-xs text-muted">
-        Source. {{ active?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
+        Source: {{ active?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
         <a
           :href="active?.source_url ?? 'https://www.bmkg.go.id/peringatan-dini'"
           target="_blank"

@@ -93,7 +93,7 @@ async function save() {
           </template>
           <div class="space-y-4">
             <p class="text-sm text-muted">
-              Kept and shown on the building map: earthquakes of this magnitude or more, and every earthquake felt by people, whatever its magnitude.
+              The building map keeps and shows earthquakes of this magnitude or more, and every earthquake felt by people, whatever its magnitude.
             </p>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField
@@ -151,7 +151,7 @@ async function save() {
             How it runs
           </p>
           <p class="text-muted">
-            The server reads BMKG every 2 minutes (<code>flask ra poll-bmkg</code>): the latest earthquake, the last 15 of magnitude 5,0 or more and the last 15 felt. A new one near a building or branch is emailed once to everyone who may declare disasters; nothing is declared automatically.
+            The server reads BMKG every 2 minutes (<code>flask ra poll-bmkg</code>), the latest earthquake, the last 15 of magnitude 5,0 or more and the last 15 felt. A new one with a building or branch within its alert radius is emailed once to BCM, who may update and close disasters. Nothing is declared automatically.
           </p>
           <p
             v-if="data"
@@ -165,7 +165,7 @@ async function save() {
               Not read yet.
             </template>
             <template v-if="data.poll_error">
-              The last try couldn't read: {{ data.poll_error }}
+              The last try had a problem. {{ data.poll_error }}
             </template>
           </p>
           <p class="text-xs text-muted">

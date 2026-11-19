@@ -55,7 +55,7 @@ async function readNext() {
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="font-semibold text-highlighted">
-          Weather early warnings from BMKG
+          Weather warnings from BMKG
         </h2>
         <USwitch
           v-model="form.enabled"
@@ -149,7 +149,7 @@ async function readNext() {
         />
       </div>
       <p class="text-xs text-muted">
-        Source. {{ data.source }}, peringatan dini cuaca.
+        Source: {{ data.source }}, peringatan dini cuaca.
       </p>
     </form>
   </UCard>

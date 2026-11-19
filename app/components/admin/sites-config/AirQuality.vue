@@ -188,7 +188,7 @@ async function readAgain() {
         />
       </div>
       <p class="text-xs text-muted">
-        Source. OpenAQ ({{ data.source }}).
+        Source: OpenAQ ({{ data.source }}).
       </p>
     </form>
   </UCard>

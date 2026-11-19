@@ -306,7 +306,7 @@ async function readNow() {
           </div>
 
           <p class="text-xs text-muted">
-            Source. BNPB, Data Informasi Bencana Indonesia ({{ data.source }}).
+            Source: BNPB, Data Informasi Bencana Indonesia ({{ data.source }}).
           </p>
         </div>
       </UCard>

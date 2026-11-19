@@ -494,8 +494,8 @@ const canOpenRa = useCanOpenRa()
         <UButton
           v-for="type in declareTypes(['incident', 'disaster'])"
           :key="type"
-          :color="type === 'disaster' ? 'primary' : 'neutral'"
-          :variant="type === 'disaster' ? 'solid' : 'outline'"
+          color="primary"
+          variant="solid"
           :icon="RA_CRISIS_TYPES[type].icon"
           :label="`Declare ${RA_CRISIS_TYPES[type].label}`"
           @click="declare(type, selected?.id)"
@@ -571,7 +571,7 @@ const canOpenRa = useCanOpenRa()
               v-if="counts.inactive"
               v-model="showInactive"
               :label="`Inactive (${counts.inactive})`"
-              description="Not in service: inactive, new and waiting for approval, or rejected."
+              description="Not in service (inactive, new and waiting for approval, or rejected)."
               :ui="{ description: 'sr-only' }"
             />
             <UCheckbox
@@ -629,8 +629,8 @@ const canOpenRa = useCanOpenRa()
           />
 
           <p class="text-xs text-muted">
-            Earthquake and weather warning data: {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.<template v-if="waqiOn && showAir">
-              Air quality from the World Air Quality Index Project and the stations' own sources.
+            Source: Earthquakes and weather warnings, {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.<template v-if="waqiOn && showAir">
+              Air quality, World Air Quality Index Project and the stations' own sources.
             </template>
           </p>
 

@@ -128,7 +128,7 @@ async function save() {
         />
       </div>
       <p class="text-xs text-muted">
-        Source. {{ data.source }}.
+        Source: {{ data.source }}.
       </p>
     </form>
   </UCard>

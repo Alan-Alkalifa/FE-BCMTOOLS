@@ -533,7 +533,7 @@ export const RA_PIN_CLASS: Record<RaLevel | 'na' | 'none', string> = {
   none: 'text-muted',
 }
 
-/** US EPA's AQI bands as WAQI colours them, on its tiles and widget. */
+/** US EPA's AQI bands as WAQI colours them, on its map and widget. */
 export const WAQI_BANDS: { code: RaWaqiBand, label: string, range: string, hex: string, text: string }[] = [
   { code: 'good', label: 'Good', range: '0–50', hex: '#009966', text: '#ffffff' },
   { code: 'moderate', label: 'Moderate', range: '51–100', hex: '#ffde33', text: '#1f2937' },
@@ -843,7 +843,7 @@ export type SitesConfigTab = (typeof SITES_CONFIG_TABS)[number]
  *  pages and icon. Manage is at `path`, Monitoring, Approval and Guidebook under it. */
 export const RA_CRISIS_TYPES: Record<RaCrisisType, { label: string, plural: string, lower: string, path: string, icon: string }> = {
   disaster: { label: 'Disaster', plural: 'Disasters', lower: 'disaster', path: '/disasters', icon: 'i-lucide-siren' },
-  incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-triangle-alert' },
+  incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-flag' },
 }
 
 /** Administration › Master building, and a building's page there, on a tab (`map`,

@@ -164,7 +164,7 @@ const backwards = computed(() => from.value !== null && to.value !== null && fro
       </p>
 
       <p class="text-xs text-muted">
-        Source. {{ report?.source ?? 'WHO Disease Outbreak News' }},
+        Source: {{ report?.source ?? 'WHO Disease Outbreak News' }},
         <a
           :href="report?.source_url ?? 'https://www.who.int/emergencies/disease-outbreak-news'"
           target="_blank"

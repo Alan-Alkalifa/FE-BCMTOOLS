@@ -151,7 +151,7 @@ async function readNow() {
         />
       </div>
       <p class="text-xs text-muted">
-        Source. WHO, Disease Outbreak News ({{ data.source }}).
+        Source: WHO, Disease Outbreak News ({{ data.source }}).
       </p>
     </form>
   </UCard>

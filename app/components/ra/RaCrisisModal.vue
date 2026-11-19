@@ -232,7 +232,7 @@ async function onSubmit() {
           variant="subtle"
           icon="i-lucide-activity"
           :title="`From the BMKG earthquake M${raFormatMagnitude(quake.earthquake.magnitude)} on ${formatDateTime(quake.earthquake.occurred_at)}`"
-          :description="`The epicentre, time and description come from BMKG; the radius is the alert radius. Change anything that doesn't fit. Source: ${quake.source}.`"
+          :description="`The epicentre, time and description come from BMKG, and the radius is the earthquake's alert radius (at most 200 km). Change anything that doesn't fit. Source: ${quake.source}.`"
         />
 
         <UFormField

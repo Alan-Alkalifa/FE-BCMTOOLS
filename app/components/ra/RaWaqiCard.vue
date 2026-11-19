@@ -352,7 +352,7 @@ onBeforeUnmount(() => script?.remove())
                 v-if="detail?.station"
                 class="text-xs text-muted"
               >
-                Data from
+                Source:
                 <template
                   v-for="(item, index) in sources"
                   :key="item.name"
@@ -388,11 +388,11 @@ onBeforeUnmount(() => script?.remove())
         v-else-if="!shown.length && report?.enabled && !report.message && !error"
         class="py-4 text-center text-sm text-muted"
       >
-        {{ view === 'all' ? 'WAQI has no station over the buildings.' : view === 'areas' ? 'No station has a building or branch in its area.' : 'No station has an affected building or branch.' }}
+        {{ view === 'all' ? 'WAQI has no station in this area.' : view === 'areas' ? 'No station has a building or branch in its area.' : 'No station has an affected building or branch.' }}
       </p>
 
       <p class="text-xs text-muted">
-        Source. {{ report?.source ?? 'World Air Quality Index Project' }},
+        Source: {{ report?.source ?? 'World Air Quality Index Project' }},
         <a
           :href="report?.source_url ?? 'https://waqi.info'"
           target="_blank"

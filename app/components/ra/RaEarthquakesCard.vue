@@ -44,7 +44,7 @@ function nearText(quake: RaEarthquake) {
             Recent earthquakes (BMKG)
           </h2>
           <p class="text-sm text-muted">
-            The last {{ list?.days ?? 7 }} days: magnitude {{ raFormatMagnitude(list?.min_magnitude ?? 5) }} or more, or felt by people. BCM is emailed when a building or branch is within the earthquake's alert radius, e<sup>(M ÷ 1,01 − 0,13)</sup> km ({{ raFormatDistance(raAlertRadiusKm(list?.min_magnitude ?? 5) * 1000) }} at M{{ raFormatMagnitude(list?.min_magnitude ?? 5) }}).
+            The last {{ list?.days ?? 7 }} days, magnitude {{ raFormatMagnitude(list?.min_magnitude ?? 5) }} or more, or felt by people. BCM is emailed when a building or branch is within the earthquake's alert radius, e<sup>(M ÷ 1,01 − 0,13)</sup> km ({{ raFormatDistance(raAlertRadiusKm(list?.min_magnitude ?? 5) * 1000) }} at M{{ raFormatMagnitude(list?.min_magnitude ?? 5) }}).
           </p>
         </div>
         <p
@@ -177,8 +177,8 @@ function nearText(quake: RaEarthquake) {
       </p>
 
       <p class="text-xs text-muted">
-        Source: {{ list?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
-        <a
+        Source. {{ list?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
+          <a
           :href="list?.source_url ?? 'https://data.bmkg.go.id/gempabumi/'"
           target="_blank"
           rel="noopener"
