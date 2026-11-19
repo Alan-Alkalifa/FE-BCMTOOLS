@@ -25,7 +25,7 @@ const kind = computed<RaKind>(() => fixedType.value ?? chosen.value)
 provide(raKindKey, kind)
 
 function onSaved(location: RaLocationDetail) {
-  return navigateTo(masterBuildingPath(location.id, 'contacts'))
+  return navigateTo(masterBuildingPath(location.id, 'contacts'), { replace: true })
 }
 </script>
 

@@ -446,7 +446,7 @@ test('assessments cannot be deleted', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Delete/ })).toHaveCount(0)
 })
 
-test('leaving with unsaved changes asks for confirmation', async ({ page }) => {
+test('unsaved changes: another section of the record asks first; another page keeps them in their tab', async ({ page }) => {
   test.setTimeout(120_000)
   await mockScca(page)
   await page.goto('/scca/1')
@@ -455,13 +455,17 @@ test('leaving with unsaved changes asks for confirmation', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'How SCCA works' })).toBeVisible()
   await expect(page.getByText('The application owner and IT support review the SCCA every 2 years.')).toBeVisible()
   await page.getByRole('textbox', { name: /Application name/ }).fill('Changed name')
-  await page.getByRole('navigation', { name: 'breadcrumb' }).getByRole('link', { name: 'Manage' }).click()
+  // Another section of the same record replaces the form: it asks.
+  await page.getByRole('main').getByRole('tab', { name: /Rating/ }).click()
   await expect(page.getByText('Discard unsaved changes?')).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
-  await expect(page).toHaveURL(/\/scca\/manage\/1/)
+  await expect(page.getByRole('textbox', { name: /Application name/ })).toHaveValue('Changed name')
+  // Another page opens in its own tab (docs/tabs.md): the record keeps its edits, no question.
   await page.getByRole('navigation', { name: 'breadcrumb' }).getByRole('link', { name: 'Manage' }).click()
-  await page.getByRole('button', { name: 'Discard changes' }).click()
   await expect(page).toHaveURL(/\/scca\/manage$/)
+  await expect(page.getByText('Discard unsaved changes?')).toHaveCount(0)
+  await page.getByRole('tablist', { name: 'Open pages' }).getByRole('tab', { name: /CC Omni Channel/ }).click()
+  await expect(page.getByRole('textbox', { name: /Application name/ })).toHaveValue('Changed name')
 })
 
 test('empty list explains the next step', async ({ page }) => {

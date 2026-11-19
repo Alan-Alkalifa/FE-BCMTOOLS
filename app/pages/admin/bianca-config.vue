@@ -59,17 +59,8 @@ const tab = computed({
 async function discardEdits() {
   return !dirty.value || await confirm({ title: 'Discard unsaved changes?', description: 'Your unsaved configuration edits will be lost.', confirmLabel: 'Discard changes', destructive: true })
 }
-onBeforeRouteLeave(async () => {
-  if (!await discardEdits()) return false
-})
-function beforeUnload(event: BeforeUnloadEvent) {
-  if (dirty.value) {
-    event.preventDefault()
-    event.returnValue = ''
-  }
-}
-onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: discardEdits })
 async function chooseVersion(id: number) {
   if (await discardEdits()) await router.replace({ query: { ...route.query, version: id } })
 }

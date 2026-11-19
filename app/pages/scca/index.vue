@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /** The SCCA list moved to three menus; old links (and bookmarks) land on the right one. */
 definePageMeta({
+  // Forwards to another page: never an in-app tab (docs/tabs.md).
+  tab: false,
   permission: 'scca.access',
   middleware: [
     (to) => {

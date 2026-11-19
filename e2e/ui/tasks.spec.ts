@@ -101,7 +101,7 @@ test('without BCM rights Home and Task Management show only the user\'s modules 
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Task Management' }).click()
   await expect(page.getByRole('heading', { name: 'Task Management' })).toBeVisible()
-  await expect(page.getByRole('tab')).toHaveText([/RA HO/, /RA Branch/])
+  await expect(page.getByRole('main').getByRole('tab')).toHaveText([/RA HO/, /RA Branch/])
   await expect(page.getByRole('tab', { name: /RA HO/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('table').getByRole('row', { name: /Griya CIMB Niaga 2/ })).toBeVisible()
   // Buildings waiting for approval are only for who opens Master building.
@@ -113,7 +113,7 @@ test('Task Management has one tab per module, no My tasks / Everything, and noth
   await page.goto('/tasks')
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Task Management' })).toHaveAttribute('aria-current', 'page', { timeout: 60_000 })
-  await expect(page.getByRole('tab')).toHaveText([/SCCA/, /RA HO/, /RA Branch/, /Sites/])
+  await expect(page.getByRole('main').getByRole('tab')).toHaveText([/SCCA/, /RA HO/, /RA Branch/, /Sites/])
   await expect(page.getByRole('tab', { name: 'My tasks' })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: 'Everything' })).toHaveCount(0)
   await expect(page.getByRole('combobox', { name: 'Filter by module' })).toHaveCount(0)

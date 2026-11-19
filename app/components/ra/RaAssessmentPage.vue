@@ -118,19 +118,8 @@ function openHazard(code: string) {
   return openTab('hazards', { hazard: code })
 }
 
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return
-  if (!(await confirmLeave())) return false
-})
-
-function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: confirmLeave })
 
 /** The assessor accepted the return: the RA can be changed again (In revision). */
 function onAccepted(saved: RaAssessment) {
