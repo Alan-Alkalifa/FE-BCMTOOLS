@@ -1,5 +1,6 @@
 import type { BiancaListItems, BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
 
+import type { BiancaEvent, BiancaSignoffRow } from '~/composables/useBiancaApproval'
 import type { BiancaStatus } from '~/utils/bianca'
 
 /** One workbook cell the upload reader or the completeness check names. */
@@ -127,7 +128,12 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   config_version_id: number | null
   config_version: string
   approval_problems: string[]
-  signoffs: { role: string, user_id: number | null, name: string | null, status: string | null, decided_at: string | null }[]
+  signoffs: BiancaSignoffRow[]
+  events: BiancaEvent[]
+  submitted_at: string | null
+  finalised_at: string | null
+  /** The signed-in user signs the step the BIA waits on now. */
+  can_decide: boolean
   main_location: BiancaPlace | null
   /** The BCM Coordinator / Alternate as the user directory has them; null when typed. */
   bcm_coordinator_user: BiancaPerson | null
