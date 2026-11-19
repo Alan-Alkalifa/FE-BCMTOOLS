@@ -95,6 +95,20 @@ function lossTone(amount: number | null | undefined) {
   return ''
 }
 
+function lossCellTitle(amount: number | null | undefined) {
+  const alertIdr = detail.value?.impact_reference?.loss_alert_idr
+  if (alertIdr != null && (amount ?? 0) > alertIdr) {
+    return `Exceeds financial loss alert (> ${formatCurrency(alertIdr)}) — triggers Suggested MTD`
+  }
+  return undefined
+}
+
+function impactScoreTitle(kind: 'regulatory' | 'customer', score: number | null | undefined) {
+  const row = detail.value?.impact_reference?.impact_matrix?.find((m) => m.score === score)
+  if (!row) return undefined
+  return `Score ${row.score}: ${kind === 'regulatory' ? row.regulatory : row.customer}`
+}
+
 const detailSummary = computed(() => {
   const fns = detail.value?.functions ?? []
   let itGapCount = 0
@@ -662,6 +676,7 @@ const lossPeriodTotals = computed(() =>
                       :key="`loss-${fn.seq_no}-${periodLabel}`"
                       class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
                       :class="lossTone(fn.losses?.[idx])"
+                      :title="lossCellTitle(fn.losses?.[idx])"
                     >
                       {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
                     </td>
@@ -746,6 +761,7 @@ const lossPeriodTotals = computed(() =>
                         :key="`reg-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
                         :class="scoreTone(fn.regulatory_scores?.[idx])"
+                        :title="impactScoreTitle('regulatory', fn.regulatory_scores?.[idx])"
                       >
                         {{ fn.regulatory_scores?.[idx] ?? '—' }}
                       </td>
@@ -765,6 +781,7 @@ const lossPeriodTotals = computed(() =>
                         :key="`cust-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
                         :class="scoreTone(fn.customer_scores?.[idx])"
+                        :title="impactScoreTitle('customer', fn.customer_scores?.[idx])"
                       >
                         {{ fn.customer_scores?.[idx] ?? '—' }}
                       </td>
