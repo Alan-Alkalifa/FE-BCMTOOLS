@@ -56,6 +56,7 @@ const recoveryColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'category', header: 'Category' },
   { accessorKey: 'expected_mtd', header: 'Expected MTD' },
   { accessorKey: 'planned_capacity', header: 'Planned capacity' },
+  { accessorKey: 'recovery_level', header: 'Recovery level' },
   { id: 'staff', header: 'Staff (req / total)' },
   { accessorKey: 'alt_site_strategy', header: 'Alternate site strategy' },
   { id: 'seats', header: 'BCP seats (in place / req)' },
@@ -66,6 +67,7 @@ const timingColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'seq_no', header: 'No' },
   { accessorKey: 'name', header: 'Business function' },
   { accessorKey: 'category', header: 'Category' },
+  { accessorKey: 'description', header: 'Brief description' },
   { accessorKey: 'frequency', header: 'Frequency' },
   { accessorKey: 'critical_timing', header: 'Critical timing' },
   { accessorKey: 'critical_activity', header: 'Activity performed' },
@@ -131,6 +133,8 @@ function isTriggerPeriod(fn: BiaFunctionItem, idx: number) {
 const detailSummary = computed(() => {
   const fns = detail.value?.functions ?? []
   let itGapCount = 0
+  let missingCriticalGapNote = 0
+  let unalignedNonItCount = 0
   let seatGap = 0
   let missingVitalCritical = 0
   let mtdExceedCount = 0
@@ -149,6 +153,10 @@ const detailSummary = computed(() => {
 
     for (const dep of fn.it_dependencies) {
       if (dep.daat_negative || dep.daat.startsWith('-')) itGapCount += 1
+      if (dep.workaround_gap_required && !dep.critical_gap) missingCriticalGapNote += 1
+    }
+    for (const ndep of fn.non_it_dependencies) {
+      if (ndep.alignment_warnings?.length) unalignedNonItCount += 1
     }
     if (fn.bcp_seats_current < fn.bcp_seats_required) {
       seatGap += fn.bcp_seats_required - fn.bcp_seats_current
@@ -164,6 +172,8 @@ const detailSummary = computed(() => {
     important,
     others,
     itGapCount,
+    missingCriticalGapNote,
+    unalignedNonItCount,
     seatGap,
     missingVitalCritical,
     mtdExceedCount,
@@ -182,6 +192,12 @@ const attentionItems = computed(() => {
   }
   if (s.itGapCount > 0) {
     items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
+  }
+  if (s.missingCriticalGapNote > 0) {
+    items.push({ text: `${s.missingCriticalGapNote} IT application(s) require a mandatory Workaround Critical Gap note`, targetTab: 'dependencies' })
+  }
+  if (s.unalignedNonItCount > 0) {
+    items.push({ text: `${s.unalignedNonItCount} upstream/downstream dependency row(s) are misaligned with function capacity or MTD`, targetTab: 'dependencies' })
   }
   if (s.seatGap > 0) {
     items.push({ text: `BCP seat shortage of ${s.seatGap} seat(s) across business functions`, targetTab: 'recovery' })
@@ -567,6 +583,14 @@ const lossPeriodTotals = computed(() =>
                     >
                       Others note: {{ detail.ra_questionnaire.others_note }}
                     </p>
+                  </dd>
+                </div>
+                <div class="grid grid-cols-3 gap-4 py-2.5">
+                  <dt class="text-muted">
+                    BC considered in RA
+                  </dt>
+                  <dd class="col-span-2">
+                    {{ detail.ra_questionnaire.considered_bc }}
                   </dd>
                 </div>
                 <div class="grid grid-cols-3 gap-4 py-2.5">
@@ -1101,7 +1125,16 @@ const lossPeriodTotals = computed(() =>
                             <span class="text-muted">No IT application dependency (NA)</span>
                           </template>
                           <template v-else>
-                            {{ dep.app_name }}
+                            <div class="inline-flex flex-wrap items-center gap-1.5">
+                              <span>{{ dep.app_name }}</span>
+                              <UBadge
+                                v-if="dep.is_other"
+                                color="neutral"
+                                variant="outline"
+                                size="xs"
+                                label="Others"
+                              />
+                            </div>
                           </template>
                         </td>
                         <td class="px-3 py-2 tabular-nums">
@@ -1134,7 +1167,16 @@ const lossPeriodTotals = computed(() =>
                           {{ dep.system_usage }}
                         </td>
                         <td class="px-3 py-2 text-muted">
-                          {{ dep.critical_gap || '—' }}
+                          <UBadge
+                            v-if="dep.workaround_gap_required && !dep.critical_gap"
+                            color="error"
+                            variant="subtle"
+                            size="xs"
+                            label="Mandatory gap note missing"
+                          />
+                          <template v-else>
+                            {{ dep.critical_gap || '—' }}
+                          </template>
                         </td>
                       </tr>
                     </tbody>
@@ -1171,6 +1213,9 @@ const lossPeriodTotals = computed(() =>
                         <th class="px-3 py-2">
                           Material service
                         </th>
+                        <th class="px-3 py-2">
+                          Alignment
+                        </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
@@ -1198,6 +1243,26 @@ const lossPeriodTotals = computed(() =>
                         </td>
                         <td class="px-3 py-2">
                           {{ ndep.is_material }}
+                        </td>
+                        <td class="px-3 py-2">
+                          <UTooltip
+                            v-if="ndep.alignment_warnings?.length"
+                            :text="ndep.alignment_warnings.join(' ')"
+                          >
+                            <UBadge
+                              color="warning"
+                              variant="subtle"
+                              size="xs"
+                              label="Needs justification"
+                            />
+                          </UTooltip>
+                          <UBadge
+                            v-else
+                            color="success"
+                            variant="subtle"
+                            size="xs"
+                            label="Aligned"
+                          />
                         </td>
                       </tr>
                     </tbody>
@@ -1242,70 +1307,130 @@ const lossPeriodTotals = computed(() =>
       </template>
 
       <template #recovery>
-        <UCard
-          class="mt-4"
-          :ui="{ body: 'p-0 sm:p-0' }"
-        >
-          <div class="space-y-1.5 border-b border-default p-4">
-            <p class="text-sm text-muted">
-              Part 3: recovery prioritization, alternate site strategy, BCP seats at the alternate site, and vital records.
-            </p>
-            <p
-              v-if="detail.guides?.recovery"
-              class="text-xs text-muted"
-            >
-              <span class="font-medium text-highlighted">Guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
-            </p>
-          </div>
-          <UTable
-            :data="detail.functions"
-            :columns="recoveryColumns"
-            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
-          >
-            <template #name-cell="{ row }">
-              <span class="font-medium text-highlighted">{{ row.original.name }}</span>
-            </template>
-            <template #category-cell="{ row }">
-              <StatusBadge
-                :scale="biaCategory"
-                :value="row.original.category"
-                size="sm"
-              />
-            </template>
-            <template #staff-cell="{ row }">
-              <span class="tabular-nums">{{ row.original.required_staff }} / {{ row.original.total_staff }}</span>
-            </template>
-            <template #seats-cell="{ row }">
-              <span
-                class="tabular-nums"
-                :class="row.original.bcp_seats_current < row.original.bcp_seats_required ? 'font-semibold text-error' : ''"
+        <div class="mt-4 space-y-6">
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <div class="space-y-1.5 border-b border-default p-4">
+              <p class="text-sm text-muted">
+                Part 3: recovery prioritization, alternate site strategy, BCP seats at the alternate site, and vital records.
+              </p>
+              <p
+                v-if="detail.guides?.recovery"
+                class="text-xs text-muted"
               >
-                {{ row.original.bcp_seats_current }} / {{ row.original.bcp_seats_required }}
-                <template v-if="row.original.bcp_seats_current < row.original.bcp_seats_required">
-                  (-{{ row.original.bcp_seats_required - row.original.bcp_seats_current }})
-                </template>
-              </span>
-            </template>
-            <template #vital_record-cell="{ row }">
-              <template v-if="row.original.category === 'Business Critical' && (!row.original.vital_record || row.original.vital_record === '—')">
-                <UBadge
-                  color="error"
-                  variant="subtle"
+                <span class="font-medium text-highlighted">Guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
+              </p>
+            </div>
+            <UTable
+              :data="detail.functions"
+              :columns="recoveryColumns"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+            >
+              <template #name-cell="{ row }">
+                <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+              </template>
+              <template #category-cell="{ row }">
+                <StatusBadge
+                  :scale="biaCategory"
+                  :value="row.original.category"
                   size="sm"
-                  label="Required for Business Critical"
                 />
               </template>
-              <template v-else>
-                <p class="font-medium text-highlighted">
-                  {{ row.original.vital_record }}
-                </p>
-                <p class="text-xs text-muted">
-                  {{ row.original.vital_record_location }}
-                </p>
+              <template #staff-cell="{ row }">
+                <span class="tabular-nums">{{ row.original.required_staff }} / {{ row.original.total_staff }}</span>
               </template>
+              <template #seats-cell="{ row }">
+                <span
+                  class="tabular-nums"
+                  :class="row.original.bcp_seats_current < row.original.bcp_seats_required ? 'font-semibold text-error' : ''"
+                >
+                  {{ row.original.bcp_seats_current }} / {{ row.original.bcp_seats_required }}
+                  <template v-if="row.original.bcp_seats_current < row.original.bcp_seats_required">
+                    (-{{ row.original.bcp_seats_required - row.original.bcp_seats_current }})
+                  </template>
+                </span>
+              </template>
+              <template #vital_record-cell="{ row }">
+                <template v-if="row.original.category === 'Business Critical' && (!row.original.vital_record || row.original.vital_record === '—')">
+                  <UBadge
+                    color="error"
+                    variant="subtle"
+                    size="sm"
+                    label="Required for Business Critical"
+                  />
+                </template>
+                <template v-else>
+                  <p class="font-medium text-highlighted">
+                    {{ row.original.vital_record }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    {{ row.original.vital_record_location }}
+                  </p>
+                </template>
+              </template>
+            </UTable>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <template #header>
+              <h2 class="text-base font-semibold text-highlighted">
+                Recovery strategies &amp; alternate-site equipment (Part 3)
+              </h2>
             </template>
-          </UTable>
-        </UCard>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead>
+                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
+                    <th class="py-3 ps-4 pe-3 whitespace-nowrap">
+                      No
+                    </th>
+                    <th class="py-3 px-3 whitespace-nowrap">
+                      Business function
+                    </th>
+                    <th class="py-3 px-3">
+                      Prioritization strategy
+                    </th>
+                    <th class="py-3 px-3">
+                      Outstanding work strategy
+                    </th>
+                    <th class="py-3 px-3 whitespace-nowrap">
+                      Equipment (PC / Phone / Fax / Copier)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr
+                    v-for="fn in detail.functions"
+                    :key="`rec-extra-${fn.seq_no}`"
+                  >
+                    <td class="py-3 ps-4 pe-3 align-top tabular-nums text-muted">
+                      {{ fn.seq_no }}
+                    </td>
+                    <td class="py-3 px-3 align-top font-medium text-highlighted whitespace-nowrap">
+                      {{ fn.name }}
+                    </td>
+                    <td class="py-3 px-3 align-top text-muted whitespace-pre-line">
+                      {{ fn.prioritization_strategy || '—' }}
+                    </td>
+                    <td class="py-3 px-3 align-top text-muted whitespace-pre-line">
+                      {{ fn.outstanding_strategy || '—' }}
+                    </td>
+                    <td class="py-3 px-3 align-top tabular-nums whitespace-nowrap">
+                      <span>
+                        {{ fn.equipment?.pc ?? 0 }} / {{ fn.equipment?.phone ?? 0 }} / {{ fn.equipment?.fax ?? 0 }} / {{ fn.equipment?.copier ?? 0 }}
+                      </span>
+                      <p
+                        v-if="fn.equipment?.others"
+                        class="mt-1 text-xs text-muted whitespace-normal"
+                      >
+                        Others: {{ fn.equipment.others }}
+                      </p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </UCard>
+        </div>
       </template>
 
       <template #timings>

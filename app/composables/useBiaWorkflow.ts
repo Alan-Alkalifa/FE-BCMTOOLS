@@ -78,6 +78,7 @@ export interface BiaSignoffWaitingRow {
 export interface BiaItDependencyItem {
   app_code: string
   app_name: string
+  is_other?: boolean
   rto: string
   rpo: string
   workaround: string
@@ -85,6 +86,8 @@ export interface BiaItDependencyItem {
   daat: string
   daat_negative?: boolean
   daat_warnings?: string[]
+  rto_reaches_mtd?: boolean | null
+  workaround_gap_required?: boolean
   system_usage: string
   critical_gap: string | null
 }
@@ -97,6 +100,7 @@ export interface BiaNonItDependencyItem {
   sla: string
   is_outsourcing: string
   is_material: string
+  alignment_warnings?: string[]
 }
 
 export interface BiaFunctionItem {
@@ -124,11 +128,21 @@ export interface BiaFunctionItem {
   total_staff: number
   required_staff: number
   recovery_level: string
+  prioritization_strategy?: string
+  outstanding_strategy?: string
   alt_site_strategy: string
   bcp_seats_current: number
   bcp_seats_required: number
+  equipment?: {
+    pc: number
+    phone: number
+    fax: number
+    copier: number
+    others: string | null
+  }
   vital_record: string
   vital_record_location: string
+  description?: string
   frequency: string
   critical_timing: string
   critical_activity: string
