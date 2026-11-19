@@ -138,7 +138,7 @@ function when(warning: RaWeatherWarning) {
           :aria-current="warning.id === selectedId ? 'true' : undefined"
         >
           <UBadge
-            :color="warning.places.length ? 'warning' : 'info'"
+            :color="raWeatherSeverityColor(warning.severity)"
             variant="subtle"
             size="lg"
             class="w-fit shrink-0"

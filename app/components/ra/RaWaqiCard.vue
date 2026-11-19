@@ -14,8 +14,12 @@ const props = defineProps<{
   error?: unknown
   places: RaMapPlace[]
   selectedId?: number | null
+  /** The area whose stations are read (Jakarta by default). */
+  area: string
 }>()
-const emit = defineEmits<{ show: [station: RaWaqiStation], place: [id: number], select: [id: number] }>()
+const emit = defineEmits<{ 'show': [station: RaWaqiStation], 'place': [id: number], 'select': [id: number], 'update:area': [code: string] }>()
+
+const areaItems = computed(() => (props.report?.areas ?? [{ code: 'jakarta', label: 'Jakarta' }]).map((item) => ({ label: item.label, value: item.code })))
 
 type View = 'affected' | 'areas' | 'all'
 const view = ref<View>('affected')
@@ -25,12 +29,19 @@ const lists = computed<Record<View, RaWaqiStation[]>>(() => ({
   areas: stations.value.filter((station) => station.places.length),
   all: stations.value,
 }))
-const shown = computed(() => lists.value[view.value])
+/** A long list (every station over Indonesia) shows the worst 50 until asked for the rest. */
+const LIMIT = 50
+const showAll = ref(false)
+const shown = computed(() => (showAll.value ? lists.value[view.value] : lists.value[view.value].slice(0, LIMIT)))
+const hidden = computed(() => lists.value[view.value].length - shown.value.length)
 const affectedPlaces = computed(() => (props.report?.places ?? []).filter((row) => row.affected).length)
 // A station picked on the map is shown in a list that holds it.
 watch(() => [props.selectedId, stations.value] as const, ([id]) => {
   if (!id || lists.value[view.value].some((station) => station.id === id)) return
   view.value = lists.value.areas.some((station) => station.id === id) ? 'areas' : 'all'
+}, { immediate: true })
+watch(() => [props.selectedId, view.value, stations.value] as const, ([id]) => {
+  if (id && !shown.value.some((station) => station.id === id) && lists.value[view.value].some((station) => station.id === id)) showAll.value = true
 }, { immediate: true })
 
 const placeName = (id: number) => props.places.find((place) => place.id === id)?.name ?? `Building ${id}`
@@ -110,18 +121,33 @@ onBeforeUnmount(() => script?.remove())
             Updated {{ formatDateTime(report.read_at) }} · Affected means AQI {{ report.threshold }} or more within {{ formatNumber(report.radius_km, 1) }} km of a station
           </p>
         </div>
-        <UTabs
+        <div
           v-if="report?.enabled"
-          v-model="view"
-          :items="[
-            { label: `Affected (${lists.affected.length})`, value: 'affected' },
-            { label: `With buildings (${lists.areas.length})`, value: 'areas' },
-            { label: `All stations (${lists.all.length})`, value: 'all' },
-          ]"
-          :content="false"
-          size="sm"
-          aria-label="WAQI stations to show"
-        />
+          class="flex flex-wrap items-center gap-2"
+        >
+          <USelectMenu
+            :model-value="area"
+            value-key="value"
+            :items="areaItems"
+            :search-input="false"
+            icon="i-lucide-map"
+            size="sm"
+            class="w-52"
+            aria-label="Air quality area"
+            @update:model-value="(code: string) => emit('update:area', code)"
+          />
+          <UTabs
+            v-model="view"
+            :items="[
+              { label: `Affected (${lists.affected.length})`, value: 'affected' },
+              { label: `With buildings (${lists.areas.length})`, value: 'areas' },
+              { label: `All stations (${lists.all.length})`, value: 'all' },
+            ]"
+            :content="false"
+            size="sm"
+            aria-label="WAQI stations to show"
+          />
+        </div>
       </div>
     </template>
 
@@ -132,7 +158,7 @@ onBeforeUnmount(() => script?.remove())
         variant="subtle"
         icon="i-lucide-circle-alert"
         title="Could not read WAQI"
-        :description="apiErrorMessage(error)"
+        :description="adminErrorText(error)"
       />
       <UAlert
         v-else-if="report && !report.enabled"
@@ -248,7 +274,10 @@ onBeforeUnmount(() => script?.remove())
             class="grid items-start gap-4 border-t border-default pt-3 lg:grid-cols-2"
             data-testid="waqi-detail"
           >
-            <div class="space-y-2">
+            <div
+              v-if="detail?.station?.widget_city"
+              class="space-y-2"
+            >
               <div
                 :id="containerId"
                 class="min-h-24"
@@ -268,13 +297,20 @@ onBeforeUnmount(() => script?.remove())
                 variant="subtle"
                 icon="i-lucide-circle-alert"
                 title="Could not read the station"
-                :description="apiErrorMessage(detailError)"
+                :description="adminErrorText(detailError)"
               />
               <p
                 v-else-if="detailStatus === 'pending' && !detail"
                 class="text-muted"
               >
                 Reading the station…
+              </p>
+              <p
+                v-else-if="detail && !detail.station"
+                class="text-muted"
+                data-testid="waqi-no-detail"
+              >
+                {{ detail.message }}
               </p>
               <dl
                 v-else-if="detail?.station"
@@ -336,8 +372,20 @@ onBeforeUnmount(() => script?.remove())
           </div>
         </li>
       </ul>
+      <div
+        v-if="hidden > 0"
+        class="flex justify-center"
+      >
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          :label="`Show all ${lists[view].length} stations`"
+          @click="showAll = true"
+        />
+      </div>
       <p
-        v-else-if="report?.enabled && !report.message && !error"
+        v-else-if="!shown.length && report?.enabled && !report.message && !error"
         class="py-4 text-center text-sm text-muted"
       >
         {{ view === 'all' ? 'WAQI has no station over the buildings.' : view === 'areas' ? 'No station has a building or branch in its area.' : 'No station has an affected building or branch.' }}

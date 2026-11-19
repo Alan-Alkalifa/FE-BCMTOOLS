@@ -583,6 +583,10 @@ export interface RaWaqiReport {
   source: string
   source_url: string
   message: string | null
+  /** The area read (Jakarta by default), its box south, west, north, east. */
+  area: { code: string, label: string, bounds: [number, number, number, number] }
+  /** The areas to pick from. */
+  areas: { code: string, label: string }[]
   /** The worst first, those without a reading last. */
   stations: RaWaqiStation[]
   /** Each building in a station's area, the worst first. */

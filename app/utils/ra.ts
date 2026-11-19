@@ -550,6 +550,22 @@ export function waqiBand(aqi: number) {
   return WAQI_BANDS[index === -1 ? WAQI_BANDS.length - 1 : index]!
 }
 
+/** A BMKG weather warning's severity (CAP: Extreme, Severe, Moderate, Minor): its badge colour,
+ *  the same for every warning of that severity. */
+export function raWeatherSeverityColor(severity: string | null | undefined): 'error' | 'warning' | 'info' | 'neutral' {
+  switch ((severity ?? '').toLowerCase()) {
+    case 'extreme':
+    case 'severe':
+      return 'error'
+    case 'moderate':
+      return 'warning'
+    case 'minor':
+      return 'info'
+    default:
+      return 'neutral'
+  }
+}
+
 /** Distance rings the location map can draw around the selected place, in km. */
 export const RA_RING_KM = [1, 2, 5, 10, 25] as const
 

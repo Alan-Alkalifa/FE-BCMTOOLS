@@ -623,6 +623,11 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   await expect(first).toContainText('Hujan Lebat disertai Petir di Banten')
   await expect(first.getByRole('button', { name: 'KCP Bintaro Sektor 9' })).toBeVisible()
   await expect(tab.locator('li').nth(1)).toContainText('No building or branch inside.')
+  // The badge's colour follows the severity, whether a building is inside or not.
+  const badges = tab.locator('li').getByText('Moderate', { exact: true })
+  await expect(badges).toHaveCount(2)
+  const colours = await badges.evaluateAll((items) => items.map((item) => getComputedStyle(item).color))
+  expect(new Set(colours).size).toBe(1)
   await expect(first.getByRole('link', { name: 'Infographic' })).toHaveAttribute('href', /nowcasting\.bmkg\.go\.id/)
   await first.getByRole('button', { name: 'Show on map' }).click()
   await expect(page).toHaveURL(/warning=CBT20261118001/)
@@ -671,10 +676,12 @@ const WAQI_REPORT = {
   source: 'World Air Quality Index Project',
   source_url: 'https://waqi.info',
   message: null,
+  area: { code: 'jakarta', label: 'Jakarta', bounds: [-6.45, 106.55, -6.05, 107.1] },
+  areas: [{ code: 'jakarta', label: 'Jakarta' }, { code: 'java', label: 'Java' }, { code: 'indonesia', label: 'All of Indonesia' }],
   stations: [
     { id: 101, name: 'Bintaro, South Tangerang', latitude: -6.2536, longitude: 106.7194, aqi: 157, band: { code: 'unhealthy', label: 'Unhealthy' }, measured_at: '2026-11-19T10:00:00+07:00', affected: true, places: [{ id: 1, distance_km: 2 }] },
     { id: 103, name: 'Gelora Bung Karno', latitude: -6.226, longitude: 106.7982, aqi: 88, band: { code: 'moderate', label: 'Moderate' }, measured_at: '2026-11-19T09:00:00+07:00', affected: false, places: [{ id: 2, distance_km: 1.1 }] },
-    { id: 104, name: 'Pakubuwono', latitude: -6.2405, longitude: 106.7905, aqi: null, band: null, measured_at: null, affected: false, places: [] },
+    { id: -523021, name: 'Pakubuwono', latitude: -6.2405, longitude: 106.7905, aqi: null, band: null, measured_at: null, affected: false, places: [] },
   ],
   places: [
     { location_id: 1, station_id: 101, distance_km: 2, aqi: 157, affected: true },
@@ -697,10 +704,18 @@ const WAQI_STATION = {
 test('WAQI\'s stations are drawn with their areas, and the WAQI tab lists the buildings they affect', async ({ page }) => {
   await mockRaMap(page, { crisis: false })
   await page.route('**/api/ra/map-settings', (route) => route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: true } }))
-  await page.route('**/api/ra/waqi', (route) => route.fulfill({ json: WAQI_REPORT }))
+  const areas: string[] = []
+  await page.route(/\/api\/ra\/waqi(\?|$)/, (route) => {
+    const code = new URL(route.request().url()).searchParams.get('area') ?? ''
+    areas.push(code)
+    return route.fulfill({ json: code === 'java' ? { ...WAQI_REPORT, area: { code: 'java', label: 'Java', bounds: [-8.9, 105.1, -5.8, 114.7] } } : WAQI_REPORT })
+  })
   const asked: string[] = []
   await page.route('**/api/ra/waqi/stations/*', (route) => {
-    asked.push(new URL(route.request().url()).pathname)
+    const path = new URL(route.request().url()).pathname
+    asked.push(path)
+    // A station from another network (negative uid) that WAQI has no feed for.
+    if (path.endsWith('/-523021')) return route.fulfill({ json: { enabled: true, station: null, message: 'WAQI shows this station on its map but gives no details for it.' } })
     return route.fulfill({ json: WAQI_STATION })
   })
   // WAQI's widget script: it fills the container named in _aqiFeed's settings.
@@ -751,15 +766,49 @@ test('WAQI\'s stations are drawn with their areas, and the WAQI tab lists the bu
   await expect(page).toHaveURL(/station=103/)
   await expect.poll(() => asked.at(-1)).toBe('/api/ra/waqi/stations/103')
   await card.getByRole('tab', { name: 'All stations (3)' }).click()
-  await expect(card.locator('li[data-station="104"]')).toContainText('No building or branch in its area.')
+  const paku = card.locator('li[data-station="-523021"]')
+  await expect(paku).toContainText('No building or branch in its area.')
+  await paku.getByRole('button', { name: 'Details' }).click()
+  await expect(page).toHaveURL(/station=-523021/)
+  await expect(paku.getByTestId('waqi-no-detail')).toHaveText('WAQI shows this station on its map but gives no details for it.')
+  await expect(paku.getByTestId('waqi-widget')).toHaveCount(0)
+  await expect(paku.getByText('Could not read the station')).toHaveCount(0)
 
   // A building in an area is shown on the map.
   await card.getByRole('tab', { name: 'Affected (1)' }).click()
   await card.getByRole('button', { name: 'Griya CIMB Niaga 2 (2 km)' }).click()
   await expect(page).toHaveURL(/place=1/)
 
+  // Another area: its stations are read and the tab says which area it is.
+  expect(areas[0]).toBe('jakarta')
+  const areaPicker = card.getByRole('button', { name: 'Air quality area' })
+  await expect(areaPicker).toContainText('Jakarta')
+  await areaPicker.click()
+  await page.getByRole('option', { name: 'Java' }).click()
+  await expect(page).toHaveURL(/air_area=java/)
+  await expect.poll(() => areas.at(-1)).toBe('java')
+  await expect(areaPicker).toContainText('Java')
+
   await toggle.uncheck()
   await expect(page.locator('.ra-aqi')).toHaveCount(0)
+})
+
+test('every WAQI station over Indonesia is drawn, and the full list shows the worst 50 first', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.route('**/api/ra/map-settings', (route) => route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: true } }))
+  const many = Array.from({ length: 55 }, (_, index) => ({
+    id: 1000 + index, name: `Station ${index + 1}`, latitude: -8 + index * 0.1, longitude: 110 + index * 0.2,
+    aqi: 200 - index, band: { code: 'unhealthy', label: 'Unhealthy' }, measured_at: null, affected: false, places: [],
+  }))
+  await page.route(/\/api\/ra\/waqi(\?|$)/, (route) => route.fulfill({ json: { ...WAQI_REPORT, stations: [...WAQI_REPORT.stations, ...many] } }))
+  await page.goto('/locations/map?report=waqi')
+  await expect(page.getByText('Air quality, WAQI (58)')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.ra-aqi')).toHaveCount(58)
+  const card = page.getByTestId('ra-waqi')
+  await card.getByRole('tab', { name: 'All stations (58)' }).click()
+  await expect(card.locator('li[data-station]')).toHaveCount(50)
+  await card.getByRole('button', { name: 'Show all 58 stations' }).click()
+  await expect(card.locator('li[data-station]')).toHaveCount(58)
 })
 
 test('without a WAQI token there is no WAQI layer or tab', async ({ page }) => {

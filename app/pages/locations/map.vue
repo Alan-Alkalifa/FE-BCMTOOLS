@@ -131,11 +131,26 @@ const report = computed<Report>({
 const { data: mapSettings } = useRaMapSettings()
 const waqiOn = computed(() => !!mapSettings.value?.waqi_enabled)
 const showAir = ref(true)
+/** The area whose stations are shown, in the URL (?air_area=java), Jakarta by default. */
+const airArea = computed<string>({
+  get: () => (route.query.air_area ? String(route.query.air_area) : 'jakarta'),
+  set: (code) => router.replace({ query: { ...route.query, air_area: code === 'jakarta' ? undefined : code, station: undefined } }),
+})
 const { data: waqiReport, error: waqiError, refresh: refreshWaqi } = useAsyncData(
   'ra-waqi',
-  () => (waqiOn.value ? $fetch<RaWaqiReport>('/api/ra/waqi') : Promise.resolve(null)),
-  { server: false, watch: [waqiOn] },
+  () => (waqiOn.value ? $fetch<RaWaqiReport>('/api/ra/waqi', { query: { area: airArea.value } }) : Promise.resolve(null)),
+  { server: false, watch: [waqiOn, airArea] },
 )
+// A new area picked: once its stations are in, the map shows the area.
+let areaPicked = false
+watch(airArea, () => (areaPicked = true))
+watch(waqiReport, (value) => {
+  if (!areaPicked || !value?.area) return
+  areaPicked = false
+  autoFit.value = false
+  const [south, west, north, east] = value.area.bounds
+  mapRef.value?.fit([{ lat: south, lng: west }, { lat: north, lng: east }])
+})
 const waqiStations = computed(() => waqiReport.value?.stations ?? [])
 let waqiTimer: ReturnType<typeof setInterval> | undefined
 /** The selected station stays in the URL (?station=8645). */
@@ -916,6 +931,8 @@ const canOpenRa = useCanOpenRa()
             :error="waqiError"
             :places="places"
             :selected-id="selectedStationId"
+            :area="airArea"
+            @update:area="(code: string) => (airArea = code)"
             @show="showStation"
             @place="showPlace"
             @select="(id: number) => (selectedStationId = id)"
