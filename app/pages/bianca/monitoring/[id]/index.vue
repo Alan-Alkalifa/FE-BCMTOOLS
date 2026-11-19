@@ -87,6 +87,49 @@ function scoreTone(score: number | null | undefined) {
   if (score === 2) return 'font-medium text-warning'
   return 'text-muted'
 }
+
+const detailSummary = computed(() => {
+  const fns = detail.value?.functions ?? []
+  let itGapCount = 0
+  let seatGap = 0
+  let missingVitalCritical = 0
+  let critical = 0
+  let important = 0
+  let others = 0
+
+  for (const fn of fns) {
+    if (fn.category === 'Business Critical') critical += 1
+    else if (fn.category === 'Important') important += 1
+    else others += 1
+
+    for (const dep of fn.it_dependencies) {
+      if (dep.daat_negative || dep.daat.startsWith('-')) itGapCount += 1
+    }
+    if (fn.bcp_seats_current < fn.bcp_seats_required) {
+      seatGap += fn.bcp_seats_required - fn.bcp_seats_current
+    }
+    if (fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')) {
+      missingVitalCritical += 1
+    }
+  }
+
+  return { fnCount: fns.length, critical, important, others, itGapCount, seatGap, missingVitalCritical }
+})
+
+const attentionItems = computed(() => {
+  const s = detailSummary.value
+  const items: { text: string, targetTab: DetailTab }[] = []
+  if (s.itGapCount > 0) {
+    items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
+  }
+  if (s.seatGap > 0) {
+    items.push({ text: `BCP seat shortage of ${s.seatGap} seat(s) across business functions`, targetTab: 'recovery' })
+  }
+  if (s.missingVitalCritical > 0) {
+    items.push({ text: `${s.missingVitalCritical} Business Critical function(s) missing vital record details`, targetTab: 'recovery' })
+  }
+  return items
+})
 </script>
 
 <template>
@@ -165,6 +208,90 @@ function scoreTone(score: number | null | undefined) {
         label="Back to monitoring"
       />
     </template>
+
+    <div class="mb-6 space-y-4">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-lg border border-default bg-default p-3.5">
+          <p class="text-xs text-muted">
+            Business functions
+          </p>
+          <p class="mt-1 text-2xl font-semibold tabular-nums text-highlighted">
+            {{ detailSummary.fnCount }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ detailSummary.critical }} Critical · {{ detailSummary.important }} Important · {{ detailSummary.others }} Others
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3.5">
+          <p class="text-xs text-muted">
+            Shortest Expected MTD
+          </p>
+          <p class="mt-1 text-2xl font-semibold text-highlighted">
+            {{ detail.shortest_mtd || '—' }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Highest priority recovery target
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3.5">
+          <p class="text-xs text-muted">
+            IT DAAT gaps
+          </p>
+          <p
+            class="mt-1 text-2xl font-semibold tabular-nums"
+            :class="detailSummary.itGapCount > 0 ? 'text-error' : 'text-highlighted'"
+          >
+            {{ detailSummary.itGapCount }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Apps exceeding Expected MTD
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3.5">
+          <p class="text-xs text-muted">
+            BCP seat shortage
+          </p>
+          <p
+            class="mt-1 text-2xl font-semibold tabular-nums"
+            :class="detailSummary.seatGap > 0 ? 'text-error' : 'text-highlighted'"
+          >
+            {{ detailSummary.seatGap }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Seats short at alternate site
+          </p>
+        </div>
+      </div>
+
+      <UAlert
+        v-if="attentionItems.length"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Needs attention"
+      >
+        <template #description>
+          <ul class="mt-1 space-y-1 text-xs">
+            <li
+              v-for="item in attentionItems"
+              :key="item.text"
+              class="flex flex-wrap items-center justify-between gap-2"
+            >
+              <span>• {{ item.text }}</span>
+              <UButton
+                size="xs"
+                color="warning"
+                variant="link"
+                class="p-0"
+                label="Review"
+                trailing-icon="i-lucide-arrow-right"
+                @click="tab = item.targetTab"
+              />
+            </li>
+          </ul>
+        </template>
+      </UAlert>
+    </div>
 
     <UTabs
       v-model="tab"
@@ -431,6 +558,28 @@ function scoreTone(score: number | null | undefined) {
               :columns="impactColumns"
               :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
+              <template #suggested_mtd-header>
+                <span class="inline-flex items-center gap-1">
+                  <span>Suggested MTD</span>
+                  <UTooltip text="Recommended Maximum Tolerable Downtime derived from financial loss and regulatory/customer impact.">
+                    <UIcon
+                      name="i-lucide-info"
+                      class="size-3.5 text-muted"
+                    />
+                  </UTooltip>
+                </span>
+              </template>
+              <template #expected_mtd-header>
+                <span class="inline-flex items-center gap-1">
+                  <span>Expected MTD</span>
+                  <UTooltip text="Committed Maximum Tolerable Downtime target for this business function.">
+                    <UIcon
+                      name="i-lucide-info"
+                      class="size-3.5 text-muted"
+                    />
+                  </UTooltip>
+                </span>
+              </template>
               <template #name-cell="{ row }">
                 <span class="font-medium text-highlighted">{{ row.original.name }}</span>
               </template>
@@ -670,10 +819,26 @@ function scoreTone(score: number | null | undefined) {
                           Application
                         </th>
                         <th class="px-3 py-2">
-                          Committed RTO
+                          <span class="inline-flex items-center gap-1">
+                            <span>Committed RTO</span>
+                            <UTooltip text="Recovery Time Objective — target maximum time to restore the IT application.">
+                              <UIcon
+                                name="i-lucide-info"
+                                class="size-3.5 text-muted"
+                              />
+                            </UTooltip>
+                          </span>
                         </th>
                         <th class="px-3 py-2">
-                          Committed RPO
+                          <span class="inline-flex items-center gap-1">
+                            <span>Committed RPO</span>
+                            <UTooltip text="Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).">
+                              <UIcon
+                                name="i-lucide-info"
+                                class="size-3.5 text-muted"
+                              />
+                            </UTooltip>
+                          </span>
                         </th>
                         <th class="px-3 py-2">
                           Workaround
@@ -682,7 +847,15 @@ function scoreTone(score: number | null | undefined) {
                           Backlog clear
                         </th>
                         <th class="px-3 py-2">
-                          DAAT
+                          <span class="inline-flex items-center gap-1">
+                            <span>DAAT</span>
+                            <UTooltip text="Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.">
+                              <UIcon
+                                name="i-lucide-info"
+                                class="size-3.5 text-muted"
+                              />
+                            </UTooltip>
+                          </span>
                         </th>
                         <th class="px-3 py-2">
                           System usage
@@ -693,12 +866,25 @@ function scoreTone(score: number | null | undefined) {
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
+                      <tr v-if="!fn.it_dependencies.length">
+                        <td
+                          colspan="8"
+                          class="px-3 py-3 text-xs text-muted"
+                        >
+                          No IT application dependency (NA).
+                        </td>
+                      </tr>
                       <tr
                         v-for="dep in fn.it_dependencies"
                         :key="dep.app_code"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
-                          {{ dep.app_name }}
+                          <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
+                            <span class="text-muted">No IT application dependency (NA)</span>
+                          </template>
+                          <template v-else>
+                            {{ dep.app_name }}
+                          </template>
                         </td>
                         <td class="px-3 py-2 tabular-nums">
                           {{ dep.rto }}
@@ -712,11 +898,19 @@ function scoreTone(score: number | null | undefined) {
                         <td class="px-3 py-2">
                           {{ dep.backlog_time }}
                         </td>
-                        <td
-                          class="px-3 py-2"
-                          :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''"
-                        >
-                          {{ dep.daat }}
+                        <td class="px-3 py-2">
+                          <div class="inline-flex items-center gap-1.5">
+                            <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
+                              {{ dep.daat }}
+                            </span>
+                            <UBadge
+                              v-if="dep.daat && dep.daat !== '—' && dep.daat.toUpperCase() !== 'NA'"
+                              :color="dep.daat_negative || dep.daat.startsWith('-') ? 'error' : 'success'"
+                              variant="subtle"
+                              size="xs"
+                              :label="dep.daat_negative || dep.daat.startsWith('-') ? 'Gap' : 'OK'"
+                            />
+                          </div>
                         </td>
                         <td class="px-3 py-2">
                           {{ dep.system_usage }}
@@ -860,18 +1054,31 @@ function scoreTone(score: number | null | undefined) {
             <template #seats-cell="{ row }">
               <span
                 class="tabular-nums"
-                :class="row.original.bcp_seats_current < row.original.bcp_seats_required ? 'font-medium text-warning' : ''"
+                :class="row.original.bcp_seats_current < row.original.bcp_seats_required ? 'font-semibold text-error' : ''"
               >
                 {{ row.original.bcp_seats_current }} / {{ row.original.bcp_seats_required }}
+                <template v-if="row.original.bcp_seats_current < row.original.bcp_seats_required">
+                  (-{{ row.original.bcp_seats_required - row.original.bcp_seats_current }})
+                </template>
               </span>
             </template>
             <template #vital_record-cell="{ row }">
-              <p class="font-medium text-highlighted">
-                {{ row.original.vital_record }}
-              </p>
-              <p class="text-xs text-muted">
-                {{ row.original.vital_record_location }}
-              </p>
+              <template v-if="row.original.category === 'Business Critical' && (!row.original.vital_record || row.original.vital_record === '—')">
+                <UBadge
+                  color="error"
+                  variant="subtle"
+                  size="sm"
+                  label="Required for Business Critical"
+                />
+              </template>
+              <template v-else>
+                <p class="font-medium text-highlighted">
+                  {{ row.original.vital_record }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ row.original.vital_record_location }}
+                </p>
+              </template>
             </template>
           </UTable>
         </UCard>
