@@ -12,7 +12,7 @@ const items = [
   { value: 'mtd-guide', label: 'Suggested MTD rule', description: 'First qualifying impact period, with the workbook fallback.' },
   { value: 'expected-mtd', label: 'Expected MTD', description: 'Expected MTD must be equal to or shorter than Suggested MTD. Categories follow the workbook mapping.' },
   { value: 'conversion', label: 'Time conversion', description: 'Convert days and weeks to hours for duration comparisons.' },
-  { value: 'limits', label: 'Workbook limits', description: 'Maximum business functions and dependency rows.' },
+  { value: 'limits', label: 'Workbook limits', description: 'Rows of the Excel template: business functions and dependency rows. The web form takes any number of functions.' },
 ]
 const selected = computed({
   get: () => items.find((item) => item.value === route.query.impact)?.value ?? 'thresholds',
@@ -24,7 +24,7 @@ const numeric = [
   { group: 'thresholds', key: 'score_alert', label: 'Highlighted impact score', min: 1, max: 3 },
   { group: 'conversion', key: 'hours_per_day', label: 'Hours per day', min: 0.1, max: 24, step: 0.1 },
   { group: 'conversion', key: 'days_per_week', label: 'Days per week', min: 0.1, max: 7, step: 0.1 },
-  { group: 'limits', key: 'max_functions', label: 'Maximum functions', min: 1, max: 30 },
+  { group: 'limits', key: 'max_functions', label: 'Function rows in the Excel template', min: 1, max: 30 },
   { group: 'limits', key: 'it_slots', label: 'IT rows per function', min: 1, max: 4 },
   { group: 'limits', key: 'dependency_slots', label: 'Non-IT rows per function', min: 1, max: 4 },
 ] as const

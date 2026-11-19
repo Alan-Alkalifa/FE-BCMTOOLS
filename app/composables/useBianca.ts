@@ -87,7 +87,7 @@ export interface BiancaFunction {
 
 export const BIANCA_HEADER_TEXT = [
   'group_description', 'main_floor', 'alt_floor', 'recovery_strategy',
-  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_email',
+  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_phone_2', 'bcm_coordinator_email',
   'bcm_alternate', 'bcm_alternate_nik', 'bcm_alternate_phone', 'bcm_alternate_email',
   'ra_tools', 'ra_justification', 'staff_others_note',
   'loss_formula', 'justification_regulatory', 'justification_customer', 'justification_rto', 'justification_dependency',
@@ -147,6 +147,8 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   problems: string[]
   warnings: string[]
   can_edit: boolean
+  /** The Group's organisation structure, attached on the RA Questionnaire. */
+  org_structure: BiancaAttachment | null
   can_delete: boolean
 }
 
@@ -266,6 +268,18 @@ function upload(file: File) {
 
 const BASE = '/api/bianca/assessments'
 
+/** A file kept with a BIA. */
+export interface BiancaAttachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  uploaded_by: string | null
+  uploaded_at: string | null
+  /** Downloads it. */
+  url: string
+}
+
 export const BIANCA_TEMPLATE_URL = '/api/bianca/imports/template'
 
 /** The template for a Group; without one, the signed-in user's own Group. */
@@ -294,6 +308,8 @@ export const biancaApi = {
   update: (id: number, body: BiancaInput) => $fetch<BiancaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
   remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),
   submit: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/submit`, { method: 'POST' }),
+  uploadOrgStructure: (id: number, file: File) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'POST', body: upload(file) }),
+  removeOrgStructure: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'DELETE' }),
   importPreview: (file: File) => $fetch<BiancaImportResult>('/api/bianca/imports/preview', { method: 'POST', body: upload(file) }),
   importCreate: (file: File) => $fetch<BiancaAssessment>('/api/bianca/imports', { method: 'POST', body: upload(file) }),
   importPreviewDraft: (id: number, file: File) => $fetch<BiancaImportResult>(`${BASE}/${id}/import/preview`, { method: 'POST', body: upload(file) }),

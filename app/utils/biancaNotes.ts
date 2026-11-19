@@ -93,11 +93,11 @@ export const BIANCA_ALT_SITE_BY_CATEGORY: Record<string, { strategies: string[],
 
 /** Part 1 reference: the potential cumulative financial loss matrix (SOP BIA 2026). */
 export const BIANCA_LOSS_MATRIX = [
-  { impact: 'Very High', loss: 'More than IDR 4 billion' },
-  { impact: 'High', loss: 'IDR 2 billion – IDR 4 billion' },
-  { impact: 'Medium', loss: 'IDR 300 million – IDR 2 billion' },
-  { impact: 'Low', loss: 'IDR 200 million – IDR 300 million' },
-  { impact: 'Very Low', loss: 'Less than IDR 200 million' },
+  { impact: 'Very High', loss: 'IDR 4 billion' },
+  { impact: 'High', loss: '≥ IDR 2 billion – IDR 4 billion' },
+  { impact: 'Medium', loss: '≥ IDR 300 million – IDR 2 billion' },
+  { impact: 'Low', loss: '> IDR 200 million – IDR 300 million' },
+  { impact: 'Very Low', loss: '< IDR 200 million' },
 ]
 
 /** Part 2a reference: the Business Function Categorization Criteria. */

@@ -10,10 +10,11 @@ import type {
   BiancaPreview,
 } from '~/composables/useBianca'
 import type { BiancaNoteKey } from '~/utils/biancaNotes'
+import { BIANCA_PARTS, biancaPartDone, type BiancaPart } from '~/utils/biancaParts'
 
 /**
- * The BIA on the web: Sign Off Page, RA Questionnaire, the business functions (Part 1 to 4) and
- * the notes under the tables. The same content the Excel template carries. A draft can be saved
+ * The BIA on the web: Sign Off Page, RA Questionnaire, the business functions (Part 1 to 4, as
+ * many as the Group has) with the notes under the workbook's tables below them. The same content the Excel template carries. A draft can be saved
  * incomplete; Submit needs every required value (the list under "Still to fill" says what).
  * Without `assessment` it is the New BIA form.
  */
@@ -36,7 +37,7 @@ const tabs = [
   { label: 'Sign off page', value: 'sign', icon: 'i-lucide-signature' },
   { label: 'RA questionnaire', value: 'ra', icon: 'i-lucide-clipboard-list' },
   { label: 'Business functions', value: 'functions', icon: 'i-lucide-workflow' },
-  { label: 'Notes', value: 'notes', icon: 'i-lucide-notebook-pen' },
+  { label: 'Appendix', value: 'appendix', icon: 'i-lucide-table-2' },
   { label: 'Approval template', value: 'approval', icon: 'i-lucide-signature' },
 ]
 const tab = ref('sign')
@@ -66,6 +67,73 @@ type PersonKey = 'bcm_coordinator' | 'bcm_alternate'
 const persons = reactive<Record<PersonKey, BiancaPerson | null>>({ bcm_coordinator: null, bcm_alternate: null })
 const functions = ref<BiancaFunction[]>([])
 const selected = ref(0)
+/** The part of the selected function shown, picked under that function in the list. */
+const part = ref<BiancaPart>('p1')
+/** The functions opened in the list (each shows its parts). */
+const opened = ref(new Set<number>([0]))
+function isOpen(index: number) {
+  return opened.value.has(index)
+}
+function toggle(index: number) {
+  const next = new Set(opened.value)
+  if (next.has(index)) next.delete(index)
+  else next.add(index)
+  opened.value = next
+}
+function openPart(index: number, value: BiancaPart) {
+  selected.value = index
+  part.value = value
+  if (!isOpen(index)) toggle(index)
+}
+/** Which parts of each function have everything Submit asks of them (the ticks in the list). */
+const partsDone = computed(() => functions.value.map((fn, index) => {
+  const category = preview.value?.functions[index]?.category ?? fn.category
+  return Object.fromEntries(BIANCA_PARTS.map((entry) => [
+    entry.value,
+    biancaPartDone(fn, entry.value, lookups.value?.periods.length ?? 8, category),
+  ])) as Record<BiancaPart, boolean>
+}))
+function functionDone(index: number) {
+  const done = partsDone.value[index]
+  return !!done && BIANCA_PARTS.every((entry) => done[entry.value])
+}
+/** The workbook's Appendix: every function with its category and Expected MTD, filled from Part 1 and 2. */
+const appendixRows = computed(() => functions.value.map((fn, index) => ({
+  index,
+  name: fn.name || `Function ${index + 1}`,
+  category: preview.value?.functions[index]?.category ?? fn.category ?? null,
+  expected_mtd: fn.expected_mtd ?? null,
+})))
+function openFunction(index: number, value: BiancaPart = 'p1') {
+  tab.value = 'functions'
+  openPart(index, value)
+}
+// The reference panel: open by default, remembered on this browser when someone hides it.
+const REFERENCE_KEY = 'bianca:reference-open'
+const referenceOpen = ref(true)
+onMounted(() => {
+  try {
+    referenceOpen.value = localStorage.getItem(REFERENCE_KEY) !== '0'
+  } catch {
+    // Storage blocked: keep it open.
+  }
+})
+/** Part 4's sheet has no REFERENCE box. */
+const referenceShown = computed(() => referenceOpen.value && part.value !== 'p4')
+const referencePart = computed(() => (part.value === 'p4' ? 'p3' : part.value) as 'p1' | 'p2a' | 'p2b' | 'p3')
+function toggleReference() {
+  referenceOpen.value = !referenceOpen.value
+  try {
+    localStorage.setItem(REFERENCE_KEY, referenceOpen.value ? '1' : '0')
+  } catch {
+    // Storage blocked: it just isn't remembered.
+  }
+  if (referenceOpen.value) nextTick(() => document.getElementById('bianca-reference')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+}
+function pickFunction(index: number) {
+  selected.value = index
+  if (!isOpen(index)) toggle(index)
+}
 const preview = ref<BiancaPreview | null>(null)
 
 function hydrate(source: BiancaAssessment | null) {
@@ -235,34 +303,180 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => clearTimeout(timer))
 
+// --- unsaved changes kept on this device ----------------------------------------------------
+// What is typed is copied to this browser's storage as you go (localStorage, per user and per
+// BIA), so a lost connection or a closed tab doesn't lose it: the form offers to bring it back.
+// Saving the draft clears it. Nothing leaves the browser until the user saves.
+interface Unsaved {
+  at: string
+  header: BiancaHeader
+  org: BiancaOrg
+  functions: BiancaFunction[]
+  mainPlace: BiancaPlace | null
+  persons: Record<PersonKey, BiancaPerson | null>
+}
+const { user } = useAuth()
+function unsavedKey(id: number | 'new' | undefined = saved.value?.id ?? 'new') {
+  return user.value ? `bianca:unsaved:${user.value.id}:${id}` : null
+}
+function readUnsaved(): Unsaved | null {
+  const key = unsavedKey()
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as Unsaved : null
+  } catch {
+    return null
+  }
+}
+function keepUnsaved() {
+  const key = unsavedKey()
+  if (!key || !editable.value || !dirty.value) return
+  const copy: Unsaved = {
+    at: new Date().toISOString(),
+    header: toRaw(header),
+    org: toRaw(org.value),
+    functions: toRaw(functions.value),
+    mainPlace: toRaw(mainPlace.value),
+    persons: toRaw(persons),
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(copy))
+    keptAt.value = copy.at
+  } catch {
+    // Storage full or blocked (private window): the form still works, without the copy.
+  }
+}
+function dropUnsaved(...ids: (number | 'new')[]) {
+  const targets: (number | 'new')[] = ids.length ? ids : [saved.value?.id ?? 'new']
+  for (const id of targets) {
+    const key = unsavedKey(id)
+    if (!key) continue
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // Nothing to clear.
+    }
+  }
+  keptAt.value = null
+}
+/** When the last copy was kept on this device (shown next to "Unsaved changes"). */
+const keptAt = ref<string | null>(null)
+const KEPT_TIME = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Jakarta' })
+function keptTime(value: string) {
+  return KEPT_TIME.format(new Date(value))
+}
+/** A copy newer than what the server has, offered when the form opens. */
+const restorable = ref<Unsaved | null>(null)
+let keepTimer: ReturnType<typeof setTimeout> | undefined
+watch([header, org, functions], () => {
+  clearTimeout(keepTimer)
+  keepTimer = setTimeout(keepUnsaved, 800)
+}, { deep: true })
+function keepNow() {
+  clearTimeout(keepTimer)
+  keepUnsaved()
+}
+onMounted(() => {
+  const copy = readUnsaved()
+  if (!copy || !editable.value) return
+  const server = saved.value?.updated_at ? Date.parse(saved.value.updated_at) : 0
+  if (Date.parse(copy.at) > server) restorable.value = copy
+  else dropUnsaved()
+  window.addEventListener('pagehide', keepNow)
+})
+onBeforeUnmount(() => {
+  keepNow()
+  window.removeEventListener('pagehide', keepNow)
+})
+function restoreUnsaved() {
+  const copy = restorable.value
+  if (!copy) return
+  Object.assign(header, blankHeader(), copy.header)
+  org.value = copy.org
+  functions.value = copy.functions.length ? copy.functions : functions.value
+  mainPlace.value = copy.mainPlace
+  persons.bcm_coordinator = copy.persons?.bcm_coordinator ?? null
+  persons.bcm_alternate = copy.persons?.bcm_alternate ?? null
+  selected.value = 0
+  restorable.value = null
+  nextTick(() => {
+    dirty.value = true
+  })
+  toast.add({ title: 'Your unsaved changes are back', description: 'Save the draft to keep them.', color: 'success', icon: 'i-lucide-history' })
+}
+function discardUnsaved() {
+  restorable.value = null
+  dropUnsaved()
+}
+
 const totalStaff = computed(() => Object.values(header.personnel_counts).reduce<number>((sum, count) => sum + (Number(count) || 0), 0))
 const grades = computed(() => lookups.value?.personnel_grades.filter((g) => g.active || (header.personnel_counts[g.code] ?? 0) > 0) ?? [])
+/** The RA Questionnaire's two headings: Executive – Management (up to U9) and Non-executive. */
+const gradeSections = computed(() => {
+  const executive = grades.value.filter((g) => g.max_level != null && g.max_level <= 9)
+  const others = grades.value.filter((g) => !executive.includes(g))
+  return [
+    { title: 'Executive – Management', grades: executive },
+    { title: 'Non-executive', grades: others },
+  ].filter((section) => section.grades.length)
+})
+/** The titles the workbook's notes give for each grade at CIMB Niaga. */
+const GRADE_TITLES: Record<string, string> = {
+  staff_senior: 'First VP, Senior VP, Executive VP',
+  staff_middle: 'AVP, VP',
+  staff_manager: 'Officer, AM, Manager, Senior Manager',
+  staff_others: 'karyawan kontrak (contract) or karyawan outsource (outsourced)',
+}
 /** The workbook's note on a personnel grade, when it has one. */
 function gradeNote(code: string) {
   return code in BIANCA_NOTES ? code as BiancaNoteKey : undefined
 }
 
 function addFunction() {
-  if (!lookups.value || functions.value.length >= lookups.value.max_functions) return
+  if (!lookups.value) return
   functions.value.push(emptyBiancaFunction(lookups.value.periods.length))
   selected.value = functions.value.length - 1
+  part.value = 'p1'
+  opened.value = new Set([selected.value])
 }
 
 async function removeFunction(index: number) {
   const fn = functions.value[index]
   if (!await confirm({
-    title: `Remove ${fn?.name || `function ${index + 1}`}?`,
-    description: 'Its impact, dependencies and recovery details are removed from this draft when you save.',
+    title: `Remove ${fn?.name || `Function ${index + 1}`}?`,
+    description: 'Are you sure wants to remove?',
     confirmLabel: 'Remove',
     destructive: true,
   })) return
   functions.value.splice(index, 1)
   selected.value = Math.max(0, Math.min(selected.value, functions.value.length - 1))
+  opened.value = new Set([selected.value])
 }
 
 function formError(error: unknown) {
   const { data } = (error ?? {}) as { data?: { details?: Record<string, string> } }
   return data?.details ? Object.values(data.details).join(' ') : apiErrorMessage(error)
+}
+
+/** The organisation structure picked before the draft existed, attached once it does. */
+const pendingOrgStructure = ref<File | null>(null)
+async function attachPending(result: BiancaAssessment) {
+  const file = pendingOrgStructure.value
+  if (!file) return result
+  try {
+    const attached = await biancaApi.uploadOrgStructure(result.id, file)
+    pendingOrgStructure.value = null
+    return attached
+  } catch (error) {
+    toast.add({ title: 'The draft is saved, but the organisation structure isn\'t attached', description: apiErrorMessage(error), color: 'warning', icon: 'i-lucide-paperclip' })
+    return result
+  }
+}
+/** An attach or remove answers with the BIA: take its file and warnings, keep what is typed. */
+function onOrgStructure(result: BiancaAssessment) {
+  if (!saved.value) return
+  saved.value = { ...saved.value, org_structure: result.org_structure, warnings: result.warnings, updated_at: result.updated_at }
 }
 
 async function save(quiet = false) {
@@ -273,13 +487,19 @@ async function save(quiet = false) {
       ? await biancaApi.update(saved.value.id, toInput())
       : await biancaApi.create(toInput())
     const wasNew = !saved.value
-    saved.value = result
-    hydrate(result)
+    saved.value = await attachPending(result)
+    hydrate(saved.value)
+    clearTimeout(keepTimer)
+    dropUnsaved('new', result.id)
     if (!quiet) toast.add({ title: wasNew ? `Draft ${result.ref_no} created` : 'Draft saved', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', result)
     return result
   } catch (error) {
-    failure.value = formError(error)
+    keepNow()
+    const offline = !(error as { statusCode?: number }).statusCode
+    failure.value = offline
+      ? 'Could not reach the server. Your changes are kept on this device: save again when you are back online.'
+      : formError(error)
     return null
   } finally {
     saving.value = false
@@ -289,7 +509,7 @@ async function save(quiet = false) {
 async function submit() {
   if (!await confirm({
     title: 'Submit this BIA for approval?',
-    description: 'This records the assigned signers and locks the draft. Assessment approve/reject execution is not available in this release.',
+    description: 'This records the assigned signers and locks the draft. Each signer then approves it in turn in BIANCA > Approval, or returns it to you for changes.',
     confirmLabel: 'Submit',
   })) return
   submitting.value = true
@@ -343,13 +563,35 @@ const currentFunction = computed({
 const functionItems = computed(() => functions.value.map((fn, index) => ({ label: fn.name || `Function ${index + 1}`, value: index })))
 const long = TEXT_LIMITS.long
 
-const notes = [
-  { key: 'loss_formula', label: 'Part 1: how the financial loss is worked out' },
-  { key: 'justification_regulatory', label: 'Part 1: justification of the regulatory scores' },
-  { key: 'justification_customer', label: 'Part 1: justification of the customer scores' },
-  { key: 'justification_rto', label: 'Part 2a: justification when an RTO reaches the Expected MTD' },
-  { key: 'justification_dependency', label: 'Part 2b: justification of a lower capacity or longer MTD' },
-] as const
+/** The notes under the workbook's tables: one per Part, for every function together. */
+type NoteKey = 'loss_formula' | 'justification_regulatory' | 'justification_customer' | 'justification_rto' | 'justification_dependency'
+const noteGroups: { part: BiancaPart, notes: readonly { key: NoteKey, label: string }[] }[] = [
+  {
+    part: 'p1',
+    notes: [
+      { key: 'loss_formula', label: 'How the financial loss is worked out' },
+      { key: 'justification_regulatory', label: 'Justification of the regulatory scores' },
+      { key: 'justification_customer', label: 'Justification of the customer scores' },
+    ],
+  },
+  {
+    part: 'p2a',
+    notes: [{ key: 'justification_rto', label: 'Justification when an RTO reaches the Expected MTD' }],
+  },
+  {
+    part: 'p2b',
+    notes: [{ key: 'justification_dependency', label: 'Justification of a lower capacity or a longer MTD' }],
+  },
+]
+function notesOf(value: BiancaPart) {
+  return noteGroups.find((group) => group.part === value)?.notes ?? []
+}
+/** "1 function", "2 of 3 functions": where you are among the functions. */
+const functionCount = computed(() => {
+  const total = functions.value.length
+  if (total <= 1) return `${total} function`
+  return `${Math.min(selected.value + 1, total)} of ${total} functions`
+})
 const people = [
   { key: 'bcm_coordinator', title: 'BCM Coordinator' },
   { key: 'bcm_alternate', title: 'Alternate BCM Coordinator' },
@@ -379,6 +621,16 @@ const people = [
           variant="subtle"
           size="sm"
         />
+        <span
+          v-if="dirty && editable && keptAt"
+          class="flex items-center gap-1 text-xs text-muted"
+        >
+          <UIcon
+            name="i-lucide-hard-drive-download"
+            class="size-3.5"
+          />
+          Kept on this device at {{ keptTime(keptAt) }}
+        </span>
       </div>
       <div
         v-if="editable"
@@ -418,6 +670,28 @@ const people = [
       </div>
     </div>
 
+    <UAlert
+      v-if="restorable"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-history"
+      title="You have unsaved changes on this device"
+      :description="`Kept on ${formatDateTime(restorable.at)}, after the last save. Bring them back, or discard them to keep what is saved.`"
+    >
+      <template #actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Discard"
+          @click="discardUnsaved"
+        />
+        <UButton
+          icon="i-lucide-history"
+          label="Restore"
+          @click="restoreUnsaved"
+        />
+      </template>
+    </UAlert>
     <UAlert
       v-if="failure"
       color="error"
@@ -485,7 +759,7 @@ const people = [
       <UCard>
         <template #header>
           <h2 class="flex items-center gap-1.5 text-sm font-semibold">
-            Section A · Group
+            Section A · Group (general information about the work unit)
             <BiancaNote
               note="group"
               label="Section A"
@@ -619,6 +893,20 @@ const people = [
               :trailing-icon="locked(person.key, field[0]) ? 'i-lucide-lock' : undefined"
             />
           </UFormField>
+          <BiancaField
+            v-if="person.key === 'bcm_coordinator'"
+            label="Additional phone number"
+            note-text="Only when the number in Phone is no longer active. Leave it empty when that number still works."
+            help="Fill this only when the number in Phone is no longer active."
+          >
+            <UInput
+              v-model="header.bcm_coordinator_phone_2"
+              class="w-full"
+              :maxlength="TEXT_LIMITS.medium"
+              :disabled="!editable"
+              placeholder="E.g. 0813-xxxx-xxxx"
+            />
+          </BiancaField>
         </div>
       </UCard>
 
@@ -685,104 +973,339 @@ const people = [
     </div>
 
     <!-- RA Questionnaire -->
-    <UCard v-show="tab === 'ra'">
-      <template #header>
-        <h2 class="text-sm font-semibold">
-          Head count of the Group
-        </h2>
-      </template>
-      <div class="space-y-4">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <BiancaField
-            v-for="grade in grades"
-            :key="grade.code"
-            :label="biancaGradeLabel(grade)"
-            :note="gradeNote(grade.code)"
-          >
-            <UInput
-              v-model.number="header.personnel_counts[grade.code]"
-              type="number"
-              min="0"
-              class="w-full"
+    <!-- RA Questionnaire: the workbook's sheet, top to bottom -->
+    <div
+      v-show="tab === 'ra'"
+      class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
+    >
+      <UCard>
+        <template #header>
+          <h2 class="text-sm font-semibold">
+            Summary of the Group's total personnel and Risk Assessment questionnaire
+          </h2>
+        </template>
+
+        <div class="max-w-2xl space-y-8">
+          <!-- Whose -->
+          <dl class="grid gap-3 rounded-md bg-elevated/50 p-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt class="text-xs text-muted">
+                Sub directorate
+              </dt>
+              <dd class="font-medium">
+                {{ org.sub_directorate || 'Pick it on the Sign off page' }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">
+                Group
+              </dt>
+              <dd class="font-medium">
+                {{ org.org_group || 'Pick it on the Sign off page' }}
+              </dd>
+            </div>
+          </dl>
+
+          <!-- 1. Number of personnel -->
+          <section class="space-y-3">
+            <div>
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold">
+                <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">1</span>
+                Number of personnel
+              </h3>
+            </div>
+            <div class="overflow-hidden rounded-md border border-default">
+              <table class="w-full text-sm">
+                <thead class="bg-elevated/60 text-xs text-muted">
+                  <tr>
+                    <th class="px-3 py-2 text-left font-medium">
+                      Grade / ranking
+                    </th>
+                    <th class="w-32 px-3 py-2 text-right font-medium">
+                      # of personnel
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template
+                    v-for="section in gradeSections"
+                    :key="section.title"
+                  >
+                    <tr class="border-t border-default bg-elevated/30">
+                      <th
+                        colspan="2"
+                        class="px-3 py-1.5 text-left text-xs font-semibold tracking-wide text-muted uppercase"
+                      >
+                        {{ section.title }}
+                      </th>
+                    </tr>
+                    <template
+                      v-for="grade in section.grades"
+                      :key="grade.code"
+                    >
+                      <tr class="border-t border-default align-top">
+                        <td class="px-3 py-2">
+                          <span class="flex items-center gap-1.5 font-medium">
+                            {{ biancaGradeLabel(grade) }}
+                            <BiancaNote
+                              v-if="gradeNote(grade.code)"
+                              :note="gradeNote(grade.code)"
+                              :label="grade.label"
+                            />
+                          </span>
+                          <span
+                            v-if="GRADE_TITLES[grade.code]"
+                            class="text-xs text-muted"
+                          >At CIMB Niaga: {{ GRADE_TITLES[grade.code] }}</span>
+                        </td>
+                        <td class="px-3 py-1.5">
+                          <UInput
+                            v-model.number="header.personnel_counts[grade.code]"
+                            type="number"
+                            min="0"
+                            class="w-full"
+                            :ui="{ base: 'text-right tabular-nums' }"
+                            :disabled="!editable"
+                            :aria-label="`Number of personnel, ${grade.label}`"
+                          />
+                        </td>
+                      </tr>
+                      <tr
+                        v-if="grade.requires_note"
+                        class="align-top"
+                      >
+                        <td
+                          colspan="2"
+                          class="px-3 pb-3"
+                        >
+                          <UFormField
+                            :label="`${grade.label}: please specify`"
+                            :help="(header.personnel_counts[grade.code] ?? 0) > 0 ? 'Required when there are any.' : undefined"
+                          >
+                            <UInput
+                              v-model="header.personnel_notes[grade.code]"
+                              class="w-full"
+                              :maxlength="TEXT_LIMITS.name"
+                              :disabled="!editable"
+                              placeholder="E.g. 3 contract employees, 2 outsourced (vendor name)"
+                            />
+                          </UFormField>
+                        </td>
+                      </tr>
+                    </template>
+                  </template>
+                </tbody>
+                <tfoot>
+                  <tr class="border-t-2 border-default bg-elevated/40">
+                    <th class="px-3 py-2 text-left font-semibold">
+                      <span class="flex items-center gap-1.5">
+                        Total
+                        <BiancaNote
+                          note="staff_total"
+                          label="Total staff"
+                        />
+                      </span>
+                    </th>
+                    <td class="px-3 py-2 text-right font-semibold tabular-nums">
+                      {{ totalStaff }}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
+          <!-- 2. Organisation structure -->
+          <section class="space-y-2">
+            <h3 class="flex items-center gap-1.5 text-sm font-semibold">
+              <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">2</span>
+              Organisation structure
+            </h3>
+            <p class="text-sm text-muted">
+              The Group's current organisation structure (the one in force now).
+            </p>
+            <BiancaOrgStructure
+              v-model:pending="pendingOrgStructure"
+              :attachment="saved?.org_structure ?? null"
+              :assessment-id="saved?.id"
               :disabled="!editable"
+              @changed="onOrgStructure"
             />
-          </BiancaField>
+          </section>
+
+          <!-- 3. Risk assessment -->
+          <section class="space-y-3">
+            <h3 class="flex items-center gap-1.5 text-sm font-semibold">
+              <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">3</span>
+              Risk assessment
+            </h3>
+            <BiancaField
+              label="Has the Business Continuity Risk Assessment been completed for your location?"
+              note="ra_completed"
+            >
+              <URadioGroup
+                :model-value="header.ra_completed == null ? undefined : header.ra_completed ? 'Yes' : 'No'"
+                :items="lookups.yes_no"
+                orientation="horizontal"
+                :disabled="!editable"
+                @update:model-value="header.ra_completed = $event === 'Yes'"
+              />
+            </BiancaField>
+            <UAlert
+              v-if="header.ra_completed === false"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-triangle-alert"
+              title="Not completed yet"
+              description="The Head of Sub Directorate coordinates completing the Business Continuity Risk Assessment for your location, or check with BCM."
+            />
+          </section>
         </div>
-        <BiancaField
-          v-for="grade in grades.filter(g => g.requires_note)"
-          :key="grade.code"
-          :label="`${grade.label}: please specify`"
-          :note="gradeNote(grade.code)"
-          class="max-w-md"
-        >
-          <UInput
-            v-model="header.personnel_notes[grade.code]"
-            class="w-full"
-            :maxlength="TEXT_LIMITS.name"
-            :disabled="!editable"
-          />
-        </BiancaField>
-        <p class="text-sm">
-          <span class="font-medium">Total staff:</span> <span class="tabular-nums">{{ totalStaff }}</span>
-          <span class="ms-1 text-muted">(configured categories · {{ lookups.config_version }})</span>
-          <BiancaNote
-            note="staff_total"
-            label="Total staff"
-            class="ms-1 align-middle"
-          />
-        </p>
-        <BiancaField
-          label="Is the Business Continuity Risk Assessment of the location done?"
-          note="ra_completed"
-          class="max-w-md"
-        >
-          <USelect
-            :model-value="header.ra_completed == null ? undefined : header.ra_completed ? 'Yes' : 'No'"
-            :items="lookups.yes_no"
-            class="w-full"
-            :disabled="!editable"
-            @update:model-value="header.ra_completed = $event === 'Yes'"
-          />
-        </BiancaField>
-      </div>
-    </UCard>
+      </UCard>
+
+      <!-- What to fill in, beside the form (as SCCA's "How SCCA works") -->
+      <UCard class="lg:sticky lg:top-4">
+        <template #header>
+          <h2 class="flex items-center gap-2 text-sm font-semibold">
+            <UIcon
+              name="i-lucide-lightbulb"
+              class="size-4 text-primary"
+            />
+            What to fill in here
+          </h2>
+        </template>
+        <ol class="space-y-4 text-sm">
+          <li class="flex gap-2">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">1</span>
+            <div class="space-y-1">
+              <p class="font-medium">
+                Number of personnel
+              </p>
+              <p class="text-muted">
+                How many people of the Group are in each grade / ranking. Not sure of a grade? The CIMB Niaga titles under each one tell which, and ⓘ has the workbook's note.
+              </p>
+              <p class="text-muted">
+                Others: contract (karyawan kontrak) or outsourced (karyawan outsource) staff, and say who they are.
+              </p>
+              <p class="text-muted">
+                The total should match the Group's current organisation chart.
+              </p>
+            </div>
+          </li>
+          <li class="flex gap-2">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">2</span>
+            <div class="space-y-1">
+              <p class="font-medium">
+                Organisation structure
+              </p>
+              <p class="text-muted">
+                Attach the Group's organisation chart in force now (PDF, image, PowerPoint, Word, Excel or Visio, up to 10 MB). Attaching another replaces it.
+              </p>
+            </div>
+          </li>
+          <li class="flex gap-2">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">3</span>
+            <div class="space-y-1">
+              <p class="font-medium">
+                Risk assessment
+              </p>
+              <p class="text-muted">
+                Yes when the Business Continuity Risk Assessment of your location is done. If No, the Head of Sub Directorate coordinates completing it, or check with BCM.
+              </p>
+            </div>
+          </li>
+        </ol>
+        <template #footer>
+          <p class="text-xs text-muted">
+            The grade list comes from BIA configuration {{ lookups.config_version }}; BCM keeps it.
+          </p>
+        </template>
+      </UCard>
+    </div>
 
     <!-- Business functions -->
     <div
       v-show="tab === 'functions'"
-      class="grid gap-6 lg:grid-cols-[16rem_1fr]"
+      class="grid items-start gap-6"
+      :class="referenceShown
+        ? 'lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]'
+        : 'lg:grid-cols-[18rem_minmax(0,1fr)]'"
     >
-      <UCard :ui="{ body: 'p-2 sm:p-2' }">
+      <UCard
+        class="self-start lg:sticky lg:top-4"
+        :ui="{ body: 'p-2 sm:p-2' }"
+      >
         <p class="px-2 pb-2 text-xs text-muted">
-          {{ functions.length }} of {{ lookups.max_functions }} functions
+          {{ functionCount }}
         </p>
         <ul class="space-y-1">
           <li
             v-for="item in functionItems"
             :key="item.value"
-            class="flex items-center gap-1"
           >
-            <button
-              type="button"
-              class="flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-elevated"
-              :class="item.value === selected ? 'bg-elevated font-medium text-primary' : ''"
-              @click="selected = item.value"
+            <div class="flex items-center gap-1">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :icon="isOpen(item.value) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                :aria-label="`${isOpen(item.value) ? 'Hide' : 'Show'} the parts of ${item.label}`"
+                :aria-expanded="isOpen(item.value)"
+                @click="toggle(item.value)"
+              />
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-elevated"
+                :class="item.value === selected ? 'bg-elevated font-medium text-primary' : ''"
+                @click="pickFunction(item.value)"
+              >
+                <span class="truncate">{{ item.label }}</span>
+                <UIcon
+                  v-if="functionDone(item.value)"
+                  name="i-lucide-circle-check-big"
+                  class="size-4 shrink-0 text-success"
+                  aria-label="Every part filled"
+                />
+              </button>
+              <UButton
+                v-if="editable && functions.length > 1"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                icon="i-lucide-trash-2"
+                :aria-label="`Remove ${item.label}`"
+                @click="removeFunction(item.value)"
+              />
+            </div>
+            <ul
+              v-if="isOpen(item.value)"
+              class="mt-0.5 mb-1 ms-7 space-y-0.5 border-s border-default ps-2"
             >
-              {{ item.label }}
-            </button>
-            <UButton
-              v-if="editable && functions.length > 1"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              icon="i-lucide-trash-2"
-              :aria-label="`Remove ${item.label}`"
-              @click="removeFunction(item.value)"
-            />
+              <li
+                v-for="entry in BIANCA_PARTS"
+                :key="entry.value"
+              >
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-elevated"
+                  :class="item.value === selected && entry.value === part ? 'bg-primary/10 font-medium text-primary' : 'text-muted'"
+                  :aria-current="item.value === selected && entry.value === part ? 'step' : undefined"
+                  @click="openPart(item.value, entry.value)"
+                >
+                  <span class="min-w-0 flex-1 truncate">{{ entry.label }}</span>
+                  <UIcon
+                    :name="partsDone[item.value]?.[entry.value] ? 'i-lucide-check' : 'i-lucide-circle-dashed'"
+                    class="size-3.5 shrink-0"
+                    :class="partsDone[item.value]?.[entry.value] ? 'text-success' : 'text-dimmed'"
+                    :aria-label="partsDone[item.value]?.[entry.value] ? 'Filled' : 'Not filled yet'"
+                  />
+                </button>
+              </li>
+            </ul>
           </li>
         </ul>
         <UButton
-          v-if="editable && functions.length < lookups.max_functions"
+          v-if="editable"
           class="mt-2"
           block
           color="neutral"
@@ -807,10 +1330,42 @@ const people = [
           <BiancaFunctionEditor
             :key="selected"
             v-model="currentFunction"
+            v-model:part="part"
+            :reference-open="referenceShown"
             :lookups="lookups"
             :preview="preview?.functions[selected] ?? null"
             :disabled="!editable"
-          />
+            @toggle-reference="toggleReference"
+          >
+            <template #notes="{ part: shown }">
+              <div
+                v-if="notesOf(shown).length"
+                class="space-y-3 rounded-md border border-dashed border-default p-3"
+              >
+                <div>
+                  <h4 class="text-sm font-semibold">
+                    Notes under the table
+                  </h4>
+                  <p class="text-xs text-muted">
+                    As at the bottom of the sheet in the workbook: one for every function together, so it shows the same under each function.
+                  </p>
+                </div>
+                <UFormField
+                  v-for="note in notesOf(shown)"
+                  :key="note.key"
+                  :label="note.label"
+                >
+                  <UTextarea
+                    v-model="header[note.key]"
+                    class="w-full"
+                    :rows="3"
+                    :maxlength="long"
+                    :disabled="!editable"
+                  />
+                </UFormField>
+              </div>
+            </template>
+          </BiancaFunctionEditor>
         </div>
         <template
           v-if="preview"
@@ -827,29 +1382,102 @@ const people = [
           </p>
         </template>
       </UCard>
+
+      <!-- The workbook's REFERENCE for the part being filled, beside the form (below it on a
+           narrower screen) -->
+      <aside
+        v-if="referenceShown"
+        class="lg:col-span-2 xl:sticky xl:top-4 xl:col-span-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
+      >
+        <BiancaReference
+          :part="referencePart"
+          :category-by-mtd="lookups.expected_mtd"
+          @close="toggleReference"
+        />
+      </aside>
     </div>
 
-    <!-- Notes -->
-    <UCard v-show="tab === 'notes'">
+    <!-- Appendix: the workbook's summary for BCM -->
+    <UCard
+      v-show="tab === 'appendix'"
+      :ui="{ body: 'p-0 sm:p-0' }"
+    >
       <template #header>
         <h2 class="text-sm font-semibold">
-          Notes under the tables
+          Appendix · Business function criticality
         </h2>
+        <p class="text-xs text-muted">
+          For BCM: an overview of the business functions' criticality and their MTD. Filled in from Part 1 and Part 2a, nothing to type here.
+        </p>
       </template>
-      <div class="space-y-4">
-        <UFormField
-          v-for="note in notes"
-          :key="note.key"
-          :label="note.label"
-        >
-          <UTextarea
-            v-model="header[note.key]"
-            class="w-full"
-            :rows="3"
-            :maxlength="long"
-            :disabled="!editable"
-          />
-        </UFormField>
+      <div class="flex flex-wrap gap-x-6 gap-y-1 border-b border-default px-4 py-2 text-sm">
+        <span><span class="text-muted">Sub directorate:</span> {{ org.sub_directorate || '—' }}</span>
+        <span><span class="text-muted">Group:</span> {{ org.org_group || '—' }}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-elevated/60 text-xs text-muted">
+            <tr>
+              <th class="w-12 px-4 py-2 font-medium">
+                No.
+              </th>
+              <th class="px-4 py-2 font-medium">
+                Business function
+              </th>
+              <th class="px-4 py-2 font-medium">
+                Business function category
+              </th>
+              <th class="px-4 py-2 font-medium">
+                Expected MTD
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr
+              v-for="row in appendixRows"
+              :key="row.index"
+            >
+              <td class="px-4 py-2 tabular-nums text-muted">
+                {{ row.index + 1 }}
+              </td>
+              <td class="px-4 py-2">
+                <button
+                  type="button"
+                  class="text-left font-medium text-primary hover:underline"
+                  @click="openFunction(row.index)"
+                >
+                  {{ row.name }}
+                </button>
+              </td>
+              <td class="px-4 py-2">
+                <StatusBadge
+                  v-if="row.category"
+                  :scale="BIANCA_CATEGORY"
+                  :value="row.category as keyof typeof BIANCA_CATEGORY"
+                  size="sm"
+                />
+                <span
+                  v-else
+                  class="text-muted"
+                >—</span>
+              </td>
+              <td class="px-4 py-2">
+                <button
+                  v-if="row.expected_mtd"
+                  type="button"
+                  class="hover:underline"
+                  @click="openFunction(row.index, 'p2a')"
+                >
+                  {{ row.expected_mtd }}
+                </button>
+                <span
+                  v-else
+                  class="text-muted"
+                >Not picked yet (Part 2a)</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </UCard>
 

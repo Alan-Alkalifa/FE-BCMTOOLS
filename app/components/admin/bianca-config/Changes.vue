@@ -24,7 +24,7 @@ const parts: Record<string, [section: string, label: string]> = {
   scores: ['Impact and MTD', 'Allowed impact scores'],
   hours_per_day: ['Impact and MTD', 'Hours per day'],
   days_per_week: ['Impact and MTD', 'Days per week'],
-  max_functions: ['Impact and MTD', 'Maximum functions'],
+  max_functions: ['Impact and MTD', 'Function rows in the Excel template'],
   it_slots: ['Impact and MTD', 'IT rows per function'],
   dependency_slots: ['Impact and MTD', 'Non-IT rows per function'],
   expected_mtd: ['Impact and MTD', 'Expected MTD'],

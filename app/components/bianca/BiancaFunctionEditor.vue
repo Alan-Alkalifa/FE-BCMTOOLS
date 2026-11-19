@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BiancaItDependency, BiancaLookups, BiancaPreview, BiancaFunction } from '~/composables/useBianca'
+import { BIANCA_PARTS, biancaPartInfo, type BiancaPart } from '~/utils/biancaParts'
 
 /**
  * One business function across the workbook's parts: 1 impact, 2a IT dependency, 2b non-IT
@@ -11,18 +12,36 @@ const props = defineProps<{
   lookups: BiancaLookups
   preview?: BiancaPreview['functions'][number] | null
   disabled?: boolean
+  /** The reference panel beside the form (BiancaForm) is open. */
+  referenceOpen?: boolean
 }>()
+const emit = defineEmits<{ 'toggle-reference': [] }>()
 
 type Mode = 'master' | 'other' | 'na'
 
-const part = ref('p1')
-const parts = [
-  { label: 'Part 1 · Impact', value: 'p1' },
-  { label: 'Part 2a · IT dependency', value: 'p2a' },
-  { label: 'Part 2b · Non-IT dependency', value: 'p2b' },
-  { label: 'Part 3 · Recovery', value: 'p3' },
-  { label: 'Part 4 · Critical timings', value: 'p4' },
-]
+/** The part shown, picked in the function list of the form (BiancaForm). */
+const part = defineModel<BiancaPart>('part', { default: 'p1' })
+const info = computed(() => biancaPartInfo(part.value))
+const partIndex = computed(() => BIANCA_PARTS.findIndex((item) => item.value === part.value))
+const previousPart = computed(() => BIANCA_PARTS[partIndex.value - 1] ?? null)
+const nextPart = computed(() => BIANCA_PARTS[partIndex.value + 1] ?? null)
+const confirm = useConfirm()
+defineSlots<{
+  /** The notes of the BIA (for every function together) that go with this part. */
+  notes?: (props: { part: BiancaPart }) => unknown
+}>()
+
+/** On to the next part, once the user confirms (nothing is locked: they can come back). */
+async function goNext() {
+  const next = nextPart.value
+  if (!next) return
+  if (!props.disabled && !await confirm({
+    title: `Continue to ${next.label}?`,
+    description: 'You can still change this part at any time.',
+    confirmLabel: 'Continue',
+  })) return
+  part.value = next.value
+}
 
 const periods = computed(() => props.lookups.periods)
 const modes = [
@@ -94,27 +113,47 @@ function withCurrent(items: readonly string[], value: string | null | undefined)
   return value && !items.includes(value) ? [value, ...items] : [...items]
 }
 
-const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2a', 'p3'].includes(value)
+/** The parts whose sheet has a REFERENCE box at the bottom (Part 4's has none). */
+const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['p1', 'p2a', 'p2b', 'p3'].includes(value)
 </script>
 
 <template>
-  <div class="space-y-4">
-    <UTabs
-      v-model="part"
-      :items="parts"
-      :content="false"
-      variant="link"
-      size="sm"
-      class="overflow-x-auto"
-    />
-    <div
-      v-if="hasReference(part)"
-      class="-mt-2 flex justify-end"
-    >
-      <BiancaReference
-        :part="part"
-        :category-by-mtd="lookups.expected_mtd"
-      />
+  <div class="@container space-y-4">
+    <!-- The sheet's heading in the workbook: title, objective and the instructions -->
+    <div class="space-y-2 rounded-md border border-default bg-elevated/40 p-3">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs font-medium text-muted">
+            Part {{ partIndex + 1 }} of {{ BIANCA_PARTS.length }}
+          </p>
+          <h3 class="text-sm font-semibold">
+            {{ info.title }}
+          </h3>
+        </div>
+        <UButton
+          v-if="hasReference(part)"
+          color="neutral"
+          variant="link"
+          icon="i-lucide-book-open"
+          :label="referenceOpen ? 'Hide Guidance' : 'Show Guidance'"
+          class="px-0"
+          @click="emit('toggle-reference')"
+        />
+      </div>
+      <p class="text-sm">
+        <span class="font-medium">Objective:</span> {{ info.objective }}
+      </p>
+      <ul
+        v-if="info.notes.length"
+        class="list-disc space-y-0.5 ps-5 text-sm text-muted"
+      >
+        <li
+          v-for="line in info.notes"
+          :key="line"
+        >
+          {{ line }}
+        </li>
+      </ul>
     </div>
 
     <!-- Part 1 -->
@@ -122,14 +161,12 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       v-show="part === 'p1'"
       class="space-y-4"
     >
-      <p class="text-sm text-muted">
-        Impact if this function STOPS TOTALLY, from the point of disruption to the end of week 4: the cumulative financial loss (IDR) and the regulatory and customer service scores (1–3) for each period.
-      </p>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[56rem] text-sm">
           <thead>
             <tr class="text-left text-xs text-muted">
-              <th class="w-48 py-1 pe-2 font-medium">
+              <!-- The row labels stay put while the periods scroll sideways -->
+              <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 font-medium">
                 &nbsp;
               </th>
               <th
@@ -143,7 +180,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
           </thead>
           <tbody>
             <tr>
-              <th class="py-1 pe-2 text-left font-medium">
+              <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
                   Cumulative financial loss (IDR)
                   <BiancaNote
@@ -170,7 +207,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
               </td>
             </tr>
             <tr>
-              <th class="py-1 pe-2 text-left font-medium">
+              <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
                   Regulatory score
                   <BiancaNote
@@ -197,7 +234,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
               </td>
             </tr>
             <tr>
-              <th class="py-1 pe-2 text-left font-medium">
+              <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
                   Customer service score
                   <BiancaNote
@@ -327,7 +364,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             />
           </div>
         </template>
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid gap-4 @xl:grid-cols-2">
           <BiancaField
             label="Kind of system"
             note="it_system"
@@ -367,7 +404,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         </div>
 
         <template v-if="modeOf(row) !== 'na'">
-          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
             <BiancaField
               label="RTO"
               note="rto"
@@ -420,7 +457,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
               />
             </BiancaField>
           </div>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 @xl:grid-cols-2">
             <BiancaField
               label="System usage"
               note="system_usage"
@@ -500,9 +537,6 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       v-show="part === 'p2b'"
       class="space-y-4"
     >
-      <p class="text-sm text-muted">
-        Internal and external critical dependencies. Write NA in the name when there is none.
-      </p>
       <BiancaField
         label="Function planned capacity"
         note="planned_capacity"
@@ -542,7 +576,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
           <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">
             {{ side.label }}
           </h4>
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="grid gap-3 @xl:grid-cols-2 @3xl:grid-cols-3">
             <BiancaField
               label="Name"
               :note="side.key === 'up' ? 'upstream' : 'downstream'"
@@ -627,7 +661,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       v-show="part === 'p3'"
       class="space-y-4"
     >
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 @xl:grid-cols-3">
         <BiancaField
           label="Total staff"
           note="total_staff"
@@ -709,7 +743,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
           :disabled="disabled"
         />
       </BiancaField>
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
         <BiancaField
           label="Current seats"
           note="seats_current"
@@ -742,7 +776,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
           label="Resources at the alternate site"
         />
       </p>
-      <div class="grid gap-4 sm:grid-cols-4">
+      <div class="grid gap-4 @xl:grid-cols-4">
         <UFormField label="PC">
           <UInput
             v-model.number="fn.res_pc"
@@ -792,7 +826,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
           :disabled="disabled"
         />
       </BiancaField>
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div class="grid gap-4 @xl:grid-cols-2">
         <BiancaField
           label="Vital records"
           note="vital_record"
@@ -871,5 +905,30 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         />
       </BiancaField>
     </section>
+
+    <slot
+      name="notes"
+      :part="part"
+    />
+
+    <div class="flex flex-wrap justify-between gap-2 border-t border-default pt-4">
+      <UButton
+        v-if="previousPart"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        :label="previousPart.label"
+        @click="part = previousPart.value"
+      />
+      <span v-else />
+      <UButton
+        v-if="nextPart"
+        color="neutral"
+        variant="outline"
+        trailing-icon="i-lucide-arrow-right"
+        :label="`Next: ${nextPart.label}`"
+        @click="goNext"
+      />
+    </div>
   </div>
 </template>
