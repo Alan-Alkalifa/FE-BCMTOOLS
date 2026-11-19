@@ -187,6 +187,9 @@ const attentionItems = computed(() => {
   if (s.mtdExceedCount > 0) {
     items.push({ text: `${s.mtdExceedCount} business function(s) have Expected MTD longer than Suggested MTD`, targetTab: 'impact' })
   }
+  if (s.suggestedMismatchCount > 0) {
+    items.push({ text: `${s.suggestedMismatchCount} business function(s) have Suggested MTD differing from the impact rule`, targetTab: 'impact' })
+  }
   if (s.itGapCount > 0) {
     items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
   }
@@ -673,9 +676,18 @@ const lossPeriodTotals = computed(() =>
               </template>
               <template #suggested_mtd-cell="{ row }">
                 <div class="inline-flex items-center gap-1.5">
-                  <span>{{ row.original.computed_suggested_mtd || row.original.suggested_mtd }}</span>
+                  <span>{{ row.original.suggested_mtd }}</span>
                   <UTooltip
-                    v-if="triggerSummary(row.original)"
+                    v-if="row.original.suggested_mtd_matches === false && row.original.computed_suggested_mtd"
+                    :text="`Rule suggests ${row.original.computed_suggested_mtd}${triggerSummary(row.original) ? ` · ${triggerSummary(row.original)}` : ''}`"
+                  >
+                    <UIcon
+                      name="i-lucide-triangle-alert"
+                      class="size-3.5 text-warning"
+                    />
+                  </UTooltip>
+                  <UTooltip
+                    v-else-if="triggerSummary(row.original)"
                     :text="triggerSummary(row.original)!"
                   >
                     <UIcon
@@ -870,19 +882,19 @@ const lossPeriodTotals = computed(() =>
                         class="py-3 px-3 text-right align-top"
                       >
                         <p class="font-medium text-highlighted whitespace-nowrap">
-                          {{ fn.computed_suggested_mtd || fn.suggested_mtd }}
+                          {{ fn.suggested_mtd }}
+                        </p>
+                        <p
+                          v-if="fn.suggested_mtd_matches === false && fn.computed_suggested_mtd"
+                          class="mt-1 text-[11px] font-medium text-warning whitespace-nowrap"
+                        >
+                          Rule suggests: {{ fn.computed_suggested_mtd }}
                         </p>
                         <p
                           v-if="triggerSummary(fn)"
                           class="mt-1 max-w-56 text-[11px] leading-snug text-muted"
                         >
                           {{ triggerSummary(fn) }}
-                        </p>
-                        <p
-                          v-if="fn.suggested_mtd_matches === false && fn.stored_suggested_mtd"
-                          class="mt-1 text-[11px] text-dimmed"
-                        >
-                          Form input: {{ fn.stored_suggested_mtd }}
                         </p>
                       </td>
                     </tr>
