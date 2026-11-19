@@ -2,7 +2,7 @@
 /** Input building data is in Administration › Master building now: old links open it there. */
 definePageMeta({
   permission: 'location.master',
-  redirect: (to) => ({ path: '/admin/buildings/new', query: to.query }),
+  redirect: (to) => ({ path: '/masterdata/masterbuilding/new', query: to.query }),
 })
 </script>
 

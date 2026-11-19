@@ -2,7 +2,7 @@
 /** A building's page is in Administration › Master building now. */
 definePageMeta({
   permission: 'ra.access',
-  redirect: (to) => ({ path: `/admin/buildings/${String(to.params.id)}`, query: to.query }),
+  redirect: (to) => ({ path: `/masterdata/masterbuilding/${String(to.params.id)}`, query: to.query }),
 })
 </script>
 
