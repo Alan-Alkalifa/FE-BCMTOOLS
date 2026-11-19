@@ -387,6 +387,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-model="form.payload"
               class="mt-4"
               :signers="version.signer_profiles ?? {}"
+              :saved-step-codes="version.payload.signoff_steps.map(step => step.code)"
               :version-id="version.id"
               :export-disabled="dirty || !!busy"
               :reference-guides="version.reference_guides ?? {}"
