@@ -221,7 +221,7 @@ function selectQuake(quake: RaEarthquake, scroll = false) {
     const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
     document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
   }
-  const radius = (quakeList.value?.alert_radius_km ?? 100) * 1000
+  const radius = quake.alert_radius_km * 1000
   const dLat = radius / 111_320
   const dLng = radius / (111_320 * Math.cos((quake.latitude * Math.PI) / 180))
   mapRef.value?.fit([
@@ -244,8 +244,8 @@ async function declareFromQuake(quake: RaEarthquake) {
     fromQuake: {
       earthquake: quake,
       hazardCode: list.hazard_code,
-      // The alert radius, within what a disaster allows (200 km).
-      radiusM: Math.min(list.alert_radius_km * 1000, 200_000),
+      // The earthquake's alert radius, within what a disaster allows (200 km).
+      radiusM: Math.min(quake.alert_radius_km * 1000, 200_000),
       source: list.source,
     },
   }).result
@@ -421,7 +421,7 @@ const circles = computed(() => [
         id: -2,
         lat: selectedQuake.value.latitude,
         lng: selectedQuake.value.longitude,
-        radiusM: (quakeList.value?.alert_radius_km ?? 100) * 1000,
+        radiusM: selectedQuake.value.alert_radius_km * 1000,
         quake: true,
       }]
     : []),

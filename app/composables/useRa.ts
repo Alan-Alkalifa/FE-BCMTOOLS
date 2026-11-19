@@ -461,6 +461,8 @@ export interface RaEarthquake {
   shakemap_url: string | null
   feeds: string[]
   alerted_at: string | null
+  /** How far it may be felt, from its magnitude: e^(M / 1.01 - 0.13) km. */
+  alert_radius_km: number
   /** Active buildings and branches with a pin within the alert radius, nearest first. */
   nearby: { location: RaPlace, distance_m: number }[]
   incidents: { id: number, ref_no: string, status: RaCrisisStatus }[]
@@ -470,7 +472,6 @@ export interface RaEarthquake {
 export interface RaBmkgStatus {
   enabled: boolean
   min_magnitude: number
-  alert_radius_km: number
   polled_at: string | null
   poll_error: string | null
   /** No good poll in the last 30 minutes. */

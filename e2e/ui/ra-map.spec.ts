@@ -492,7 +492,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await page.goto('/locations/map')
   const list = page.getByTestId('ra-earthquakes')
   await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
-  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within 100 km.')
+  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within the earthquake\'s alert radius, e(M ÷ 1,01 − 0,13) km (124 km at M5,0).')
   await expect(list).toContainText('Updated 6 Nov 2026, 13:44 WIB')
   // BMKG is credited next to the map and under the list.
   await expect(page.getByText('Earthquake and weather warning data: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
@@ -511,7 +511,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(list.locator('[data-quake="2"]')).toContainText('Tsunami: Tidak berpotensi tsunami')
   // The far one was declared already: its disaster instead of the button.
   const far = list.locator('[data-quake="2"]')
-  await expect(far).toContainText('No building or branch within 100 km.')
+  await expect(far).toContainText('No building or branch within 25 km.')
   await expect(far.getByRole('link', { name: 'DS-2026-0001' })).toHaveAttribute('href', '/disasters/7')
   await expect(far.getByRole('button', { name: 'Declare Disaster' })).toHaveCount(0)
 
@@ -532,7 +532,8 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
   await expect.poll(zoom).toBeGreaterThan(before)
   const zoomed = await zoom()
-  // Another one, straight after: the map moves to it at the same zoom, not out to every place.
+  // Another one, straight after: the map moves to it, zoomed in to its smaller radius (M3,4,
+  // 25 km against 225 km), not out to every place.
   const centre = () => page.evaluate(() => {
     const pane = document.querySelector('#building-map .leaflet-map-pane') as HTMLElement
     return pane.style.transform
@@ -544,7 +545,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('#building-map')).toBeInViewport()
   await expect.poll(centre).not.toBe(first)
   await page.waitForTimeout(800) // a late re-fit would zoom out here
-  await expect.poll(zoom).toBe(zoomed)
+  await expect.poll(zoom).toBeGreaterThan(zoomed)
   // And back to the first one.
   await strong.scrollIntoViewIfNeeded()
   await strong.getByRole('button', { name: 'Show on map' }).click()
@@ -833,9 +834,10 @@ test('a disaster is declared from an earthquake, filled in from BMKG', async ({ 
   await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
   // The hazard stays an earthquake.
   await expect(dialog.getByLabel('Hazard')).toBeDisabled()
-  // The alert radius is filled in, and it goes up and down by 0,1 km.
+  // The earthquake's alert radius is filled in (225 km at M5,6, held to the 200 km a disaster
+  // allows), and it goes up and down by 0,1 km.
   const radius = dialog.getByLabel('Affected radius')
-  await expect(radius).toHaveValue('100')
+  await expect(radius).toHaveValue('200')
   await radius.fill('0.1')
   await radius.blur()
   await dialog.getByRole('button', { name: 'Increment' }).click()

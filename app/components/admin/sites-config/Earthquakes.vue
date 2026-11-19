@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * Sites configuration > Earthquakes: BMKG's open earthquake data on the building map. BCM switches
- * it on or off, sets the minimum magnitude kept (felt earthquakes are kept whatever their
- * magnitude) and the alert radius: how near a building or branch must be for BCM to be emailed.
+ * it on or off and sets the minimum magnitude kept (felt earthquakes are kept whatever their
+ * magnitude). The alert radius, how near a building or branch must be for BCM to be emailed,
+ * follows each earthquake's magnitude (raAlertRadiusKm).
  * Live for everyone as soon as it is saved; the last read of BMKG shows beside it.
  */
 const toast = useToast()
@@ -10,13 +11,14 @@ const { can } = useAuth()
 const editable = computed(() => can('sites.config.manage'))
 const { data, status, error, refresh } = useAsyncData('sites-config-bmkg', () => sitesConfigApi.bmkg())
 
-const form = reactive({ enabled: true, min_magnitude: 5, alert_radius_km: 100 })
+const form = reactive({ enabled: true, min_magnitude: 5 })
+const radiusExamples = [5, 6, 7].map((magnitude) => ({ magnitude, km: raAlertRadiusKm(magnitude) }))
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
 
 watch(data, (value) => {
   if (!value) return
-  Object.assign(form, { enabled: value.enabled, min_magnitude: value.min_magnitude, alert_radius_km: value.alert_radius_km })
+  Object.assign(form, { enabled: value.enabled, min_magnitude: value.min_magnitude })
 }, { immediate: true })
 
 async function save() {
@@ -110,21 +112,25 @@ async function save() {
                   class="w-full"
                 />
               </UFormField>
-              <UFormField
-                label="Alert radius"
-                name="alert_radius_km"
-                hint="km"
-                help="BCM is emailed when an active building or branch with a map pin is this near the epicentre."
-                :error="errors.alert_radius_km"
+              <div
+                class="space-y-1 text-sm"
+                data-testid="bmkg-radius"
               >
-                <UInputNumber
-                  v-model="form.alert_radius_km"
-                  :min="10"
-                  :max="1000"
-                  :step="10"
-                  class="w-full"
-                />
-              </UFormField>
+                <p class="font-medium text-highlighted">
+                  Alert radius
+                </p>
+                <p class="font-mono text-default">
+                  e<sup>(M ÷ 1,01 − 0,13)</sup> km
+                </p>
+                <p class="text-muted">
+                  M{{ raFormatMagnitude(form.min_magnitude) }} {{ raFormatDistance(raAlertRadiusKm(form.min_magnitude) * 1000) }}<template
+                    v-for="item in radiusExamples"
+                    :key="item.magnitude"
+                  >
+                    · M{{ raFormatMagnitude(item.magnitude) }} {{ raFormatDistance(item.km * 1000) }}
+                  </template>
+                </p>
+              </div>
             </div>
           </div>
         </UCard>

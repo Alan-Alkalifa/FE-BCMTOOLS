@@ -566,6 +566,12 @@ export function raWeatherSeverityColor(severity: string | null | undefined): 'er
   }
 }
 
+/** How far an earthquake of this magnitude may be felt, in km: e^(M / 1.01 - 0.13), one
+ *  decimal, as the backend (bmkg.alert_radius_km). M5,0 124 km, M6,0 334 km. */
+export function raAlertRadiusKm(magnitude: number) {
+  return Math.round(Math.exp(magnitude / 1.01 - 0.13) * 10) / 10
+}
+
 /** Distance rings the location map can draw around the selected place, in km. */
 export const RA_RING_KM = [1, 2, 5, 10, 25] as const
 

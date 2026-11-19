@@ -35,7 +35,7 @@ async function mockSitesConfig(page: Page, permissions?: string[]) {
   }
   let waqi = { configured: false, radius_km: 5, threshold: 101, source: 'World Air Quality Index Project', source_url: 'https://waqi.info' }
   // Sites configuration > Earthquakes (BMKG).
-  let bmkg = { enabled: true, min_magnitude: 5, alert_radius_km: 100, polled_at: '2026-11-06T06:44:00Z', poll_error: null, stale: false }
+  let bmkg = { enabled: true, min_magnitude: 5, polled_at: '2026-11-06T06:44:00Z', poll_error: null, stale: false }
   await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({ json: { items: [
     { code: 'H01', no: 1, short_name: 'Banjir/ Banjir Bandang', name: 'Banjir/ Banjir Bandang', category: null, type: 'disaster', default_type: 'disaster' },
     { code: 'H06', no: 6, short_name: 'Cuaca ekstrem', name: 'Cuaca ekstrem', category: null, type: 'disaster', default_type: 'disaster' },
@@ -160,10 +160,17 @@ test('earthquakes from BMKG: on or off, the minimum magnitude and the alert radi
   await expect(page.getByRole('tab', { name: 'Earthquakes' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
   await expect(page.getByTestId('bmkg-status')).toContainText('Last read 6 Nov 2026, 13:44 WIB.')
   await expect(page.getByRole('switch', { name: 'Read BMKG' })).toBeChecked()
-  await page.getByRole('spinbutton', { name: 'Alert radius' }).fill('150')
+  // The alert radius follows the magnitude: the formula, and the radius at a few magnitudes.
+  const radius = page.getByTestId('bmkg-radius')
+  await expect(radius).toContainText('(M ÷ 1,01 − 0,13) km')
+  await expect(radius).toContainText('M6,0 334 km')
+  await expect(page.getByRole('spinbutton', { name: 'Alert radius' })).toHaveCount(0)
+  await page.getByRole('spinbutton', { name: 'Minimum magnitude' }).fill('5.5')
+  await page.getByRole('spinbutton', { name: 'Minimum magnitude' }).blur()
+  await expect(radius).toContainText('M5,5 204 km')
   await page.getByRole('button', { name: 'Save earthquake settings' }).click()
   await expect(page.getByText('Earthquake settings saved').first()).toBeVisible()
-  expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/bmkg'))!.body).toEqual({ enabled: true, min_magnitude: 5, alert_radius_km: 150 })
+  expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/bmkg'))!.body).toEqual({ enabled: true, min_magnitude: 5.5 })
 })
 
 test('past disasters from BNPB\'s DIBI say when they were read, and map each category to a hazard', async ({ page }) => {

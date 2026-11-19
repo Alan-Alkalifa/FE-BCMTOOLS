@@ -116,7 +116,7 @@ export interface RaWaqiSettingsInput {
 
 export const sitesConfigApi = {
   bmkg: () => $fetch<RaBmkgStatus>(`${BASE}/bmkg`),
-  saveBmkg: (body: { enabled: boolean, min_magnitude: number, alert_radius_km: number }) =>
+  saveBmkg: (body: { enabled: boolean, min_magnitude: number }) =>
     $fetch<RaBmkgStatus>(`${BASE}/bmkg`, { method: 'PUT', body }),
   dibi: () => $fetch<RaDibiStatus>(`${BASE}/dibi`),
   saveDibi: (body: RaDibiInput) => $fetch<RaDibiStatus>(`${BASE}/dibi`, { method: 'PUT', body }),
