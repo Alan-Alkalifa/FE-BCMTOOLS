@@ -159,7 +159,7 @@ export function assessment(overrides: Record<string, unknown> = {}) {
     submitted_at: null,
     finalised_at: null,
     assessor_user: { id: 9, display_name: 'Test User', email: 'test@example.com', job_title: null, department: null },
-    // The contributor is the IT support (needed to submit).
+    // The contributor is the IT support (optional).
     contributor: { id: 2, display_name: 'IT Support', email: 'it@example.com', job_title: 'Engineer', department: 'IT' } as Record<string, unknown> | null,
     contributor_id: 2 as number | null,
     comments: [] as Record<string, unknown>[],

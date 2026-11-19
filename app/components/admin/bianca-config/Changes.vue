@@ -8,8 +8,13 @@ const parts: Record<string, [section: string, label: string]> = {
   periods: ['Lists', 'Impact periods'],
   suggested_mtd: ['Lists', 'Suggested MTD'],
   dependency_mtd: ['Lists', 'Dependency MTD'],
-  percentages: ['Lists', 'Planned capacity'],
-  upstream_capacity: ['Lists', 'Dependency capacity'],
+  percentages: ['Lists', 'Function planned capacity'],
+  upstream_capacity: ['Lists', 'Upstream capacity'],
+  downstream_capacity: ['Lists', 'Downstream capacity'],
+  expected_support_capacity: ['Lists', 'Expected business support capacity'],
+  generic_values: ['Lists', 'Generic percentages'],
+  financial_bands: ['Impact and MTD', 'Financial loss matrix'],
+  impact_matrix: ['Impact and MTD', 'Regulatory and customer matrix'],
   alt_site_strategies: ['Lists', 'Alternate site strategies'],
   frequencies: ['Lists', 'Critical timing frequencies'],
   system_usage: ['Lists', 'System dependency codes'],
@@ -43,12 +48,34 @@ function labelOf(key: string) {
   return key.charAt(0).toUpperCase() + key.slice(1).replaceAll('_', ' ')
 }
 
+const fieldLabels: Record<string, string> = {
+  '@order': 'Order', 'label': 'Label', 'text': 'Text', 'active': 'Active',
+  'min_level': 'First U level', 'max_level': 'Last U level', 'requires_note': 'Note required',
+  'signer_mode': 'Signer selection', 'user_id': 'Signer', 'required': 'Required', 'title': 'Title',
+  'category': 'Category', 'regulatory': 'Regulatory impact', 'customer': 'Customer impact',
+  'description': 'Description',
+}
+const guideLabels: Record<string, string> = {
+  suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',
+  customer: 'Customer impact', recovery: 'Recovery', attestation: 'Attestation statement',
+  it_dependency: 'IT dependencies', non_it_dependency: 'Non-IT dependencies',
+  alternate_site: 'Alternate site strategy', risk_assessment: 'Personnel and risk assessment',
+  critical_timings: 'Critical timings',
+}
+function changeLabel(change: BiancaConfigVersion['changes'][number], fallback: string) {
+  const [, item, ...fields] = change.path ?? []
+  if (!item) return fallback
+  if (change.part === 'guides') return guideLabels[item] ?? labelOf(item)
+  const name = change.part === 'impact_matrix' ? `Score ${item}` : item
+  return [fallback, name, ...fields.map((field) => fieldLabels[field] ?? labelOf(field))].join(' / ')
+}
+
 const sections = computed(() => {
   const groups = new Map<string, (BiancaConfigVersion['changes'][number] & { label: string })[]>()
   for (const change of props.version.changes) {
     const [section, label] = parts[change.part] ?? ['Other parameters', labelOf(change.part)]
     if (!groups.has(section)) groups.set(section, [])
-    groups.get(section)!.push({ ...change, label })
+    groups.get(section)!.push({ ...change, label: changeLabel(change, label) })
   }
   return [...groups.entries()]
 })
@@ -116,20 +143,32 @@ function display(value: unknown): string {
                   scope="col"
                   class="w-1/3 px-3 py-2"
                 >
-                  Source version
+                  Previous version
+                </th>
+                <th
+                  scope="col"
+                  class="w-1/3 px-3 py-2"
+                >
+                  Previous value
                 </th>
                 <th
                   scope="col"
                   class="w-1/3 px-3 py-2 pe-4"
                 >
-                  {{ version.code }}
+                  Current version
+                </th>
+                <th
+                  scope="col"
+                  class="w-1/3 px-3 py-2 pe-4"
+                >
+                  Current value
                 </th>
               </tr>
             </thead>
             <tbody class="divide-y divide-default">
               <tr
                 v-for="change in changes"
-                :key="change.part"
+                :key="JSON.stringify(change.path ?? [change.part])"
               >
                 <th
                   scope="row"
@@ -140,15 +179,21 @@ function display(value: unknown): string {
                 <td class="px-3 py-2 align-top">
                   <StatusBadge
                     :scale="changeStatus"
-                    :value="changeKind(change.before, change.after)"
+                    :value="change.change ?? changeKind(change.before, change.after)"
                     size="sm"
                   />
                 </td>
-                <td class="px-3 py-2 align-top whitespace-pre-wrap wrap-anywhere text-muted">
-                  {{ display(change.before) }}
+                <td class="px-3 py-2 align-top font-medium">
+                  {{ change.previous_version ?? version.previous_version ?? '—' }}
                 </td>
-                <td class="px-3 py-2 pe-4 align-top whitespace-pre-wrap wrap-anywhere">
-                  {{ display(change.after) }}
+                <td class="min-w-64 px-3 py-2 align-top whitespace-pre-wrap wrap-anywhere text-muted">
+                  {{ display(change.previous_value !== undefined ? change.previous_value : change.before) }}
+                </td>
+                <td class="px-3 py-2 align-top font-medium">
+                  {{ change.current_version ?? version.current_version ?? version.code }}
+                </td>
+                <td class="min-w-64 px-3 py-2 pe-4 align-top whitespace-pre-wrap wrap-anywhere">
+                  {{ display(change.current_value !== undefined ? change.current_value : change.after) }}
                 </td>
               </tr>
             </tbody>

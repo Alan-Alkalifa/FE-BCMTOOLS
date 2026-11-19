@@ -4,9 +4,10 @@ import type { SccaGenerateResult, SccaRenewalRow } from '~/composables/useSccaWo
 
 /**
  * Monitoring > Renewals > Generate annual review, for one row or the selected rows. The user
- * who generates is the assessor of every new draft; they pick one contributor for all of them
- * (a user of the access rules' contributor levels, D-2 by default, from any directorate). The
- * last final's contributor is suggested when every row has the same one.
+ * who generates is the assessor of every new draft; they may pick one contributor for all of
+ * them (a user of the access rules' contributor levels, D-2 by default, from any directorate),
+ * or none: the contributor is set later in the draft. The last final's contributor is suggested
+ * when every row has the same one.
  */
 const props = defineProps<{ rows: SccaRenewalRow[], levels: string[] }>()
 const emit = defineEmits<{ close: [result?: SccaGenerateResult] }>()
@@ -25,10 +26,6 @@ const levelText = computed(() => (props.levels.length ? props.levels.join(' or '
 
 async function generate() {
   errors.value = {}
-  if (!contributorId.value) {
-    errors.value.contributor_id = 'Pick the contributor.'
-    return
-  }
   busy.value = true
   try {
     emit('close', await sccaRenewalsApi.generate(props.rows.map((row) => row.last_final.id), contributorId.value))
@@ -62,8 +59,8 @@ async function generate() {
         />
         <p class="text-sm">
           Each draft copies its last final SCCA: ratings, interdependencies, recovery values and
-          sign-off users. <span class="font-medium">You are the assessor</span>; the contributor
-          and you get an email, and the drafts wait in Manage.
+          sign-off users. <span class="font-medium">You are the assessor</span>; you get an email
+          (and the contributor, if you pick one), and the drafts wait in Manage.
         </p>
         <ul
           v-if="rows.length > 1"
@@ -79,10 +76,9 @@ async function generate() {
           </li>
         </ul>
         <UFormField
-          label="Contributor"
+          label="Contributor (optional)"
           name="contributor_id"
-          required
-          :help="`A ${levelText} user from any directorate${rows.length > 1 ? ', for every draft' : ''}. ${suggested ? 'Suggested: the last final\'s contributor.' : ''}`"
+          :help="`A ${levelText} user from any directorate${rows.length > 1 ? ', for every draft' : ''}. Leave it empty to set it later in the draft. ${suggested ? 'Suggested: the last final\'s contributor; clear it with the × to generate without one.' : ''}`"
           :error="errors.contributor_id"
         >
           <UserPicker

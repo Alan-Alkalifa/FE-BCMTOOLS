@@ -25,6 +25,7 @@ export interface BiancaSigner {
 
 export type BiancaListKey = 'periods' | 'suggested_mtd' | 'dependency_mtd' | 'percentages'
   | 'upstream_capacity' | 'yes_no' | 'system_usage' | 'alt_site_strategies' | 'frequencies'
+  | 'generic_values' | 'downstream_capacity' | 'expected_support_capacity'
 
 export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   expected_mtd: { value: string, category: string }[]
@@ -39,9 +40,14 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   staff_grades: BiancaGrade[]
   signoff_steps: BiancaStep[]
   guides: Record<string, string>
+  financial_bands: { code: string, label: string, description: string }[]
+  impact_matrix: { score: number, regulatory: string, customer: string }[]
 }
 
 export interface BiancaListItem {
+  id?: string | null
+  value?: string | null
+  data_type?: 'string'
   code: string
   label: string
   text: string | null
@@ -50,7 +56,19 @@ export interface BiancaListItem {
 
 export type BiancaListItems = Record<BiancaListKey, BiancaListItem[]>
 
+export interface BiancaReferenceItem {
+  id: string
+  value: string | number
+  data_type: 'string' | 'integer'
+  active: boolean
+  detail: string
+}
+
 export interface BiancaConfigVersion {
+  previous_version?: string | null
+  current_version?: string
+  reference_guides?: Record<string, string>
+  reference_lists?: { expected_mtd: BiancaReferenceItem[], scores: BiancaReferenceItem[] }
   list_items?: Partial<BiancaListItems>
   signer_profiles?: Record<string, BiancaSigner>
   id: number
@@ -64,7 +82,7 @@ export interface BiancaConfigVersion {
   published_at: string | null
   used_by: number
   payload: BiancaConfigPayload
-  changes: { part: string, before: unknown, after: unknown }[]
+  changes: { part: string, path?: string[], change?: 'added' | 'removed' | 'changed', before: unknown, after: unknown, previous_version?: string | null, previous_value?: unknown, current_version?: string, current_value?: unknown }[]
 }
 
 const BIA_CONFIG = '/api/admin/bianca-config/versions'

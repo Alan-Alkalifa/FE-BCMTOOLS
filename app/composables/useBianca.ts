@@ -157,6 +157,7 @@ export interface BiancaLookups {
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
+  downstream_capacity?: string[]
   yes_no: string[]
   system_usage: string[]
   alt_site_strategies: string[]

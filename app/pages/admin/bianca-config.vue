@@ -390,6 +390,8 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-model="form.list_items"
               class="mt-4"
               :disabled="!editable || !!busy"
+              :payload="form.payload"
+              :reference-lists="version.reference_lists"
             />
             <AdminBiancaConfigParameters
               v-else
@@ -397,6 +399,9 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-model="form.payload"
               class="mt-4"
               :signers="version.signer_profiles ?? {}"
+              :version-id="version.id"
+              :export-disabled="dirty || !!busy"
+              :reference-guides="version.reference_guides ?? {}"
               :section="item.value"
               :disabled="!editable || !!busy"
             />

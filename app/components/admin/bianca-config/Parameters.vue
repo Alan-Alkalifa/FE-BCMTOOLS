@@ -2,10 +2,7 @@
 import type { BiancaConfigPayload, BiancaGrade, BiancaSigner } from '~/composables/useBiancaConfigAdmin'
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
-const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner> }>()
-
-const route = useRoute()
-const router = useRouter()
+const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string> }>()
 
 function addGrade() {
   let i = model.value.staff_grades.length + 1
@@ -29,41 +26,6 @@ function moveStep(index: number, delta: number) {
   model.value.signoff_steps.splice(next, 0, row)
   model.value.signoff_steps.at(-1)!.required = true
 }
-const impacts = [
-  { value: 'thresholds', label: 'Impact thresholds', description: 'Set the financial loss alert and the scores used by the impact assessment.' },
-  { value: 'conversion', label: 'Time conversion', description: 'Set how BIA converts days and weeks to hours.' },
-  { value: 'limits', label: 'Workbook limits', description: 'Set the number of functions and dependency rows available in a BIA.' },
-  { value: 'expected-mtd', label: 'Expected MTD', description: 'Map expected downtime to a function category.' },
-]
-const selectedImpact = computed({
-  get: () => impacts.find((item) => item.value === route.query.impact)?.value ?? 'thresholds',
-  set: (value: string) => router.replace({ query: { ...route.query, impact: value } }),
-})
-const impact = computed(() => impacts.find((item) => item.value === selectedImpact.value)!)
-const numeric = [
-  { group: 'thresholds', key: 'loss_alert_idr', label: 'Financial loss alert (IDR)', min: 0, max: 1e15 },
-  { group: 'thresholds', key: 'score_alert', label: 'Highlighted impact score', min: 1, max: 3 },
-  { group: 'conversion', key: 'hours_per_day', label: 'Hours per day', min: 0.1, max: 24, step: 0.1 },
-  { group: 'conversion', key: 'days_per_week', label: 'Days per week', min: 0.1, max: 7, step: 0.1 },
-  { group: 'limits', key: 'max_functions', label: 'Maximum functions', min: 1, max: 30 },
-  { group: 'limits', key: 'it_slots', label: 'IT rows per function', min: 1, max: 4 },
-  { group: 'limits', key: 'dependency_slots', label: 'Non-IT rows per function', min: 1, max: 4 },
-] as const
-const impactFields = computed(() => numeric.filter((field) => field.group === selectedImpact.value))
-
-const guideDetails: Record<string, { label: string, description: string }> = {
-  suggested_mtd: { label: 'Suggested MTD', description: 'Explain how assessors should select a Suggested MTD.' },
-  regulatory: { label: 'Regulatory impact', description: 'Explain how assessors should score regulatory impact.' },
-  customer: { label: 'Customer impact', description: 'Explain how assessors should score customer impact.' },
-  recovery: { label: 'Recovery', description: 'Guide assessors through recovery planning and vital records.' },
-  attestation: { label: 'Attestation statement', description: 'The statement assessors see when confirming their BIA.' },
-}
-const guides = computed(() => Object.keys(model.value.guides).map((key) => ({
-  key,
-  label: guideDetails[key]?.label ?? key.replaceAll('_', ' '),
-  description: guideDetails[key]?.description,
-})))
-
 const signerModes = {
   creator: { label: 'Assessment creator', value: 'creator', description: 'The coordinator signs by submitting the BIA.' },
   chosen: { label: 'Chosen by assessor', value: 'chosen', description: 'The assessor selects the signer on the BIA.' },
@@ -82,6 +44,29 @@ function selectedSigner(id: number | null) {
 <template>
   <div class="min-w-0">
     <UCard v-if="section === 'personnel'">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm text-muted">
+            Export the saved personnel configuration for this version.
+          </p>
+          <UButton
+            type="button"
+            icon="i-lucide-download"
+            color="neutral"
+            variant="outline"
+            label="Export to Excel"
+            :href="`/api/admin/bianca-config/versions/${versionId}/personnel.xlsx`"
+            :disabled="exportDisabled"
+            external
+          />
+        </div>
+        <p
+          v-if="exportDisabled"
+          class="mt-2 text-sm text-muted"
+        >
+          Save draft changes before exporting.
+        </p>
+      </template>
       <fieldset
         :disabled="disabled"
         class="min-w-0 space-y-6"
@@ -202,93 +187,11 @@ function selectedSigner(id: number | null) {
       </fieldset>
     </UCard>
 
-    <AdminBiancaConfigSectionLayout
+    <AdminBiancaConfigImpact
       v-else-if="section === 'impact'"
-      v-model="selectedImpact"
-      label="Impact and MTD"
-      :items="impacts"
-    >
-      <template #header>
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 class="font-semibold text-highlighted">
-              {{ impact.label }}
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              {{ impact.description }}
-            </p>
-          </div>
-          <UButton
-            v-if="selectedImpact === 'expected-mtd' && !disabled"
-            type="button"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-plus"
-            label="Add MTD"
-            @click="model.expected_mtd.push({ value: '', category: 'Others' })"
-          />
-        </div>
-      </template>
-      <fieldset
-        v-if="selectedImpact === 'expected-mtd'"
-        :disabled="disabled"
-        class="min-w-0 space-y-4"
-      >
-        <div
-          v-for="(item, i) in model.expected_mtd"
-          :key="i"
-          class="grid gap-3 sm:grid-cols-2"
-        >
-          <UFormField :label="'Expected MTD ' + (i + 1)">
-            <UInput
-              v-model="item.value"
-              :maxlength="16"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="Category">
-            <USelect
-              v-model="item.category"
-              :items="['Business Critical', 'Important', 'Others']"
-              :disabled="disabled"
-              class="w-full"
-            />
-          </UFormField>
-        </div>
-      </fieldset>
-      <fieldset
-        v-else
-        :disabled="disabled"
-        class="grid min-w-0 gap-4 sm:grid-cols-2"
-      >
-        <UFormField
-          v-for="field in impactFields"
-          :key="field.key"
-          :label="field.label"
-          :name="'payload.' + field.key"
-          required
-        >
-          <UInputNumber
-            v-model="model[field.key]"
-            :min="field.min"
-            :max="field.max"
-            :step="'step' in field ? field.step : 1"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
-          v-if="selectedImpact === 'thresholds'"
-          label="Allowed impact scores"
-          help="Comma-separated scores from 1 to 3. Include the highlighted score."
-        >
-          <UInput
-            :model-value="model.scores.join(', ')"
-            class="w-full"
-            @update:model-value="model.scores = String($event).split(',').map(v => Number(v.trim()))"
-          />
-        </UFormField>
-      </fieldset>
-    </AdminBiancaConfigSectionLayout>
+      v-model="model"
+      :disabled="disabled"
+    />
 
     <div
       v-else-if="section === 'steps'"
@@ -418,40 +321,11 @@ function selectedSigner(id: number | null) {
       </UCard>
     </div>
 
-    <div
+    <AdminBiancaConfigGuides
       v-else-if="section === 'guides'"
-      class="space-y-4"
-    >
-      <UCard
-        v-for="guide in guides"
-        :key="guide.key"
-      >
-        <template #header>
-          <h2 class="font-semibold text-highlighted">
-            {{ guide.label }}
-          </h2>
-          <p
-            v-if="guide.description"
-            class="mt-1 text-sm text-muted"
-          >
-            {{ guide.description }}
-          </p>
-        </template>
-        <UFormField
-          :label="guide.label"
-          :ui="{ label: 'sr-only' }"
-        >
-          <UTextarea
-            v-model="model.guides[guide.key]"
-            :rows="3"
-            autoresize
-            :maxrows="12"
-            :maxlength="20000"
-            :disabled="disabled"
-            class="w-full"
-          />
-        </UFormField>
-      </UCard>
-    </div>
+      v-model="model.guides"
+      :disabled="disabled"
+      :reference-guides="referenceGuides"
+    />
   </div>
 </template>
