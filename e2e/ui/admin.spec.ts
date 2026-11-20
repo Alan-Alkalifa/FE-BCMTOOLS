@@ -21,11 +21,13 @@ const PERMISSIONS = [
   { code: 'ra.access', module: 'ra', description: 'See the RA menus and the location map; open assessments and locations; sign off when assigned' },
   { code: 'ra.edit', module: 'ra', description: 'Create and edit RA locations and assessments; delete what you created' },
   { code: 'ra.manage', module: 'ra', description: 'Delete any RA location or assessment, approve or return on behalf of a signer, edit the disaster guidebook' },
-  { code: 'ra.disaster.declare', module: 'location', description: 'Declare disasters' },
-  { code: 'ra.disaster.update', module: 'location', description: 'Update, close and reopen disasters' },
-  { code: 'ra.incident.declare', module: 'location', description: 'Declare incidents' },
-  { code: 'ra.incident.update', module: 'location', description: 'Update, close and reopen incidents' },
-  { code: 'ra.location.approve', module: 'location', description: 'Approve or reject new buildings, building deactivations and declared disasters and incidents requested by someone else' },
+  { code: 'sites.disaster.declare', module: 'sites', description: 'Declare disasters' },
+  { code: 'sites.disaster.update', module: 'sites', description: 'Update, close and reopen disasters' },
+  { code: 'sites.incident.declare', module: 'sites', description: 'Declare incidents' },
+  { code: 'sites.incident.update', module: 'sites', description: 'Update, close and reopen incidents' },
+  { code: 'sites.approve', module: 'sites', description: 'Approve or reject new buildings, building deactivations and declared disasters and incidents requested by someone else' },
+  { code: 'sites.config.view', module: 'sites', description: 'Read the Sites configuration: disaster or incident per hazard, earthquakes, past disasters' },
+  { code: 'sites.config.manage', module: 'sites', description: 'Change the Sites configuration: disaster or incident per hazard, earthquakes, past disasters' },
   { code: 'scca.access', module: 'scca', description: 'See the SCCA menu and open the SCCAs you take part in' },
   { code: 'scca.create', module: 'scca', description: 'Create a new assessment' },
   { code: 'scca.view_all', module: 'scca', description: 'Open and list every SCCA' },
@@ -326,6 +328,8 @@ test('RA and Sites permissions are their own groups, between SCCA and Administra
   await expect(sites.getByRole('checkbox', { name: 'Declare incidents' })).toBeVisible()
   await expect(sites.getByRole('checkbox', { name: 'Update, close and reopen incidents' })).toBeVisible()
   await expect(sites.getByRole('checkbox', { name: /^Approve or reject new buildings/ })).toBeVisible()
+  await expect(sites.getByRole('checkbox', { name: /^Read the Sites configuration/ })).toBeVisible()
+  await expect(sites.getByText('sites.config.manage')).toBeVisible()
   await page.getByRole('checkbox', { name: 'Create and edit RA locations and assessments; delete what you created' }).click()
   await page.getByRole('button', { name: 'Save role' }).click()
   await expect(page.getByText('Role saved', { exact: true })).toBeVisible()
@@ -353,7 +357,7 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
   const order = calls.find((call) => call.url === '/api/admin/menus/order')!.body as { items: { id: number }[] }
-  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 32, 34])
+  expect(order.items.map((item) => item.id)).toEqual([7, 9, 8, 10, 11, 12, 32, 34, 36, 37])
   await expect(page.getByRole('button', { name: 'Home is built in' })).toBeDisabled()
 })
 

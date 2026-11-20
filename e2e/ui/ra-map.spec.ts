@@ -160,7 +160,7 @@ test('the disaster map has a legend and zooms with the scroll wheel; who to call
   const legend = page.getByRole('group', { name: 'Map legend' })
   await expect(legend).toContainText('Affected head office building')
   await expect(legend).toContainText('Affected branch')
-  await expect(legend).toContainText('Colour: residual risk for Banjir/ Banjir Bandang')
+  await expect(legend).toContainText('Residual risk for Banjir/ Banjir Bandang')
 
   const map = page.locator('.leaflet-container')
   await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
@@ -388,8 +388,9 @@ test('the map legend shows the symbols the map draws', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/locations/map')
   await expect(page.getByText('Disaster or incident and its affected area')).toBeVisible({ timeout: 30_000 })
+  // The eight kinds, and a faded building for places not in service.
   const symbols = page.getByTestId('ra-map-symbol')
-  await expect(symbols).toHaveCount(8)
+  await expect(symbols).toHaveCount(9)
   // The branch in the legend is the map's branch marker (a rounded square with a bank).
   const branch = page.locator('[data-testid="ra-map-symbol"][data-symbol="branch"] svg rect[rx="5"]')
   await expect(branch).toHaveCount(1)
@@ -403,7 +404,7 @@ test('a place not approved yet, rejected or inactive is marked on the map, in th
   await expect(legend.getByText('Waiting for approval (new, or to deactivate)')).toBeVisible({ timeout: 30_000 })
   await expect(legend.getByText('Rejected', { exact: true })).toBeVisible()
   await expect(legend.getByText('Inactive', { exact: true })).toBeVisible()
-  await expect(legend).toContainText('Faded: not in service (inactive, new and waiting for approval, or rejected). No disaster or incident affects it.')
+  await expect(legend).toContainText('Faded, not in service (inactive, new and waiting for approval, or rejected). No disaster or incident affects it.')
   await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="waiting"] .ra-pin-badge-waiting')).toHaveCount(1)
   await expect(page.locator('[data-testid="ra-map-symbol"][data-symbol="inactive"] .ra-pin-out .ra-pin-badge-inactive')).toHaveCount(1)
 
@@ -491,10 +492,10 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await page.goto('/locations/map')
   const list = page.getByTestId('ra-earthquakes')
   await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
-  await expect(list).toContainText('The last 7 days: magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within 100 km.')
+  await expect(list).toContainText('The last 7 days, magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within the earthquake\'s alert radius, e(M ÷ 1,01 − 0,13) km (124 km at M5,0).')
   await expect(list).toContainText('Updated 6 Nov 2026, 13:44 WIB')
   // BMKG is credited next to the map and under the list.
-  await expect(page.getByText('Earthquake data: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
+  await expect(page.getByText('Source: Earthquakes and weather warnings, BMKG (Badan Meteorologi, Klimatologi, dan Geofisika).')).toBeVisible()
   await expect(list.getByRole('link', { name: 'data.bmkg.go.id' })).toHaveAttribute('href', 'https://data.bmkg.go.id/gempabumi/')
   await expect(page.getByText('Earthquakes, BMKG (2)')).toBeVisible()
   await expect(page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ })).toBeChecked()
@@ -510,7 +511,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(list.locator('[data-quake="2"]')).toContainText('Tsunami: Tidak berpotensi tsunami')
   // The far one was declared already: its disaster instead of the button.
   const far = list.locator('[data-quake="2"]')
-  await expect(far).toContainText('No building or branch within 100 km.')
+  await expect(far).toContainText('No building or branch within 25 km.')
   await expect(far.getByRole('link', { name: 'DS-2026-0001' })).toHaveAttribute('href', '/disasters/7')
   await expect(far.getByRole('button', { name: 'Declare Disaster' })).toHaveCount(0)
 
@@ -531,7 +532,8 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('path.ra-radius-quake')).toHaveCount(1)
   await expect.poll(zoom).toBeGreaterThan(before)
   const zoomed = await zoom()
-  // Another one, straight after: the map moves to it at the same zoom, not out to every place.
+  // Another one, straight after: the map moves to it, zoomed in to its smaller radius (M3,4,
+  // 25 km against 225 km), not out to every place.
   const centre = () => page.evaluate(() => {
     const pane = document.querySelector('#building-map .leaflet-map-pane') as HTMLElement
     return pane.style.transform
@@ -543,7 +545,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   await expect(page.locator('#building-map')).toBeInViewport()
   await expect.poll(centre).not.toBe(first)
   await page.waitForTimeout(800) // a late re-fit would zoom out here
-  await expect.poll(zoom).toBe(zoomed)
+  await expect.poll(zoom).toBeGreaterThan(zoomed)
   // And back to the first one.
   await strong.scrollIntoViewIfNeeded()
   await strong.getByRole('button', { name: 'Show on map' }).click()
@@ -553,6 +555,270 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
   // Hiding them takes them off the map.
   await page.getByRole('checkbox', { name: /^Earthquakes, BMKG/ }).uncheck()
   await expect(page.locator('.leaflet-marker-icon.ra-pin-quake')).toHaveCount(0)
+})
+
+test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', async ({ page }) => {
+  await mockRaMap(page, { quakes: true, crisis: false })
+  await page.goto('/locations/map')
+  await expect(page.getByTestId('ra-earthquakes')).toBeVisible({ timeout: 30_000 })
+
+  // The MMI scale sits above the earthquake list.
+  const mmi = page.getByTestId('mmi-scale')
+  await expect(mmi.getByRole('heading', { name: 'Modified Mercalli Intensity (MMI)' })).toBeVisible()
+  await expect(mmi.getByRole('listitem')).toHaveCount(12)
+  await expect(mmi).toContainText('VII · Very strong')
+
+  await page.getByRole('tab', { name: 'Disease outbreaks (WHO)' }).click()
+  await expect(page).toHaveURL(/report=outbreaks/)
+  const who = page.getByTestId('ra-outbreaks')
+  await expect(who.getByRole('heading', { name: 'Disease outbreaks in Indonesia (WHO)' })).toBeVisible()
+  await expect(who).toContainText('Poliomyelitis - Indonesia')
+  await expect(who).toContainText('The latest 2 of 154.')
+  await expect(page.getByTestId('mmi-scale')).toHaveCount(0)
+  // Filtered by year.
+  await who.getByRole('button', { name: 'WHO news from year' }).click()
+  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await who.getByRole('button', { name: 'WHO news to year' }).click()
+  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await expect(who).toContainText('1 item.')
+  await expect(who).toContainText('Measles - Indonesia')
+  await expect(who).not.toContainText('Poliomyelitis - Indonesia')
+  await expect(who.getByRole('link', { name: 'Read on who.int' }).first()).toHaveAttribute('href', 'https://www.who.int/emergencies/disease-outbreak-news/item/2023-DON462')
+  await expect(page.getByTestId('ra-earthquakes')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Air quality (OpenAQ)' }).click()
+  // Two charts: the latest PM2.5 per place, and the daily trend of the worst place.
+  const charts = page.getByTestId('air-charts')
+  await expect(charts.getByRole('heading', { name: 'Latest PM2.5 per place (µg/m³)' })).toBeVisible()
+  await expect(charts).toContainText('1 of 2 places above 55,4 µg/m³ on their latest day.')
+  await expect(charts.getByRole('heading', { name: 'Daily PM2.5 (µg/m³) near KCP Bintaro Sektor 9' })).toBeVisible()
+  await expect(charts).toContainText('2 of 3 days above 55,4 µg/m³ at US Embassy Jakarta South, 2,5 km away.')
+  const air = page.getByTestId('ra-air-quality')
+  await expect(air.locator('li').first()).toContainText('160,2 · Sangat tidak sehat')
+  await expect(air.locator('li').first()).toContainText('US Embassy Jakarta South, 2,5 km away')
+  await expect(air.locator('li').first()).toContainText('Above 55,4 µg/m³ on 501 of 1.001 days since 1 Jan 2024')
+  await expect(air.locator('li').nth(1)).toContainText('12,4 · Baik')
+  await air.locator('li').first().getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/place=/)
+
+  // Opened with the tab in the link.
+  await page.goto('/locations/map?report=outbreaks')
+  await expect(page.getByTestId('ra-outbreaks')).toBeVisible({ timeout: 30_000 })
+})
+
+test('BMKG\'s weather warnings show as areas on the map, in their tab and as history', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.goto('/locations/map')
+  await expect(page.getByText('Weather warnings, BMKG (2)')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ })).toBeChecked()
+  await expect(page.locator('path.ra-area')).toHaveCount(2)
+  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Weather warning (BMKG) and its area')
+
+  await page.getByRole('tab', { name: 'Weather warnings (BMKG)' }).click()
+  await expect(page).toHaveURL(/report=weather/)
+  const tab = page.getByTestId('ra-weather')
+  await expect(tab.getByRole('heading', { name: 'Weather warnings (BMKG)' })).toBeVisible()
+  await expect(tab.getByRole('tab', { name: 'Active (2)' })).toBeVisible()
+  // The one over a branch first, with the branch.
+  const first = tab.locator('li').first()
+  await expect(first).toContainText('Hujan Lebat disertai Petir di Banten')
+  await expect(first.getByRole('button', { name: 'KCP Bintaro Sektor 9' })).toBeVisible()
+  await expect(tab.locator('li').nth(1)).toContainText('No building or branch inside.')
+  // The badge's colour follows the severity, whether a building is inside or not.
+  const badges = tab.locator('li').getByText('Moderate', { exact: true })
+  await expect(badges).toHaveCount(2)
+  const colours = await badges.evaluateAll((items) => items.map((item) => getComputedStyle(item).color))
+  expect(new Set(colours).size).toBe(1)
+  await expect(first.getByRole('link', { name: 'Infographic' })).toHaveAttribute('href', /nowcasting\.bmkg\.go\.id/)
+  await first.getByRole('button', { name: 'Show on map' }).click()
+  await expect(page).toHaveURL(/warning=CBT20261118001/)
+  await expect(page.locator('path.ra-area-active')).toHaveCount(1)
+  await expect(tab).toContainText('Source: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)')
+
+  // The history: the warnings over a place, filtered by year.
+  await tab.getByRole('tab', { name: 'History' }).click()
+  await expect(tab.locator('li').first()).toContainText('1 Mar 2025')
+  await tab.getByRole('button', { name: 'Weather warnings from year' }).click()
+  await page.getByRole('option', { name: '2026', exact: true }).click()
+  await expect(tab).toContainText('No warning was over a building or branch in these years.')
+
+  // Unticked, the areas leave the map.
+  await page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ }).uncheck()
+  await expect(page.locator('path.ra-area')).toHaveCount(0)
+})
+
+test('clicking a weather warning\'s area shows that warning in its tab, scrolled to', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.goto('/locations/map?report=weather')
+  const tab = page.getByTestId('ra-weather')
+  await expect(page.locator('path.ra-area')).toHaveCount(2, { timeout: 30_000 })
+  // Even from the history, the list goes back to the active warnings.
+  await tab.getByRole('tab', { name: 'History' }).click()
+  await page.locator('path.ra-area').nth(1).dispatchEvent('click')
+  await expect(page).toHaveURL(/warning=/)
+  await expect(tab.getByRole('tab', { name: 'Active (2)' })).toHaveAttribute('aria-selected', 'true')
+  const picked = tab.locator('li[aria-current="true"]')
+  await expect(picked).toHaveCount(1)
+  await expect(picked).toBeInViewport()
+  await expect(page.locator('path.ra-area-active')).toHaveCount(1)
+
+  // From another tab, the weather tab opens on it.
+  await page.getByRole('tab', { name: 'Earthquakes (BMKG)' }).click()
+  await page.locator('path.ra-area').nth(0).dispatchEvent('click')
+  await expect(page).toHaveURL(/report=weather/)
+  await expect(tab.locator('li[aria-current="true"]')).toBeInViewport()
+})
+
+const WAQI_REPORT = {
+  enabled: true,
+  radius_km: 5,
+  threshold: 101,
+  read_at: '2026-11-19T03:00:00Z',
+  source: 'World Air Quality Index Project',
+  source_url: 'https://waqi.info',
+  message: null,
+  area: { code: 'jakarta', label: 'Jakarta', bounds: [-6.45, 106.55, -6.05, 107.1] },
+  areas: [{ code: 'jakarta', label: 'Jakarta' }, { code: 'java', label: 'Java' }, { code: 'indonesia', label: 'All of Indonesia' }],
+  stations: [
+    { id: 101, name: 'Bintaro, South Tangerang', latitude: -6.2536, longitude: 106.7194, aqi: 157, band: { code: 'unhealthy', label: 'Unhealthy' }, measured_at: '2026-11-19T10:00:00+07:00', affected: true, places: [{ id: 1, distance_km: 2 }] },
+    { id: 103, name: 'Gelora Bung Karno', latitude: -6.226, longitude: 106.7982, aqi: 88, band: { code: 'moderate', label: 'Moderate' }, measured_at: '2026-11-19T09:00:00+07:00', affected: false, places: [{ id: 2, distance_km: 1.1 }] },
+    { id: -523021, name: 'Pakubuwono', latitude: -6.2405, longitude: 106.7905, aqi: null, band: null, measured_at: null, affected: false, places: [] },
+  ],
+  places: [
+    { location_id: 1, station_id: 101, distance_km: 2, aqi: 157, affected: true },
+    { location_id: 2, station_id: 103, distance_km: 1.1, aqi: 88, affected: false },
+  ],
+}
+
+const WAQI_STATION = {
+  enabled: true,
+  message: null,
+  station: { id: 101, name: 'Bintaro, South Tangerang', url: 'https://aqicn.org/city/indonesia/south-tangerang/bintaro', widget_city: 'indonesia/south-tangerang/bintaro', latitude: -6.2536, longitude: 106.7194 },
+  aqi: 157,
+  band: { code: 'unhealthy', label: 'Unhealthy' },
+  dominant: 'PM2.5',
+  pollutants: [{ code: 'pm25', label: 'PM2.5', value: 157 }, { code: 'pm10', label: 'PM10', value: 61 }],
+  read_at: '2026-11-19T03:00:00+00:00',
+  attributions: [{ name: 'Nafas Indonesia', url: 'https://nafas.co.id/' }, { name: 'World Air Quality Index Project', url: 'https://waqi.info/' }],
+}
+
+test('WAQI\'s stations are drawn with their areas, and the WAQI tab lists the buildings they affect', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.route('**/api/ra/map-settings', (route) => route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: true } }))
+  const areas: string[] = []
+  await page.route(/\/api\/ra\/waqi(\?|$)/, (route) => {
+    const code = new URL(route.request().url()).searchParams.get('area') ?? ''
+    areas.push(code)
+    return route.fulfill({ json: code === 'java' ? { ...WAQI_REPORT, area: { code: 'java', label: 'Java', bounds: [-8.9, 105.1, -5.8, 114.7] } } : WAQI_REPORT })
+  })
+  const asked: string[] = []
+  await page.route('**/api/ra/waqi/stations/*', (route) => {
+    const path = new URL(route.request().url()).pathname
+    asked.push(path)
+    // A station from another network (negative uid) that WAQI has no feed for.
+    if (path.endsWith('/-523021')) return route.fulfill({ json: { enabled: true, station: null, message: 'WAQI shows this station on its map but gives no details for it.' } })
+    return route.fulfill({ json: WAQI_STATION })
+  })
+  // WAQI's widget script: it fills the container named in _aqiFeed's settings.
+  await page.route('https://feed.aqicn.org/**', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'var f = window._aqiFeed, c = f.c[f.n]; document.getElementById(c.container).textContent = "WAQI widget " + c.city + " " + c.lang',
+  }))
+
+  await page.goto('/locations/map')
+  await expect(page.getByText('Air quality, WAQI (3)')).toBeVisible({ timeout: 30_000 })
+  const toggle = page.getByRole('checkbox', { name: /^Air quality, WAQI/ })
+  await expect(toggle).toBeChecked()
+  // Every station from the API, each a dot with its AQI and a ring for its area.
+  await expect(page.locator('.ra-aqi')).toHaveText(['157', '88', '–'])
+  await expect(page.locator('path.ra-radius-air')).toHaveCount(3)
+  const legend = page.getByRole('group', { name: 'Map legend' })
+  await expect(legend).toContainText('Air quality, WAQI')
+  await expect(legend).toContainText('Unhealthy 151–200')
+  await expect(legend).toContainText('Dashed ring for a station\'s area')
+  await expect(page.getByText('Air quality, World Air Quality Index Project and the stations\' own sources.')).toBeVisible()
+
+  // A station clicked on the map opens its row in the WAQI tab, with its details.
+  await page.locator('.leaflet-marker-icon.ra-pin-air').first().dispatchEvent('click')
+  await expect(page).toHaveURL(/report=waqi/)
+  await expect(page).toHaveURL(/station=101/)
+  const card = page.getByTestId('ra-waqi')
+  await expect(card).toContainText('Affected means AQI 101 or more within 5 km of a station')
+  await expect(card.getByRole('tab', { name: 'Affected (1)' })).toHaveAttribute('aria-selected', 'true')
+  await expect(card).toContainText('1 building or branch is affected now.')
+  const row = card.locator('li[data-station="101"]')
+  await expect(row).toHaveAttribute('aria-current', 'true')
+  await expect(row).toBeInViewport()
+  await expect(row.getByText('Affected', { exact: true })).toBeVisible()
+  await expect(row.getByTestId('waqi-widget')).toHaveText('WAQI widget indonesia/south-tangerang/bintaro en')
+  expect(asked).toEqual(['/api/ra/waqi/stations/101'])
+  await expect(row).toContainText('AQI 157')
+  await expect(row.getByRole('link', { name: 'aqicn.org' })).toHaveAttribute('href', 'https://aqicn.org/city/indonesia/south-tangerang/bintaro')
+  await expect(row.getByRole('link', { name: 'Nafas Indonesia' })).toBeVisible()
+  await expect(page.locator('path.ra-radius-air-active')).toHaveCount(1)
+
+  // The other lists: stations with buildings in their area, and every station.
+  await card.getByRole('tab', { name: 'With buildings (2)' }).click()
+  await expect(card.locator('li[data-station]')).toHaveCount(2)
+  const gbk = card.locator('li[data-station="103"]')
+  await expect(gbk).toContainText('Graha CIMB Niaga (1,1 km)')
+  await expect(gbk.getByText('Affected', { exact: true })).toHaveCount(0)
+  await gbk.getByRole('button', { name: 'Details' }).click()
+  await expect(page).toHaveURL(/station=103/)
+  await expect.poll(() => asked.at(-1)).toBe('/api/ra/waqi/stations/103')
+  await card.getByRole('tab', { name: 'All stations (3)' }).click()
+  const paku = card.locator('li[data-station="-523021"]')
+  await expect(paku).toContainText('No building or branch in its area.')
+  await paku.getByRole('button', { name: 'Details' }).click()
+  await expect(page).toHaveURL(/station=-523021/)
+  await expect(paku.getByTestId('waqi-no-detail')).toHaveText('WAQI shows this station on its map but gives no details for it.')
+  await expect(paku.getByTestId('waqi-widget')).toHaveCount(0)
+  await expect(paku.getByText('Could not read the station')).toHaveCount(0)
+
+  // A building in an area is shown on the map.
+  await card.getByRole('tab', { name: 'Affected (1)' }).click()
+  await card.getByRole('button', { name: 'Griya CIMB Niaga 2 (2 km)' }).click()
+  await expect(page).toHaveURL(/place=1/)
+
+  // Another area: its stations are read and the tab says which area it is.
+  expect(areas[0]).toBe('jakarta')
+  const areaPicker = card.getByRole('button', { name: 'Air quality area' })
+  await expect(areaPicker).toContainText('Jakarta')
+  await areaPicker.click()
+  await page.getByRole('option', { name: 'Java' }).click()
+  await expect(page).toHaveURL(/air_area=java/)
+  await expect.poll(() => areas.at(-1)).toBe('java')
+  await expect(areaPicker).toContainText('Java')
+
+  await toggle.uncheck()
+  await expect(page.locator('.ra-aqi')).toHaveCount(0)
+})
+
+test('every WAQI station over Indonesia is drawn, and the full list shows the worst 50 first', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.route('**/api/ra/map-settings', (route) => route.fulfill({ json: { tile_url: '/e2e-tiles/{z}/{x}/{y}.png', attribution: 'Test tiles', max_zoom: 19, waqi_enabled: true } }))
+  const many = Array.from({ length: 55 }, (_, index) => ({
+    id: 1000 + index, name: `Station ${index + 1}`, latitude: -8 + index * 0.1, longitude: 110 + index * 0.2,
+    aqi: 200 - index, band: { code: 'unhealthy', label: 'Unhealthy' }, measured_at: null, affected: false, places: [],
+  }))
+  await page.route(/\/api\/ra\/waqi(\?|$)/, (route) => route.fulfill({ json: { ...WAQI_REPORT, stations: [...WAQI_REPORT.stations, ...many] } }))
+  await page.goto('/locations/map?report=waqi')
+  await expect(page.getByText('Air quality, WAQI (58)')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.ra-aqi')).toHaveCount(58)
+  const card = page.getByTestId('ra-waqi')
+  await card.getByRole('tab', { name: 'All stations (58)' }).click()
+  await expect(card.locator('li[data-station]')).toHaveCount(50)
+  await card.getByRole('button', { name: 'Show all 58 stations' }).click()
+  await expect(card.locator('li[data-station]')).toHaveCount(58)
+})
+
+test('without a WAQI token there is no WAQI layer or tab', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.goto('/locations/map')
+  await expect(page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('checkbox', { name: /^Air quality, WAQI/ })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: 'Air quality now (WAQI)' })).toHaveCount(0)
+  await expect(page.locator('.ra-aqi')).toHaveCount(0)
 })
 
 test('a disaster is declared from an earthquake, filled in from BMKG', async ({ page }) => {
@@ -568,9 +834,10 @@ test('a disaster is declared from an earthquake, filled in from BMKG', async ({ 
   await expect(dialog.getByLabel('Time (WIB)')).toHaveValue('13:42')
   // The hazard stays an earthquake.
   await expect(dialog.getByLabel('Hazard')).toBeDisabled()
-  // The alert radius is filled in, and it goes up and down by 0,1 km.
+  // The earthquake's alert radius is filled in (225 km at M5,6, held to the 200 km a disaster
+  // allows), and it goes up and down by 0,1 km.
   const radius = dialog.getByLabel('Affected radius')
-  await expect(radius).toHaveValue('100')
+  await expect(radius).toHaveValue('200')
   await radius.fill('0.1')
   await radius.blur()
   await dialog.getByRole('button', { name: 'Increment' }).click()

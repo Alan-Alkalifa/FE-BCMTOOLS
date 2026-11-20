@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Incident › Approval. */
-definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['sites.access', 'ra.access', 'ra_branch.access'] })
 </script>
 
 <template>

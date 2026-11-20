@@ -444,6 +444,61 @@ test('rating a hazard fills in its ratings and saves only that hazard', async ({
   expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H03', monetary: 5, historical: 3 })])
 })
 
+test('each hazard reviews past disasters over its own years, saved with its rating', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const hint = page.getByTestId('past-disasters')
+  // Without years: the last 10.
+  await expect(hint).toContainText('BNPB recorded it 12 times in Kota Adm. Jakarta Selatan from 2017 to 2026.', { timeout: 60_000 })
+  await expect(hint.getByRole('button', { name: /^Use/ })).toHaveCount(0)
+  await expect(hint).not.toContainText('Suggested')
+
+  await page.getByRole('button', { name: 'Review past occurrences from' }).click()
+  await page.getByRole('listbox', { name: 'Review past occurrences from' }).getByRole('option', { name: '2022', exact: true }).click()
+  await page.getByRole('button', { name: 'Review past occurrences to' }).click()
+  await page.getByRole('listbox', { name: 'Review past occurrences to' }).getByRole('option', { name: '2023', exact: true }).click()
+  await expect(hint).toContainText('BNPB recorded it 3 times in Kota Adm. Jakarta Selatan from 2022 to 2023.')
+  await page.getByRole('button', { name: 'Save ratings', exact: true }).click()
+  await expect(page.getByText('1 hazard saved').first()).toBeVisible()
+  expect(log.ratings[0]).toEqual([expect.objectContaining({ code: 'H01', review_from_year: 2022, review_to_year: 2023 })])
+
+  // None recorded for another hazard: it says so.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none in Kota Adm. Jakarta Selatan from 2017 to 2026.', { timeout: 60_000 })
+})
+
+test('WHO\'s outbreak news and OpenAQ\'s air quality show on their hazards over the review years', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H11')
+  const who = page.getByTestId('outbreak-news')
+  await expect(who).toContainText('WHO reported outbreaks in Indonesia 3 times from 2017 to 2026.', { timeout: 60_000 })
+  await expect(who.getByRole('link', { name: 'Poliomyelitis - Indonesia' })).toHaveAttribute('href', 'https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON500')
+  // DIBI counts nothing for it, so its "none" stays out.
+  await expect(page.getByTestId('past-disasters')).not.toContainText('BNPB recorded none')
+  await expect(page.getByTestId('past-disasters').getByRole('button', { name: /^Use/ })).toHaveCount(0)
+
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H10')
+  const air = page.getByTestId('air-quality')
+  await expect(air).toContainText('PM2.5 was above 55,4 µg/m³ on 501 days at US Embassy Jakarta South, 2,5 km away, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(air).toContainText('worst 140,3 µg/m³ on 15 Nov 2026')
+  await expect(air).toContainText('days kept from 1 Jan 2024')
+  await expect(page.getByTestId('outbreak-news')).toHaveCount(0)
+})
+
+test('BMKG\'s weather warnings over the building show on the weather hazard', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
+  const warned = page.getByTestId('weather-warnings')
+  await expect(warned).toContainText('BMKG warned of severe weather over the building 3 times, on 2 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(warned).toContainText('Hujan Lebat disertai Petir di DKI Jakarta · 18 Nov 2026, 10:45 WIB')
+  await expect(warned).toContainText('Warnings kept from 18 Nov 2026')
+  await expect(page.getByTestId('past-disasters')).not.toContainText('BNPB recorded none')
+  // Not on another hazard.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded it 12 times', { timeout: 60_000 })
+  await expect(page.getByTestId('weather-warnings')).toHaveCount(0)
+})
+
 test('a hazard without its existing mitigation doesn\'t count as rated yet', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
@@ -806,7 +861,7 @@ test('the call tree writes a caller once for everyone they call and takes notes'
 })
 
 test('the recovery team and call tree tabs open their charts, also without edit rights', async ({ page }) => {
-  await mockRa(page, { permissions: ['location.access', 'location.master', 'ra.access'] })
+  await mockRa(page, { permissions: ['sites.access', 'sites.master', 'ra.access'] })
   await page.goto('/admin/buildings/1?tab=team')
   await expect(page.getByRole('heading', { name: 'Damage Assessment Team (DAT)' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Save recovery team' })).toBeDisabled()
@@ -1310,7 +1365,7 @@ test('a structural change can follow a final RA in the same period', async ({ pa
   const reason = page.getByLabel('Reason for assessment')
   // Its RA is final: renewing it is the usual reason, but not in the same year.
   await expect(reason).toContainText('Annual review', { timeout: 60_000 })
-  await expect(page.getByTestId('building-note')).toContainText(`Copied the assessment details from its last RA (RA-${year}-0005, 10 Mar 2025). Approvals start over. Check each rating and change anything that is different now.`)
+  await expect(page.getByTestId('building-note')).toContainText(`Copied the assessment details from its last RA (RA-${year}-0005, 10 Mar 2025). Approvals start over. An annual review rates every hazard from scratch.`)
   await page.getByRole('button', { name: 'Create assessment' }).click()
   const taken = page.getByText(`This building already has an RA for ${year} (RA-${year}-0005). Pick a date in another year, or open that RA. Only a structural change can follow a final RA in the same year.`)
   await expect(taken).toBeVisible()

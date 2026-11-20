@@ -190,7 +190,7 @@ test('a branch assessment opened under RA moves to RA Branch', async ({ page }) 
 test('an RA Branch user works on branches only', async ({ page }) => {
   // RA (head office) and RA Branch are granted separately (ra.* and ra_branch.*); the Sites
   // menu has its own permission, which the default RA Branch User role holds.
-  await mockRa(page, { permissions: ['location.access', 'ra_branch.access', 'ra_branch.edit'] })
+  await mockRa(page, { permissions: ['sites.access', 'ra_branch.access', 'ra_branch.edit'] })
   await page.goto('/')
   const sidebar = page.getByRole('navigation', { name: 'Main' })
   await expect(sidebar.getByRole('link', { name: 'Building map' })).toBeVisible({ timeout: 60_000 })
