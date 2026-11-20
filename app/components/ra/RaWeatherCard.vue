@@ -127,7 +127,7 @@ function when(warning: RaWeatherWarning) {
 
       <ul
         v-if="report?.items.length"
-        class="divide-y divide-default rounded-md border border-default"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
       >
         <li
           v-for="warning in report.items"

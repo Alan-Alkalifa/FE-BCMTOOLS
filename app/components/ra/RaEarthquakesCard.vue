@@ -84,7 +84,7 @@ function nearText(quake: RaEarthquake) {
 
       <ul
         v-if="items.length"
-        class="divide-y divide-default rounded-md border border-default"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
       >
         <li
           v-for="quake in items"
@@ -178,7 +178,7 @@ function nearText(quake: RaEarthquake) {
 
       <p class="text-xs text-muted">
         Source. {{ list?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
-          <a
+        <a
           :href="list?.source_url ?? 'https://data.bmkg.go.id/gempabumi/'"
           target="_blank"
           rel="noopener"
