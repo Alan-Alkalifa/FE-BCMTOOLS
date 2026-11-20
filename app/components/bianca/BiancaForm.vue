@@ -886,8 +886,26 @@ const people = [
             @update:model-value="header.signoff_users[step.code] = $event ?? null"
           />
         </UFormField>
-        <p class="text-sm text-muted">
-          This release configures and assigns the approval template. Assessment approve/reject execution is not available yet.
+        <template v-if="saved?.signoffs?.length">
+          <USeparator />
+          <h3 class="text-sm font-semibold">
+            Where the sign-off stands
+          </h3>
+          <BiancaSignoffSteps :steps="saved.signoffs" />
+          <UButton
+            v-if="saved.status === 'in_approval'"
+            :to="biancaApprovalPath(saved.id)"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-badge-check"
+            :label="saved.can_decide ? 'Open it in Approval to decide' : 'Open it in Approval'"
+          />
+        </template>
+        <p
+          v-else
+          class="text-sm text-muted"
+        >
+          After Submit, each signer approves the BIA in turn (BIANCA > Approval), or returns it to you for changes.
         </p>
       </div>
     </UCard>

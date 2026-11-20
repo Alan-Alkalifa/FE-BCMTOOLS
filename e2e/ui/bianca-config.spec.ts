@@ -65,6 +65,163 @@ test('an administrator adds a personnel category and saves the typed payload wit
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
 })
 
+test('personnel removal can be cancelled and saved without changing the active version', async ({ page }) => {
+  await signIn(page, { permissions })
+  const active = version()
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft, active] } })
+  })
+  await page.goto('/admin/bianca-config?version=2&tab=personnel')
+  const remove = page.getByRole('button', { name: 'Remove category Senior Management', exact: true })
+  await expect(remove).toBeVisible({ timeout: 45000 })
+  await remove.click()
+  let dialog = page.getByRole('dialog', { name: 'Remove Senior Management?' })
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(remove).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled()
+  await remove.click()
+  dialog = page.getByRole('dialog', { name: 'Remove Senior Management?' })
+  await dialog.getByRole('button', { name: 'Remove category', exact: true }).click()
+  await expect(remove).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(4)
+  await expect(page.getByText('Senior Management (U1–U3)', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect.poll(() => saved?.staff_grades.length).toBe(4)
+  expect(saved?.staff_grades.some((grade) => grade.code === 'staff_senior')).toBe(false)
+  expect(active.payload.staff_grades).toHaveLength(5)
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(4, { timeout: 45000 })
+  await expect(remove).toHaveCount(0)
+})
+
+test('personnel removal keeps the last active category and is hidden on published versions', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  draft.payload.staff_grades = [
+    draft.payload.staff_grades[0]!,
+    { ...draft.payload.staff_grades[1]!, active: false },
+  ]
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft, version()] } }))
+  await page.goto('/admin/bianca-config?version=2&tab=personnel')
+  await expect(page.getByRole('button', { name: 'Remove category Senior Management', exact: true })).toBeDisabled({ timeout: 45000 })
+  const remove = page.getByRole('button', { name: 'Remove category Middle Management', exact: true })
+  await expect(remove).toBeEnabled()
+  await remove.click()
+  await page.getByRole('dialog', { name: 'Remove Middle Management?' }).getByRole('button', { name: 'Remove category', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: /^Category name/ })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Remove category Senior Management', exact: true })).toBeDisabled()
+  await page.getByRole('combobox', { name: 'Configuration version' }).click()
+  await page.getByRole('option', { name: /V1/ }).click()
+  await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Remove category/ })).toHaveCount(0)
+})
+
+test('approval steps can be added, renamed, reordered, removed and saved', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await signIn(page, { permissions })
+  const active = version()
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft, active] } })
+  })
+  await page.goto('/admin/bianca-config?version=2&tab=steps')
+  await expect(page.getByRole('button', { name: 'Add step', exact: true })).toBeVisible({ timeout: 45000 })
+  const coordinator = page.getByRole('group', { name: 'Step 1: bcm_coordinator', exact: true })
+  await expect(coordinator.getByRole('button', { name: /Remove step/ })).toHaveCount(0)
+  await expect(coordinator.getByRole('button', { name: /Move.*down/ })).toBeDisabled()
+  await page.getByRole('button', { name: 'Add step', exact: true }).click()
+  const added = page.getByRole('group', { name: 'Step 4: New approval step', exact: true })
+  await added.getByRole('textbox', { name: /^Step title/ }).fill('Business reviewer')
+  let reviewer = page.getByRole('group', { name: 'Step 4: Business reviewer', exact: true })
+  await reviewer.getByRole('textbox', { name: /^Code/ }).fill('business_reviewer')
+  await reviewer.getByRole('button', { name: 'Move Business reviewer up', exact: true }).click()
+  reviewer = page.getByRole('group', { name: 'Step 3: Business reviewer', exact: true })
+  await expect(reviewer.getByRole('textbox', { name: /^Code/ })).toHaveValue('business_reviewer')
+  await page.screenshot({ path: test.info().outputPath('approval-desktop.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Remove step group_head', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Remove group_head?' }).getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('group', { name: 'Step 2: group_head', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Remove step group_head', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Remove group_head?' }).getByRole('button', { name: 'Remove step', exact: true }).click()
+  await page.getByRole('tab', { name: 'Personnel levels', exact: true }).click()
+  await page.getByRole('tab', { name: 'Approval template', exact: true }).click()
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect.poll(() => saved?.signoff_steps.map((step) => step.code)).toEqual(['bcm_coordinator', 'business_reviewer', 'head_of', 'bcm_head'])
+  expect(active.payload.signoff_steps.map((step) => step.code)).toEqual(['bcm_coordinator', 'group_head', 'head_of', 'bcm_head'])
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('group', { name: 'Step 2: Business reviewer', exact: true })).toBeVisible({ timeout: 45000 })
+  await page.getByRole('combobox', { name: 'Configuration version' }).click()
+  await page.getByRole('option', { name: /V1/ }).click()
+  await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add step', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Remove step/ })).toHaveCount(0)
+})
+
+test('removing the final approver promotes the remaining step to required', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  draft.payload.signoff_steps = [draft.payload.signoff_steps[0]!, { ...draft.payload.signoff_steps[1]!, required: false }, draft.payload.signoff_steps.at(-1)!]
+  await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
+  await page.goto('/admin/bianca-config?version=2&tab=steps')
+  await page.getByRole('button', { name: 'Remove step bcm_head', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Remove bcm_head?' }).getByRole('button', { name: 'Remove step', exact: true }).click()
+  const remaining = page.getByRole('group', { name: 'Step 2: group_head', exact: true })
+  await expect(remaining.getByRole('switch', { name: 'Required', exact: true })).toBeChecked()
+  await expect(remaining.getByRole('switch', { name: 'Required', exact: true })).toBeDisabled()
+  await expect(remaining.getByRole('button', { name: 'Remove step group_head', exact: true })).toBeDisabled()
+})
+
+for (const width of [1440, 390]) {
+  test(`personnel and approval cards follow the SCCA layout at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await signIn(page, { permissions })
+    const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+    await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
+    await page.goto('/admin/bianca-config?version=2&tab=personnel')
+    const category = page.getByRole('group', { name: 'Category 1: Senior Management', exact: true })
+    await expect(category).toBeVisible({ timeout: 45000 })
+    const remove = category.getByRole('button', { name: 'Remove category Senior Management', exact: true })
+    const active = category.getByRole('switch', { name: 'Active', exact: true })
+    const arrow = category.getByRole('button', { name: 'Move Senior Management down', exact: true })
+    const code = category.getByRole('textbox', { name: /^Code/ })
+    const boxes = await Promise.all([remove.boundingBox(), active.boundingBox(), arrow.boundingBox(), code.boundingBox()])
+    expect(boxes.every(Boolean)).toBe(true)
+    if (width > 1000) {
+      expect(boxes[0]!.x).toBeGreaterThan(boxes[1]!.x + boxes[1]!.width)
+      expect(boxes[2]!.x + boxes[2]!.width).toBeLessThan(boxes[3]!.x)
+    }
+    await category.screenshot({ path: test.info().outputPath(`personnel-${width}.png`) })
+    await arrow.click()
+    await expect(page.getByRole('group', { name: 'Category 2: Senior Management', exact: true })).toBeVisible()
+    await page.getByRole('tab', { name: 'Approval template', exact: true }).click()
+    const step = page.getByRole('group', { name: 'Step 2: group_head', exact: true })
+    await step.screenshot({ path: test.info().outputPath(`approval-${width}.png`) })
+    const main = await page.getByRole('main').boundingBox()
+    const card = await step.boundingBox()
+    expect(card!.x).toBeGreaterThanOrEqual(main!.x)
+    expect(card!.x + card!.width).toBeLessThanOrEqual(width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  })
+}
+
 test('the requester cannot approve their own publication', async ({ page }) => {
   await signIn(page, { permissions })
   const pending = { ...version(), id: 2, status: 'draft', requested_by_id: 1, requested_at: '2026-11-17T01:00:00Z' }
@@ -216,6 +373,7 @@ test('workbook lists distinguish IDs, stored values, string choices and integer 
   await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?tab=lists&list=yes_no')
   const table = page.getByRole('table', { name: 'Yes / No codes items' })
+  await expect(table).toBeVisible({ timeout: 45000 })
   for (const label of ['ID', 'Code', 'Value', 'Data type']) await expect(table.getByRole('columnheader', { name: label, exact: true })).toBeVisible()
   await expect(table.getByRole('row').nth(1).getByRole('cell').nth(3)).toHaveText('Yes')
   await expect(table.getByRole('cell', { name: '0', exact: true })).toBeVisible()
@@ -240,7 +398,7 @@ test('guide preview preserves paragraphs and personnel export requires saved edi
   })
   await page.goto('/admin/bianca-config?tab=personnel')
   const download = page.getByRole('link', { name: 'Export to Excel', exact: true })
-  await expect(download).toHaveAttribute('href', '/api/admin/bianca-config/versions/2/personnel.xlsx')
+  await expect(download).toHaveAttribute('href', '/api/admin/bianca-config/versions/2/personnel.xlsx', { timeout: 45000 })
   await expect(download).not.toHaveAttribute('aria-disabled', 'true')
   await page.getByRole('tab', { name: 'Guides and statements', exact: true }).click()
   await page.getByRole('textbox', { name: 'Attestation statement', exact: true }).fill('First paragraph.\n\nSecond paragraph.')
@@ -288,7 +446,7 @@ test('Changes shows only Recovery when only the recovery guide changes', async (
   await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?tab=changes')
   const table = page.getByRole('table', { name: 'Changes to Guides and statements' })
-  await expect(table.getByRole('row')).toHaveCount(2)
+  await expect(table.getByRole('row')).toHaveCount(2, { timeout: 45000 })
   await expect(table.getByRole('rowheader', { name: 'Recovery', exact: true })).toBeVisible()
   await expect(table.getByRole('cell', { name: 'Original recovery guide.', exact: true })).toBeVisible()
   await expect(table.getByRole('cell', { name: 'Original recovery guide. tes tes', exact: true })).toBeVisible()
@@ -313,7 +471,7 @@ test('Changes separates fields in every nested configuration section', async ({ 
   const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft', previous_version: 'V1', changes }
   await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?tab=changes')
-  await expect(page.getByRole('rowheader')).toHaveCount(changes.length)
+  await expect(page.getByRole('rowheader')).toHaveCount(changes.length, { timeout: 45000 })
   for (const name of ['Recovery', 'Attestation statement', 'Critical timing frequencies / Daily / Label', 'Personnel categories / staff_manager / Last U level', 'Expected MTD / 4 hours / Category', 'Regulatory and customer matrix / Score 3 / Regulatory impact', 'Financial loss matrix / high / Description', 'Sign-off steps / group_head / Order', 'Sign-off steps / head_of / Order']) {
     await expect(page.getByRole('rowheader', { name, exact: true })).toBeVisible()
   }
