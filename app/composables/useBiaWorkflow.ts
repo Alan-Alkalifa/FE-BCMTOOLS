@@ -291,6 +291,7 @@ export interface BiaAssessmentDetail {
     financial_bands: { code: string, label: string, description: string }[]
     impact_matrix: { score: number, regulatory: string, customer: string }[]
     expected_mtd?: { value: string, category: string }[]
+    alternate_site_by_category?: Record<string, string[]>
   }
   guides?: Record<string, string>
   loss_totals?: {

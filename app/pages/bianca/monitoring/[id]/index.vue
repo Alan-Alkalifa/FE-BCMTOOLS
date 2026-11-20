@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
-import { BIANCA_ALT_SITE_BY_CATEGORY } from '~/utils/biancaNotes'
 
 definePageMeta({ permission: 'bianca.access' })
 
@@ -23,10 +22,12 @@ function isWfhStrategy(fn: BiaFunctionItem) {
 }
 
 function altSiteOffRecommendation(fn: BiaFunctionItem) {
-  const rec = BIANCA_ALT_SITE_BY_CATEGORY[fn.category]
-  const chosen = fn.alt_site_strategy_code || fn.alt_site_strategy
-  if (!rec || !chosen || chosen === '—') return null
-  return rec.strategies.includes(chosen) ? null : rec.strategies.join(' / ')
+  const recommended = detail.value?.impact_reference?.alternate_site_by_category?.[fn.category]
+  const chosenLabel = fn.alt_site_strategy
+  const chosenCode = fn.alt_site_strategy_code
+  if (!recommended?.length || (!chosenLabel && !chosenCode) || chosenLabel === '—') return null
+  const matches = recommended.includes(chosenLabel) || (chosenCode ? recommended.includes(chosenCode) : false)
+  return matches ? null : recommended.join(' / ')
 }
 
 function fnHasDepIssue(fn: BiaFunctionItem) {
