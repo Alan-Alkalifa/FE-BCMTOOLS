@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
+import { BIANCA_ALT_SITE_BY_CATEGORY } from '~/utils/biancaNotes'
 
 definePageMeta({ permission: 'bianca.access' })
 
@@ -10,15 +11,39 @@ const id = computed(() => Number(route.params.id) || 1)
 const { data: detail, status, error, refresh } = useBiaAssessmentDetail(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !detail.value)
 
+const depsFilter = ref<'all' | 'issues'>('all')
+
+function plural(count: number, one: string, many = `${one}s`) {
+  return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
+}
+
+function isWfhStrategy(fn: BiaFunctionItem) {
+  const code = (fn.alt_site_strategy_code || fn.alt_site_strategy || '').toLowerCase()
+  return code.includes('work from home') || code.includes('wfh')
+}
+
+function altSiteOffRecommendation(fn: BiaFunctionItem) {
+  const rec = BIANCA_ALT_SITE_BY_CATEGORY[fn.category]
+  const chosen = fn.alt_site_strategy_code || fn.alt_site_strategy
+  if (!rec || !chosen || chosen === '—') return null
+  return rec.strategies.includes(chosen) ? null : rec.strategies.join(' / ')
+}
+
+function fnHasDepIssue(fn: BiaFunctionItem) {
+  return fn.it_dependencies.some((d) => d.daat_negative || d.daat.startsWith('-') || d.rto_reaches_mtd || (d.workaround_gap_required && !d.critical_gap))
+    || fn.non_it_dependencies.some((nd) => Boolean(nd.alignment_warnings?.length))
+}
+
+const displayedDepFunctions = computed(() => {
+  const fns = detail.value?.functions ?? []
+  if (depsFilter.value === 'issues') return fns.filter(fnHasDepIssue)
+  return fns
+})
+
 const hasPart1Notes = computed(() => Boolean(
   detail.value?.notes?.loss_formula
   || detail.value?.notes?.justification_regulatory
   || detail.value?.notes?.justification_customer,
-))
-
-const hasDependencyNotes = computed(() => Boolean(
-  detail.value?.notes?.justification_rto
-  || detail.value?.notes?.justification_dependency,
 ))
 
 const TABS = ['details', 'impact', 'dependencies', 'recovery', 'timings', 'signoff'] as const
@@ -28,44 +53,32 @@ const tab = computed<DetailTab>({
   set: (value) => router.replace({ query: { ...route.query, tab: value === 'details' ? undefined : value } }),
 })
 
-const tabs = [
-  { label: 'Details & personnel', value: 'details', icon: 'i-lucide-building-2', slot: 'details' as const },
-  { label: 'Impact assessment', value: 'impact', icon: 'i-lucide-chart-column', slot: 'impact' as const },
-  { label: 'IT & non-IT dependencies', value: 'dependencies', icon: 'i-lucide-network', slot: 'dependencies' as const },
-  { label: 'Recovery strategies', value: 'recovery', icon: 'i-lucide-life-buoy', slot: 'recovery' as const },
-  { label: 'Critical timings', value: 'timings', icon: 'i-lucide-calendar', slot: 'timings' as const },
-  { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' as const },
-]
-
 const DEFAULT_IMPACT_PERIODS = ['4 Hours', 'Day 1', 'Day 2', 'Day 3', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
 const impactPeriods = computed(() =>
   detail.value?.periods?.length ? detail.value.periods : DEFAULT_IMPACT_PERIODS,
 )
-const summaryPeriodLabels = computed(() => {
-  const periods = impactPeriods.value
-  return [
-    periods[0] ?? '4 Hours',
-    periods[1] ?? 'Day 1',
-    periods[4] ?? 'Week 1',
-    periods[periods.length - 1] ?? 'Week 4',
-  ]
+const peakPeriodLabel = computed(() =>
+  detail.value?.loss_totals?.peak_period
+  || impactPeriods.value[impactPeriods.value.length - 1]
+  || 'Peak',
+)
+const scoreRangeLabel = computed(() => {
+  const scores = detail.value?.impact_reference?.scores
+  if (scores?.length) {
+    return `${Math.min(...scores)}–${Math.max(...scores)}`
+  }
+  return '1–3'
 })
 
-const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => {
-  const [p0, p1, p4, pLast] = summaryPeriodLabels.value
-  return [
-    { accessorKey: 'seq_no', header: 'No' },
-    { accessorKey: 'name', header: 'Business function' },
-    { accessorKey: 'suggested_mtd', header: 'Suggested MTD' },
-    { accessorKey: 'expected_mtd', header: 'Expected MTD' },
-    { accessorKey: 'category', header: 'Category' },
-    { accessorKey: 'fin_loss_4h', header: `Loss (${p0})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-    { accessorKey: 'fin_loss_d1', header: `Loss (${p1})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-    { accessorKey: 'fin_loss_w1', header: `Loss (${p4})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-    { accessorKey: 'fin_loss_w4', header: `Loss (${pLast})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-    { id: 'scores', header: 'Max Reg / Cust score' },
-  ]
-})
+const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => [
+  { accessorKey: 'seq_no', header: 'No' },
+  { accessorKey: 'name', header: 'Business function' },
+  { accessorKey: 'suggested_mtd', header: 'Suggested MTD' },
+  { accessorKey: 'expected_mtd', header: 'Expected MTD' },
+  { accessorKey: 'category', header: 'Category' },
+  { id: 'peak_loss', header: `Peak loss (${peakPeriodLabel.value})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+  { id: 'scores', header: 'Max Reg (A) / Cust (B)' },
+])
 
 const recoveryColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'seq_no', header: 'No' },
@@ -98,8 +111,10 @@ const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
 
 function scoreTone(score: number | null | undefined) {
   const alertScore = detail.value?.impact_reference?.score_alert ?? 3
+  const scores = detail.value?.impact_reference?.scores
+  const minScore = scores?.length ? Math.min(...scores) : 1
   if ((score ?? 0) >= alertScore) return 'font-semibold text-error'
-  if (score === 2) return 'font-medium text-warning'
+  if ((score ?? 0) > minScore) return 'font-medium text-warning'
   return 'text-muted'
 }
 
@@ -145,10 +160,13 @@ function isTriggerPeriod(fn: BiaFunctionItem, idx: number) {
 const detailSummary = computed(() => {
   const fns = detail.value?.functions ?? []
   let itGapCount = 0
+  let rtoReachesMtdCount = 0
   let missingCriticalGapNote = 0
   let unalignedNonItCount = 0
   let seatGap = 0
   let missingVitalCritical = 0
+  let staffAnomalyCount = 0
+  let altSiteMismatchCount = 0
   let mtdExceedCount = 0
   let suggestedMismatchCount = 0
   let critical = 0
@@ -165,18 +183,34 @@ const detailSummary = computed(() => {
 
     for (const dep of fn.it_dependencies) {
       if (dep.daat_negative || dep.daat.startsWith('-')) itGapCount += 1
+      if (dep.rto_reaches_mtd) rtoReachesMtdCount += 1
       if (dep.workaround_gap_required && !dep.critical_gap) missingCriticalGapNote += 1
     }
     for (const ndep of fn.non_it_dependencies) {
       if (ndep.alignment_warnings?.length) unalignedNonItCount += 1
     }
-    if (fn.bcp_seats_current < fn.bcp_seats_required) {
+    if (!isWfhStrategy(fn) && fn.bcp_seats_current < fn.bcp_seats_required) {
       seatGap += fn.bcp_seats_required - fn.bcp_seats_current
     }
-    if (fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')) {
+    if (
+      fn.category === 'Business Critical'
+      && ((!fn.vital_record || fn.vital_record === '—') || (!fn.vital_record_location || fn.vital_record_location === '—'))
+    ) {
       missingVitalCritical += 1
     }
+    if (fn.required_staff > fn.total_staff && fn.total_staff > 0) {
+      staffAnomalyCount += 1
+    }
+    if (altSiteOffRecommendation(fn)) {
+      altSiteMismatchCount += 1
+    }
   }
+
+  const ra = detail.value?.ra_questionnaire
+  const notes = detail.value?.notes
+  const missingRaJustification = Boolean(ra?.ra_justification_required && !notes?.ra_justification)
+  const missingRtoJustification = Boolean(rtoReachesMtdCount > 0 && !notes?.justification_rto)
+  const missingDepJustification = Boolean(unalignedNonItCount > 0 && !notes?.justification_dependency)
 
   return {
     fnCount: fns.length,
@@ -184,41 +218,85 @@ const detailSummary = computed(() => {
     important,
     others,
     itGapCount,
+    rtoReachesMtdCount,
     missingCriticalGapNote,
     unalignedNonItCount,
     seatGap,
     missingVitalCritical,
+    staffAnomalyCount,
+    altSiteMismatchCount,
     mtdExceedCount,
     suggestedMismatchCount,
+    missingRaJustification,
+    missingRtoJustification,
+    missingDepJustification,
   }
 })
 
 const attentionItems = computed(() => {
   const s = detailSummary.value
-  const items: { text: string, targetTab: DetailTab }[] = []
+  const items: { text: string, targetTab: DetailTab, tabLabel: string, severity: 'error' | 'warning' }[] = []
+  if (s.missingRaJustification) {
+    items.push({ text: 'Risk assessment justification is required (BC not considered and no BC controls included)', targetTab: 'details', tabLabel: 'Details', severity: 'error' })
+  }
   if (s.mtdExceedCount > 0) {
-    items.push({ text: `${s.mtdExceedCount} business function(s) have Expected MTD longer than Suggested MTD`, targetTab: 'impact' })
+    items.push({ text: `${plural(s.mtdExceedCount, 'business function')} has Expected MTD longer than Suggested MTD`, targetTab: 'impact', tabLabel: 'Impact', severity: 'error' })
   }
   if (s.suggestedMismatchCount > 0) {
-    items.push({ text: `${s.suggestedMismatchCount} business function(s) have Suggested MTD differing from the impact rule`, targetTab: 'impact' })
+    items.push({ text: `${plural(s.suggestedMismatchCount, 'business function')} has Suggested MTD differing from the impact rule`, targetTab: 'impact', tabLabel: 'Impact', severity: 'warning' })
   }
   if (s.itGapCount > 0) {
-    items.push({ text: `${s.itGapCount} IT application(s) have a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies' })
+    items.push({ text: `${plural(s.itGapCount, 'IT application')} has a negative DAAT (RTO + backlog exceeds Expected MTD)`, targetTab: 'dependencies', tabLabel: 'Dependencies', severity: 'error' })
   }
   if (s.missingCriticalGapNote > 0) {
-    items.push({ text: `${s.missingCriticalGapNote} IT application(s) require a mandatory Workaround Critical Gap note`, targetTab: 'dependencies' })
+    items.push({ text: `${plural(s.missingCriticalGapNote, 'IT application')} requires a mandatory Workaround Critical Gap note`, targetTab: 'dependencies', tabLabel: 'Dependencies', severity: 'error' })
   }
-  if (s.unalignedNonItCount > 0) {
-    items.push({ text: `${s.unalignedNonItCount} upstream/downstream dependency row(s) are misaligned with function capacity or MTD`, targetTab: 'dependencies' })
+  if (s.missingRtoJustification) {
+    items.push({ text: 'Part 2a RTO justification is missing (at least one IT RTO reaches or exceeds Expected MTD)', targetTab: 'dependencies', tabLabel: 'Dependencies', severity: 'error' })
+  }
+  if (s.missingDepJustification) {
+    items.push({ text: 'Part 2b dependency justification is missing for misaligned upstream/downstream rows', targetTab: 'dependencies', tabLabel: 'Dependencies', severity: 'error' })
+  } else if (s.unalignedNonItCount > 0) {
+    items.push({ text: `${plural(s.unalignedNonItCount, 'upstream/downstream dependency row')} has lower capacity or longer MTD than the function`, targetTab: 'dependencies', tabLabel: 'Dependencies', severity: 'warning' })
   }
   if (s.seatGap > 0) {
-    items.push({ text: `BCP seat shortage of ${s.seatGap} seat(s) across business functions`, targetTab: 'recovery' })
+    items.push({ text: `BCP seat shortage of ${plural(s.seatGap, 'seat')} at alternate site (excluding WFH)`, targetTab: 'recovery', tabLabel: 'Recovery', severity: 'warning' })
   }
   if (s.missingVitalCritical > 0) {
-    items.push({ text: `${s.missingVitalCritical} Business Critical function(s) missing vital record details`, targetTab: 'recovery' })
+    items.push({ text: `${plural(s.missingVitalCritical, 'Business Critical function')} missing vital record or storage location`, targetTab: 'recovery', tabLabel: 'Recovery', severity: 'error' })
+  }
+  if (s.altSiteMismatchCount > 0) {
+    items.push({ text: `${plural(s.altSiteMismatchCount, 'function')} uses an alternate site strategy outside category guidance`, targetTab: 'recovery', tabLabel: 'Recovery', severity: 'warning' })
+  }
+  if (s.staffAnomalyCount > 0) {
+    items.push({ text: `${plural(s.staffAnomalyCount, 'function')} has required recovery staff exceeding total staff`, targetTab: 'recovery', tabLabel: 'Recovery', severity: 'warning' })
   }
   return items
 })
+
+const tabAlertCounts = computed<Record<DetailTab, number>>(() => {
+  const counts: Record<DetailTab, number> = {
+    details: 0,
+    impact: 0,
+    dependencies: 0,
+    recovery: 0,
+    timings: 0,
+    signoff: 0,
+  }
+  for (const item of attentionItems.value) {
+    counts[item.targetTab] += 1
+  }
+  return counts
+})
+
+const tabs = computed(() => [
+  { label: 'Details & personnel', value: 'details', icon: 'i-lucide-building-2', slot: 'details' as const, badge: tabAlertCounts.value.details || undefined },
+  { label: 'Impact assessment', value: 'impact', icon: 'i-lucide-chart-column', slot: 'impact' as const, badge: tabAlertCounts.value.impact || undefined },
+  { label: 'IT & non-IT dependencies', value: 'dependencies', icon: 'i-lucide-network', slot: 'dependencies' as const, badge: tabAlertCounts.value.dependencies || undefined },
+  { label: 'Recovery strategies', value: 'recovery', icon: 'i-lucide-life-buoy', slot: 'recovery' as const, badge: tabAlertCounts.value.recovery || undefined },
+  { label: 'Critical timings', value: 'timings', icon: 'i-lucide-calendar', slot: 'timings' as const, badge: tabAlertCounts.value.timings || undefined },
+  { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' as const, badge: tabAlertCounts.value.signoff || undefined },
+])
 
 const lossPeriodTotals = computed(() =>
   impactPeriods.value.map((_, idx) =>
@@ -267,6 +345,9 @@ const lossPeriodTotals = computed(() =>
     :crumbs="[
       { label: 'BIANCA' },
       { label: 'Monitoring', to: '/bianca/monitoring' },
+      ...(detail.group.directorate && detail.group.directorate !== '—'
+        ? [{ label: detail.group.directorate, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(detail.group.directorate)}` }]
+        : []),
       { label: detail.ref_no },
     ]"
   >
@@ -306,7 +387,11 @@ const lossPeriodTotals = computed(() =>
 
     <div class="mb-6 space-y-4">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-lg border border-default bg-default p-3.5">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
+          @click="tab = 'impact'"
+        >
           <p class="text-xs text-muted">
             Business functions
           </p>
@@ -316,8 +401,12 @@ const lossPeriodTotals = computed(() =>
           <p class="mt-1 text-xs text-muted">
             {{ detailSummary.critical }} Critical · {{ detailSummary.important }} Important · {{ detailSummary.others }} Others
           </p>
-        </div>
-        <div class="rounded-lg border border-default bg-default p-3.5">
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
+          @click="tab = 'impact'"
+        >
           <p class="text-xs text-muted">
             Shortest Expected MTD
           </p>
@@ -327,8 +416,12 @@ const lossPeriodTotals = computed(() =>
           <p class="mt-1 text-xs text-muted">
             Highest priority recovery target
           </p>
-        </div>
-        <div class="rounded-lg border border-default bg-default p-3.5">
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
+          @click="tab = 'dependencies'"
+        >
           <p class="text-xs text-muted">
             IT DAAT gaps
           </p>
@@ -341,8 +434,12 @@ const lossPeriodTotals = computed(() =>
           <p class="mt-1 text-xs text-muted">
             Apps exceeding Expected MTD
           </p>
-        </div>
-        <div class="rounded-lg border border-default bg-default p-3.5">
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
+          @click="tab = 'recovery'"
+        >
           <p class="text-xs text-muted">
             BCP seat shortage
           </p>
@@ -355,30 +452,36 @@ const lossPeriodTotals = computed(() =>
           <p class="mt-1 text-xs text-muted">
             Seats short at alternate site
           </p>
-        </div>
+        </button>
       </div>
 
       <UAlert
         v-if="attentionItems.length"
-        color="warning"
+        :color="attentionItems.some((i) => i.severity === 'error') ? 'error' : 'warning'"
         variant="subtle"
         icon="i-lucide-triangle-alert"
-        title="Needs attention"
+        :title="`Needs attention (${attentionItems.length})`"
       >
         <template #description>
-          <ul class="mt-1 space-y-1 text-xs">
+          <ul class="mt-1.5 space-y-1.5 text-xs">
             <li
               v-for="item in attentionItems"
               :key="item.text"
               class="flex flex-wrap items-center justify-between gap-2"
             >
-              <span>• {{ item.text }}</span>
+              <span class="inline-flex items-center gap-1.5">
+                <span
+                  class="size-1.5 shrink-0 rounded-full"
+                  :class="item.severity === 'error' ? 'bg-error' : 'bg-warning'"
+                />
+                <span>{{ item.text }}</span>
+              </span>
               <UButton
                 size="xs"
-                color="warning"
+                :color="item.severity === 'error' ? 'error' : 'warning'"
                 variant="link"
                 class="p-0"
-                label="Review"
+                :label="`Review in ${item.tabLabel}`"
                 trailing-icon="i-lucide-arrow-right"
                 @click="tab = item.targetTab"
               />
@@ -425,6 +528,14 @@ const lossPeriodTotals = computed(() =>
                 </dt>
                 <dd class="col-span-2">
                   {{ detail.group.sub_directorate }}
+                </dd>
+              </div>
+              <div class="grid grid-cols-3 gap-4 py-2.5">
+                <dt class="text-muted">
+                  Group description
+                </dt>
+                <dd class="col-span-2 whitespace-pre-line text-muted">
+                  {{ detail.group.description }}
                 </dd>
               </div>
               <div class="grid grid-cols-3 gap-4 py-2.5">
@@ -609,8 +720,17 @@ const lossPeriodTotals = computed(() =>
                     >
                       (U1–U3: {{ detail.ra_questionnaire.senior_mgmt }}, U4–U5: {{ detail.ra_questionnaire.middle_mgmt }}, U6–U9: {{ detail.ra_questionnaire.executive_mgr }}, U10–U11: {{ detail.ra_questionnaire.staff }})
                     </span>
+                    <template v-if="detail.ra_questionnaire.personnel_breakdown?.some((g) => g.note)">
+                      <p
+                        v-for="grade in detail.ra_questionnaire.personnel_breakdown.filter((g) => g.note)"
+                        :key="`note-${grade.code}`"
+                        class="mt-1 text-xs font-normal text-muted"
+                      >
+                        {{ grade.label }} note: {{ grade.note }}
+                      </p>
+                    </template>
                     <p
-                      v-if="detail.ra_questionnaire.others_note"
+                      v-else-if="detail.ra_questionnaire.others_note"
                       class="mt-1 text-xs font-normal text-muted"
                     >
                       Others note: {{ detail.ra_questionnaire.others_note }}
@@ -638,18 +758,34 @@ const lossPeriodTotals = computed(() =>
                     Location RA completed
                   </dt>
                   <dd class="col-span-2">
-                    {{ detail.ra_questionnaire.location_ra_completed }}
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span>{{ detail.ra_questionnaire.location_ra_completed }}</span>
+                      <UBadge
+                        v-if="detail.ra_questionnaire.location_ra_completed_flag === false"
+                        color="warning"
+                        variant="subtle"
+                        size="xs"
+                        label="Follow up with Head of Sub-Directorate / BCM"
+                      />
+                    </div>
                   </dd>
                 </div>
                 <div
-                  v-if="detail.notes?.ra_justification"
+                  v-if="detail.notes?.ra_justification || detail.ra_questionnaire.ra_justification_required"
                   class="grid grid-cols-3 gap-4 py-2.5"
                 >
                   <dt class="text-muted">
                     RA justification
                   </dt>
                   <dd class="col-span-2">
-                    {{ detail.notes.ra_justification }}
+                    <span v-if="detail.notes?.ra_justification">{{ detail.notes.ra_justification }}</span>
+                    <UBadge
+                      v-else
+                      color="error"
+                      variant="subtle"
+                      size="xs"
+                      label="Required when BC is not considered/included"
+                    />
                   </dd>
                 </div>
               </dl>
@@ -663,17 +799,14 @@ const lossPeriodTotals = computed(() =>
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                Part 1 & Part 2a: cumulative potential financial loss (IDR), maximum regulatory and customer service impact scores (1–3), and resulting Business Function Category.
+                Part 1 &amp; Part 2a: Suggested vs Expected MTD, Business Function Category, peak financial loss, and maximum impact scores ({{ scoreRangeLabel }}).
               </p>
               <p
                 v-if="detail.loss_totals"
                 class="text-xs text-muted tabular-nums"
               >
-                Total loss ({{ summaryPeriodLabels.join(' / ') }}):
-                <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_4h) }}</span> /
-                <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_d1) }}</span> /
-                <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_w1) }}</span> /
-                <span class="font-medium text-highlighted">{{ formatCurrency(detail.loss_totals.fin_loss_w4) }}</span>
+                Total peak loss ({{ peakPeriodLabel }}):
+                <span class="font-semibold text-highlighted">{{ formatCurrency(detail.loss_totals.peak_loss ?? detail.loss_totals.fin_loss_w4) }}</span>
               </p>
             </div>
             <UTable
@@ -761,17 +894,10 @@ const lossPeriodTotals = computed(() =>
                   size="sm"
                 />
               </template>
-              <template #fin_loss_4h-cell="{ row }">
-                {{ formatCurrency(row.original.fin_loss_4h) }}
-              </template>
-              <template #fin_loss_d1-cell="{ row }">
-                {{ formatCurrency(row.original.fin_loss_d1) }}
-              </template>
-              <template #fin_loss_w1-cell="{ row }">
-                {{ formatCurrency(row.original.fin_loss_w1) }}
-              </template>
-              <template #fin_loss_w4-cell="{ row }">
-                {{ formatCurrency(row.original.fin_loss_w4) }}
+              <template #peak_loss-cell="{ row }">
+                <span :class="lossTone(row.original.peak_loss ?? row.original.fin_loss_w4)">
+                  {{ formatCurrency(row.original.peak_loss ?? row.original.fin_loss_w4) }}
+                </span>
               </template>
               <template #scores-cell="{ row }">
                 <span class="tabular-nums">A: {{ row.original.reg_score_max }} · B: {{ row.original.cust_score_max }}</span>
@@ -849,7 +975,7 @@ const lossPeriodTotals = computed(() =>
             <template #header>
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2 class="text-base font-semibold text-highlighted">
-                  Potential regulatory (A) &amp; customer service (B) impact (Score 1–3) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
+                  Potential regulatory (A) &amp; customer service (B) impact (Score {{ scoreRangeLabel }}) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
                 </h2>
                 <span class="text-xs text-muted">A = Regulatory Impact · B = Customer Service Impact</span>
               </div>
@@ -1008,6 +1134,29 @@ const lossPeriodTotals = computed(() =>
               </div>
             </div>
             <div
+              v-if="detail.impact_reference.expected_mtd?.length"
+              class="mt-4 border-t border-default pt-4"
+            >
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                Expected MTD → Business Function Category mapping (Config {{ detail.config_version || 'active' }})
+              </h3>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <div
+                  v-for="row in detail.impact_reference.expected_mtd"
+                  :key="row.value"
+                  class="inline-flex items-center gap-1.5 rounded-md border border-default px-2.5 py-1 text-xs"
+                >
+                  <span class="font-medium text-highlighted">{{ row.value }}</span>
+                  <span class="text-muted">→</span>
+                  <StatusBadge
+                    :scale="biaCategory"
+                    :value="row.category"
+                    size="sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div
               v-if="detail.guides?.suggested_mtd || detail.guides?.expected_mtd"
               class="mt-4 space-y-1.5 border-t border-default pt-3 text-xs text-muted"
             >
@@ -1020,44 +1169,48 @@ const lossPeriodTotals = computed(() =>
             </div>
           </UCard>
 
-          <UCard v-if="hasPart1Notes">
+          <UCard>
             <template #header>
               <h2 class="text-base font-semibold text-highlighted">
-                Financial loss formula & rating justifications (Part 1)
+                Financial loss formula &amp; rating justifications (Part 1)
               </h2>
             </template>
             <dl class="divide-y divide-default text-sm">
-              <div
-                v-if="detail.notes?.loss_formula"
-                class="grid grid-cols-3 gap-4 py-2.5"
-              >
+              <div class="grid grid-cols-3 gap-4 py-2.5">
                 <dt class="text-muted">
                   Financial loss formula
                 </dt>
                 <dd class="col-span-2 whitespace-pre-line">
-                  {{ detail.notes.loss_formula }}
+                  <span v-if="detail.notes?.loss_formula">{{ detail.notes.loss_formula }}</span>
+                  <UBadge
+                    v-else
+                    color="warning"
+                    variant="subtle"
+                    size="xs"
+                    label="Not provided"
+                  />
                 </dd>
               </div>
               <div
-                v-if="detail.notes?.justification_regulatory"
+                v-if="detail.notes?.justification_regulatory || !hasPart1Notes"
                 class="grid grid-cols-3 gap-4 py-2.5"
               >
                 <dt class="text-muted">
                   Regulatory impact (A)
                 </dt>
-                <dd class="col-span-2 whitespace-pre-line">
-                  {{ detail.notes.justification_regulatory }}
+                <dd class="col-span-2 whitespace-pre-line text-muted">
+                  {{ detail.notes?.justification_regulatory || '—' }}
                 </dd>
               </div>
               <div
-                v-if="detail.notes?.justification_customer"
+                v-if="detail.notes?.justification_customer || !hasPart1Notes"
                 class="grid grid-cols-3 gap-4 py-2.5"
               >
                 <dt class="text-muted">
                   Customer service impact (B)
                 </dt>
-                <dd class="col-span-2 whitespace-pre-line">
-                  {{ detail.notes.justification_customer }}
+                <dd class="col-span-2 whitespace-pre-line text-muted">
+                  {{ detail.notes?.justification_customer || '—' }}
                 </dd>
               </div>
             </dl>
@@ -1067,8 +1220,50 @@ const lossPeriodTotals = computed(() =>
 
       <template #dependencies>
         <div class="mt-4 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div
+              v-if="detail.guides?.it_dependency || detail.guides?.non_it_dependency"
+              class="min-w-0 flex-1 space-y-1 text-xs text-muted"
+            >
+              <p v-if="detail.guides?.it_dependency">
+                <span class="font-medium text-highlighted">IT dependency guide:</span> {{ detail.guides.it_dependency }}
+              </p>
+              <p v-if="detail.guides?.non_it_dependency">
+                <span class="font-medium text-highlighted">Non-IT dependency guide:</span> {{ detail.guides.non_it_dependency }}
+              </p>
+            </div>
+            <div
+              class="inline-flex shrink-0 rounded-md border border-default p-0.5 text-xs"
+              role="group"
+              aria-label="Filter dependency functions"
+            >
+              <button
+                type="button"
+                class="rounded px-2.5 py-1 font-medium transition"
+                :class="depsFilter === 'all' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                @click="depsFilter = 'all'"
+              >
+                All functions ({{ detail.functions.length }})
+              </button>
+              <button
+                type="button"
+                class="rounded px-2.5 py-1 font-medium transition"
+                :class="depsFilter === 'issues' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                @click="depsFilter = 'issues'"
+              >
+                With gaps / alerts ({{ detail.functions.filter(fnHasDepIssue).length }})
+              </button>
+            </div>
+          </div>
+
+          <UCard v-if="!displayedDepFunctions.length">
+            <p class="py-6 text-center text-sm text-muted">
+              No business function has IT or non-IT dependency gaps or alerts.
+            </p>
+          </UCard>
+
           <UCard
-            v-for="fn in detail.functions"
+            v-for="fn in displayedDepFunctions"
             :key="fn.seq_no"
           >
             <template #header>
@@ -1179,7 +1374,20 @@ const lossPeriodTotals = computed(() =>
                           </template>
                         </td>
                         <td class="px-3 py-2 tabular-nums">
-                          {{ dep.rto }}
+                          <div class="inline-flex items-center gap-1">
+                            <span :class="dep.rto_reaches_mtd ? 'font-medium text-warning' : ''">
+                              {{ dep.rto }}
+                            </span>
+                            <UTooltip
+                              v-if="dep.rto_reaches_mtd"
+                              text="RTO ≥ Expected MTD — requires Part 2a justification"
+                            >
+                              <UIcon
+                                name="i-lucide-triangle-alert"
+                                class="size-3.5 text-warning"
+                              />
+                            </UTooltip>
+                          </div>
                         </td>
                         <td class="px-3 py-2 font-mono text-xs">
                           {{ dep.rpo }}
@@ -1202,6 +1410,15 @@ const lossPeriodTotals = computed(() =>
                               size="xs"
                               :label="dep.daat_negative || dep.daat.startsWith('-') ? 'Gap' : 'OK'"
                             />
+                            <UTooltip
+                              v-if="dep.daat_warnings?.length"
+                              :text="dep.daat_warnings.join(' ')"
+                            >
+                              <UIcon
+                                name="i-lucide-info"
+                                class="size-3.5 text-muted"
+                              />
+                            </UTooltip>
                           </div>
                         </td>
                         <td class="px-3 py-2">
@@ -1225,9 +1442,9 @@ const lossPeriodTotals = computed(() =>
                 </div>
               </div>
 
-              <div v-if="fn.non_it_dependencies.length">
+              <div>
                 <h3 class="text-sm font-semibold text-highlighted">
-                  Upstream & downstream dependencies (Part 2b)
+                  Upstream &amp; downstream dependencies (Part 2b)
                 </h3>
                 <div class="mt-2 overflow-x-auto">
                   <table class="w-full text-left text-sm">
@@ -1260,6 +1477,14 @@ const lossPeriodTotals = computed(() =>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
+                      <tr v-if="!fn.non_it_dependencies.length">
+                        <td
+                          colspan="8"
+                          class="px-3 py-3 text-xs text-muted"
+                        >
+                          No upstream or downstream dependency (NA).
+                        </td>
+                      </tr>
                       <tr
                         v-for="(ndep, idx) in fn.non_it_dependencies"
                         :key="idx"
@@ -1313,33 +1538,47 @@ const lossPeriodTotals = computed(() =>
             </div>
           </UCard>
 
-          <UCard v-if="hasDependencyNotes">
+          <UCard v-if="detail.notes?.justification_rto || detail.notes?.justification_dependency || detailSummary.missingRtoJustification || detailSummary.missingDepJustification">
             <template #header>
               <h2 class="text-base font-semibold text-highlighted">
-                RTO & dependency justifications (Part 2a & Part 2b)
+                RTO &amp; dependency justifications (Part 2a &amp; Part 2b)
               </h2>
             </template>
             <dl class="divide-y divide-default text-sm">
               <div
-                v-if="detail.notes?.justification_rto"
+                v-if="detail.notes?.justification_rto || detailSummary.missingRtoJustification"
                 class="grid grid-cols-3 gap-4 py-2.5"
               >
                 <dt class="text-muted">
-                  IT RTO justification (B132)
+                  IT RTO justification (Part 2a)
                 </dt>
                 <dd class="col-span-2 whitespace-pre-line">
-                  {{ detail.notes.justification_rto }}
+                  <span v-if="detail.notes?.justification_rto">{{ detail.notes.justification_rto }}</span>
+                  <UBadge
+                    v-else
+                    color="error"
+                    variant="subtle"
+                    size="xs"
+                    label="Required (an IT RTO ≥ Expected MTD)"
+                  />
                 </dd>
               </div>
               <div
-                v-if="detail.notes?.justification_dependency"
+                v-if="detail.notes?.justification_dependency || detailSummary.missingDepJustification"
                 class="grid grid-cols-3 gap-4 py-2.5"
               >
                 <dt class="text-muted">
-                  Dependency capacity / MTD justification (B131)
+                  Dependency capacity / MTD justification (Part 2b)
                 </dt>
                 <dd class="col-span-2 whitespace-pre-line">
-                  {{ detail.notes.justification_dependency }}
+                  <span v-if="detail.notes?.justification_dependency">{{ detail.notes.justification_dependency }}</span>
+                  <UBadge
+                    v-else
+                    color="error"
+                    variant="subtle"
+                    size="xs"
+                    label="Required (misaligned capacity or MTD)"
+                  />
                 </dd>
               </div>
             </dl>
@@ -1358,7 +1597,13 @@ const lossPeriodTotals = computed(() =>
                 v-if="detail.guides?.recovery"
                 class="text-xs text-muted"
               >
-                <span class="font-medium text-highlighted">Guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
+                <span class="font-medium text-highlighted">Recovery guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
+              </p>
+              <p
+                v-if="detail.guides?.alternate_site"
+                class="text-xs text-muted"
+              >
+                <span class="font-medium text-highlighted">Alternate site guide:</span> {{ detail.guides.alternate_site }}
               </p>
             </div>
             <UTable
@@ -1377,10 +1622,53 @@ const lossPeriodTotals = computed(() =>
                 />
               </template>
               <template #staff-cell="{ row }">
-                <span class="tabular-nums">{{ row.original.required_staff }} / {{ row.original.total_staff }}</span>
+                <div class="inline-flex items-center gap-1.5">
+                  <span
+                    class="tabular-nums"
+                    :class="row.original.total_staff > 0 && row.original.required_staff > row.original.total_staff ? 'font-semibold text-warning' : ''"
+                  >
+                    {{ row.original.required_staff }} / {{ row.original.total_staff }}
+                  </span>
+                  <UTooltip
+                    v-if="row.original.total_staff > 0 && row.original.required_staff > row.original.total_staff"
+                    text="Required recovery staff exceeds total staff in the unit"
+                  >
+                    <UIcon
+                      name="i-lucide-triangle-alert"
+                      class="size-3.5 text-warning"
+                    />
+                  </UTooltip>
+                </div>
+              </template>
+              <template #alt_site_strategy-cell="{ row }">
+                <div class="space-y-1">
+                  <span>{{ row.original.alt_site_strategy }}</span>
+                  <UTooltip
+                    v-if="altSiteOffRecommendation(row.original)"
+                    :text="`Workbook recommends for ${row.original.category}: ${altSiteOffRecommendation(row.original)}`"
+                  >
+                    <UBadge
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                      label="Outside category guidance"
+                    />
+                  </UTooltip>
+                </div>
               </template>
               <template #seats-cell="{ row }">
+                <template v-if="isWfhStrategy(row.original)">
+                  <UTooltip text="Alternate-site resource requirements exclude Work from Home (WFH)">
+                    <UBadge
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                      label="Excluded (WFH)"
+                    />
+                  </UTooltip>
+                </template>
                 <span
+                  v-else
                   class="tabular-nums"
                   :class="row.original.bcp_seats_current < row.original.bcp_seats_required ? 'font-semibold text-error' : ''"
                 >
@@ -1391,13 +1679,19 @@ const lossPeriodTotals = computed(() =>
                 </span>
               </template>
               <template #vital_record-cell="{ row }">
-                <template v-if="row.original.category === 'Business Critical' && (!row.original.vital_record || row.original.vital_record === '—')">
+                <template v-if="row.original.category === 'Business Critical' && ((!row.original.vital_record || row.original.vital_record === '—') || (!row.original.vital_record_location || row.original.vital_record_location === '—'))">
                   <UBadge
                     color="error"
                     variant="subtle"
                     size="sm"
-                    label="Required for Business Critical"
+                    :label="(!row.original.vital_record || row.original.vital_record === '—') ? 'Vital record required' : 'Storage location required'"
                   />
+                  <p
+                    v-if="row.original.vital_record && row.original.vital_record !== '—'"
+                    class="mt-1 text-xs text-muted"
+                  >
+                    {{ row.original.vital_record }}
+                  </p>
                 </template>
                 <template v-else>
                   <p class="font-medium text-highlighted">
@@ -1499,6 +1793,16 @@ const lossPeriodTotals = computed(() =>
                 size="sm"
               />
             </template>
+            <template #description-cell="{ row }">
+              <p class="max-w-md whitespace-normal text-muted">
+                {{ row.original.description || '—' }}
+              </p>
+            </template>
+            <template #critical_activity-cell="{ row }">
+              <p class="max-w-md whitespace-normal">
+                {{ row.original.critical_activity || '—' }}
+              </p>
+            </template>
           </UTable>
         </UCard>
       </template>
@@ -1555,6 +1859,49 @@ const lossPeriodTotals = computed(() =>
               </div>
             </UCard>
           </div>
+
+          <UCard v-if="detail.events?.length">
+            <template #header>
+              <h2 class="text-base font-semibold text-highlighted">
+                Approval &amp; reminder history
+              </h2>
+            </template>
+            <ul class="divide-y divide-default text-sm">
+              <li
+                v-for="(ev, idx) in detail.events"
+                :key="idx"
+                class="flex flex-wrap items-start justify-between gap-2 py-2.5"
+              >
+                <div class="min-w-0 space-y-0.5">
+                  <p class="font-medium text-highlighted capitalize">
+                    {{ ev.action.replaceAll('_', ' ') }}<template v-if="ev.role_title">
+                      · {{ ev.role_title }}
+                    </template>
+                  </p>
+                  <p
+                    v-if="ev.note || ev.actor"
+                    class="text-xs text-muted"
+                  >
+                    <template v-if="ev.actor">
+                      {{ ev.actor }}
+                    </template>
+                    <template v-if="ev.actor && ev.note">
+                      —
+                    </template>
+                    <template v-if="ev.note">
+                      {{ ev.note }}
+                    </template>
+                  </p>
+                </div>
+                <span
+                  v-if="ev.created_at"
+                  class="text-xs text-muted whitespace-nowrap"
+                >
+                  {{ formatDateTime(ev.created_at) }}
+                </span>
+              </li>
+            </ul>
+          </UCard>
         </div>
       </template>
     </UTabs>

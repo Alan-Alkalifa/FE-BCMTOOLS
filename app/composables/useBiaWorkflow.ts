@@ -230,6 +230,7 @@ export interface BiaFunctionItem {
   fin_loss_d1: number
   fin_loss_w1: number
   fin_loss_w4: number
+  peak_loss?: number
   losses?: number[]
   regulatory_scores?: number[]
   customer_scores?: number[]
@@ -241,6 +242,7 @@ export interface BiaFunctionItem {
   prioritization_strategy?: string
   outstanding_strategy?: string
   alt_site_strategy: string
+  alt_site_strategy_code?: string | null
   bcp_seats_current: number
   bcp_seats_required: number
   equipment?: {
@@ -285,8 +287,10 @@ export interface BiaAssessmentDetail {
   impact_reference?: {
     loss_alert_idr: number
     score_alert: number
+    scores?: number[]
     financial_bands: { code: string, label: string, description: string }[]
     impact_matrix: { score: number, regulatory: string, customer: string }[]
+    expected_mtd?: { value: string, category: string }[]
   }
   guides?: Record<string, string>
   loss_totals?: {
@@ -294,6 +298,8 @@ export interface BiaAssessmentDetail {
     fin_loss_d1: number
     fin_loss_w1: number
     fin_loss_w4: number
+    peak_loss?: number
+    peak_period?: string | null
   }
   notes?: {
     ra_justification: string | null
@@ -325,9 +331,13 @@ export interface BiaAssessmentDetail {
   }
   ra_questionnaire: {
     considered_bc: string
+    considered_bc_flag?: boolean
     tools_used: string
     controls_included: string
-    location_ra_completed: 'Yes' | 'No'
+    controls_included_flag?: boolean
+    ra_justification_required?: boolean
+    location_ra_completed: string
+    location_ra_completed_flag?: boolean
     senior_mgmt: number
     middle_mgmt: number
     executive_mgr: number
@@ -338,6 +348,7 @@ export interface BiaAssessmentDetail {
       code: string
       label: string
       count: number
+      note?: string | null
     }[]
     total_staff: number
   }
@@ -351,6 +362,14 @@ export interface BiaAssessmentDetail {
     status: 'approved' | 'pending' | 'rejected'
     signed_at: string | null
     decision_note?: string | null
+  }[]
+  events?: {
+    action: string
+    role: string | null
+    role_title: string | null
+    actor: string | null
+    note: string | null
+    created_at: string | null
   }[]
 }
 
