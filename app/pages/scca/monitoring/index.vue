@@ -27,10 +27,12 @@ const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
 // docs/design-system.md > Tables: 10, 20 (default), 50 or 100 rows, kept in the URL.
 const perPage = useRowsPerPage()
+// Column sorting (server side), kept in the URL; a tab starts with its own default order.
+const { query: sortQuery, header: sortable } = useTableSort(['renewal_date', 'latest_final_date', 'last_final_date', 'waiting_since', 'working_days_waiting', 'working_days_in_approval', 'reminders_sent', 'scca_count', 'escalated_at'])
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
-  set: (value) => router.replace({ query: { ...route.query, tab: value === 'overview' ? undefined : value, page: undefined } }),
+  set: (value) => router.replace({ query: { ...route.query, tab: value === 'overview' ? undefined : value, page: undefined, sort: undefined, dir: undefined } }),
 })
 
 function text(name: string) {
@@ -53,7 +55,7 @@ const filters = computed<SccaMonitoringFilters>(() => ({
   division: text('division'),
   q: text('q'),
 }))
-const paged = computed(() => ({ ...filters.value, page: Math.max(1, Number(route.query.page) || 1), per_page: perPage.value }))
+const paged = computed(() => ({ ...filters.value, ...sortQuery.value, page: Math.max(1, Number(route.query.page) || 1), per_page: perPage.value }))
 
 function setQuery(patch: Record<string, string | undefined>) {
   router.replace({ query: { ...route.query, ...patch, page: undefined } })
@@ -131,7 +133,7 @@ function orgItems(all: string, values: string[] | undefined) {
   return [{ label: all, value: 'all' }, ...(values ?? []).map((name) => ({ label: name, value: name }))]
 }
 const directorateItems = computed(() => orgItems('All directorates', orgData.value?.directorates))
-const subDirectorateItems = computed(() => orgItems('All sub directorates', orgData.value?.sub_directorates))
+const subDirectorateItems = computed(() => orgItems('All sub-directorates', orgData.value?.sub_directorates))
 const divisionItems = computed(() => orgItems('All divisions', orgData.value?.divisions))
 const departmentItems = computed(() => orgItems('All departments', orgData.value?.departments))
 
@@ -184,7 +186,7 @@ const cards = computed(() => {
 })
 
 function cardLink(target: Record<string, string>) {
-  return { query: { ...route.query, ...target, page: undefined } }
+  return { query: { ...route.query, ...target, page: undefined, sort: undefined, dir: undefined } }
 }
 
 const categoryBars = computed(() =>
@@ -232,45 +234,62 @@ function daysLeft(row: SccaRenewalRow) {
   return `${row.days_left} days left`
 }
 
+/** A sortable column; `cls` sets its width (header and cells) so the tables line up. */
+function column<T>(key: string, label: string, cls = '', end = false): TableColumn<T> {
+  return { accessorKey: key, header: sortable(label, key, end), meta: { class: { th: cls, td: cls } } }
+}
+const REF = 'min-w-36'
+const NAME = 'min-w-40'
+const ORG = 'min-w-36'
+const PERSON = 'min-w-36'
+const DATE = 'min-w-32'
+
 const renewalColumns: TableColumn<SccaRenewalRow>[] = [
   { id: 'select', header: '' },
-  { accessorKey: 'application_name', header: 'Application name' },
-  { accessorKey: 'application_code', header: 'Application code' },
-  { accessorKey: 'category', header: 'Category' },
-  { id: 'last_final', header: 'Last final SCCA' },
-  { id: 'last_final_date', header: 'Last final SCCA date' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { accessorKey: 'days_left', header: 'Due' },
-  { accessorKey: 'owner', header: 'Owner' },
-  { accessorKey: 'assessor', header: 'Assessor' },
-  { accessorKey: 'contributor', header: 'Contributor' },
-  { accessorKey: 'renewal_status', header: 'Renewal' },
+  column('application_name', 'Application name', NAME),
+  column('application_code', 'Application code', 'min-w-32'),
+  column('directorate', 'Directorate owner', ORG),
+  column('sub_directorate', 'Owner sub-directorate', ORG),
+  column('department', 'Owner department', ORG),
+  column('category', 'Category', 'min-w-28'),
+  column('last_final', 'Latest final SCCA ref. no.', REF),
+  column('last_final_date', 'Latest final SCCA date', DATE),
+  column('renewal_date', 'Renewal date', DATE),
+  column('days_left', 'Due', 'min-w-36'),
+  column('assessor', 'Assessor', PERSON),
+  column('contributor', 'Contributor', PERSON),
+  column('renewal_status', 'Renewal status', 'min-w-32'),
+  column('renewal_ref', 'Renewal SCCA ref. no.', REF),
+  column('renewal_step', 'Current renewal step', ORG),
   { id: 'actions', header: '' },
 ]
 const registerColumns: TableColumn<SccaRegisterRow>[] = [
-  { accessorKey: 'application_name', header: 'Application name' },
-  { accessorKey: 'application_code', header: 'Application code' },
-  { accessorKey: 'directorate', header: 'Directorate' },
-  { accessorKey: 'department', header: 'Department' },
-  { accessorKey: 'category', header: 'Category' },
-  { id: 'latest_final', header: 'Latest final SCCA' },
-  { id: 'latest_final_date', header: 'Latest final SCCA date' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Open SCCA' },
-  { accessorKey: 'owner', header: 'Owner' },
-  { accessorKey: 'assessor', header: 'Assessor' },
-  { accessorKey: 'contributor', header: 'Contributor' },
-  { accessorKey: 'scca_count', header: 'SCCA(s)' },
+  column('application_name', 'Application name', NAME),
+  column('application_code', 'Application code', 'min-w-32'),
+  column('directorate', 'Directorate owner', ORG),
+  column('sub_directorate', 'Owner sub-directorate', ORG),
+  column('department', 'Owner department', ORG),
+  column('category', 'Category', 'min-w-28'),
+  column('latest_final', 'Latest final SCCA ref. no.', REF),
+  column('latest_final_date', 'Latest final SCCA date', DATE),
+  column('renewal_date', 'Renewal date', DATE),
+  column('status', 'Status', 'min-w-32'),
+  column('current_step', 'Current approval step', ORG),
+  column('assessor', 'Assessor', PERSON),
+  column('contributor', 'Contributor', PERSON),
+  column('scca_count', 'SCCAs', 'min-w-24', true),
 ]
 const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
-  { accessorKey: 'application_name', header: 'Application name' },
-  { accessorKey: 'ref_no', header: 'SCCA ref. no.' },
-  { accessorKey: 'step_title', header: 'Current step' },
-  { accessorKey: 'approver', header: 'Approver' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated on' },
-  { accessorKey: 'working_days_in_approval', header: 'In approval' },
+  column('application_name', 'Application name', NAME),
+  column('ref_no', 'SCCA ref. no.', REF),
+  column('step_title', 'Current approval step', ORG),
+  column('approver', 'Approver', PERSON),
+  column('level', 'Status', 'min-w-36'),
+  column('waiting_since', 'Waiting since', DATE),
+  column('working_days_waiting', 'Working days', 'min-w-32', true),
+  column('reminders_sent', 'Reminders sent', 'min-w-28', true),
+  column('escalated_at', 'Escalated on', DATE),
+  column('working_days_in_approval', 'Working days in approval', 'min-w-32', true),
 ]
 
 // --- Renewals: Act menu and Generate annual review (one row or the selected rows) -------------
@@ -571,15 +590,18 @@ function pageTo(next: number) {
               >
                 {{ row.original.application_name }}
               </NuxtLink>
-              <p
-                v-if="row.original.directorate"
-                class="text-xs text-muted"
-              >
-                {{ row.original.directorate }}
-              </p>
             </template>
             <template #application_code-cell="{ row }">
               <span class="font-mono text-xs">{{ row.original.application_code || '—' }}</span>
+            </template>
+            <template #directorate-cell="{ row }">
+              <span :class="row.original.directorate ? '' : 'text-muted'">{{ row.original.directorate || '—' }}</span>
+            </template>
+            <template #sub_directorate-cell="{ row }">
+              <span :class="row.original.sub_directorate ? '' : 'text-muted'">{{ row.original.sub_directorate || '—' }}</span>
+            </template>
+            <template #department-cell="{ row }">
+              <span :class="row.original.department ? '' : 'text-muted'">{{ row.original.department || '—' }}</span>
             </template>
             <template #category-cell="{ row }">
               <StatusBadge
@@ -608,11 +630,6 @@ function pageTo(next: number) {
                 {{ daysLeft(row.original) }}
               </p>
             </template>
-            <template #owner-cell="{ row }">
-              <p class="max-w-48 truncate">
-                {{ row.original.owner || '—' }}
-              </p>
-            </template>
             <template #assessor-cell="{ row }">
               {{ row.original.assessor || '—' }}
             </template>
@@ -635,22 +652,36 @@ function pageTo(next: number) {
               </UDropdownMenu>
             </template>
             <template #renewal_status-cell="{ row }">
-              <NuxtLink
+              <StatusBadge
                 v-if="row.original.renewal"
-                :to="sccaPath('monitoring', row.original.renewal.id)"
-                class="hover:underline"
-              >
-                <StatusBadge
-                  :scale="sccaStatus"
-                  :value="sccaStatusKey(row.original.renewal)"
-                  size="sm"
-                />
-                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.renewal) }}</span>
-              </NuxtLink>
+                :scale="sccaStatus"
+                :value="sccaStatusKey(row.original.renewal)"
+                size="sm"
+              />
               <span
                 v-else
                 class="text-muted"
               >Not started</span>
+            </template>
+            <template #renewal_ref-cell="{ row }">
+              <NuxtLink
+                v-if="row.original.renewal"
+                :to="sccaPath('monitoring', row.original.renewal.id)"
+                class="font-mono text-xs text-primary hover:underline"
+              >
+                {{ refLabel(row.original.renewal) }}
+              </NuxtLink>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+            <template #renewal_step-cell="{ row }">
+              <span v-if="row.original.renewal?.pending_step">{{ signoffRoleLabel(row.original.renewal.pending_role, true) }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
@@ -708,8 +739,11 @@ function pageTo(next: number) {
             <template #directorate-cell="{ row }">
               <span :class="row.original.directorate ? '' : 'text-muted'">{{ row.original.directorate || '—' }}</span>
             </template>
+            <template #sub_directorate-cell="{ row }">
+              <span :class="row.original.sub_directorate ? '' : 'text-muted'">{{ row.original.sub_directorate || '—' }}</span>
+            </template>
             <template #department-cell="{ row }">
-              <span :class="row.original.department ? '' : 'text-muted'">{{ row.original.department || 'Unknown' }}</span>
+              <span :class="row.original.department ? '' : 'text-muted'">{{ row.original.department || '—' }}</span>
             </template>
             <template #category-cell="{ row }">
               <StatusBadge
@@ -724,18 +758,17 @@ function pageTo(next: number) {
               >Not final yet</span>
             </template>
             <template #latest_final-cell="{ row }">
-              <span
-                v-if="row.original.latest_final"
-                class="font-mono text-xs"
-              >{{ refLabel(row.original.latest_final) }}</span>
-              <UBadge
-                v-if="row.original.latest_final?.migrated"
-                class="ms-1"
-                label="Migrated"
-                color="neutral"
-                variant="subtle"
-                size="sm"
-              />
+              <template v-if="row.original.latest_final">
+                <span class="font-mono text-xs">{{ refLabel(row.original.latest_final) }}</span>
+                <UBadge
+                  v-if="row.original.latest_final.migrated"
+                  class="ms-1"
+                  label="Migrated"
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                />
+              </template>
               <span
                 v-else
                 class="text-muted"
@@ -747,7 +780,7 @@ function pageTo(next: number) {
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
             </template>
-            <template #open-cell="{ row }">
+            <template #status-cell="{ row }">
               <NuxtLink
                 v-if="row.original.open"
                 :to="sccaPath('monitoring', row.original.open.id)"
@@ -758,22 +791,18 @@ function pageTo(next: number) {
                   :value="sccaStatusKey(row.original.open)"
                   size="sm"
                 />
-                <p
-                  v-if="row.original.open.pending_step"
-                  class="mt-1 text-xs text-muted"
-                >
-                  {{ signoffRoleLabel(row.original.open.pending_role, true) }}
-                </p>
               </NuxtLink>
               <span
                 v-else
                 class="text-muted"
               >—</span>
             </template>
-            <template #owner-cell="{ row }">
-              <p class="max-w-48 truncate">
-                {{ row.original.owner || '—' }}
-              </p>
+            <template #current_step-cell="{ row }">
+              <span v-if="row.original.open?.pending_step">{{ signoffRoleLabel(row.original.open.pending_role, true) }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #assessor-cell="{ row }">
               {{ row.original.assessor || '—' }}
@@ -783,6 +812,7 @@ function pageTo(next: number) {
             </template>
             <template #scca_count-cell="{ row }">
               <UButton
+                class="-me-2.5 float-right"
                 color="neutral"
                 variant="ghost"
                 size="sm"
@@ -850,7 +880,7 @@ function pageTo(next: number) {
               :data="bottlenecks.data.value?.items ?? []"
               :columns="bottleneckColumns"
               :loading="bottlenecks.status.value === 'pending'"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #application_name-cell="{ row }">
                 <NuxtLink
@@ -869,18 +899,21 @@ function pageTo(next: number) {
               <template #approver-cell="{ row }">
                 {{ row.original.approver || '—' }}
               </template>
-              <template #working_days_waiting-cell="{ row }">
+              <template #level-cell="{ row }">
                 <StatusBadge
                   :scale="sccaWaitLevel"
                   :value="row.original.level"
                   size="sm"
                 />
-                <p class="mt-1 text-xs text-muted">
-                  {{ workingDays(row.original.working_days_waiting) }} since {{ formatDate(row.original.waiting_since) }}
-                </p>
+              </template>
+              <template #waiting_since-cell="{ row }">
+                {{ formatDate(row.original.waiting_since) || '—' }}
+              </template>
+              <template #working_days_waiting-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ workingDays(row.original.working_days_waiting) }}</span>
               </template>
               <template #reminders_sent-cell="{ row }">
-                {{ row.original.reminders_sent }}
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #escalated_at-cell="{ row }">
                 <span
@@ -893,7 +926,7 @@ function pageTo(next: number) {
                 >—</span>
               </template>
               <template #working_days_in_approval-cell="{ row }">
-                {{ workingDays(row.original.working_days_in_approval) }}
+                <span class="block text-right tabular-nums">{{ workingDays(row.original.working_days_in_approval) }}</span>
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">

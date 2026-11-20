@@ -67,6 +67,12 @@ export function useAuth() {
   }
 
   async function logout() {
+    // In-app tabs (useTabs) are kept per user in this browser tab: signing out forgets them.
+    try {
+      if (user.value) sessionStorage.removeItem(`bcm.tabs.${user.value.id}`)
+    } catch {
+      // Storage blocked: nothing was saved.
+    }
     try {
       await $fetch('/api/auth/logout', { method: 'POST' })
     } finally {

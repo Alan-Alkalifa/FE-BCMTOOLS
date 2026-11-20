@@ -65,6 +65,8 @@ const dirty = computed(() => {
   return base.name !== form.name || (base.description ?? '') !== form.description
     || [...base.permissions].sort().join() !== [...form.permissions].sort().join()
 })
+// Asks before leaving a role with unsaved changes (docs/tabs.md).
+useUnsavedChanges(dirty)
 
 async function save() {
   formError.value = null

@@ -131,7 +131,7 @@ test('the tabs scroll sideways on a narrow screen and the last one can still be 
   await mockConfigAdmin(page)
   await page.setViewportSize({ width: 640, height: 900 })
   await page.goto('/admin/scca-config')
-  const tabs = page.getByRole('tablist')
+  const tabs = page.getByRole('main').getByRole('tablist')
   await expect(tabs).toBeVisible({ timeout: 60_000 })
   const sizes = await tabs.evaluate((list) => ({ scroll: list.scrollWidth, visible: list.clientWidth, overflow: getComputedStyle(list).overflowX }))
   expect(sizes.scroll).toBeGreaterThan(sizes.visible)
@@ -194,7 +194,7 @@ test('the reminder and escalation rules are a tab after Rating notes', async ({ 
   await page.goto('/admin/settings/scca')
   await expect(page).toHaveURL(/\/admin\/scca-config\?tab=reminders$/, { timeout: 60_000 })
   await expect.poll(async () => {
-    const tabs = (await page.getByRole('tab').allInnerTexts()).map((text) => text.trim())
+    const tabs = (await page.getByRole('main').getByRole('tab').allInnerTexts()).map((text) => text.trim())
     return tabs.indexOf('Reminders and escalation') - tabs.indexOf('Rating notes')
   }).toBe(1)
   await expect(page.getByText('Reminders on working days 3, 5, 7, 9, …; escalation on day 7.')).toBeVisible()

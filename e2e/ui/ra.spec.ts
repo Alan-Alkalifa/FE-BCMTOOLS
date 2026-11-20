@@ -282,7 +282,7 @@ test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) 
 test('in Manage, each tab shows in red what is still needed before Submit, as SCCA', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  const tabs = page.getByRole('tablist').first()
+  const tabs = page.getByRole('main').getByRole('tablist').first()
   // One hazard is not finished (H09); two steps still need a signer (the LIC and LICOM sign theirs).
   await expect(tabs.getByRole('tab', { name: 'Hazards 1' })).toBeVisible({ timeout: 60_000 })
   await expect(tabs.getByRole('tab', { name: 'Sign-off 2' })).toBeVisible()
@@ -293,7 +293,7 @@ test('in Manage, each tab shows in red what is still needed before Submit, as SC
 test('Monitoring shows no counts on the tabs', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/monitoring/1')
-  const tabs = page.getByRole('tablist')
+  const tabs = page.getByRole('main').getByRole('tablist')
   await expect(tabs.getByRole('tab', { name: 'Hazards', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(tabs.getByRole('tab', { name: 'Sign-off', exact: true })).toBeVisible()
 })
@@ -1238,7 +1238,7 @@ test('a new building is entered in full with its RA, and saved with it in one go
   await page.goto('/ra/manage/new')
   await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
   await page.getByRole('option', { name: /New building/ }).click()
-  const tabs = page.getByRole('tablist')
+  const tabs = page.getByRole('main').getByRole('tablist')
   for (const name of ['Details', 'Map', 'Emergency contacts', 'Occupants', 'Recovery team', 'Call tree']) {
     await expect(tabs.getByRole('tab', { name })).toBeVisible()
   }

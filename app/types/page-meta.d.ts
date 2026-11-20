@@ -4,6 +4,8 @@ declare module '#app' {
     public?: boolean
     /** Permission code(s) needed to open the page; any of them is enough. */
     permission?: string | string[]
+    /** false: never opens as an in-app tab (redirect stubs and record resolvers). */
+    tab?: false
   }
 }
 

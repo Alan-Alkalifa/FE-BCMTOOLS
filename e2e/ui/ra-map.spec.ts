@@ -204,7 +204,7 @@ test('the disaster has a print view with every place and its contacts', async ({
   await expect(first.getByRole('link')).toHaveCount(0)
   await expect(report.getByRole('heading', { name: 'History' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Print' }).click()
+  await page.getByRole('button', { name: 'Print', exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as { printed?: number }).printed)).toBe(1)
 })
 
