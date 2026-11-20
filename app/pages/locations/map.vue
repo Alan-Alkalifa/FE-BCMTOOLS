@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaCrisisType, RaEarthquake, RaMapArea, RaMapMarker, RaMapPlace, RaPin, RaMapStation, RaWaqiReport, RaWaqiStation, RaWeatherReport, RaWeatherWarning } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
@@ -16,8 +16,16 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
  * and in "Recent earthquakes (BMKG)" below the map, refreshed every 2 minutes; selecting one
  * (?quake=3) draws its alert radius, and a disaster can be declared from it. BMKG is credited
  * as the source next to the map and the list (BMKG's terms).
+ *
+ * BMKG's active weather early warnings show as blue dashed areas (?warning= selects one) and
+ * in their tab with the places inside and the history, read again every 5 minutes.
+ *
+ * The reports under the map are tabs (?report=), each read when opened. Earthquakes (BMKG,
+ * with the MMI scale above the list), Weather warnings (BMKG), Disease outbreaks (WHO's outbreak news about the country,
+ * filtered by year) and Air quality (OpenAQ's latest PM2.5 per place and a place's daily trend
+ * as charts, then the list with Show on map).
  */
-definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['sites.access', 'ra.access', 'ra_branch.access'] })
 
 const route = useRoute()
 const router = useRouter()
@@ -32,34 +40,183 @@ const showBranches = ref(true)
 /** Places not in service: inactive, new and waiting for approval, or rejected. */
 const showInactive = ref(true)
 const showQuakes = ref(true)
+const showWeather = ref(true)
 
 // BMKG's recent earthquakes, read again every 2 minutes (the server polls BMKG as often).
 const { data: quakeList, error: quakeError, refresh: refreshQuakes } = useRaEarthquakes(7)
 const quakes = computed(() => quakeList.value?.items ?? [])
 let quakeTimer: ReturnType<typeof setInterval> | undefined
-function startQuakes() {
-  clearInterval(quakeTimer)
+// BMKG's active weather warnings, drawn as areas and listed in their tab, read again every
+// 5 minutes (the server reads BMKG every 10).
+const { data: weatherList, error: weatherError, refresh: refreshWeather } = useFetch<RaWeatherReport>('/api/ra/weather-warnings', { key: 'ra-weather-active' })
+const warnings = computed(() => weatherList.value?.items ?? [])
+let weatherTimer: ReturnType<typeof setInterval> | undefined
+/** The selected warning stays in the URL (?warning=CYG20261118001). */
+const selectedWarningId = computed<string | null>({
+  get: () => {
+    const key = route.query.warning ? String(route.query.warning) : null
+    return warnings.value.find((item) => item.code === key || item.id === key)?.id ?? null
+  },
+  set: (id) => {
+    const warning = warnings.value.find((item) => item.id === id)
+    router.replace({ query: { ...route.query, warning: warning ? (warning.code ?? warning.id) : undefined } })
+  },
+})
+const areas = computed<RaMapArea[]>(() => (showWeather.value ? warnings.value : []).map((warning) => ({
+  id: warning.id,
+  label: `${warning.headline ?? warning.event ?? 'Weather warning'}, until ${formatDateTime(warning.expires_at)}`,
+  polygons: warning.polygons,
+  active: warning.id === selectedWarningId.value,
+})))
+/** Zoom the map to a warning's area and select it. */
+function showWarning(warning: RaWeatherWarning) {
+  autoFit.value = false
+  showWeather.value = true
+  if (warning.active) selectedWarningId.value = warning.id
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  mapRef.value?.fit(warning.polygons.flat().map(([lat, lng]) => ({ lat, lng })))
+}
+/** Bring a report's row into view once its tab has rendered it (it may have just switched). */
+function revealRow(selector: string) {
+  let tries = 0
+  const reveal = () => {
+    const item = document.querySelector(selector)
+    if (item) {
+      const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+      item.scrollIntoView({ behavior, block: 'center' })
+    } else if (tries++ < 20) {
+      setTimeout(reveal, 50)
+    }
+  }
+  nextTick(reveal)
+}
+
+/** A warning's area clicked on the map: select it and scroll to it in the Weather warnings tab,
+ *  as an earthquake's ring does. */
+function onArea(id: string) {
+  autoFit.value = false
+  const warning = warnings.value.find((item) => item.id === id)
+  const key = warning?.code ?? id
+  // One replace for both: two in a row would each start from the old query.
+  router.replace({ query: { ...route.query, report: 'weather', warning: key } })
+  revealRow(`[data-warning="${CSS.escape(key)}"]`)
+}
+
+function startTimers() {
+  stopTimers()
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
+  weatherTimer = setInterval(() => refreshWeather(), 300_000)
+  waqiTimer = setInterval(() => {
+    if (waqiOn.value) refreshWaqi()
+  }, 900_000)
+}
+function stopTimers() {
+  clearInterval(quakeTimer)
+  clearInterval(weatherTimer)
+  clearInterval(waqiTimer)
 }
 // In a background in-app tab (docs/tabs.md) the map stops asking; back in front, it catches up.
 let paused = false
 onDeactivated(() => {
   paused = true
-  clearInterval(quakeTimer)
+  stopTimers()
 })
 onActivated(() => {
   if (!paused) return
   paused = false
   void refreshQuakes()
-  startQuakes()
+  void refreshWeather()
+  if (waqiOn.value) void refreshWaqi()
+  startTimers()
 })
 onMounted(() => {
-  startQuakes()
+  startTimers()
   // The map data is shared with the disaster page (the same key): read it again on arrival, so
   // a disaster approved, rejected or closed meanwhile is shown as it stands now.
   if (data.value) refresh()
 })
-onBeforeUnmount(() => clearInterval(quakeTimer))
+onBeforeUnmount(() => {
+  clearInterval(quakeTimer)
+  clearInterval(weatherTimer)
+  clearInterval(waqiTimer)
+})
+
+/** The reports under the map, one tab each (?report=outbreaks). Earthquakes first. */
+const REPORTS = ['earthquakes', 'weather', 'outbreaks', 'air', 'waqi'] as const
+type Report = typeof REPORTS[number]
+const report = computed<Report>({
+  get: () => (REPORTS as readonly string[]).includes(String(route.query.report)) ? route.query.report as Report : 'earthquakes',
+  set: (value) => router.replace({ query: { ...route.query, report: value === 'earthquakes' ? undefined : value } }),
+})
+// WAQI is there when the backend has its token (map settings). Its stations are read live,
+// again every 15 minutes (WAQI's own refresh).
+const { data: mapSettings } = useRaMapSettings()
+const waqiOn = computed(() => !!mapSettings.value?.waqi_enabled)
+const showAir = ref(true)
+/** The area whose stations are shown, in the URL (?air_area=java), Jakarta by default. */
+const airArea = computed<string>({
+  get: () => (route.query.air_area ? String(route.query.air_area) : 'jakarta'),
+  set: (code) => router.replace({ query: { ...route.query, air_area: code === 'jakarta' ? undefined : code, station: undefined } }),
+})
+const { data: waqiReport, error: waqiError, refresh: refreshWaqi } = useAsyncData(
+  'ra-waqi',
+  () => (waqiOn.value ? $fetch<RaWaqiReport>('/api/ra/waqi', { query: { area: airArea.value } }) : Promise.resolve(null)),
+  { server: false, watch: [waqiOn, airArea] },
+)
+// A new area picked: once its stations are in, the map shows the area.
+let areaPicked = false
+watch(airArea, () => (areaPicked = true))
+watch(waqiReport, (value) => {
+  if (!areaPicked || !value?.area) return
+  areaPicked = false
+  autoFit.value = false
+  const [south, west, north, east] = value.area.bounds
+  mapRef.value?.fit([{ lat: south, lng: west }, { lat: north, lng: east }])
+})
+const waqiStations = computed(() => waqiReport.value?.stations ?? [])
+let waqiTimer: ReturnType<typeof setInterval> | undefined
+/** The selected station stays in the URL (?station=8645). */
+const selectedStationId = computed<number | null>({
+  get: () => Number(route.query.station) || null,
+  set: (id) => router.replace({ query: { ...route.query, station: id ?? undefined } }),
+})
+const stations = computed<RaMapStation[]>(() => (showAir.value ? waqiStations.value : []).map((station) => ({
+  id: station.id,
+  lat: station.latitude,
+  lng: station.longitude,
+  label: `${station.name ?? 'WAQI station'}, AQI ${station.aqi ?? 'not reported'}`,
+  aqi: station.aqi,
+  band: station.band?.code ?? null,
+  radiusM: (waqiReport.value?.radius_km ?? 0) * 1000,
+  active: station.id === selectedStationId.value,
+})))
+/** A station clicked on the map: select it and scroll to it in the WAQI tab. */
+function onStation(id: number) {
+  autoFit.value = false
+  router.replace({ query: { ...route.query, report: 'waqi', station: id } })
+  revealRow(`[data-station="${id}"]`)
+}
+/** From the WAQI tab: zoom the map to the station's area and select it. */
+function showStation(station: RaWaqiStation) {
+  autoFit.value = false
+  showAir.value = true
+  selectedStationId.value = station.id
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  const pad = (waqiReport.value?.radius_km ?? 1) / 111.32
+  mapRef.value?.fit([
+    { lat: station.latitude - pad, lng: station.longitude - pad },
+    { lat: station.latitude + pad, lng: station.longitude + pad },
+  ])
+}
+const reportTabs = computed(() => [
+  { label: 'Earthquakes (BMKG)', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' as const },
+  { label: 'Weather warnings (BMKG)', value: 'weather', icon: 'i-lucide-cloud-lightning', slot: 'weather' as const },
+  { label: 'Disease outbreaks (WHO)', value: 'outbreaks', icon: 'i-lucide-biohazard', slot: 'outbreaks' as const },
+  { label: 'Air quality (OpenAQ)', value: 'air', icon: 'i-lucide-wind', slot: 'air' as const },
+  ...(waqiOn.value ? [{ label: 'Air quality now (WAQI)', value: 'waqi', icon: 'i-lucide-gauge', slot: 'waqi' as const }] : []),
+])
 
 /** The selected earthquake stays in the URL (?quake=3), as the email links to it. */
 const selectedQuakeId = computed<number | null>({
@@ -87,7 +244,7 @@ function selectQuake(quake: RaEarthquake, scroll = false) {
     const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
     document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
   }
-  const radius = (quakeList.value?.alert_radius_km ?? 100) * 1000
+  const radius = quake.alert_radius_km * 1000
   const dLat = radius / 111_320
   const dLng = radius / (111_320 * Math.cos((quake.latitude * Math.PI) / 180))
   mapRef.value?.fit([
@@ -110,8 +267,8 @@ async function declareFromQuake(quake: RaEarthquake) {
     fromQuake: {
       earthquake: quake,
       hazardCode: list.hazard_code,
-      // The alert radius, within what a disaster allows (200 km).
-      radiusM: Math.min(list.alert_radius_km * 1000, 200_000),
+      // The earthquake's alert radius, within what a disaster allows (200 km).
+      radiusM: Math.min(quake.alert_radius_km * 1000, 200_000),
       source: list.source,
     },
   }).result
@@ -163,6 +320,13 @@ function select(id: number) {
   selectedId.value = id
   const place = byId(id)
   if (place) mapRef.value?.focus(pinOf(place))
+}
+
+/** From a report under the map: bring the map into view and select the place. */
+function showPlace(id: number) {
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  select(id)
 }
 
 function onMarker(id: number, variant: RaMapMarker['variant']) {
@@ -280,7 +444,7 @@ const circles = computed(() => [
         id: -2,
         lat: selectedQuake.value.latitude,
         lng: selectedQuake.value.longitude,
-        radiusM: (quakeList.value?.alert_radius_km ?? 100) * 1000,
+        radiusM: selectedQuake.value.alert_radius_km * 1000,
         quake: true,
       }]
     : []),
@@ -288,7 +452,7 @@ const circles = computed(() => [
 
 const line = computed<[RaPin, RaPin] | null>(() => (from.value && to.value ? [pinOf(from.value), pinOf(to.value)] : null))
 
-/** The crisis types the user may declare (`ra.disaster.declare`, `ra.incident.declare`), in `order`. */
+/** The crisis types the user may declare (`sites.disaster.declare`, `sites.incident.declare`), in `order`. */
 function declareTypes(order: RaCrisisType[]) {
   const allowed = data.value?.declare_types ?? order
   return order.filter((type) => allowed.includes(type))
@@ -353,8 +517,8 @@ const canOpenRa = useCanOpenRa()
         <UButton
           v-for="type in declareTypes(['incident', 'disaster'])"
           :key="type"
-          :color="type === 'disaster' ? 'primary' : 'neutral'"
-          :variant="type === 'disaster' ? 'solid' : 'outline'"
+          color="primary"
+          variant="solid"
           :icon="RA_CRISIS_TYPES[type].icon"
           :label="`Declare ${RA_CRISIS_TYPES[type].label}`"
           @click="declare(type, selected?.id)"
@@ -430,12 +594,21 @@ const canOpenRa = useCanOpenRa()
               v-if="counts.inactive"
               v-model="showInactive"
               :label="`Inactive (${counts.inactive})`"
-              description="Not in service: inactive, new and waiting for approval, or rejected."
+              description="Not in service (inactive, new and waiting for approval, or rejected)."
               :ui="{ description: 'sr-only' }"
             />
             <UCheckbox
               v-model="showQuakes"
               :label="`Earthquakes, BMKG (${quakes.length})`"
+            />
+            <UCheckbox
+              v-model="showWeather"
+              :label="`Weather warnings, BMKG (${warnings.length})`"
+            />
+            <UCheckbox
+              v-if="waqiOn"
+              v-model="showAir"
+              :label="`Air quality, WAQI (${waqiStations.length})`"
             />
             <USwitch
               v-model="scrollZoom"
@@ -460,19 +633,28 @@ const canOpenRa = useCanOpenRa()
             ref="map"
             :markers="markers"
             :circles="circles"
+            :areas="areas"
             :line="line"
             :selected="selectedId"
             :auto-fit="autoFit"
             label="Map of the head office buildings and branches. Select a place for its details."
             height-class="h-[32rem]"
             :scroll-zoom="scrollZoom"
+            :stations="stations"
             @select="onMarker"
+            @area="onArea"
+            @station="onStation"
           />
 
-          <RaMapLegend />
+          <RaMapLegend
+            weather
+            :aqi="waqiOn && showAir"
+          />
 
           <p class="text-xs text-muted">
-            Earthquake data: {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.
+            Source: Earthquakes and weather warnings, {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.<template v-if="waqiOn && showAir">
+              Air quality, World Air Quality Index Project and the stations' own sources.
+            </template>
           </p>
 
           <p
@@ -487,7 +669,7 @@ const canOpenRa = useCanOpenRa()
               v-for="(item, index) in unpinnedLinks"
               :key="item.type"
             ><template v-if="index"> and </template><NuxtLink
-              v-if="can('location.master')"
+              v-if="can('sites.master')"
               :to="{ path: MASTER_BUILDINGS_PATH, query: { type: item.type } }"
               class="text-primary hover:underline"
             >{{ item.label }}</NuxtLink><template v-else>{{ item.label }}</template></template>. Set the pin on their Map tab.</span>
@@ -705,7 +887,7 @@ const canOpenRa = useCanOpenRa()
               </div>
             </div>
             <template
-              v-if="can('location.master')"
+              v-if="can('sites.master')"
               #footer
             >
               <UButton
@@ -726,13 +908,60 @@ const canOpenRa = useCanOpenRa()
         </div>
       </div>
 
-      <RaEarthquakesCard
-        :list="quakeList"
-        :error="quakeError"
-        :selected-id="selectedQuakeId"
-        @select="(quake) => selectQuake(quake, true)"
-        @declare="declareFromQuake"
-      />
+      <UTabs
+        v-model="report"
+        :items="reportTabs"
+        variant="link"
+        class="min-w-0"
+        :ui="{ list: 'overflow-x-auto overflow-y-hidden [scrollbar-width:thin]', indicator: 'bottom-0', trigger: 'shrink-0' }"
+      >
+        <template #earthquakes>
+          <RaMmiScale class="mt-4" />
+          <RaEarthquakesCard
+            class="mt-4"
+            :list="quakeList"
+            :error="quakeError"
+            :selected-id="selectedQuakeId"
+            @select="(quake) => selectQuake(quake, true)"
+            @declare="declareFromQuake"
+          />
+        </template>
+        <template #weather>
+          <RaWeatherCard
+            class="mt-4"
+            :active="weatherList"
+            :error="weatherError"
+            :selected-id="selectedWarningId"
+            @show="showWarning"
+            @place="showPlace"
+          />
+        </template>
+        <template #outbreaks>
+          <RaOutbreaksCard class="mt-4" />
+        </template>
+        <template #air>
+          <RaAirQualityCard
+            class="mt-4"
+            :places="places"
+            :selected-id="selectedId"
+            @select="showPlace"
+          />
+        </template>
+        <template #waqi>
+          <RaWaqiCard
+            class="mt-4"
+            :report="waqiReport"
+            :error="waqiError"
+            :places="places"
+            :selected-id="selectedStationId"
+            :area="airArea"
+            @update:area="(code: string) => (airArea = code)"
+            @show="showStation"
+            @place="showPlace"
+            @select="(id: number) => (selectedStationId = id)"
+          />
+        </template>
+      </UTabs>
 
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <template #header>

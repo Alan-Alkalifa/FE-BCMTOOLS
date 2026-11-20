@@ -64,8 +64,13 @@ const reasonItems = [
 ]
 
 const { data, status, error, refresh } = useRaAssessments(query)
-/** Import from Excel, as a dialog on this module's type. */
-const importOpen = ref(false)
+/** Import from Excel, as a dialog on this module's type (`?import=1` opens it). */
+const importOpen = computed<boolean>({
+  get: () => route.query.import !== undefined && can(ra.value.perm.edit),
+  set: (value) => {
+    router.replace({ query: { ...route.query, import: value ? '1' : undefined } })
+  },
+})
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason))

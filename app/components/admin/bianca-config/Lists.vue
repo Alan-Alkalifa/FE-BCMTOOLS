@@ -418,8 +418,8 @@ function add() {
           label="Organization structure"
         />
         <UButton
-          v-if="can('location.master')"
-          to="/masterdata/masterbuilding"
+          v-if="can('sites.master')"
+          :to="MASTER_BUILDINGS_PATH"
           color="neutral"
           variant="outline"
           label="Office locations"

@@ -94,14 +94,11 @@ const typeModel = computed<TypeFilter>({ get: () => type.value, set: (value) => 
 const provinceModel = computed<string>({ get: () => province.value ?? 'all', set: (value) => setQuery('province', value) })
 const statusModel = computed<StatusFilter>({ get: () => statusFilter.value, set: (value) => setQuery('status', value) })
 
-/** Import from Excel opens as a dialog; `?import=head_office|branch` (or `1`) opens it too. */
-const importOpen = computed<boolean>({
-  get: () => route.query.import !== undefined && canEdit.value,
-  set: (value) => {
-    router.replace({ query: { ...route.query, import: value ? 'head_office' : undefined } })
-  },
-})
-const importKind = computed<RaKind | undefined>(() => (route.query.import === 'branch' ? 'branch' : route.query.import === 'head_office' ? 'head_office' : undefined))
+// Import from Excel is in RA HO and RA Branch › Manage: an old `?import=` link opens it there.
+if (route.query.import !== undefined) {
+  const kind: RaKind = route.query.import === 'branch' ? 'branch' : 'head_office'
+  await navigateTo({ path: raPath(kind, 'manage'), query: { import: '1' } }, { replace: true })
+}
 
 const { data, status, error, refresh } = useRaLocationRegister(() => ({
   kind: type.value,
@@ -145,7 +142,7 @@ const statusItems = [
 const NUMBER = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
-  { accessorKey: 'kind', header: 'Type' },
+  { accessorKey: 'kind', header: 'Type', meta: { class: { th: 'text-center', td: 'text-center' } } },
   { accessorKey: 'province', header: 'Province' },
   { accessorKey: 'city', header: 'City' },
   { accessorKey: 'district', header: 'District' },
@@ -195,14 +192,6 @@ const addTo = computed(() => {
         variant="outline"
         icon="i-lucide-map"
         label="Building map"
-      />
-      <UButton
-        v-if="canEdit"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-file-up"
-        label="Import from Excel"
-        @click="importOpen = true"
       />
       <UButton
         v-if="canEdit"
@@ -505,10 +494,5 @@ const addTo = computed(() => {
         label="Buildings"
       />
     </UCard>
-    <RaImportModal
-      v-model:open="importOpen"
-      :kind="importKind"
-      @imported="refresh()"
-    />
   </AppPage>
 </template>

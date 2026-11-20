@@ -12,27 +12,30 @@ export const ALL_PERMISSIONS = [
   'scca.config.manage',
   'scca.config.publish',
   'scca.migrate',
-  'location.access',
+  'sites.access',
   'ra.access',
   'ra.edit',
   'ra.manage',
   'ra_branch.access',
   'ra_branch.edit',
   'ra_branch.manage',
-  'ra.disaster.declare',
-  'ra.disaster.update',
-  'ra.incident.declare',
-  'ra.incident.update',
-  'ra.location.approve',
+  'sites.disaster.declare',
+  'sites.disaster.update',
+  'sites.incident.declare',
+  'sites.incident.update',
+  'sites.approve',
+  'sites.config.view',
+  'sites.config.manage',
   'ra.config.view',
   'ra.config.manage',
   'ra.config.publish',
+  'ra.migrate',
   'admin.users.manage',
   'admin.roles.manage',
   'admin.menus.manage',
   'admin.settings.mail',
   'admin.audit.view',
-  'location.master',
+  'sites.master',
 ]
 
 /** The signed-in user (GET /api/me): an Administrator unless a test says otherwise. */
@@ -74,26 +77,29 @@ const MENUS = [
   { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'locations', label: 'Sites', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
-  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'location.access' },
+  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'sites.access' },
   { code: 'disaster', label: 'Disaster', icon: 'i-lucide-siren', route: null, parent: 'locations', permission: null },
-  { code: 'disaster.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/disasters/monitoring', parent: 'disaster', permission: 'location.access' },
-  { code: 'disaster.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/disasters', parent: 'disaster', permission: 'location.access' },
-  { code: 'disaster.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/disasters/approval', parent: 'disaster', permission: 'location.access' },
-  { code: 'disaster.guidebook', label: 'Guidebook', icon: 'i-lucide-book-marked', route: '/disasters/guidebook', parent: 'disaster', permission: 'location.access' },
+  { code: 'disaster.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/disasters/monitoring', parent: 'disaster', permission: 'sites.access' },
+  { code: 'disaster.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/disasters', parent: 'disaster', permission: 'sites.access' },
+  { code: 'disaster.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/disasters/approval', parent: 'disaster', permission: 'sites.access' },
+  { code: 'disaster.guidebook', label: 'Guidebook', icon: 'i-lucide-book-marked', route: '/disasters/guidebook', parent: 'disaster', permission: 'sites.access' },
   { code: 'incident', label: 'Incident', icon: 'i-lucide-triangle-alert', route: null, parent: 'locations', permission: null },
-  { code: 'incident.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/incidents/monitoring', parent: 'incident', permission: 'location.access' },
-  { code: 'incident.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/incidents', parent: 'incident', permission: 'location.access' },
-  { code: 'incident.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/incidents/approval', parent: 'incident', permission: 'location.access' },
+  { code: 'incident.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/incidents/monitoring', parent: 'incident', permission: 'sites.access' },
+  { code: 'incident.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/incidents', parent: 'incident', permission: 'sites.access' },
+  { code: 'incident.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/incidents/approval', parent: 'incident', permission: 'sites.access' },
   // Added last so the other menus keep their ids (the menu admin tests use them).
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
   { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'scca.access' },
-  { code: 'admin.buildings', label: 'Master building', icon: 'i-lucide-building', route: '/admin/buildings', parent: 'admin', permission: 'location.master' },
-  { code: 'incident.guidebook', label: 'Guidebook', icon: 'i-lucide-book-marked', route: '/incidents/guidebook', parent: 'incident', permission: 'location.access' },
+  { code: 'masterdata.building', label: 'Building', icon: 'i-lucide-building', route: '/masterdata/masterbuilding', parent: 'admin.masterdata', permission: 'sites.master' },
+  { code: 'incident.guidebook', label: 'Guidebook', icon: 'i-lucide-book-marked', route: '/incidents/guidebook', parent: 'incident', permission: 'sites.access' },
+  { code: 'admin.sites_config', label: 'Sites configuration', icon: 'i-lucide-map-pinned', route: '/admin/sites-config', parent: 'admin', permission: 'sites.config.view' },
+  { code: 'admin.ra_migration', label: 'RA migration', icon: 'i-lucide-file-up', route: '/admin/ra-migration', parent: 'admin', permission: 'ra.migrate' },
+  { code: 'admin.masterdata', label: 'Master data', icon: 'i-lucide-database', route: null, parent: 'admin', permission: null },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
 export function menuFor(permissions: string[]) {
-  // As the backend: the Sites menus have their own permission (location.access).
+  // As the backend: the Sites menus have their own permission (sites.access).
   // Task Management spans every module: any module's access opens it.
   const anyModule = ['scca.access', 'ra.access', 'ra_branch.access'].some((code) => permissions.includes(code))
   const visible = MENUS.filter((m) => !m.permission || permissions.includes(m.permission)

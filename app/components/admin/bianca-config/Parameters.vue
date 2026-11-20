@@ -309,8 +309,8 @@ function selectedSigner(id: number | null) {
           Physical buildings, addresses and available sites follow Master Building.
         </p>
         <UButton
-          v-if="can('location.master')"
-          to="/masterdata/masterbuilding"
+          v-if="can('sites.master')"
+          :to="MASTER_BUILDINGS_PATH"
           label="Open Master Building"
           color="neutral"
           variant="outline"

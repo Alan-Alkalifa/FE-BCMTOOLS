@@ -23,8 +23,8 @@ const mtdByCategory = computed(() => {
 })
 
 const matrices = computed(() => [
-  { title: 'Potential regulatory impact (A)', rows: props.lookups.impact_matrix.map(row => ({ score: row.score, text: row.regulatory })) },
-  { title: 'Potential customer service impact (B)', rows: props.lookups.impact_matrix.map(row => ({ score: row.score, text: row.customer })) },
+  { title: 'Potential regulatory impact (A)', rows: props.lookups.impact_matrix.map((row) => ({ score: row.score, text: row.regulatory })) },
+  { title: 'Potential customer service impact (B)', rows: props.lookups.impact_matrix.map((row) => ({ score: row.score, text: row.customer })) },
 ])
 const daatSteps = [
   'Incident / outage occurs.',
@@ -127,7 +127,9 @@ const example = [
             <h3 class="font-semibold">
               Suggested MTD
             </h3>
-            <p class="whitespace-pre-line">{{ lookups.guides.suggested_mtd }}</p>
+            <p class="whitespace-pre-line">
+              {{ lookups.guides.suggested_mtd }}
+            </p>
             <p>Financial loss alert: IDR {{ lookups.loss_alert_idr.toLocaleString() }}. Impact score alert: {{ lookups.score_alert }}.</p>
           </section>
         </template>
@@ -189,9 +191,16 @@ const example = [
             <h3 class="font-semibold">
               Recommended alternate site strategy
             </h3>
-            <p class="whitespace-pre-line">{{ lookups.guides.alternate_site }}</p>
-            <dl v-for="(sites, category) in lookups.alternate_site_by_category" :key="category">
-              <dt class="font-medium">{{ category }}</dt>
+            <p class="whitespace-pre-line">
+              {{ lookups.guides.alternate_site }}
+            </p>
+            <dl
+              v-for="(sites, category) in lookups.alternate_site_by_category"
+              :key="category"
+            >
+              <dt class="font-medium">
+                {{ category }}
+              </dt>
               <dd>{{ sites.join(' or ') || 'No recommended site configured.' }}</dd>
             </dl>
           </section>

@@ -292,7 +292,9 @@ const pickedNote = computed(() => {
   return {
     color: 'info' as const,
     title: `Existing ${noun}`,
-    description: `${copied} Check each rating and change anything that is different now.`,
+    description: state.reason === 'annual_review'
+      ? `${copied} An annual review rates every hazard from scratch.`
+      : `${copied} Check each rating and change anything that is different now.`,
   }
 })
 

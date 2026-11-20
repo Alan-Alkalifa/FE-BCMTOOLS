@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** A incident's print view. */
-definePageMeta({ permission: ['location.access', 'ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['sites.access', 'ra.access', 'ra_branch.access'] })
 </script>
 
 <template>

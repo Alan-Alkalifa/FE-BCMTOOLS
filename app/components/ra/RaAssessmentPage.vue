@@ -336,6 +336,34 @@ async function moveVersion() {
           />
         </template>
       </UAlert>
+      <UAlert
+        v-if="assessment.migrated"
+        class="mb-6"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-file-up"
+        :title="assessment.status === 'approved' ? 'Brought in from the signed workbook' : 'Brought in from a workbook as a draft'"
+        :description="[
+          assessment.migrated.approved_outside_on && assessment.status === 'approved' ? `Approved outside BCM Tools on ${formatDate(assessment.migrated.approved_outside_on)}.` : null,
+          `Migrated on ${formatDate(assessment.migrated.at)}.`,
+        ].filter(Boolean).join(' ')"
+      >
+        <template
+          v-if="assessment.migrated.workbook"
+          #actions
+        >
+          <UButton
+            :to="assessment.migrated.workbook.url"
+            external
+            download
+            size="sm"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-download"
+            label="Signed workbook"
+          />
+        </template>
+      </UAlert>
       <RaRevisionBanner
         :assessment="assessment"
         @accepted="onAccepted"

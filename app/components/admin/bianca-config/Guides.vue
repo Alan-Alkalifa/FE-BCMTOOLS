@@ -21,7 +21,7 @@ const group = computed({
   set: (value: string) => router.replace({ query: { ...route.query, notes: value, guide: undefined } }),
 })
 const keys = computed(() => [...new Set([...Object.keys(model.value), ...Object.keys(props.referenceGuides)])]
-  .filter(key => key.startsWith('field_') === (group.value === 'fields')))
+  .filter((key) => key.startsWith('field_') === (group.value === 'fields')))
 function guideLabel(key: string) {
   const text = key.replace(/^field_/, '').replaceAll('_', ' ')
   return details[key]?.[0] ?? text.charAt(0).toUpperCase() + text.slice(1)

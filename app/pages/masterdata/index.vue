@@ -2,7 +2,7 @@
 import type { MenuNode } from '~/composables/useAuth'
 
 /** Administration › Master data: the masters the user may open, one card each. */
-definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'location.master', 'masterdata.organization.manage', 'scca.application.view', 'scca.application.manage'] })
+definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'sites.master', 'masterdata.organization.manage', 'scca.application.view', 'scca.application.manage'] })
 
 const { menu, fetchMenu } = useAuth()
 if (!menu.value) await fetchMenu()
@@ -14,7 +14,7 @@ function findGroup(nodes: MenuNode[]): MenuNode | undefined {
   }
 }
 const masters = computed(() => findGroup(menu.value ?? [])?.children
-  .filter(entry => entry.route && entry.route !== MASTER_DATA_PATH) ?? [])
+  .filter((entry) => entry.route && entry.route !== MASTER_DATA_PATH) ?? [])
 </script>
 
 <template>
