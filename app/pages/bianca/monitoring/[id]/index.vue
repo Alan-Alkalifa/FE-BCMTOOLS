@@ -90,7 +90,7 @@ const hasPart1Notes = computed(() => Boolean(
   || detail.value?.notes?.justification_customer,
 ))
 
-const TABS = ['details', 'impact', 'dependencies', 'recovery', 'timings', 'signoff'] as const
+const TABS = ['details', 'impact', 'dependencies', 'recovery', 'timings', 'signoff', 'appendix'] as const
 type DetailTab = (typeof TABS)[number]
 const tab = computed<DetailTab>({
   get: () => (TABS.includes(route.query.tab as DetailTab) ? route.query.tab as DetailTab : 'details'),
@@ -123,6 +123,19 @@ const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => [
   { id: 'peak_loss', header: `Peak loss (${peakPeriodLabel.value})`, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
   { id: 'scores', header: 'Max Reg (A) / Cust (B)' },
 ])
+
+const appendixColumns: TableColumn<BiaFunctionItem>[] = [
+  { accessorKey: 'seq_no', header: 'No' },
+  { accessorKey: 'name', header: 'Business function' },
+  { accessorKey: 'category', header: 'Business function category' },
+  { accessorKey: 'expected_mtd', header: 'Expected MTD' },
+]
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const timingColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'seq_no', header: 'No' },
@@ -313,6 +326,7 @@ const tabAlertCounts = computed<Record<DetailTab, number>>(() => {
     recovery: 0,
     timings: 0,
     signoff: 0,
+    appendix: 0,
   }
   for (const item of attentionItems.value) {
     counts[item.targetTab] += 1
@@ -327,6 +341,7 @@ const tabs = computed(() => [
   { label: 'Recovery strategies', value: 'recovery', icon: 'i-lucide-life-buoy', slot: 'recovery' as const, badge: tabAlertCounts.value.recovery || undefined },
   { label: 'Critical timings', value: 'timings', icon: 'i-lucide-calendar', slot: 'timings' as const, badge: tabAlertCounts.value.timings || undefined },
   { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' as const, badge: tabAlertCounts.value.signoff || undefined },
+  { label: 'Appendix', value: 'appendix', icon: 'i-lucide-file-text', slot: 'appendix' as const },
 ])
 
 const lossPeriodTotals = computed(() =>
@@ -2015,6 +2030,131 @@ const lossPeriodTotals = computed(() =>
                 </span>
               </li>
             </ul>
+          </UCard>
+        </div>
+      </template>
+
+      <template #appendix>
+        <div class="mt-4 space-y-6">
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <div class="space-y-3 border-b border-default p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 class="text-base font-semibold text-highlighted">
+                    Business Function Criticality Summary
+                  </h2>
+                  <p class="text-xs text-muted">
+                    For BCM use only: overview of Business Functions&apos; Criticality and Expected MTD (automatically propagated from Part 1 &amp; Part 2a).
+                  </p>
+                </div>
+                <UBadge
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                  label="For BCM Use Only"
+                />
+              </div>
+              <div class="grid gap-3 rounded-lg border border-default bg-elevated/40 p-3 text-xs sm:grid-cols-4">
+                <div>
+                  <span class="text-muted">Sub-directorate:</span>
+                  <p class="mt-0.5 font-medium text-highlighted">
+                    {{ detail.group.sub_directorate }}
+                  </p>
+                </div>
+                <div>
+                  <span class="text-muted">Group:</span>
+                  <p class="mt-0.5 font-medium text-highlighted">
+                    {{ detail.group.name }}
+                  </p>
+                </div>
+                <div>
+                  <span class="text-muted">Highest category:</span>
+                  <div class="mt-1">
+                    <StatusBadge
+                      v-if="detail.highest_category"
+                      :scale="biaCategory"
+                      :value="detail.highest_category"
+                      size="sm"
+                    />
+                    <span
+                      v-else
+                      class="text-muted"
+                    >—</span>
+                  </div>
+                </div>
+                <div>
+                  <span class="text-muted">Shortest Expected MTD:</span>
+                  <p class="mt-0.5 font-medium text-highlighted">
+                    {{ detail.shortest_mtd || '—' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <UTable
+              :data="detail.functions"
+              :columns="appendixColumns"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+            >
+              <template #name-cell="{ row }">
+                <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+              </template>
+              <template #category-cell="{ row }">
+                <StatusBadge
+                  :scale="biaCategory"
+                  :value="row.original.category"
+                  size="sm"
+                />
+              </template>
+            </UTable>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <h2 class="text-base font-semibold text-highlighted">
+                Group Organisation Structure (RA Questionnaire Attachment)
+              </h2>
+            </template>
+            <div
+              v-if="detail.org_structure"
+              class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default p-3.5 text-sm"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <UIcon
+                  name="i-lucide-paperclip"
+                  class="size-5 shrink-0 text-muted"
+                />
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-highlighted">
+                    {{ detail.org_structure.filename }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    {{ formatFileSize(detail.org_structure.size) }}
+                    <template v-if="detail.org_structure.uploaded_by">
+                      · Uploaded by {{ detail.org_structure.uploaded_by }}
+                    </template>
+                    <template v-if="detail.org_structure.uploaded_at">
+                      · {{ formatDateTime(detail.org_structure.uploaded_at) }}
+                    </template>
+                  </p>
+                </div>
+              </div>
+              <UButton
+                :to="detail.org_structure.url"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-download"
+                label="Download"
+              />
+            </div>
+            <p
+              v-else
+              class="text-sm text-muted"
+            >
+              No organisation structure file attached to this BIA.
+            </p>
           </UCard>
         </div>
       </template>

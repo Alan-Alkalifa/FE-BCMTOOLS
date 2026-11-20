@@ -371,6 +371,15 @@ export interface BiaAssessmentDetail {
     note: string | null
     created_at: string | null
   }[]
+  org_structure?: {
+    id: number
+    filename: string
+    content_type: string
+    size: number
+    uploaded_by: string | null
+    uploaded_at: string | null
+    url: string
+  } | null
 }
 
 export interface BiaMonitoringFilters {
