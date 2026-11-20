@@ -1,4 +1,5 @@
 import type { BiancaLocationLabels } from './useBianca'
+import type { BcmOperationalRole } from '~/utils/bianca-bcm-roles'
 
 export interface BiancaGrade {
   code: string
@@ -10,6 +11,7 @@ export interface BiancaGrade {
 }
 
 export interface BiancaStep {
+  bcm_role?: BcmOperationalRole | null
   code: string
   title: string
   required: boolean

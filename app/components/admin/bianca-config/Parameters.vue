@@ -419,12 +419,28 @@ function selectedSigner(id: number | null) {
                     required
                   >
                     <UserPicker
+                      :key="step.bcm_role ?? 'all'"
                       v-model="step.user_id"
+                      :endpoint="bcmSignerEndpoint(step.bcm_role)"
                       :selected="selectedSigner(step.user_id)"
                       permission="bianca.access"
                       :disabled="disabled"
                       :aria-label="step.title + ' signer'"
                       @pick="rememberSigner"
+                    />
+                  </UFormField>
+                  <UFormField
+                    v-if="i > 0"
+                    label="Operational BCM role"
+                    help="Restrict eligible signers for this step to users with an active assignment in Master Data."
+                  >
+                    <USelect
+                      :model-value="step.bcm_role ?? 'all'"
+                      :items="[{ label: 'Any BIA signer', value: 'all' as const }, ...bcmRoleTabs]"
+                      :disabled="disabled"
+                      :aria-label="`${step.title} operational BCM role`"
+                      class="w-full"
+                      @update:model-value="step.bcm_role = $event === 'all' ? null : $event; step.user_id = null"
                     />
                   </UFormField>
                 </div>

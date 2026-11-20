@@ -59,6 +59,7 @@ const fieldLabels: Record<string, string> = {
   'category': 'Category', 'regulatory': 'Regulatory impact', 'customer': 'Customer impact',
   'description': 'Description',
   'use_it': 'MTD IT', 'use_non_it': 'MTD Non IT',
+  'bcm_role': 'Operational BCM role',
 }
 const guideLabels: Record<string, string> = {
   suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',

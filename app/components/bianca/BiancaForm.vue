@@ -2073,7 +2073,7 @@ const people = [
           v-for="(step, i) in lookups.signoff_steps"
           :key="step.code"
           :label="`${i + 1}. ${step.title}${step.required ? '' : ' (optional)'}`"
-          :help="step.signer_mode === 'creator' ? 'The creator signs by submitting.' : step.signer_mode === 'fixed' ? 'Assigned by the configuration.' : 'Choose an active BIANCA user before submitting.'"
+          :help="step.signer_mode === 'creator' ? 'The creator signs by submitting.' : step.bcm_role ? `Eligible signers: active ${bcmRoleLabel(step.bcm_role)} assignments with BIA access.` : step.signer_mode === 'fixed' ? 'Assigned by the configuration.' : 'Choose an active BIANCA user before submitting.'"
         >
           <p
             v-if="step.signer_mode === 'creator'"
@@ -2083,6 +2083,7 @@ const people = [
           </p>
           <UserPicker
             v-else
+            :endpoint="bcmSignerEndpoint(step.bcm_role)"
             :model-value="step.signer_mode === 'fixed' ? step.user_id : header.signoff_users[step.code] ?? step.user_id"
             :selected="lookups.signer_profiles?.[String(step.signer_mode === 'fixed' ? step.user_id : header.signoff_users[step.code] ?? step.user_id)] ?? null"
             permission="bianca.access"

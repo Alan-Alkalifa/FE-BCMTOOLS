@@ -2,7 +2,7 @@
 import type { MenuNode } from '~/composables/useAuth'
 
 /** Administration › Master data: the masters the user may open, one card each. */
-definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'sites.master', 'masterdata.organization.manage', 'scca.application.view', 'scca.application.manage'] })
+definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'sites.master', 'masterdata.organization.manage', 'masterdata.bcm_roles.view', 'masterdata.bcm_roles.manage', 'scca.application.view', 'scca.application.manage'] })
 
 const { menu, fetchMenu } = useAuth()
 if (!menu.value) await fetchMenu()
