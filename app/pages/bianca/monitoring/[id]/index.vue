@@ -12,33 +12,6 @@ const { data: detail, status, error, refresh } = useBiaAssessmentDetail(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !detail.value)
 
 const depsFilter = ref<'all' | 'issues'>('all')
-const expandedRecovery = ref<Set<number>>(new Set())
-
-watch(
-  () => detail.value?.id,
-  () => {
-    const fns = detail.value?.functions ?? []
-    expandedRecovery.value = fns.length <= 5
-      ? new Set(fns.map((fn) => fn.seq_no))
-      : new Set()
-  },
-  { immediate: true },
-)
-
-function toggleRecoveryRow(seqNo: number) {
-  const next = new Set(expandedRecovery.value)
-  if (next.has(seqNo)) next.delete(seqNo)
-  else next.add(seqNo)
-  expandedRecovery.value = next
-}
-
-function expandAllRecovery() {
-  expandedRecovery.value = new Set((detail.value?.functions ?? []).map((fn) => fn.seq_no))
-}
-
-function collapseAllRecovery() {
-  expandedRecovery.value = new Set()
-}
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
@@ -59,6 +32,23 @@ function altSiteOffRecommendation(fn: BiaFunctionItem) {
 function fnHasDepIssue(fn: BiaFunctionItem) {
   return fn.it_dependencies.some((d) => d.daat_negative || d.daat.startsWith('-') || d.rto_reaches_mtd || (d.workaround_gap_required && !d.critical_gap))
     || fn.non_it_dependencies.some((nd) => Boolean(nd.alignment_warnings?.length))
+}
+
+function itDependencySections(fn: BiaFunctionItem) {
+  return [
+    {
+      key: 'listed',
+      title: 'Listed IT application systems (Part 2a)',
+      empty: 'No listed IT application dependency (NA).',
+      rows: fn.it_dependencies.filter((d) => !d.is_other),
+    },
+    {
+      key: 'others',
+      title: 'Others — IT application systems (Part 2a)',
+      empty: 'No other IT application dependency (NA).',
+      rows: fn.it_dependencies.filter((d) => d.is_other),
+    },
+  ]
 }
 
 function nonItDependencySections(fn: BiaFunctionItem) {
@@ -659,7 +649,9 @@ const lossPeriodTotals = computed(() =>
                       />
                     </div>
                     <p class="text-xs text-muted">
-                      {{ detail.coordinator.email }} · {{ detail.coordinator.phone }}
+                      {{ detail.coordinator.email }} · {{ detail.coordinator.phone }}<template v-if="detail.coordinator.phone_2">
+                        / {{ detail.coordinator.phone_2 }}
+                      </template>
                     </p>
                   </dd>
                 </div>
@@ -1319,7 +1311,12 @@ const lossPeriodTotals = computed(() =>
                     {{ fn.seq_no }}. {{ fn.name }}
                   </h2>
                   <p class="text-xs text-muted">
-                    Expected MTD: {{ fn.expected_mtd }} · Planned capacity: {{ fn.planned_capacity }}
+                    Suggested MTD: <span class="font-medium text-highlighted">{{ fn.suggested_mtd }}</span> ·
+                    Expected MTD:
+                    <span :class="fn.expected_within_suggested === false ? 'font-medium text-error' : 'font-medium text-highlighted'">
+                      {{ fn.expected_mtd }}
+                    </span> ·
+                    Planned capacity: <span class="font-medium text-highlighted">{{ fn.planned_capacity }}</span>
                   </p>
                 </div>
                 <StatusBadge
@@ -1331,18 +1328,30 @@ const lossPeriodTotals = computed(() =>
             </template>
 
             <div class="space-y-4">
-              <div>
-                <h3 class="text-sm font-semibold text-highlighted">
-                  IT application systems (Part 2a)
-                </h3>
+              <div
+                v-for="itSection in itDependencySections(fn)"
+                :key="`${fn.seq_no}-it-${itSection.key}`"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="text-sm font-semibold text-highlighted">
+                    {{ itSection.title }}
+                  </h3>
+                  <UBadge
+                    v-if="itSection.rows.length"
+                    color="neutral"
+                    variant="subtle"
+                    size="xs"
+                    :label="plural(itSection.rows.length, 'app')"
+                  />
+                </div>
                 <div class="mt-2 overflow-x-auto">
                   <table class="w-full text-left text-sm">
                     <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
                       <tr>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           Application
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>Committed RTO</span>
                             <UTooltip text="Recovery Time Objective — target maximum time to restore the IT application.">
@@ -1353,7 +1362,7 @@ const lossPeriodTotals = computed(() =>
                             </UTooltip>
                           </span>
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>Committed RPO</span>
                             <UTooltip text="Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).">
@@ -1364,13 +1373,13 @@ const lossPeriodTotals = computed(() =>
                             </UTooltip>
                           </span>
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           Workaround
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           Backlog clear
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>DAAT</span>
                             <UTooltip text="Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.">
@@ -1381,45 +1390,36 @@ const lossPeriodTotals = computed(() =>
                             </UTooltip>
                           </span>
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           System usage
                         </th>
-                        <th class="px-3 py-2">
+                        <th class="px-3 py-2 whitespace-nowrap">
                           Workaround critical gaps
                         </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
-                      <tr v-if="!fn.it_dependencies.length">
+                      <tr v-if="!itSection.rows.length">
                         <td
                           colspan="8"
                           class="px-3 py-3 text-xs text-muted"
                         >
-                          No IT application dependency (NA).
+                          {{ itSection.empty }}
                         </td>
                       </tr>
                       <tr
-                        v-for="dep in fn.it_dependencies"
-                        :key="dep.app_code"
+                        v-for="dep in itSection.rows"
+                        :key="`${itSection.key}-${dep.app_code}-${dep.app_name}`"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
                           <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
                             <span class="text-muted">No IT application dependency (NA)</span>
                           </template>
                           <template v-else>
-                            <div class="inline-flex flex-wrap items-center gap-1.5">
-                              <span>{{ dep.app_name }}</span>
-                              <UBadge
-                                v-if="dep.is_other"
-                                color="neutral"
-                                variant="outline"
-                                size="xs"
-                                label="Others"
-                              />
-                            </div>
+                            {{ dep.app_name }}
                           </template>
                         </td>
-                        <td class="px-3 py-2 tabular-nums">
+                        <td class="px-3 py-2 tabular-nums whitespace-nowrap">
                           <div class="inline-flex items-center gap-1">
                             <span :class="dep.rto_reaches_mtd ? 'font-medium text-warning' : ''">
                               {{ dep.rto }}
@@ -1435,16 +1435,16 @@ const lossPeriodTotals = computed(() =>
                             </UTooltip>
                           </div>
                         </td>
-                        <td class="px-3 py-2 font-mono text-xs">
+                        <td class="px-3 py-2 font-mono text-xs whitespace-nowrap">
                           {{ dep.rpo }}
                         </td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2 whitespace-nowrap">
                           {{ dep.workaround }}
                         </td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2 whitespace-nowrap">
                           {{ dep.backlog_time }}
                         </td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2 whitespace-nowrap">
                           <div class="inline-flex items-center gap-1.5">
                             <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
                               {{ dep.daat }}
@@ -1467,7 +1467,7 @@ const lossPeriodTotals = computed(() =>
                             </UTooltip>
                           </div>
                         </td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2 whitespace-nowrap">
                           {{ dep.system_usage }}
                         </td>
                         <td class="px-3 py-2 text-muted">
@@ -1635,7 +1635,7 @@ const lossPeriodTotals = computed(() =>
             <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default p-4">
               <div class="min-w-0 flex-1 space-y-1.5">
                 <p class="text-sm text-muted">
-                  Part 3: recovery prioritization, alternate site strategy, BCP seats, vital records, and alternate-site equipment.
+                  Part 3: full recovery strategies, staffing, BCP seats, alternate-site equipment, and vital records.
                 </p>
                 <p
                   v-if="detail.guides?.recovery"
@@ -1650,246 +1650,289 @@ const lossPeriodTotals = computed(() =>
                   <span class="font-medium text-highlighted">Alternate site guide:</span> {{ detail.guides.alternate_site }}
                 </p>
               </div>
-              <div
-                v-if="detail.functions.length"
-                class="flex shrink-0 items-center gap-1.5"
-              >
-                <UButton
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-chevrons-up-down"
-                  label="Expand all"
-                  @click="expandAllRecovery"
+              <span class="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+                <UIcon
+                  name="i-lucide-move-horizontal"
+                  class="size-3.5"
                 />
-                <UButton
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-chevrons-down-up"
-                  label="Collapse all"
-                  @click="collapseAllRecovery"
-                />
-              </div>
+                <span>Scroll horizontally · Function pinned</span>
+              </span>
             </div>
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
+              <table class="w-full border-separate border-spacing-0 text-left text-sm">
                 <thead>
-                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
-                    <th class="w-8 py-3 ps-4 pe-1" />
-                    <th class="py-3 px-2 whitespace-nowrap">
-                      No
-                    </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
+                  <tr class="bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    <th
+                      colspan="2"
+                      class="sticky left-0 z-20 border-b border-r border-default bg-elevated/95 py-2 ps-4 pe-3 backdrop-blur-xs"
+                    >
                       Business function
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Category
+                    <th
+                      colspan="3"
+                      class="border-b border-default px-3 py-2"
+                    >
+                      Target &amp; classification
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Expected MTD
+                    <th
+                      colspan="3"
+                      class="border-b border-l border-default px-3 py-2"
+                    >
+                      Staffing &amp; recovery level
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
+                    <th
+                      colspan="3"
+                      class="border-b border-l border-default px-3 py-2"
+                    >
+                      Recovery strategies
+                    </th>
+                    <th
+                      colspan="2"
+                      class="border-b border-l border-default px-3 py-2"
+                    >
+                      BCP seats
+                    </th>
+                    <th
+                      colspan="5"
+                      class="border-b border-l border-default px-3 py-2"
+                    >
+                      Alternate-site equipment
+                    </th>
+                    <th
+                      colspan="2"
+                      class="border-b border-l border-default ps-3 pe-4 py-2"
+                    >
+                      Vital records
+                    </th>
+                  </tr>
+                  <tr class="bg-default text-xs font-medium uppercase tracking-wide text-muted">
+                    <th class="sticky left-0 z-20 w-12 border-b border-default bg-default py-2.5 ps-4 pe-2 whitespace-nowrap">
+                      No
+                    </th>
+                    <th class="sticky left-12 z-20 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-2.5 whitespace-nowrap">
+                      Name of business function
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
                       Planned capacity
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
+                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                      Category
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                      Expected MTD
+                    </th>
+                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Total staff
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Staff required
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
                       Recovery level
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Staff (req / total)
+                    <th class="min-w-56 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
+                      Prioritization strategy
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
+                    <th class="min-w-56 border-b border-default px-3 py-2.5 whitespace-nowrap">
+                      Outstanding strategy
+                    </th>
+                    <th class="min-w-44 border-b border-default px-3 py-2.5 whitespace-nowrap">
                       Alternate site strategy
                     </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      BCP seats (in place / req)
+                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Current seats
                     </th>
-                    <th class="py-3 ps-3 pe-4 whitespace-nowrap">
+                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Seats required
+                    </th>
+                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      PC
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Phone (Fixed Line)
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Fax
+                    </th>
+                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                      Copier
+                    </th>
+                    <th class="min-w-36 border-b border-default px-3 py-2.5 whitespace-nowrap">
+                      Others
+                    </th>
+                    <th class="min-w-44 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
                       Vital record
+                    </th>
+                    <th class="min-w-44 border-b border-default ps-3 pe-4 py-2.5 whitespace-nowrap">
+                      Vital record location
                     </th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-default">
-                  <template
+                <tbody>
+                  <tr v-if="!detail.functions.length">
+                    <td
+                      colspan="20"
+                      class="px-4 py-6 text-center text-sm text-muted"
+                    >
+                      No business functions recorded.
+                    </td>
+                  </tr>
+                  <tr
                     v-for="fn in detail.functions"
                     :key="`rec-${fn.seq_no}`"
+                    class="group hover:bg-elevated/40"
                   >
-                    <tr
-                      class="cursor-pointer transition hover:bg-elevated/40"
-                      @click="toggleRecoveryRow(fn.seq_no)"
-                    >
-                      <td class="py-3 ps-4 pe-1 align-top">
-                        <button
-                          type="button"
-                          class="inline-flex items-center text-muted hover:text-highlighted"
-                          :aria-expanded="expandedRecovery.has(fn.seq_no)"
-                          :aria-label="`Toggle strategies and equipment for ${fn.name}`"
-                          @click.stop="toggleRecoveryRow(fn.seq_no)"
+                    <td class="sticky left-0 z-10 w-12 border-b border-default bg-default py-3 ps-4 pe-2 align-top tabular-nums text-muted group-hover:bg-elevated/40">
+                      {{ fn.seq_no }}
+                    </td>
+                    <td class="sticky left-12 z-10 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-3 align-top font-medium text-highlighted group-hover:bg-elevated/40">
+                      {{ fn.name }}
+                    </td>
+                    <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
+                      {{ fn.planned_capacity }}
+                    </td>
+                    <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
+                      <StatusBadge
+                        :scale="biaCategory"
+                        :value="fn.category"
+                        size="sm"
+                      />
+                    </td>
+                    <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
+                      {{ fn.expected_mtd }}
+                    </td>
+                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      {{ formatNumber(fn.total_staff, 0) }}
+                    </td>
+                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <div class="inline-flex items-center justify-end gap-1">
+                        <span :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''">
+                          {{ formatNumber(fn.required_staff, 0) }}
+                        </span>
+                        <UTooltip
+                          v-if="fn.total_staff > 0 && fn.required_staff > fn.total_staff"
+                          text="Required recovery staff exceeds total staff in the unit"
                         >
                           <UIcon
-                            :name="expandedRecovery.has(fn.seq_no) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-                            class="size-4"
+                            name="i-lucide-triangle-alert"
+                            class="size-3.5 text-warning"
                           />
-                        </button>
-                      </td>
-                      <td class="py-3 px-2 align-top tabular-nums text-muted">
-                        {{ fn.seq_no }}
-                      </td>
-                      <td class="py-3 px-3 align-top font-medium text-highlighted whitespace-nowrap">
-                        {{ fn.name }}
-                      </td>
-                      <td class="py-3 px-3 align-top whitespace-nowrap">
-                        <StatusBadge
-                          :scale="biaCategory"
-                          :value="fn.category"
-                          size="sm"
-                        />
-                      </td>
-                      <td class="py-3 px-3 align-top whitespace-nowrap">
-                        {{ fn.expected_mtd }}
-                      </td>
-                      <td class="py-3 px-3 align-top tabular-nums whitespace-nowrap">
-                        {{ fn.planned_capacity }}
-                      </td>
-                      <td class="py-3 px-3 align-top tabular-nums whitespace-nowrap">
-                        {{ fn.recovery_level }}
-                      </td>
-                      <td class="py-3 px-3 align-top whitespace-nowrap">
-                        <div class="inline-flex items-center gap-1.5">
-                          <span
-                            class="tabular-nums"
-                            :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''"
-                          >
-                            {{ fn.required_staff }} / {{ fn.total_staff }}
-                          </span>
-                          <UTooltip
-                            v-if="fn.total_staff > 0 && fn.required_staff > fn.total_staff"
-                            text="Required recovery staff exceeds total staff in the unit"
-                          >
-                            <UIcon
-                              name="i-lucide-triangle-alert"
-                              class="size-3.5 text-warning"
-                            />
-                          </UTooltip>
-                        </div>
-                      </td>
-                      <td class="py-3 px-3 align-top">
-                        <div class="space-y-1">
-                          <span>{{ fn.alt_site_strategy }}</span>
-                          <UTooltip
-                            v-if="altSiteOffRecommendation(fn)"
-                            :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
-                          >
-                            <UBadge
-                              color="warning"
-                              variant="subtle"
-                              size="xs"
-                              label="Outside category guidance"
-                            />
-                          </UTooltip>
-                        </div>
-                      </td>
-                      <td class="py-3 px-3 align-top whitespace-nowrap">
-                        <template v-if="isWfhStrategy(fn)">
-                          <UTooltip text="Alternate-site resource requirements exclude Work from Home (WFH)">
-                            <UBadge
-                              color="neutral"
-                              variant="subtle"
-                              size="xs"
-                              label="Excluded (WFH)"
-                            />
-                          </UTooltip>
-                        </template>
-                        <span
-                          v-else
-                          class="tabular-nums"
-                          :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
+                        </UTooltip>
+                      </div>
+                    </td>
+                    <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
+                      {{ fn.recovery_level }}
+                    </td>
+                    <td class="min-w-56 max-w-72 border-b border-l border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
+                      {{ fn.prioritization_strategy || '—' }}
+                    </td>
+                    <td class="min-w-56 max-w-72 border-b border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
+                      {{ fn.outstanding_strategy || '—' }}
+                    </td>
+                    <td class="min-w-44 border-b border-default px-3 py-3 align-top">
+                      <div class="space-y-1">
+                        <span class="block text-sm">{{ fn.alt_site_strategy }}</span>
+                        <UTooltip
+                          v-if="altSiteOffRecommendation(fn)"
+                          :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
                         >
-                          {{ fn.bcp_seats_current }} / {{ fn.bcp_seats_required }}
-                          <template v-if="fn.bcp_seats_current < fn.bcp_seats_required">
-                            (-{{ fn.bcp_seats_required - fn.bcp_seats_current }})
-                          </template>
-                        </span>
-                      </td>
-                      <td class="py-3 ps-3 pe-4 align-top">
-                        <template v-if="fn.category === 'Business Critical' && ((!fn.vital_record || fn.vital_record === '—') || (!fn.vital_record_location || fn.vital_record_location === '—'))">
                           <UBadge
-                            color="error"
+                            color="warning"
                             variant="subtle"
-                            size="sm"
-                            :label="(!fn.vital_record || fn.vital_record === '—') ? 'Vital record required' : 'Storage location required'"
+                            size="xs"
+                            label="Outside category guidance"
                           />
-                          <p
-                            v-if="fn.vital_record && fn.vital_record !== '—'"
-                            class="mt-1 text-xs text-muted"
-                          >
-                            {{ fn.vital_record }}
-                          </p>
-                        </template>
-                        <template v-else>
-                          <p class="font-medium text-highlighted">
-                            {{ fn.vital_record }}
-                          </p>
-                          <p class="text-xs text-muted">
-                            {{ fn.vital_record_location }}
-                          </p>
-                        </template>
-                      </td>
-                    </tr>
-                    <tr
-                      v-if="expandedRecovery.has(fn.seq_no)"
-                      class="bg-elevated/30"
-                    >
-                      <td
-                        colspan="11"
-                        class="px-6 py-3"
+                        </UTooltip>
+                      </div>
+                    </td>
+                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <UTooltip
+                        v-if="isWfhStrategy(fn)"
+                        text="Alternate-site resource requirements exclude Work from Home (WFH)"
                       >
-                        <div class="grid gap-4 text-xs md:grid-cols-3">
-                          <div>
-                            <p class="font-semibold uppercase tracking-wide text-muted">
-                              Prioritization strategy
-                            </p>
-                            <p class="mt-1 whitespace-pre-line text-default">
-                              {{ fn.prioritization_strategy || '—' }}
-                            </p>
-                          </div>
-                          <div>
-                            <p class="font-semibold uppercase tracking-wide text-muted">
-                              Outstanding work strategy
-                            </p>
-                            <p class="mt-1 whitespace-pre-line text-default">
-                              {{ fn.outstanding_strategy || '—' }}
-                            </p>
-                          </div>
-                          <div>
-                            <p class="font-semibold uppercase tracking-wide text-muted">
-                              Alternate-site equipment
-                            </p>
-                            <p
-                              v-if="isWfhStrategy(fn)"
-                              class="mt-1 text-muted"
-                            >
-                              Excluded — Work from Home (WFH)
-                            </p>
-                            <template v-else>
-                              <p class="mt-1 tabular-nums text-default">
-                                PC: <span class="font-medium">{{ fn.equipment?.pc ?? 0 }}</span> ·
-                                Phone: <span class="font-medium">{{ fn.equipment?.phone ?? 0 }}</span> ·
-                                Fax: <span class="font-medium">{{ fn.equipment?.fax ?? 0 }}</span> ·
-                                Copier: <span class="font-medium">{{ fn.equipment?.copier ?? 0 }}</span>
-                              </p>
-                              <p
-                                v-if="fn.equipment?.others"
-                                class="mt-0.5 text-muted"
-                              >
-                                Others: {{ fn.equipment.others }}
-                              </p>
-                            </template>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
+                        <UBadge
+                          color="neutral"
+                          variant="subtle"
+                          size="xs"
+                          label="WFH"
+                        />
+                      </UTooltip>
+                      <span v-else>{{ formatNumber(fn.bcp_seats_current, 0) }}</span>
+                    </td>
+                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <span
+                        v-if="isWfhStrategy(fn)"
+                        class="text-muted"
+                      >—</span>
+                      <span
+                        v-else
+                        :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
+                      >
+                        {{ formatNumber(fn.bcp_seats_required, 0) }}
+                        <template v-if="fn.bcp_seats_current < fn.bcp_seats_required">
+                          (-{{ fn.bcp_seats_required - fn.bcp_seats_current }})
+                        </template>
+                      </span>
+                    </td>
+                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <span
+                        v-if="isWfhStrategy(fn)"
+                        class="text-muted"
+                      >—</span>
+                      <span v-else>{{ formatNumber(fn.equipment?.pc ?? 0, 0) }}</span>
+                    </td>
+                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <span
+                        v-if="isWfhStrategy(fn)"
+                        class="text-muted"
+                      >—</span>
+                      <span v-else>{{ formatNumber(fn.equipment?.phone ?? 0, 0) }}</span>
+                    </td>
+                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <span
+                        v-if="isWfhStrategy(fn)"
+                        class="text-muted"
+                      >—</span>
+                      <span v-else>{{ formatNumber(fn.equipment?.fax ?? 0, 0) }}</span>
+                    </td>
+                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                      <span
+                        v-if="isWfhStrategy(fn)"
+                        class="text-muted"
+                      >—</span>
+                      <span v-else>{{ formatNumber(fn.equipment?.copier ?? 0, 0) }}</span>
+                    </td>
+                    <td class="min-w-36 max-w-56 border-b border-default px-3 py-3 align-top text-xs text-muted">
+                      <span v-if="isWfhStrategy(fn)">Excluded (WFH)</span>
+                      <span v-else>{{ fn.equipment?.others || '—' }}</span>
+                    </td>
+                    <td class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top">
+                      <UBadge
+                        v-if="fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')"
+                        color="error"
+                        variant="subtle"
+                        size="sm"
+                        label="Vital record required"
+                      />
+                      <span
+                        v-else
+                        class="font-medium text-highlighted"
+                      >{{ fn.vital_record }}</span>
+                    </td>
+                    <td class="min-w-44 max-w-60 border-b border-default ps-3 pe-4 py-3 align-top">
+                      <UBadge
+                        v-if="fn.category === 'Business Critical' && (!fn.vital_record_location || fn.vital_record_location === '—')"
+                        color="error"
+                        variant="subtle"
+                        size="sm"
+                        label="Storage location required"
+                      />
+                      <span
+                        v-else
+                        class="text-muted"
+                      >{{ fn.vital_record_location }}</span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

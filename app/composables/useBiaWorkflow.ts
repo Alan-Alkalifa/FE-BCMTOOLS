@@ -321,6 +321,7 @@ export interface BiaAssessmentDetail {
     nik: string
     email: string
     phone: string
+    phone_2?: string | null
   }
   alt_coordinator: {
     id?: number | null
