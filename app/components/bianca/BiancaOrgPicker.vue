@@ -6,7 +6,16 @@ import type { BiancaOrg, BiancaOrgOptions } from '~/composables/useBianca'
  * user completes a Group, not when the value is loaded.
  */
 const model = defineModel<BiancaOrg>({ required: true })
-const props = withDefaults(defineProps<{ disabled?: boolean, help?: string }>(), { disabled: false, help: undefined })
+const props = withDefaults(
+  defineProps<{
+    disabled?: boolean
+    help?: string
+    /** Fixed to the user's own Group (only a BCM Admin picks another one). */
+    locked?: boolean
+  }>(),
+  { disabled: false, help: undefined, locked: false },
+)
+const off = computed(() => props.disabled || props.locked)
 const emit = defineEmits<{ picked: [org: BiancaOrg] }>()
 
 const options = ref<BiancaOrgOptions>({ directorates: [], sub_directorates: [], groups: [] })
@@ -67,7 +76,7 @@ function setGroup(value: string | undefined) {
           :model-value="model.directorate"
           :items="directorates"
           :loading="loading && !directorates.length"
-          :disabled="props.disabled"
+          :disabled="off"
           placeholder="Pick a directorate"
           aria-label="Directorate"
           class="w-full"
@@ -81,7 +90,7 @@ function setGroup(value: string | undefined) {
         <USelectMenu
           :model-value="model.sub_directorate"
           :items="subDirectorates"
-          :disabled="props.disabled || !model.directorate"
+          :disabled="off || !model.directorate"
           :placeholder="model.directorate ? 'Pick a sub directorate' : 'Pick the directorate first'"
           aria-label="Sub directorate"
           class="w-full"
@@ -95,7 +104,7 @@ function setGroup(value: string | undefined) {
         <USelectMenu
           :model-value="model.org_group"
           :items="groups"
-          :disabled="props.disabled || !model.sub_directorate"
+          :disabled="off || !model.sub_directorate"
           :placeholder="model.sub_directorate ? 'Pick a group' : 'Pick the sub directorate first'"
           aria-label="Group"
           class="w-full"
@@ -104,7 +113,27 @@ function setGroup(value: string | undefined) {
       </UFormField>
     </div>
     <p
-      v-if="failed"
+      v-if="locked && !model.org_group"
+      class="flex items-start gap-1.5 text-sm text-warning"
+    >
+      <UIcon
+        name="i-lucide-triangle-alert"
+        class="mt-0.5 size-4 shrink-0"
+      />
+      Your profile has no Group yet. Ask the administrator to set it to make a BIA.
+    </p>
+    <p
+      v-else-if="locked"
+      class="flex items-start gap-1.5 text-xs text-muted"
+    >
+      <UIcon
+        name="i-lucide-lock"
+        class="mt-px size-3.5 shrink-0"
+      />
+      Your own Group, from your profile. Only a BCM Admin can pick another Group.
+    </p>
+    <p
+      v-else-if="failed"
       class="text-sm text-error"
     >
       The organisation list didn't load.

@@ -24,7 +24,7 @@ const parts: Record<string, [section: string, label: string]> = {
   scores: ['Impact and MTD', 'Allowed impact scores'],
   hours_per_day: ['Impact and MTD', 'Hours per day'],
   days_per_week: ['Impact and MTD', 'Days per week'],
-  max_functions: ['Impact and MTD', 'Maximum functions'],
+  max_functions: ['Impact and MTD', 'Function rows in the Excel template'],
   it_slots: ['Impact and MTD', 'IT rows per function'],
   dependency_slots: ['Impact and MTD', 'Non-IT rows per function'],
   expected_mtd: ['Impact and MTD', 'Expected MTD'],
@@ -64,7 +64,7 @@ const guideLabels: Record<string, string> = {
   suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',
   customer: 'Customer impact', recovery: 'Recovery', attestation: 'Attestation statement',
   it_dependency: 'IT dependencies', non_it_dependency: 'Non-IT dependencies',
-  alternate_site: 'Alternate site strategy', risk_assessment: 'Personnel and risk assessment',
+  alternate_site: 'Alternate site strategy', risk_assessment: 'Personel and risk assessment',
   critical_timings: 'Critical timings',
 }
 function changeLabel(change: BiancaConfigVersion['changes'][number], fallback: string) {

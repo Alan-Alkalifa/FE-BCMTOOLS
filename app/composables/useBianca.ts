@@ -48,6 +48,9 @@ export interface BiancaDependency {
   down_sla?: string
   down_outsourced?: 'Yes' | 'No' | undefined
   down_material?: 'Yes' | 'No' | undefined
+  /** Why a lower capacity or a longer MTD than the function's is accepted. */
+  up_justification?: string
+  down_justification?: string
 }
 
 export interface BiancaFunction {
@@ -87,8 +90,8 @@ export interface BiancaFunction {
 
 export const BIANCA_HEADER_TEXT = [
   'group_description', 'main_floor', 'alt_floor', 'recovery_strategy',
-  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_email',
-  'bcm_alternate', 'bcm_alternate_nik', 'bcm_alternate_phone', 'bcm_alternate_email',
+  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_phone_2', 'bcm_coordinator_email',
+  'bcm_alternate', 'bcm_alternate_nik', 'bcm_alternate_phone', 'bcm_alternate_phone_2', 'bcm_alternate_email',
   'ra_tools', 'ra_justification', 'staff_others_note',
   'loss_formula', 'justification_regulatory', 'justification_customer', 'justification_rto', 'justification_dependency',
 ] as const
@@ -152,6 +155,8 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   problems: string[]
   warnings: string[]
   can_edit: boolean
+  /** The Group's organisation structure, attached on the RA Questionnaire. */
+  org_structure: BiancaAttachment | null
   can_delete: boolean
 }
 
@@ -192,6 +197,8 @@ export interface BiancaLookups {
   loss_alert_idr: number
   signoff_roles: { code: string, title: string }[]
   organisation: { directorate: string | null, sub_directorate: string | null, org_group: string | null }
+  /** Whether the user picks the Group of a BIA (BCM Admin); the others' BIA is their own Group's. */
+  can_pick_group?: boolean
 }
 
 export interface BiancaPreview {
@@ -200,6 +207,8 @@ export interface BiancaPreview {
     within_suggested_mtd: boolean | null
     recommended_suggested_mtd?: string | null
     it_dependencies: { daat_hours: number | null, warnings: string[], rto_reaches_mtd: boolean | null, gaps_required: boolean }[]
+    /** Part 2b: why each upstream / downstream needs a justification (empty: it doesn't). */
+    dependencies?: { up: string[], down: string[] }[]
   }[]
   total_staff: number
   loss_totals: number[]
@@ -282,6 +291,18 @@ function upload(file: File) {
 
 const BASE = '/api/bianca/assessments'
 
+/** A file kept with a BIA. */
+export interface BiancaAttachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  uploaded_by: string | null
+  uploaded_at: string | null
+  /** Downloads it. */
+  url: string
+}
+
 export const BIANCA_TEMPLATE_URL = '/api/bianca/imports/template'
 
 /** The template for a Group; without one, the signed-in user's own Group. */
@@ -310,6 +331,8 @@ export const biancaApi = {
   update: (id: number, body: BiancaInput) => $fetch<BiancaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
   remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),
   submit: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/submit`, { method: 'POST' }),
+  uploadOrgStructure: (id: number, file: File) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'POST', body: upload(file) }),
+  removeOrgStructure: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'DELETE' }),
   importPreview: (file: File) => $fetch<BiancaImportResult>('/api/bianca/imports/preview', { method: 'POST', body: upload(file) }),
   importCreate: (file: File) => $fetch<BiancaAssessment>('/api/bianca/imports', { method: 'POST', body: upload(file) }),
   importPreviewDraft: (id: number, file: File) => $fetch<BiancaImportResult>(`${BASE}/${id}/import/preview`, { method: 'POST', body: upload(file) }),
@@ -342,7 +365,8 @@ export function emptyBiancaFunction(periods: number): BiancaFunction {
     expected_mtd: undefined,
     planned_capacity: undefined,
     it_dependencies: [{}],
-    dependencies: [{}],
+    // One upstream and one downstream to fill in (NA when there's none).
+    dependencies: [{ up_name: '', down_name: '' }],
     total_staff: undefined,
     staff_required: undefined,
     recovery_level: undefined,
@@ -373,4 +397,43 @@ export function nullToUndefined<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, nullToUndefined(item)])) as T
   }
   return value
+}
+
+/**
+ * Export a BIA to the BIA workbook (all its functions, or those numbered, 1-based) and save the
+ * file the server names; a refusal is shown as a toast.
+ */
+export function useBiancaExport() {
+  const toast = useToast()
+  const busy = ref(false)
+  async function run(id: number, functions?: number[]) {
+    busy.value = true
+    try {
+      const response = await $fetch.raw<Blob>(biancaExportUrl(id, functions), { responseType: 'blob' })
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
+      const url = URL.createObjectURL(response._data!)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = name ? decodeURIComponent(name) : `BIA-${id}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      toast.add({ title: 'Excel file downloaded', color: 'success', icon: 'i-lucide-file-spreadsheet' })
+    } catch (failure) {
+      // The error comes back as a Blob: read its JSON for the message.
+      let message = 'Could not export the BIA.'
+      const data = (failure as { data?: unknown }).data
+      try {
+        const body = data instanceof Blob ? JSON.parse(await data.text()) : data
+        const details = (body as { details?: Record<string, string> })?.details
+        message = (details && Object.values(details)[0]) || (body as { message?: string })?.message || message
+      } catch { /* keep the general message */ }
+      toast.add({ title: 'Export failed', description: message, color: 'error', icon: 'i-lucide-circle-alert' })
+    } finally {
+      busy.value = false
+    }
+  }
+  return { busy, run }
 }

@@ -10,6 +10,8 @@ const props = defineProps<{
   labels: BiancaLocationLabels
   selected?: BiancaPlace | null
   disabled?: boolean
+  buildingError?: string
+  floorError?: string
 }>()
 const emit = defineEmits<{ change: [] }>()
 const picked = ref<{ id: number, address?: string | null } | null>(null)
@@ -59,6 +61,8 @@ function clearSite() {
       <UFormField
         :label="mode === 'hyspace' ? `${label} site (optional)` : `${label} building`"
         :required="!mode"
+        :error="buildingError"
+        :data-missing="!!buildingError"
       >
         <div class="flex items-center gap-2">
           <BiancaPicker
@@ -94,6 +98,8 @@ function clearSite() {
         v-if="!mode || site != null"
         :label="`${label} floor`"
         :required="!mode"
+        :error="floorError"
+        :data-missing="!!floorError"
       >
         <UInput
           v-model="floor"

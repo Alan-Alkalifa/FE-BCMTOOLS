@@ -300,14 +300,33 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
     }
     if (route.request().url().includes('/calculate')) return route.fulfill({ json: { functions: [], total_staff: 0, loss_totals: [0, 0], loss_alerts: [false, false] } })
     if (route.request().url().includes('/org-options')) return route.fulfill({ json: { directorates: ['Dir'], sub_directorates: ['Sub'], groups: ['Group'] } })
+    if (route.request().url().includes('/people')) {
+      return route.fulfill({ json: { items: [
+        { id: 2, name: 'Test Coordinator', label: 'Test Coordinator', phone: '081234567890' },
+        { id: 3, name: 'Test Alternate', label: 'Test Alternate', phone: '081234567891' },
+      ] } })
+    }
     return route.fulfill({ json: { items: [] } })
   })
   await page.goto('/bianca/manage/new')
+  await page.getByPlaceholder('What the Group does').fill('Supports the business.')
+  await page.getByPlaceholder('How the Group recovers, at a high level').fill('Resume work remotely.')
+  await page.getByRole('combobox', { name: 'Main location type' }).click()
+  await page.getByRole('option', { name: 'Work From Home', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Alternate location type' }).click()
+  await page.getByRole('option', { name: 'Hyspace', exact: true }).click()
+  await page.getByRole('button', { name: 'BCM Coordinator', exact: true }).click()
+  await page.getByRole('option', { name: 'Test Coordinator' }).click()
+  await page.getByRole('button', { name: 'Alternate BCM Coordinator', exact: true }).click()
+  await page.getByRole('option', { name: 'Test Alternate' }).click()
+  const riskQuestions = page.locator('#bianca-sign').getByRole('radiogroup')
+  await riskQuestions.nth(0).getByRole('radio', { name: 'No', exact: true }).check()
+  await riskQuestions.nth(1).getByRole('radio', { name: 'Yes', exact: true }).check()
+
   await page.getByRole('tab', { name: 'RA questionnaire', exact: true }).click()
-  const count = page.getByRole('spinbutton', { name: 'Specialist Support (U12–U13)', exact: true })
+  const count = page.getByRole('spinbutton', { name: 'Number of personnel, Specialist Support', exact: true })
   await count.fill('7')
-  await expect(page.getByText('(configured categories · V2)', { exact: true })).toBeVisible()
-  await expect(page.locator('#main-content').getByText('7', { exact: true })).toBeVisible()
+  await expect(page.locator('#bianca-ra tfoot').getByRole('cell', { name: '7', exact: true })).toBeVisible()
 })
 
 test('configuration sections keep draft edits across tabs and compare saved values', async ({ page }) => {
