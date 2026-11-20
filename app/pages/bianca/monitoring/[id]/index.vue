@@ -61,6 +61,23 @@ function fnHasDepIssue(fn: BiaFunctionItem) {
     || fn.non_it_dependencies.some((nd) => Boolean(nd.alignment_warnings?.length))
 }
 
+function nonItDependencySections(fn: BiaFunctionItem) {
+  return [
+    {
+      key: 'upstream',
+      title: 'Upstream dependencies (Part 2b)',
+      empty: 'No upstream dependency (NA).',
+      rows: fn.non_it_dependencies.filter((nd) => nd.direction === 'Upstream'),
+    },
+    {
+      key: 'downstream',
+      title: 'Downstream dependencies (Part 2b)',
+      empty: 'No downstream dependency (NA).',
+      rows: fn.non_it_dependencies.filter((nd) => nd.direction === 'Downstream'),
+    },
+  ]
+}
+
 const displayedDepFunctions = computed(() => {
   const fns = detail.value?.functions ?? []
   if (depsFilter.value === 'issues') return fns.filter(fnHasDepIssue)
@@ -1456,17 +1473,17 @@ const lossPeriodTotals = computed(() =>
                 </div>
               </div>
 
-              <div>
+              <div
+                v-for="section in nonItDependencySections(fn)"
+                :key="`${fn.seq_no}-${section.key}`"
+              >
                 <h3 class="text-sm font-semibold text-highlighted">
-                  Upstream &amp; downstream dependencies (Part 2b)
+                  {{ section.title }}
                 </h3>
                 <div class="mt-2 overflow-x-auto">
                   <table class="w-full text-left text-sm">
                     <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
                       <tr>
-                        <th class="px-3 py-2">
-                          Direction
-                        </th>
                         <th class="px-3 py-2">
                           Party / business unit
                         </th>
@@ -1491,22 +1508,19 @@ const lossPeriodTotals = computed(() =>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
-                      <tr v-if="!fn.non_it_dependencies.length">
+                      <tr v-if="!section.rows.length">
                         <td
-                          colspan="8"
+                          colspan="7"
                           class="px-3 py-3 text-xs text-muted"
                         >
-                          No upstream or downstream dependency (NA).
+                          {{ section.empty }}
                         </td>
                       </tr>
                       <tr
-                        v-for="(ndep, idx) in fn.non_it_dependencies"
+                        v-for="(ndep, idx) in section.rows"
                         :key="idx"
                       >
-                        <td class="px-3 py-2 font-medium">
-                          {{ ndep.direction }}
-                        </td>
-                        <td class="px-3 py-2 text-highlighted">
+                        <td class="px-3 py-2 font-medium text-highlighted">
                           {{ ndep.party_name }}
                         </td>
                         <td class="px-3 py-2 tabular-nums">
