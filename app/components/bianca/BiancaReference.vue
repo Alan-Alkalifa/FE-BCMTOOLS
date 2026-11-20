@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { BiancaLookups } from '~/composables/useBianca'
+
 /**
  * The reference tables at the bottom of the workbook's sheets, opened from the part they belong
  * to: Part 1 (impact matrices and the Suggested MTD rule), Part 2a (category criteria and DAAT)
  * and Part 3 (alternate site strategy and the worked example).
  */
-const props = defineProps<{ part: 'p1' | 'p2a' | 'p3', categoryByMtd?: { value: string, category: string | null }[] }>()
+const props = defineProps<{ part: 'p1' | 'p2a' | 'p3', lookups: BiancaLookups }>()
 
 const titles = {
   p1: 'Part 1 reference: impact assessment',
@@ -14,22 +16,16 @@ const titles = {
 
 const mtdByCategory = computed(() => {
   const out: Record<string, string[]> = {}
-  for (const item of props.categoryByMtd ?? []) {
+  for (const item of props.lookups.expected_mtd) {
     if (item.category) (out[item.category] ??= []).push(item.value)
   }
   return out
 })
 
-const regulatory = [
-  { score: 3, text: 'Breach of laws and/or regulations (other than below), including the requirements of the local bank regulators.' },
-  { score: 2, text: 'Non-compliance with guidelines and/or requirements (i.e. best practices) of the internal / local bank associations / local bank regulators.' },
-  { score: 1, text: 'No foreseeable breach and/or non-compliance.' },
-]
-const customer = [
-  { score: 3, text: 'More than 20% of the business unit\'s customer base affected by the disaster.' },
-  { score: 2, text: 'Less than 20% of the business unit\'s customer base affected by the disaster.' },
-  { score: 1, text: 'No customer affected by the disaster.' },
-]
+const matrices = computed(() => [
+  { title: 'Potential regulatory impact (A)', rows: props.lookups.impact_matrix.map(row => ({ score: row.score, text: row.regulatory })) },
+  { title: 'Potential customer service impact (B)', rows: props.lookups.impact_matrix.map(row => ({ score: row.score, text: row.customer })) },
+])
 const daatSteps = [
   'Incident / outage occurs.',
   'DAAT: assess the damage and decide.',
@@ -90,14 +86,14 @@ const example = [
               </thead>
               <tbody class="divide-y divide-default">
                 <tr
-                  v-for="row in BIANCA_LOSS_MATRIX"
-                  :key="row.impact"
+                  v-for="row in lookups.financial_bands"
+                  :key="row.code"
                 >
                   <td class="py-1.5 pe-3 font-medium">
-                    {{ row.impact }}
+                    {{ row.label }}
                   </td>
                   <td class="py-1.5">
-                    {{ row.loss }}
+                    {{ row.description }}
                   </td>
                 </tr>
               </tbody>
@@ -107,7 +103,7 @@ const example = [
             </p>
           </section>
           <section
-            v-for="matrix in [{ title: 'Potential regulatory impact (A)', rows: regulatory }, { title: 'Potential customer service impact (B)', rows: customer }]"
+            v-for="matrix in matrices"
             :key="matrix.title"
             class="space-y-2"
           >
@@ -131,13 +127,8 @@ const example = [
             <h3 class="font-semibold">
               Suggested MTD
             </h3>
-            <p>The Suggested MTD is the first period in which:</p>
-            <ol class="list-decimal space-y-1 ps-5">
-              <li>the potential cumulative financial loss is more than IDR 4 billion, or</li>
-              <li>the potential regulatory impact is rated 3, or</li>
-              <li>the potential customer service impact is rated 3.</li>
-            </ol>
-            <p>Whichever comes first. If none of them happens, pick 4 weeks.</p>
+            <p class="whitespace-pre-line">{{ lookups.guides.suggested_mtd }}</p>
+            <p>Financial loss alert: IDR {{ lookups.loss_alert_idr.toLocaleString() }}. Impact score alert: {{ lookups.score_alert }}.</p>
           </section>
         </template>
 
@@ -157,7 +148,6 @@ const example = [
                   :value="item.category as keyof typeof BIANCA_CATEGORY"
                   size="sm"
                 />
-                <span class="text-xs text-muted">{{ item.mtd }}</span>
               </div>
               <ul class="list-disc space-y-1 ps-5">
                 <li
@@ -199,18 +189,11 @@ const example = [
             <h3 class="font-semibold">
               Recommended alternate site strategy
             </h3>
-            <div
-              v-for="(item, category) in BIANCA_ALT_SITE_BY_CATEGORY"
-              :key="category"
-              class="space-y-1.5 rounded-md border border-default p-3"
-            >
-              <StatusBadge
-                :scale="BIANCA_CATEGORY"
-                :value="category as keyof typeof BIANCA_CATEGORY"
-                size="sm"
-              />
-              <p>{{ item.text }}</p>
-            </div>
+            <p class="whitespace-pre-line">{{ lookups.guides.alternate_site }}</p>
+            <dl v-for="(sites, category) in lookups.alternate_site_by_category" :key="category">
+              <dt class="font-medium">{{ category }}</dt>
+              <dd>{{ sites.join(' or ') || 'No recommended site configured.' }}</dd>
+            </dl>
           </section>
           <section class="space-y-3">
             <h3 class="font-semibold">

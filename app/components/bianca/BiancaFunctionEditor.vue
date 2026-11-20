@@ -74,20 +74,10 @@ const long = TEXT_LIMITS.long
 const ruleMtd = computed(() => biancaSuggestedMtd(fn.value, {
   suggested: props.lookups.suggested_mtd,
   lossAlert: props.lookups.loss_alert_idr,
+  scoreAlert: props.lookups.score_alert,
 }))
 
-/** Part 3: the alternate site strategies the workbook recommends for the function's category. */
-const altSite = computed(() => {
-  const category = props.preview?.category
-  const recommended = category ? BIANCA_ALT_SITE_BY_CATEGORY[category] : undefined
-  if (!category || !recommended) return null
-  const chosen = fn.value.alt_site_strategy
-  return {
-    category,
-    strategies: recommended.strategies,
-    off: !!chosen && !recommended.strategies.includes(chosen),
-  }
-})
+const recommendedSites = computed(() => props.lookups.alternate_site_by_category?.[props.preview?.category ?? ''] ?? [])
 
 /** The choices of the BIA configuration, plus the value already chosen when it is no longer offered. */
 function withCurrent(items: readonly string[], value: string | null | undefined) {
@@ -113,7 +103,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
     >
       <BiancaReference
         :part="part"
-        :category-by-mtd="lookups.expected_mtd"
+        :lookups="lookups"
       />
     </div>
 
@@ -123,7 +113,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       class="space-y-4"
     >
       <p class="text-sm text-muted">
-        Impact if this function STOPS TOTALLY, from the point of disruption to the end of week 4: the cumulative financial loss (IDR) and the regulatory and customer service scores (1–3) for each period.
+        Enter cumulative financial loss (IDR) and regulatory and customer impact scores for each period of disruption.
       </p>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[56rem] text-sm">
@@ -658,7 +648,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         >
           <USelect
             v-model="fn.recovery_level"
-            :items="lookups.percentages"
+            :items="lookups.expected_support_capacity ?? lookups.percentages"
             class="w-full"
             :disabled="disabled"
           />
@@ -693,14 +683,11 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         note="alt_site_strategy"
         class="max-w-xl"
       >
-        <template
-          v-if="altSite"
-          #help
-        >
-          <span :class="altSite.off ? 'text-warning' : ''">
-            {{ altSite.off ? 'Not what the workbook recommends for' : 'Recommended for' }} {{ altSite.category }}:
-            {{ altSite.strategies.join(' or ') }}.
+        <template #help>
+          <span v-if="recommendedSites.length" :class="fn.alt_site_strategy && !recommendedSites.includes(fn.alt_site_strategy) ? 'text-warning' : ''">
+            Recommended for {{ preview?.category }}: {{ recommendedSites.join(' or ') }}.
           </span>
+          <span v-else>{{ lookups.guides.alternate_site }}</span>
         </template>
         <USelect
           v-model="fn.alt_site_strategy"

@@ -4,6 +4,9 @@ import { BIANCA_LISTS } from '~/utils/bianca-config'
 
 const props = defineProps<{ disabled: boolean, payload: BiancaConfigPayload, referenceLists?: { expected_mtd: BiancaReferenceItem[], scores: BiancaReferenceItem[] } }>()
 const model = defineModel<BiancaListItems>({ required: true })
+const recommendations = defineModel<Record<string, string[]>>('recommendations')
+const siteOptions = computed(() => model.value.alt_site_strategies.filter(site => site.active && site.code).map(site => site.code))
+const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
 
@@ -322,6 +325,19 @@ function add() {
           </tbody>
         </table>
       </div>
+      <div v-if="list.key === 'alt_site_strategies' && recommendations" class="grid gap-4 border-t border-default p-4">
+        <h3 class="font-semibold">Recommended sites by business function category</h3>
+        <UFormField v-for="(_, category) in recommendations" :key="category" :label="String(category)">
+          <USelectMenu
+            v-model="recommendations[category]"
+            :items="siteOptions"
+            :disabled="disabled"
+            multiple
+            class="w-full"
+            :aria-label="'Recommended sites for ' + category"
+          />
+        </UFormField>
+      </div>
     </AdminBiancaConfigSectionLayout>
     <UCard>
       <h3 class="text-sm font-semibold">
@@ -332,11 +348,21 @@ function add() {
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <UButton
+          v-if="can('scca.application.view', 'scca.application.manage')"
           to="/admin/applications"
           color="neutral"
           variant="outline"
           label="Application systems"
-        /><UButton
+        />
+        <UButton
+          v-if="can('masterdata.access', 'masterdata.organization.manage')"
+          to="/masterdata/organization"
+          color="neutral"
+          variant="outline"
+          label="Organization structure"
+        />
+        <UButton
+          v-if="can('location.master')"
           to="/masterdata/masterbuilding"
           color="neutral"
           variant="outline"

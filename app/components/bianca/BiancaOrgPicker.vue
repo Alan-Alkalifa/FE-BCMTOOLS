@@ -2,8 +2,7 @@
 import type { BiancaOrg, BiancaOrgOptions } from '~/composables/useBianca'
 
 /**
- * Directorate > Sub Directorate > Group, each picked from the organisation in the database (the
- * HR fields of the users). Changing a level clears the levels under it. `picked` fires when the
+ * Directorate > Sub Directorate > Group, each picked from the organisation in the database (Master data and active HR profiles). Changing a level clears the levels under it. `picked` fires when the
  * user completes a Group, not when the value is loaded.
  */
 const model = defineModel<BiancaOrg>({ required: true })
@@ -13,20 +12,25 @@ const emit = defineEmits<{ picked: [org: BiancaOrg] }>()
 const options = ref<BiancaOrgOptions>({ directorates: [], sub_directorates: [], groups: [] })
 const loading = ref(false)
 const failed = ref(false)
+const orgRevision = useBiancaOrgRevision()
 
+let latest = 0
 async function load() {
+  const request = ++latest
+  options.value = { directorates: options.value.directorates, sub_directorates: [], groups: [] }
   loading.value = true
   failed.value = false
   try {
-    options.value = await biancaApi.orgOptions(model.value.directorate, model.value.sub_directorate)
+    const next = await biancaApi.orgOptions(model.value.directorate, model.value.sub_directorate)
+    if (request === latest) options.value = next
   } catch {
-    failed.value = true
+    if (request === latest) failed.value = true
   } finally {
-    loading.value = false
+    if (request === latest) loading.value = false
   }
 }
 onMounted(load)
-watch(() => [model.value.directorate, model.value.sub_directorate], load)
+watch([() => model.value.directorate, () => model.value.sub_directorate, orgRevision], load)
 
 /** Keep a saved value in the list even when the organisation no longer has it. */
 function withValue(list: string[], value: string | undefined) {

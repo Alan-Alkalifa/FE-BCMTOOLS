@@ -82,7 +82,7 @@ async function run(operation: string, work: () => Promise<unknown>, message: str
 async function start() {
   await run('start', async () => {
     const created = await biancaConfigApi.start()
-    await router.replace({ query: { tab: 'personnel', version: created.id } })
+    await router.replace({ query: { ...route.query, tab: tab.value === 'versions' ? 'personnel' : tab.value, version: created.id } })
   }, 'Draft configuration created')
 }
 async function save() {
@@ -92,7 +92,12 @@ async function save() {
   const activeCodes = Object.fromEntries(Object.entries(list_items).map(([key, items]) => [
     key, items.filter((item) => item.active).map((item) => item.code.trim()),
   ]))
-  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: { ...payload, ...activeCodes }, list_items }), 'Draft configuration saved')
+  const activeSites = new Set(activeCodes.alt_site_strategies)
+  const recommendations = payload.alternate_site_by_category
+  const configured = { ...payload, ...activeCodes, alternate_site_by_category: recommendations && Object.fromEntries(
+    Object.entries(recommendations).map(([category, sites]) => [category, sites.filter(site => activeSites.has(site))]),
+  ) }
+  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: configured, list_items }), 'Draft configuration saved')
 }
 async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'discard') {
   const selected = version.value
@@ -379,6 +384,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
             <AdminBiancaConfigLists
               v-else-if="item.value === 'lists'"
               v-model="form.list_items"
+              v-model:recommendations="form.payload.alternate_site_by_category"
               class="mt-4"
               :disabled="!editable || !!busy"
               :payload="form.payload"
