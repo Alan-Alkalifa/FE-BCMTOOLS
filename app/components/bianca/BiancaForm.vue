@@ -24,6 +24,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { data: lookups } = useBiancaLookups(() => props.assessment?.id)
 
+provide('bianca-guides', computed(() => lookups.value?.guides))
 const editable = computed(() => !props.assessment || props.assessment.can_edit)
 const saved = ref<BiancaAssessment | null>(props.assessment ?? null)
 const saving = ref(false)

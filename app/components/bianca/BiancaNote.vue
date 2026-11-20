@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComputedRef } from 'vue'
 import type { BiancaNoteKey } from '~/utils/biancaNotes'
 
 /**
@@ -7,7 +8,15 @@ import type { BiancaNoteKey } from '~/utils/biancaNotes'
  */
 const props = defineProps<{ note?: BiancaNoteKey, text?: string, label?: string }>()
 
-const body = computed(() => props.text ?? (props.note ? BIANCA_NOTES[props.note] : ''))
+const guides = inject<ComputedRef<Record<string, string> | undefined>>('bianca-guides')
+const topic: Partial<Record<BiancaNoteKey, string>> = {
+  loss: 'suggested_mtd', regulatory_score: 'regulatory', customer_score: 'customer',
+  daat: 'it_dependency', dependency_mtd: 'non_it_dependency', alt_site_strategy: 'alternate_site',
+  ra_completed: 'risk_assessment', vital_record: 'recovery',
+}
+const body = computed(() => props.text ?? (props.note
+  ? guides?.value?.['field_' + props.note] ?? guides?.value?.[topic[props.note] ?? props.note] ?? BIANCA_NOTES[props.note]
+  : ''))
 const lines = computed(() => body.value.split('\n').filter(Boolean))
 
 const hover = ref(true)

@@ -40,6 +40,7 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   staff_grades: BiancaGrade[]
   signoff_steps: BiancaStep[]
   guides: Record<string, string>
+  alternate_site_by_category?: Record<string, string[]>
   financial_bands: { code: string, label: string, description: string }[]
   impact_matrix: { score: number, regulatory: string, customer: string }[]
 }

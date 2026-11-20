@@ -1,9 +1,20 @@
 <script setup lang="ts">
-/** Administration › Master data: the masters the user may open, one card each. */
-definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'location.master'] })
+import type { MenuNode } from '~/composables/useAuth'
 
-const { can } = useAuth()
-const masters = computed(() => MASTER_DATA.filter((entry) => can(...entry.permission)))
+/** Administration › Master data: the masters the user may open, one card each. */
+definePageMeta({ permission: ['masterdata.access', 'bianca.config.view', 'location.master', 'masterdata.organization.manage', 'scca.application.view', 'scca.application.manage'] })
+
+const { menu, fetchMenu } = useAuth()
+if (!menu.value) await fetchMenu()
+function findGroup(nodes: MenuNode[]): MenuNode | undefined {
+  for (const node of nodes) {
+    if (node.code === 'admin.masterdata') return node
+    const match = findGroup(node.children)
+    if (match) return match
+  }
+}
+const masters = computed(() => findGroup(menu.value ?? [])?.children
+  .filter(entry => entry.route && entry.route !== MASTER_DATA_PATH) ?? [])
 </script>
 
 <template>
@@ -16,8 +27,8 @@ const masters = computed(() => MASTER_DATA.filter((entry) => can(...entry.permis
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <NuxtLink
         v-for="entry in masters"
-        :key="entry.key"
-        :to="entry.to"
+        :key="entry.id"
+        :to="entry.route!"
         class="group rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
       >
         <UCard
@@ -27,20 +38,14 @@ const masters = computed(() => MASTER_DATA.filter((entry) => can(...entry.permis
           <div class="flex items-center gap-3">
             <span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <UIcon
-                :name="entry.icon"
+                :name="entry.icon || 'i-lucide-folder'"
                 class="size-5"
               />
             </span>
             <h2 class="font-semibold text-highlighted group-hover:text-primary">
-              {{ entry.title }}
+              {{ entry.label }}
             </h2>
           </div>
-          <p class="flex-1 text-sm text-muted">
-            {{ entry.description }}
-          </p>
-          <p class="text-xs text-dimmed">
-            Used by {{ entry.usedBy }}
-          </p>
         </UCard>
       </NuxtLink>
     </div>

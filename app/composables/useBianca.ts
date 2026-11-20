@@ -168,6 +168,10 @@ export interface BiancaLookups {
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
+  expected_support_capacity?: string[]
+  alternate_site_by_category?: Record<string, string[]>
+  financial_bands: { code: string, label: string, description: string }[]
+  impact_matrix: { score: number, regulatory: string, customer: string }[]
   downstream_capacity?: string[]
   yes_no: string[]
   system_usage: string[]
@@ -256,6 +260,10 @@ export function useBiancaLookups(assessmentId?: MaybeRefOrGetter<number | undefi
     key: computed(() => `bianca-lookups-${toValue(assessmentId) ?? 'active'}`),
     query: computed(() => ({ assessment_id: toValue(assessmentId) })),
   })
+}
+
+export function useBiancaOrgRevision() {
+  return useState('bianca-organization-revision', () => 0)
 }
 
 function upload(file: File) {

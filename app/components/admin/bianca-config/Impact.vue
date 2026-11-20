@@ -139,7 +139,7 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
             <li>Potential cumulative financial loss is greater than {{ formatNumber(model.loss_alert_idr) }} IDR.</li><li>Regulatory impact reaches score {{ model.score_alert }}.</li><li>Customer service impact reaches score {{ model.score_alert }}.</li>
           </ol>
           <p class="mt-4">
-            Workbook fallback: 4 weeks if no trigger is met. Suggested MTD remains selected by the assessor.
+            Fallback: {{ model.suggested_mtd.at(-1) }} if no trigger is met. Suggested MTD remains selected by the assessor.
           </p>
         </div>
         <div>

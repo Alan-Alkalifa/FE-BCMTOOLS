@@ -4,6 +4,7 @@ import type { MenuNode } from '~/composables/useAuth'
 
 const { menu, fetchMenu, user } = useAuth()
 const route = useRoute()
+const router = useRouter()
 
 // The menu comes from the database (GET /api/me/menu), filtered by the user's permissions.
 watch(() => user.value?.id, (id) => {
@@ -18,10 +19,12 @@ function routes(nodes: MenuNode[]): string[] {
  *  page (/scca/manage/12, /ra/locations/3) keeps its own section active and /ra stays off on
  *  /ra/locations. */
 const activeRoute = computed(() => {
-  const path = route.path
-  if (path === '/') return '/'
   return routes(menu.value ?? [])
-    .filter((item) => item !== '/' && (path === item || path.startsWith(`${item}/`)))
+    .filter((item) => {
+      const target = router.resolve(item)
+      const matchesPath = route.path === target.path || (target.path !== '/' && route.path.startsWith(target.path + '/'))
+      return matchesPath && Object.entries(target.query).every(([key, value]) => route.query[key] === value)
+    })
     .sort((a, b) => b.length - a.length)[0]
 })
 

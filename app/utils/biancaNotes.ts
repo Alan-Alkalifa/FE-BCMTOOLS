@@ -75,31 +75,6 @@ export const BIANCA_NOTES = {
 
 export type BiancaNoteKey = keyof typeof BIANCA_NOTES
 
-/** Part 3 reference: the recommended alternate site strategies of each category. */
-export const BIANCA_ALT_SITE_BY_CATEGORY: Record<string, { strategies: string[], text: string }> = {
-  'Business Critical': {
-    strategies: ['Dedicated BCP Site', 'Split Operations for BAU Activities'],
-    text: 'Dedicated BCP site (dedicated BCP PCs) / split operations for BAU activities.',
-  },
-  'Important': {
-    strategies: ['Reciprocal BCP Site'],
-    text: 'Reciprocal BCP site: two departments at different locations agree to share / release certain PCs as BCP PCs for each other when they activate their BC plan.',
-  },
-  'Others': {
-    strategies: ['Work from Home/ Place with Internet/ Office Network Connection'],
-    text: 'Work from home / a place with internet / office network connection, to keep supporting the expected business / support recovery level.',
-  },
-}
-
-/** Part 1 reference: the potential cumulative financial loss matrix (SOP BIA 2026). */
-export const BIANCA_LOSS_MATRIX = [
-  { impact: 'Very High', loss: 'More than IDR 4 billion' },
-  { impact: 'High', loss: 'IDR 2 billion – IDR 4 billion' },
-  { impact: 'Medium', loss: 'IDR 300 million – IDR 2 billion' },
-  { impact: 'Low', loss: 'IDR 200 million – IDR 300 million' },
-  { impact: 'Very Low', loss: 'Less than IDR 200 million' },
-]
-
 /** Part 2a reference: the Business Function Categorization Criteria. */
 export const BIANCA_CATEGORY_CRITERIA = [
   {
@@ -133,7 +108,7 @@ export const BIANCA_CATEGORY_CRITERIA = [
  */
 export function biancaSuggestedMtd(
   fn: { loss?: (number | null | undefined)[] | null, regulatory_scores?: (number | null | undefined)[] | null, customer_scores?: (number | null | undefined)[] | null },
-  options: { suggested: readonly string[], lossAlert: number },
+  options: { suggested: readonly string[], lossAlert: number, scoreAlert: number },
 ): string | null {
   const loss = fn.loss ?? []
   const reg = fn.regulatory_scores ?? []
@@ -141,7 +116,7 @@ export function biancaSuggestedMtd(
   const filled = [...loss, ...reg, ...cust].some((value) => value != null && String(value) !== '')
   if (!filled || !options.suggested.length) return null
   for (let i = 0; i < options.suggested.length; i++) {
-    if ((Number(loss[i]) || 0) > options.lossAlert || Number(reg[i]) === 3 || Number(cust[i]) === 3) {
+    if ((Number(loss[i]) || 0) > options.lossAlert || reg[i] === options.scoreAlert || cust[i] === options.scoreAlert) {
       return options.suggested[i] ?? null
     }
   }
