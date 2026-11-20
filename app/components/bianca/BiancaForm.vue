@@ -27,6 +27,8 @@ const submitting = ref(false)
 const uploading = ref(false)
 const failure = ref<string | null>(null)
 const dirty = ref(false)
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty)
 
 const tabs = [
   { label: 'Sign off page', value: 'sign', icon: 'i-lucide-signature' },

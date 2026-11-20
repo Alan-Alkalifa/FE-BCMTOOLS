@@ -103,12 +103,35 @@ function onArea(id: string) {
   revealRow(`[data-warning="${CSS.escape(key)}"]`)
 }
 
-onMounted(() => {
+function startTimers() {
+  stopTimers()
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
   weatherTimer = setInterval(() => refreshWeather(), 300_000)
   waqiTimer = setInterval(() => {
     if (waqiOn.value) refreshWaqi()
   }, 900_000)
+}
+function stopTimers() {
+  clearInterval(quakeTimer)
+  clearInterval(weatherTimer)
+  clearInterval(waqiTimer)
+}
+// In a background in-app tab (docs/tabs.md) the map stops asking; back in front, it catches up.
+let paused = false
+onDeactivated(() => {
+  paused = true
+  stopTimers()
+})
+onActivated(() => {
+  if (!paused) return
+  paused = false
+  void refreshQuakes()
+  void refreshWeather()
+  if (waqiOn.value) void refreshWaqi()
+  startTimers()
+})
+onMounted(() => {
+  startTimers()
   // The map data is shared with the disaster page (the same key): read it again on arrival, so
   // a disaster approved, rejected or closed meanwhile is shown as it stands now.
   if (data.value) refresh()

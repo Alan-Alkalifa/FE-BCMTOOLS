@@ -112,19 +112,8 @@ async function selectTab(next: string | number) {
   await router.replace({ query: { ...route.query, tab: value } })
 }
 
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return
-  if (!(await confirmLeave())) return false
-})
-
-function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: confirmLeave })
 
 /** Forms are read-only unless this user is the assessor or contributor and it is a draft. */
 const locked = computed(() => props.section !== 'manage' || !assessment.value?.permissions.can_edit)
@@ -262,6 +251,7 @@ function onSaved(saved: SccaAssessment) {
   <AppPage
     icon="i-lucide-shield-check"
     :title="assessment?.application_name ?? 'Assessment'"
+    :tab-title="assessment ? [assessment.ref_no, assessment.application_name].filter(Boolean).join(' · ') : undefined"
     :crumbs="[
       { label: 'SCCA' },
       { label: SCCA_SECTIONS[section].label, to: SCCA_SECTIONS[section].to },
