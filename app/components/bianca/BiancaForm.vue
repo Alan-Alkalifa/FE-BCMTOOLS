@@ -19,7 +19,7 @@ import { BIANCA_PARTS, biancaPartDone, type BiancaPart } from '~/utils/biancaPar
  * Without `assessment` it is the New BIA form.
  */
 const props = defineProps<{ assessment?: BiancaAssessment | null }>()
-const emit = defineEmits<{ saved: [assessment: BiancaAssessment] }>()
+const emit = defineEmits<{ saved: [assessment: BiancaAssessment, tab: string] }>()
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -40,7 +40,9 @@ const tabs = [
   { label: 'Appendix', value: 'appendix', icon: 'i-lucide-table-2' },
   { label: 'Approval template', value: 'approval', icon: 'i-lucide-signature' },
 ]
-const tab = ref('sign')
+const route = useRoute()
+/** The tab open: the one in the address (?tab=) when the page opens, e.g. right after the first save. */
+const tab = ref(tabs.some((item) => item.value === route.query.tab) ? String(route.query.tab) : 'sign')
 
 function blankHeader(): BiancaHeader {
   const header = {} as Record<string, unknown>
@@ -61,6 +63,8 @@ const header = reactive<BiancaHeader>(blankHeader())
 const org = ref<BiancaOrg>({ directorate: undefined, sub_directorate: undefined, org_group: undefined })
 /** How the main location reads in its picker, also when it was filled from the database. */
 const mainPlace = ref<BiancaPlace | null>(null)
+/** The alternate location as picked (for its address); the saved one until something is picked. */
+const altPlace = ref<BiancaPlace | null>(null)
 const mainHint = ref<{ text: string, color: 'muted' | 'warning' } | null>(null)
 type PersonKey = 'bcm_coordinator' | 'bcm_alternate'
 /** The picked users, as the directory has them (null: none, or typed before). */
@@ -104,30 +108,59 @@ const appendixRows = computed(() => functions.value.map((fn, index) => ({
   category: preview.value?.functions[index]?.category ?? fn.category ?? null,
   expected_mtd: fn.expected_mtd ?? null,
 })))
-function openFunction(index: number, value: BiancaPart = 'p1') {
-  tab.value = 'functions'
+// Appendix: each function opens its report; one, some or all can be exported to Excel.
+const exporter = useBiancaExport()
+const picked = ref<number[]>([])
+const allPicked = computed(() => appendixRows.value.length > 0 && picked.value.length === appendixRows.value.length)
+function togglePick(index: number, on: boolean) {
+  picked.value = on ? [...new Set([...picked.value, index])].sort((a, b) => a - b) : picked.value.filter((item) => item !== index)
+}
+function toggleAll(on: boolean) {
+  picked.value = on ? appendixRows.value.map((row) => row.index) : []
+}
+/** The report and the export read the saved BIA: save what is typed first. */
+async function savedFirst() {
+  if (!saved.value) {
+    toast.add({ title: 'Save the draft first', description: 'The report and the Excel export are made from the saved BIA.', color: 'warning', icon: 'i-lucide-save' })
+    return false
+  }
+  if (dirty.value && editable.value) {
+    if (!await confirm({
+      title: 'Save your changes first?',
+      description: 'The report and the Excel export are made from the saved BIA.',
+      confirmLabel: 'Save and continue',
+    })) return false
+    if (!await save(true)) return false
+  }
+  return true
+}
+async function openReport(index: number) {
+  if (!await savedFirst()) return
+  await navigateTo(biancaReportPath(saved.value!.id, index + 1))
+}
+async function exportFunctions(indexes?: number[]) {
+  if (!await savedFirst()) return
+  await exporter.run(saved.value!.id, indexes?.map((index) => index + 1))
+}
+
+async function openFunction(index: number, value: BiancaPart = 'p1') {
+  if (!await goTab('functions')) return
   openPart(index, value)
 }
-// The reference panel: open by default, remembered on this browser when someone hides it.
-const REFERENCE_KEY = 'bianca:reference-open'
+// The guidance panel (the workbook's REFERENCE): it opens by itself when the Business functions
+// tab is opened and on every part shown, so it's there while filling; it can be hidden.
 const referenceOpen = ref(true)
-onMounted(() => {
-  try {
-    referenceOpen.value = localStorage.getItem(REFERENCE_KEY) !== '0'
-  } catch {
-    // Storage blocked: keep it open.
-  }
-})
 /** Part 4's sheet has no REFERENCE box. */
 const referenceShown = computed(() => referenceOpen.value && part.value !== 'p4')
 const referencePart = computed(() => (part.value === 'p4' ? 'p3' : part.value) as 'p1' | 'p2a' | 'p2b' | 'p3')
+watch(tab, (value) => {
+  if (value === 'functions') referenceOpen.value = true
+})
+watch([part, selected], () => {
+  referenceOpen.value = true
+})
 function toggleReference() {
   referenceOpen.value = !referenceOpen.value
-  try {
-    localStorage.setItem(REFERENCE_KEY, referenceOpen.value ? '1' : '0')
-  } catch {
-    // Storage blocked: it just isn't remembered.
-  }
   if (referenceOpen.value) nextTick(() => document.getElementById('bianca-reference')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
 }
 function pickFunction(index: number) {
@@ -149,6 +182,7 @@ function hydrate(source: BiancaAssessment | null) {
       org_group: source.org_group ?? undefined,
     }
     mainPlace.value = source.main_location
+    altPlace.value = source.alt_location
     persons.bcm_coordinator = source.bcm_coordinator_user
     persons.bcm_alternate = source.bcm_alternate_user
   } else if (!functions.value.length) {
@@ -167,6 +201,10 @@ async function startNew() {
   started = true
   if (functions.value.length === 1 && !functions.value[0]!.name) {
     functions.value = [emptyBiancaFunction(lookups.value.periods.length)]
+  }
+  // Head counts start at 0, so it's plain they are numbers to type.
+  for (const grade of lookups.value.personnel_grades) {
+    if (grade.active && header.personnel_counts[grade.code] == null) header.personnel_counts[grade.code] = 0
   }
   const own = lookups.value.organisation
   if (!org.value.org_group && own.org_group) {
@@ -229,16 +267,52 @@ function onPerson(key: PersonKey, person: BiancaPerson | null) {
 }
 
 const PERSON_FIELDS = { nik: '_nik', phone: '_phone', email: '_email' } as const
-
-/** From the directory, so not typed: the person was picked and the directory has a value. */
-function locked(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
-  return !!persons[key]?.[field]
+const PERSON_DETAILS = [['nik', 'NIK'], ['phone', 'Phone'], ['email', 'Email']] as const
+/** The other role (a person can't be both). */
+function otherRole(key: PersonKey): PersonKey {
+  return key === 'bcm_coordinator' ? 'bcm_alternate' : 'bcm_coordinator'
+}
+const samePerson = computed(() => header.bcm_coordinator_id != null && header.bcm_coordinator_id === header.bcm_alternate_id)
+/** What the box under a detail says when it's empty. */
+function missingDetail(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
+  if (!header[`${key}_id`]) return 'Pick the person to fill it in.'
+  return field === 'phone' ? 'Not in the user directory: give it as the additional phone.' : 'Not in the user directory: ask an admin to add it in Users.'
 }
 
-function personHelp(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
-  if (!persons[key]) return undefined
-  return locked(key, field) ? undefined : 'Not in the user directory: type it.'
+// Sign Off Page, risk assessment: Yes / No as cards, and what the answers ask for next.
+type RaKey = 'ra_considers_bc' | 'ra_controls_included'
+const YES_NO = [
+  { label: 'Yes', value: 'Yes' },
+  { label: 'No', value: 'No' },
+]
+function yesNo(key: RaKey) {
+  return header[key] == null ? undefined : header[key] ? 'Yes' : 'No'
 }
+function setYesNo(key: RaKey, value: unknown) {
+  header[key] = value === 'Yes'
+}
+const raNeedsJustification = computed(() => header.ra_considers_bc === false && header.ra_controls_included === false)
+const signRaStatus = computed(() => {
+  const considers = header.ra_considers_bc
+  const controls = header.ra_controls_included
+  if (considers == null || controls == null) {
+    return { tone: 'neutral', icon: 'i-lucide-info', title: 'Answer both questions', lines: ['Yes to the first: name the risk assessment tools.', 'No to both: justify it.'] }
+  }
+  if (raNeedsJustification.value) {
+    return { tone: 'warning', icon: 'i-lucide-triangle-alert', title: 'Business continuity isn\'t in your risk assessment', lines: ['Justify why it is neither considered in the risk assessment process nor included in the risk score cards / profiling.'] }
+  }
+  return { tone: 'success', icon: 'i-lucide-circle-check', title: 'Business continuity is part of your risk assessment', lines: [
+    considers
+      ? (header.ra_tools?.trim() ? `Tools: ${header.ra_tools.trim()}` : 'Name the risk assessment tools used (e.g. ShARP, ORMS).')
+      : 'Not considered in the risk assessment process yet.',
+    controls ? 'Business continuity controls are in the risk score cards / profiling.' : 'Business continuity controls aren\'t in the risk score cards / profiling yet.',
+  ] }
+})
+const TONE = {
+  neutral: { box: 'border-default bg-elevated/40', text: 'text-highlighted' },
+  success: { box: 'border-success/40 bg-success/5', text: 'text-success' },
+  warning: { box: 'border-warning/40 bg-warning/5', text: 'text-warning' },
+} as const
 
 const READ_ONLY = new Set(['category', 'within_suggested_mtd', 'daat_hours', 'daat_warnings', 'rpo_code', 'id', 'seq'])
 
@@ -421,6 +495,52 @@ const gradeSections = computed(() => {
     { title: 'Non-executive', grades: others },
   ].filter((section) => section.grades.length)
 })
+/** RA Questionnaire, risk assessment: the two answers, and what each one means. */
+const RA_ANSWERS = [
+  { label: 'Yes', value: 'Yes', description: 'Completed for our location' },
+  { label: 'No', value: 'No', description: 'Not completed yet' },
+]
+const raStatus = computed(() => {
+  if (header.ra_completed === true) {
+    return {
+      box: 'border-success/40 bg-success/5',
+      text: 'text-success',
+      icon: 'i-lucide-circle-check',
+      title: 'Risk assessment: completed',
+      lines: ['The Business Continuity Risk Assessment of your location is done. Nothing more to do here.'],
+    }
+  }
+  if (header.ra_completed === false) {
+    return {
+      box: 'border-warning/40 bg-warning/5',
+      text: 'text-warning',
+      icon: 'i-lucide-triangle-alert',
+      title: 'Risk assessment: not completed yet',
+      lines: [
+        'The Head of Sub Directorate coordinates completing the Business Continuity Risk Assessment for your location.',
+        'Not sure who handles it? Check with BCM.',
+      ],
+    }
+  }
+  return {
+    box: 'border-default bg-elevated/40',
+    text: 'text-highlighted',
+    icon: 'i-lucide-info',
+    title: 'Not answered yet',
+    lines: [
+      'Yes: the Business Continuity Risk Assessment of your location is done.',
+      'No: the Head of Sub Directorate coordinates completing it, or check with BCM.',
+    ],
+  }
+})
+/** Sign Off Page: what each part asks for (the workbook's own notes, in short). */
+const SIGN_GUIDE = [
+  { title: 'Section A · the Group', text: 'Directorate, Sub Directorate and Group come from the organisation in the system. Describe what the Group does.' },
+  { title: 'Work locations', text: 'The building and floor the Group works from, and where it works when that one can\'t be used. The address comes from the building master.' },
+  { title: 'Recovery strategy', text: 'The Group\'s recovery strategy at a high level. The recovery level of each function (Part 3) follows it.' },
+  { title: 'BCM Coordinator and Alternate', text: 'Two different people, picked from the user directory: their NIK, phone and email are filled in and locked. Give an additional phone only when the one there is no longer active.' },
+  { title: 'Risk assessment', text: 'Yes to the first question: name the tools (e.g. ShARP, ORMS). No to both: justify it.' },
+]
 /** The titles the workbook's notes give for each grade at CIMB Niaga. */
 const GRADE_TITLES: Record<string, string> = {
   staff_senior: 'First VP, Senior VP, Executive VP',
@@ -476,7 +596,113 @@ async function attachPending(result: BiancaAssessment) {
 /** An attach or remove answers with the BIA: take its file and warnings, keep what is typed. */
 function onOrgStructure(result: BiancaAssessment) {
   if (!saved.value) return
-  saved.value = { ...saved.value, org_structure: result.org_structure, warnings: result.warnings, updated_at: result.updated_at }
+  saved.value = { ...saved.value, org_structure: result.org_structure, problems: result.problems, warnings: result.warnings, updated_at: result.updated_at }
+}
+
+// The RA Questionnaire is all required: the next tabs open once it is filled in.
+const TAB_ORDER = tabs.map((item) => item.value)
+const raTried = ref(false)
+function blankCount(code: string) {
+  const value = header.personnel_counts[code] as number | string | null | undefined
+  return value == null || value === '' || Number.isNaN(Number(value)) || Number(value) < 0
+}
+function noteMissing(grade: { code: string, requires_note: boolean }) {
+  return grade.requires_note && (Number(header.personnel_counts[grade.code]) || 0) > 0
+    && !header.personnel_notes[grade.code]?.trim()
+}
+const orgStructureMissing = computed(() => !saved.value?.org_structure && !pendingOrgStructure.value)
+const raMissing = computed(() => {
+  const found: string[] = []
+  for (const grade of grades.value) {
+    if (blankCount(grade.code)) found.push(`Number of personnel: ${grade.label}`)
+    else if (noteMissing(grade)) found.push(`${grade.label}: please specify`)
+  }
+  if (!grades.value.some((grade) => blankCount(grade.code)) && totalStaff.value <= 0) {
+    found.push('Number of personnel: the total is 0')
+  }
+  if (orgStructureMissing.value) found.push('Organisation structure')
+  if (header.ra_completed == null) found.push('Risk assessment')
+  return found
+})
+// The Sign off page is all required too, as Submit asks.
+const signTried = ref(false)
+const signMissing = computed(() => {
+  const found: { key: string, label: string }[] = []
+  const need = (key: string, label: string, ok: unknown) => {
+    if (ok == null || ok === '' || (typeof ok === 'string' && !ok.trim())) found.push({ key, label })
+  }
+  need('org', 'Directorate, Sub Directorate and Group', org.value.org_group)
+  need('group_description', 'Group description', header.group_description)
+  need('main_location_id', 'Main work location: building', header.main_location_id)
+  need('main_floor', 'Main work location: floor', header.main_floor)
+  need('alt_location_id', 'Alternate work location: building', header.alt_location_id)
+  need('alt_floor', 'Alternate work location: floor', header.alt_floor)
+  need('recovery_strategy', 'Group recovery strategy', header.recovery_strategy)
+  for (const person of people) {
+    need(`${person.key}_id`, person.title, header[`${person.key}_id`])
+    if (header[`${person.key}_id`] && !header[`${person.key}_phone`]) {
+      need(`${person.key}_phone_2`, `${person.title}: additional phone (the directory has no phone)`, header[`${person.key}_phone_2`])
+    }
+  }
+  if (samePerson.value) found.push({ key: 'bcm_alternate_id', label: 'Alternate BCM Coordinator: another person' })
+  need('ra_considers_bc', 'Risk assessment question 1', header.ra_considers_bc)
+  if (header.ra_considers_bc) need('ra_tools', 'Risk assessment tools used', header.ra_tools)
+  need('ra_controls_included', 'Risk assessment question 2', header.ra_controls_included)
+  if (raNeedsJustification.value) need('ra_justification', 'Risk assessment justification', header.ra_justification)
+  return found
+})
+const signMissingKeys = computed(() => new Set(signMissing.value.map((item) => item.key)))
+/** The error under a required Sign off field, once Next was tried. */
+function signError(key: string, text = 'Required.') {
+  return signTried.value && signMissingKeys.value.has(key) ? text : undefined
+}
+
+/** The tabs to be filled in, in order, before the ones after them open. */
+const gates = computed(() => [
+  { tab: 'sign', tried: signTried, missing: signMissing.value.map((item) => item.label), title: 'Fill in the sign off page first', at: '#bianca-sign' },
+  { tab: 'ra', tried: raTried, missing: raMissing.value, title: 'Fill in the RA questionnaire first', at: '#bianca-ra' },
+])
+/** Opens a tab: past the Sign off page and the RA questionnaire only once they are filled in, and
+ * into the Business functions once the draft is saved. */
+async function goTab(value: string | number) {
+  const target = String(value)
+  const to = TAB_ORDER.indexOf(target)
+  if (editable.value) {
+    for (const gate of gates.value) {
+      if (to <= TAB_ORDER.indexOf(gate.tab) || !gate.missing.length) continue
+      gate.tried.value = true
+      tab.value = gate.tab
+      toast.remove('bianca-tab-missing')
+      toast.add({
+        id: 'bianca-tab-missing',
+        title: gate.title,
+        description: `Still empty: ${gate.missing.join(', ')}.`,
+        color: 'error',
+        icon: 'i-lucide-circle-alert',
+      })
+      nextTick(() => document.querySelector(`${gate.at} [data-missing="true"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+      return false
+    }
+    // Into the Business functions from the questionnaires: save what is typed first.
+    const from = TAB_ORDER.indexOf(tab.value)
+    if (target === 'functions' && from < to && (dirty.value || !saved.value)) {
+      tab.value = 'ra'
+      const ok = await confirm({
+        title: 'Save the draft before continuing?',
+        description: 'The Sign off page and the RA questionnaire are saved as a draft, then the Business functions open. You can still change them later.',
+        confirmLabel: 'Save and continue',
+      })
+      if (!ok) return false
+      tab.value = 'functions'
+      if (!await save()) {
+        tab.value = 'ra'
+        return false
+      }
+      return true
+    }
+  }
+  tab.value = target
+  return true
 }
 
 async function save(quiet = false) {
@@ -492,7 +718,7 @@ async function save(quiet = false) {
     clearTimeout(keepTimer)
     dropUnsaved('new', result.id)
     if (!quiet) toast.add({ title: wasNew ? `Draft ${result.ref_no} created` : 'Draft saved', color: 'success', icon: 'i-lucide-circle-check' })
-    emit('saved', result)
+    emit('saved', result, tab.value)
     return result
   } catch (error) {
     keepNow()
@@ -546,7 +772,7 @@ async function remove() {
 function onImported(result: BiancaAssessment) {
   saved.value = result
   hydrate(result)
-  emit('saved', result)
+  emit('saved', result, tab.value)
 }
 
 /** What still blocks Submit, as the API counted it at the last save. */
@@ -578,12 +804,15 @@ const noteGroups: { part: BiancaPart, notes: readonly { key: NoteKey, label: str
     part: 'p2a',
     notes: [{ key: 'justification_rto', label: 'Justification when an RTO reaches the Expected MTD' }],
   },
-  {
-    part: 'p2b',
-    notes: [{ key: 'justification_dependency', label: 'Justification of a lower capacity or a longer MTD' }],
-  },
 ]
 function notesOf(value: BiancaPart) {
+  // Part 2b's justification is asked on each upstream / downstream; the sheet's one box shows
+  // only when an Excel upload filled it.
+  if (value === 'p2b') {
+    return header.justification_dependency?.trim()
+      ? [{ key: 'justification_dependency' as const, label: 'Justification of a lower capacity or a longer MTD (from the Excel upload)' }]
+      : []
+  }
   return noteGroups.find((group) => group.part === value)?.notes ?? []
 }
 /** "1 function", "2 of 3 functions": where you are among the functions. */
@@ -744,100 +973,171 @@ const people = [
     </UCard>
 
     <UTabs
-      v-model="tab"
+      :model-value="tab"
       :items="tabs"
       :content="false"
       variant="link"
       class="overflow-x-auto"
+      @update:model-value="goTab"
     />
 
-    <!-- Sign Off Page -->
+    <!-- Sign Off Page: the workbook's sheet, top to bottom, with what to fill in beside it -->
     <div
       v-show="tab === 'sign'"
-      class="space-y-6"
+      id="bianca-sign"
+      class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
     >
-      <UCard>
-        <template #header>
-          <h2 class="flex items-center gap-1.5 text-sm font-semibold">
-            Section A · Group (general information about the work unit)
-            <BiancaNote
-              note="group"
-              label="Section A"
-            />
-          </h2>
-        </template>
-        <div class="space-y-4">
-          <BiancaOrgPicker
-            v-model="org"
-            :disabled="!editable"
-            help="From the organisation in the system. Picking a Group fills the main location."
-            @picked="onOrgPicked"
-          />
-          <BiancaField
-            label="Group description"
-            note="group_description"
-          >
-            <UTextarea
-              v-model="header.group_description"
-              class="w-full"
-              :rows="3"
-              :maxlength="long"
+      <div class="min-w-0 space-y-6">
+        <!-- Section A -->
+        <UCard>
+          <template #header>
+            <h2 class="flex items-center gap-1.5 text-sm font-semibold">
+              Section A · General information of the Group
+              <BiancaNote
+                note="group"
+                label="Section A"
+              />
+            </h2>
+            <p class="text-xs text-muted">
+              Informasi umum unit kerja / Group
+            </p>
+          </template>
+          <div class="space-y-5">
+            <BiancaOrgPicker
+              v-model="org"
               :disabled="!editable"
+              :locked="editable && !lookups?.can_pick_group"
+              help="From the organisation in the system. Picking a Group fills the main location."
+              :data-missing="!!signError('org')"
+              @picked="onOrgPicked"
             />
-          </BiancaField>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <BiancaField
-              label="Main location"
-              note="main_location"
+            <p
+              v-if="signError('org')"
+              class="text-sm text-error"
             >
-              <BiancaPicker
-                v-model="header.main_location_id"
-                kind="locations"
-                :selected="mainPlace"
-                :disabled="!editable"
-                aria-label="Main location"
-                @pick="mainHint = null"
-              />
-              <p
-                v-if="mainHint && editable"
-                class="mt-1 text-xs"
-                :class="mainHint.color === 'warning' ? 'text-warning' : 'text-muted'"
-              >
-                {{ mainHint.text }}
-              </p>
-            </BiancaField>
-            <UFormField label="Main location floor">
-              <UInput
-                v-model="header.main_floor"
+              Pick the Directorate, Sub Directorate and Group.
+            </p>
+            <BiancaField
+              label="Group description"
+              note="group_description"
+              help="Describe the main functions of the Group."
+              required
+              :error="signError('group_description')"
+              :data-missing="!!signError('group_description')"
+            >
+              <UTextarea
+                v-model="header.group_description"
                 class="w-full"
-                :maxlength="TEXT_LIMITS.medium"
+                :rows="3"
+                :maxlength="long"
                 :disabled="!editable"
-              />
-            </UFormField>
-            <BiancaField
-              label="Alternate location"
-              note="alt_location"
-            >
-              <BiancaPicker
-                v-model="header.alt_location_id"
-                kind="locations"
-                :selected="saved?.alt_location ?? null"
-                :disabled="!editable"
-                aria-label="Alternate location"
+                placeholder="What the Group does"
               />
             </BiancaField>
-            <UFormField label="Alternate location floor">
-              <UInput
-                v-model="header.alt_floor"
-                class="w-full"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="!editable"
-              />
-            </UFormField>
           </div>
+        </UCard>
+
+        <!-- Work locations -->
+        <UCard>
+          <template #header>
+            <h2 class="text-sm font-semibold">
+              Work locations
+            </h2>
+            <p class="text-xs text-muted">
+              Lokasi kerja utama dan alternatif: building and floor
+            </p>
+          </template>
+          <div class="grid gap-6 @container sm:grid-cols-2">
+            <section
+              v-for="place in [
+                { key: 'main', title: 'Main work location', note: 'main_location' as const, model: 'main_location_id' as const, floor: 'main_floor' as const, selected: mainPlace },
+                { key: 'alt', title: 'Alternate work location', note: 'alt_location' as const, model: 'alt_location_id' as const, floor: 'alt_floor' as const, selected: altPlace },
+              ]"
+              :key="place.key"
+              class="space-y-3 rounded-md border border-default p-3"
+            >
+              <h3 class="flex items-center gap-1.5 text-sm font-medium">
+                <UIcon
+                  :name="place.key === 'main' ? 'i-lucide-building-2' : 'i-lucide-building'"
+                  class="size-4 text-muted"
+                />
+                {{ place.title }}
+                <BiancaNote
+                  :note="place.note"
+                  :label="place.title"
+                />
+              </h3>
+              <UFormField
+                label="Building"
+                required
+                :error="signError(place.model)"
+                :data-missing="!!signError(place.model)"
+              >
+                <BiancaPicker
+                  v-model="header[place.model]"
+                  kind="locations"
+                  :selected="place.selected"
+                  :disabled="!editable"
+                  :aria-label="place.title"
+                  @pick="(row) => {
+                    if (place.key === 'main') { mainPlace = row as BiancaPlace | null; mainHint = null }
+                    else altPlace = row as BiancaPlace | null
+                  }"
+                />
+                <p
+                  v-if="place.key === 'main' && mainHint && editable"
+                  class="mt-1 text-xs"
+                  :class="mainHint.color === 'warning' ? 'text-warning' : 'text-muted'"
+                >
+                  {{ mainHint.text }}
+                </p>
+              </UFormField>
+              <UFormField
+                label="Floor"
+                required
+                :error="signError(place.floor)"
+                :data-missing="!!signError(place.floor)"
+              >
+                <UInput
+                  v-model="header[place.floor]"
+                  class="w-full"
+                  :maxlength="TEXT_LIMITS.medium"
+                  :disabled="!editable"
+                  placeholder="E.g. 12"
+                />
+              </UFormField>
+              <div class="text-xs">
+                <p class="text-muted">
+                  Full address
+                </p>
+                <p :class="place.selected?.address ? 'text-default' : 'text-dimmed'">
+                  {{ place.selected?.address || (place.selected ? 'No address in the building master' : 'Pick the building first') }}
+                </p>
+              </div>
+            </section>
+          </div>
+        </UCard>
+
+        <!-- Recovery strategy -->
+        <UCard>
+          <template #header>
+            <h2 class="flex items-center gap-1.5 text-sm font-semibold">
+              Group recovery strategy
+              <BiancaNote
+                note="recovery_strategy"
+                label="Recovery strategy"
+              />
+            </h2>
+            <p class="text-xs text-muted">
+              Strategi pemulihan dari Group
+            </p>
+          </template>
           <BiancaField
-            label="Recovery strategy"
-            note="recovery_strategy"
+            label="High-level recovery strategy"
+            help="The recovery level of each function (Part 3) should align with it."
+            required
+            :error="signError('recovery_strategy')"
+            :data-missing="!!signError('recovery_strategy')"
           >
             <UTextarea
               v-model="header.recovery_strategy"
@@ -845,130 +1145,285 @@ const people = [
               :rows="3"
               :maxlength="long"
               :disabled="!editable"
+              placeholder="How the Group recovers, at a high level"
             />
           </BiancaField>
-        </div>
-      </UCard>
+        </UCard>
 
-      <UCard
-        v-for="person in people"
-        :key="person.key"
-      >
-        <template #header>
-          <h2 class="text-sm font-semibold">
-            {{ person.title }}
-          </h2>
-        </template>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <BiancaField
-            label="Name"
-            note="bcm_person"
-            class="sm:col-span-2"
-            :help="!header[`${person.key}_id`] && header[person.key]
-              ? 'Typed, not from the user directory. Pick the person to fill the rest from it.'
-              : 'Pick from the user directory; the people of the chosen Group come first.'"
-          >
-            <BiancaPersonPicker
-              v-model="header[`${person.key}_id`]"
-              :selected="persons[person.key]"
-              :typed-name="header[`${person.key}_id`] ? undefined : header[person.key]"
-              :group="org.org_group"
-              :disabled="!editable"
-              :aria-label="person.title"
-              @pick="onPerson(person.key, $event)"
-            />
-          </BiancaField>
-          <UFormField
-            v-for="field in ([['nik', 'NIK'], ['phone', 'Phone'], ['email', 'Email']] as const)"
-            :key="field[0]"
-            :label="field[1]"
-            :help="personHelp(person.key, field[0])"
-          >
-            <UInput
-              v-model="header[`${person.key}${PERSON_FIELDS[field[0]]}`]"
-              :type="field[0] === 'email' ? 'email' : 'text'"
-              class="w-full"
-              :maxlength="field[0] === 'email' ? TEXT_LIMITS.name : TEXT_LIMITS.medium"
-              :disabled="!editable || locked(person.key, field[0])"
-              :trailing-icon="locked(person.key, field[0]) ? 'i-lucide-lock' : undefined"
-            />
-          </UFormField>
-          <BiancaField
-            v-if="person.key === 'bcm_coordinator'"
-            label="Additional phone number"
-            note-text="Only when the number in Phone is no longer active. Leave it empty when that number still works."
-            help="Fill this only when the number in Phone is no longer active."
-          >
-            <UInput
-              v-model="header.bcm_coordinator_phone_2"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.medium"
-              :disabled="!editable"
-              placeholder="E.g. 0813-xxxx-xxxx"
-            />
-          </BiancaField>
-        </div>
-      </UCard>
-
-      <UCard>
-        <template #header>
-          <h2 class="text-sm font-semibold">
-            Risk assessment
-          </h2>
-        </template>
-        <div class="space-y-4">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <BiancaField
-              label="Does the risk assessment consider business continuity?"
-              note="ra_considers_bc"
-            >
-              <USelect
-                :model-value="header.ra_considers_bc == null ? undefined : header.ra_considers_bc ? 'Yes' : 'No'"
-                :items="lookups.yes_no"
-                class="w-full"
-                :disabled="!editable"
-                @update:model-value="header.ra_considers_bc = $event === 'Yes'"
+        <!-- BCM Coordinator and Alternate -->
+        <UCard>
+          <template #header>
+            <h2 class="flex items-center gap-1.5 text-sm font-semibold">
+              BCM Coordinator and Alternate BCM Coordinator
+              <BiancaNote
+                note="bcm_person"
+                label="BCM Coordinator"
               />
-            </BiancaField>
-            <BiancaField
-              label="Are the controls included in the risk assessment?"
-              note="ra_controls_included"
+            </h2>
+            <p class="text-xs text-muted">
+              Two different people, picked from the user directory. Their NIK, phone and email come from it.
+            </p>
+          </template>
+          <UAlert
+            v-if="samePerson"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-users"
+            title="The same person is picked twice"
+            description="The BCM Coordinator and the Alternate BCM Coordinator must be two different people. Pick another Alternate."
+            class="mb-4"
+          />
+          <div class="grid gap-6 sm:grid-cols-2">
+            <section
+              v-for="person in people"
+              :key="person.key"
+              class="space-y-3"
             >
-              <USelect
-                :model-value="header.ra_controls_included == null ? undefined : header.ra_controls_included ? 'Yes' : 'No'"
-                :items="lookups.yes_no"
-                class="w-full"
-                :disabled="!editable"
-                @update:model-value="header.ra_controls_included = $event === 'Yes'"
-              />
-            </BiancaField>
+              <h3 class="flex items-center gap-2 text-sm font-medium">
+                <UIcon
+                  :name="person.key === 'bcm_coordinator' ? 'i-lucide-user-round-check' : 'i-lucide-user-round'"
+                  class="size-4 text-muted"
+                />
+                {{ person.title }}
+              </h3>
+              <UFormField
+                label="Name"
+                required
+                :error="person.key === 'bcm_alternate' && samePerson ? 'Pick someone other than the BCM Coordinator.' : signError(`${person.key}_id`, 'Pick the person.')"
+                :data-missing="!!signError(`${person.key}_id`)"
+              >
+                <BiancaPersonPicker
+                  v-model="header[`${person.key}_id`]"
+                  :selected="persons[person.key]"
+                  :typed-name="header[`${person.key}_id`] ? undefined : header[person.key]"
+                  :group="org.org_group"
+                  :exclude-id="header[`${otherRole(person.key)}_id`]"
+                  :disabled="!editable"
+                  :aria-label="person.title"
+                  @pick="onPerson(person.key, $event)"
+                />
+              </UFormField>
+              <p
+                v-if="!header[`${person.key}_id`] && header[person.key]"
+                class="text-xs text-warning"
+              >
+                Typed in an Excel upload, not from the user directory: pick the person to confirm.
+              </p>
+              <dl class="divide-y divide-default rounded-md border border-default bg-elevated/30 text-sm">
+                <div
+                  v-for="field in PERSON_DETAILS"
+                  :key="field[0]"
+                  class="flex items-start justify-between gap-3 px-3 py-2"
+                >
+                  <dt class="flex shrink-0 items-center gap-1 text-muted">
+                    <UIcon
+                      name="i-lucide-lock"
+                      class="size-3"
+                    />
+                    {{ field[1] }}
+                  </dt>
+                  <dd class="min-w-0 text-right">
+                    <span
+                      v-if="header[`${person.key}${PERSON_FIELDS[field[0]]}`]"
+                      class="break-all"
+                    >{{ header[`${person.key}${PERSON_FIELDS[field[0]]}`] }}</span>
+                    <span
+                      v-else
+                      class="text-xs text-dimmed"
+                    >{{ missingDetail(person.key, field[0]) }}</span>
+                  </dd>
+                </div>
+              </dl>
+              <BiancaField
+                label="Additional phone number"
+                note-text="Only when the number in Phone is no longer active (or the directory has none). Leave it empty when that number still works."
+                :help="header[`${person.key}_id`] && !header[`${person.key}_phone`] ? 'Required: the directory has no phone for this person.' : 'Only when the phone above is no longer active.'"
+                :required="!!header[`${person.key}_id`] && !header[`${person.key}_phone`]"
+                :error="signError(`${person.key}_phone_2`, 'Give a phone number.')"
+                :data-missing="!!signError(`${person.key}_phone_2`)"
+              >
+                <UInput
+                  v-model="header[`${person.key}_phone_2`]"
+                  class="w-full"
+                  :maxlength="TEXT_LIMITS.medium"
+                  :disabled="!editable"
+                  icon="i-lucide-phone"
+                  placeholder="E.g. 0813-xxxx-xxxx"
+                />
+              </BiancaField>
+            </section>
           </div>
-          <BiancaField
-            label="Risk assessment tools"
-            note="ra_tools"
+        </UCard>
+
+        <!-- Risk assessment -->
+        <UCard>
+          <template #header>
+            <h2 class="text-sm font-semibold">
+              Risk assessment
+            </h2>
+            <p class="text-xs text-muted">
+              Is business continuity part of your risk assessment?
+            </p>
+          </template>
+          <div class="space-y-6">
+            <section class="space-y-3">
+              <BiancaField
+                label="1. Have you considered business continuity in your risk assessment process?"
+                note="ra_considers_bc"
+                required
+                :error="signError('ra_considers_bc', 'Answer Yes or No.')"
+                :data-missing="!!signError('ra_considers_bc')"
+              >
+                <URadioGroup
+                  :model-value="yesNo('ra_considers_bc')"
+                  :items="YES_NO"
+                  variant="card"
+                  orientation="horizontal"
+                  :disabled="!editable"
+                  :ui="{ item: 'flex-1' }"
+                  @update:model-value="setYesNo('ra_considers_bc', $event)"
+                />
+              </BiancaField>
+              <BiancaField
+                v-if="header.ra_considers_bc"
+                label="Risk assessment tools used"
+                note="ra_tools"
+                help="Name the tools used to identify and assess risk."
+                class="border-s-2 border-primary/40 ps-3"
+                required
+                :error="signError('ra_tools')"
+                :data-missing="!!signError('ra_tools')"
+              >
+                <UTextarea
+                  v-model="header.ra_tools"
+                  class="w-full"
+                  :rows="2"
+                  :maxlength="long"
+                  :disabled="!editable"
+                  placeholder="E.g. ShARP, ORMS"
+                />
+              </BiancaField>
+            </section>
+            <section class="space-y-3">
+              <BiancaField
+                label="2. Have you included business continuity controls in the risk score cards / profiling?"
+                note="ra_controls_included"
+                required
+                :error="signError('ra_controls_included', 'Answer Yes or No.')"
+                :data-missing="!!signError('ra_controls_included')"
+              >
+                <URadioGroup
+                  :model-value="yesNo('ra_controls_included')"
+                  :items="YES_NO"
+                  variant="card"
+                  orientation="horizontal"
+                  :disabled="!editable"
+                  :ui="{ item: 'flex-1' }"
+                  @update:model-value="setYesNo('ra_controls_included', $event)"
+                />
+              </BiancaField>
+            </section>
+            <BiancaField
+              v-if="raNeedsJustification || header.ra_justification"
+              label="Justification"
+              note="ra_justification"
+              :help="raNeedsJustification ? 'Required: both answers are No.' : 'Only needed when both answers are No.'"
+              :required="raNeedsJustification"
+              :error="signError('ra_justification')"
+              :data-missing="!!signError('ra_justification')"
+            >
+              <UTextarea
+                v-model="header.ra_justification"
+                class="w-full"
+                :rows="3"
+                :maxlength="long"
+                :disabled="!editable"
+                placeholder="Why business continuity isn't considered or included yet, and what is planned"
+              />
+            </BiancaField>
+            <div
+              class="rounded-md border p-3"
+              :class="TONE[signRaStatus.tone as keyof typeof TONE].box"
+              role="status"
+            >
+              <p
+                class="flex items-center gap-2 text-sm font-medium"
+                :class="TONE[signRaStatus.tone as keyof typeof TONE].text"
+              >
+                <UIcon
+                  :name="signRaStatus.icon"
+                  class="size-4"
+                />
+                {{ signRaStatus.title }}
+              </p>
+              <ul class="mt-2 list-disc space-y-0.5 ps-5 text-sm text-muted">
+                <li
+                  v-for="line in signRaStatus.lines"
+                  :key="line"
+                >
+                  {{ line }}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </UCard>
+
+        <div
+          v-if="editable"
+          class="flex flex-wrap items-center justify-between gap-3"
+        >
+          <p
+            class="text-xs"
+            :class="signMissing.length ? 'text-muted' : 'text-success'"
           >
-            <UTextarea
-              v-model="header.ra_tools"
-              class="w-full"
-              :rows="2"
-              :maxlength="long"
-              :disabled="!editable"
-            />
-          </BiancaField>
-          <BiancaField
-            label="Justification"
-            note="ra_justification"
-            help="Needed when neither answer above is Yes."
-          >
-            <UTextarea
-              v-model="header.ra_justification"
-              class="w-full"
-              :rows="2"
-              :maxlength="long"
-              :disabled="!editable"
-            />
-          </BiancaField>
+            <template v-if="signMissing.length">
+              <span class="text-error">*</span> Required. The RA questionnaire opens once all is filled in.
+            </template>
+            <template v-else>
+              All filled in.
+            </template>
+          </p>
+          <UButton
+            trailing-icon="i-lucide-arrow-right"
+            label="Next: RA questionnaire"
+            @click="goTab('ra')"
+          />
         </div>
+      </div>
+
+      <!-- What to fill in, beside the form -->
+      <UCard class="lg:sticky lg:top-4">
+        <template #header>
+          <h2 class="flex items-center gap-2 text-sm font-semibold">
+            <UIcon
+              name="i-lucide-lightbulb"
+              class="size-4 text-primary"
+            />
+            What to fill in here
+          </h2>
+        </template>
+        <ol class="space-y-4 text-sm">
+          <li
+            v-for="(item, i) in SIGN_GUIDE"
+            :key="item.title"
+            class="flex gap-2"
+          >
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">{{ i + 1 }}</span>
+            <div class="space-y-1">
+              <p class="font-medium">
+                {{ item.title }}
+              </p>
+              <p class="text-muted">
+                {{ item.text }}
+              </p>
+            </div>
+          </li>
+        </ol>
+        <template #footer>
+          <p class="text-xs text-muted">
+            The BIA helps the Directorate / Sub Directorate / Group set the Maximum Tolerable Downtime (MTD) of its business functions, the recovery priorities and the resources recovery needs.
+          </p>
+        </template>
       </UCard>
     </div>
 
@@ -976,12 +1431,13 @@ const people = [
     <!-- RA Questionnaire: the workbook's sheet, top to bottom -->
     <div
       v-show="tab === 'ra'"
+      id="bianca-ra"
       class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
     >
       <UCard>
         <template #header>
           <h2 class="text-sm font-semibold">
-            Summary of the Group's total personnel and Risk Assessment questionnaire
+            Summary of the Group's total persoanel and Risk Assessment questionnaire
           </h2>
         </template>
 
@@ -1011,8 +1467,12 @@ const people = [
             <div>
               <h3 class="flex items-center gap-1.5 text-sm font-semibold">
                 <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">1</span>
-                Number of personnel
+                Number of personel
+                <span class="text-error">*</span>
               </h3>
+              <p class="text-xs text-muted">
+                Fill every grade; put 0 where the Group has none.
+              </p>
             </div>
             <div class="overflow-hidden rounded-md border border-default">
               <table class="w-full text-sm">
@@ -1022,7 +1482,7 @@ const people = [
                       Grade / ranking
                     </th>
                     <th class="w-32 px-3 py-2 text-right font-medium">
-                      # of personnel
+                      # of personnel <span class="text-error">*</span>
                     </th>
                   </tr>
                 </thead>
@@ -1063,15 +1523,22 @@ const people = [
                             v-model.number="header.personnel_counts[grade.code]"
                             type="number"
                             min="0"
+                            step="1"
+                            inputmode="numeric"
+                            placeholder="0"
                             class="w-full"
-                            :ui="{ base: 'text-right tabular-nums' }"
+                            :ui="{ base: 'text-right tabular-nums placeholder:text-default' }"
+                            :color="raTried && blankCount(grade.code) ? 'error' : undefined"
+                            :highlight="raTried && blankCount(grade.code)"
+                            :data-missing="raTried && blankCount(grade.code)"
                             :disabled="!editable"
                             :aria-label="`Number of personnel, ${grade.label}`"
                           />
                         </td>
                       </tr>
+                      <!-- Asked only when there are any (e.g. Others) -->
                       <tr
-                        v-if="grade.requires_note"
+                        v-if="grade.requires_note && (Number(header.personnel_counts[grade.code]) || 0) > 0"
                         class="align-top"
                       >
                         <td
@@ -1080,7 +1547,10 @@ const people = [
                         >
                           <UFormField
                             :label="`${grade.label}: please specify`"
-                            :help="(header.personnel_counts[grade.code] ?? 0) > 0 ? 'Required when there are any.' : undefined"
+                            required
+                            help="Who they are, e.g. contract or outsourced staff."
+                            :error="raTried && noteMissing(grade) ? 'Say who they are.' : undefined"
+                            :data-missing="raTried && noteMissing(grade)"
                           >
                             <UInput
                               v-model="header.personnel_notes[grade.code]"
@@ -1113,6 +1583,13 @@ const people = [
                 </tfoot>
               </table>
             </div>
+            <p
+              v-if="raTried && totalStaff <= 0 && !grades.some((grade) => blankCount(grade.code))"
+              class="text-sm text-error"
+              data-missing="true"
+            >
+              The total can't be 0: give the Group's personnel by grade.
+            </p>
           </section>
 
           <!-- 2. Organisation structure -->
@@ -1120,6 +1597,7 @@ const people = [
             <h3 class="flex items-center gap-1.5 text-sm font-semibold">
               <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">2</span>
               Organisation structure
+              <span class="text-error">*</span>
             </h3>
             <p class="text-sm text-muted">
               The Group's current organisation structure (the one in force now).
@@ -1131,6 +1609,13 @@ const people = [
               :disabled="!editable"
               @changed="onOrgStructure"
             />
+            <p
+              v-if="raTried && orgStructureMissing"
+              class="text-sm text-error"
+              data-missing="true"
+            >
+              Attach the Group's organisation structure.
+            </p>
           </section>
 
           <!-- 3. Risk assessment -->
@@ -1138,29 +1623,82 @@ const people = [
             <h3 class="flex items-center gap-1.5 text-sm font-semibold">
               <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">3</span>
               Risk assessment
+              <span class="text-error">*</span>
             </h3>
             <BiancaField
               label="Has the Business Continuity Risk Assessment been completed for your location?"
               note="ra_completed"
+              required
+              :error="raTried && header.ra_completed == null ? 'Answer Yes or No.' : undefined"
+              :data-missing="raTried && header.ra_completed == null"
             >
               <URadioGroup
                 :model-value="header.ra_completed == null ? undefined : header.ra_completed ? 'Yes' : 'No'"
-                :items="lookups.yes_no"
+                :items="RA_ANSWERS"
+                variant="card"
                 orientation="horizontal"
                 :disabled="!editable"
+                :ui="{ item: 'flex-1' }"
                 @update:model-value="header.ra_completed = $event === 'Yes'"
               />
             </BiancaField>
-            <UAlert
-              v-if="header.ra_completed === false"
-              color="warning"
-              variant="subtle"
-              icon="i-lucide-triangle-alert"
-              title="Not completed yet"
-              description="The Head of Sub Directorate coordinates completing the Business Continuity Risk Assessment for your location, or check with BCM."
-            />
+            <!-- What the answer means, in the way SCCA's gap check reads -->
+            <div
+              class="rounded-md border p-3"
+              :class="raStatus.box"
+              role="status"
+            >
+              <p
+                class="flex items-center gap-2 text-sm font-medium"
+                :class="raStatus.text"
+              >
+                <UIcon
+                  :name="raStatus.icon"
+                  class="size-4"
+                />
+                {{ raStatus.title }}
+              </p>
+              <ul class="mt-2 list-disc space-y-0.5 ps-5 text-sm text-muted">
+                <li
+                  v-for="line in raStatus.lines"
+                  :key="line"
+                >
+                  {{ line }}
+                </li>
+              </ul>
+              <p
+                v-if="header.ra_completed === false"
+                class="mt-2 text-xs text-muted"
+              >
+                This doesn't block Submit: BCM sees the answer on the BIA. Change it to Yes once the assessment is done.
+              </p>
+            </div>
           </section>
         </div>
+
+        <template
+          v-if="editable"
+          #footer
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p
+              class="text-xs"
+              :class="raMissing.length ? 'text-muted' : 'text-success'"
+            >
+              <template v-if="raMissing.length">
+                <span class="text-error">*</span> Required. Business functions opens once all is filled in.
+              </template>
+              <template v-else>
+                All filled in.
+              </template>
+            </p>
+            <UButton
+              trailing-icon="i-lucide-arrow-right"
+              label="Next: Business functions"
+              @click="goTab('functions')"
+            />
+          </div>
+        </template>
       </UCard>
 
       <!-- What to fill in, beside the form (as SCCA's "How SCCA works") -->
@@ -1179,7 +1717,7 @@ const people = [
             <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">1</span>
             <div class="space-y-1">
               <p class="font-medium">
-                Number of personnel
+                Number of personel
               </p>
               <p class="text-muted">
                 How many people of the Group are in each grade / ranking. Not sure of a grade? The CIMB Niaga titles under each one tell which, and ⓘ has the workbook's note.
@@ -1318,15 +1856,6 @@ const people = [
 
       <UCard v-if="currentFunction">
         <div class="space-y-4">
-          <UFormField label="Business function">
-            <UInput
-              v-model="currentFunction.name"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.name"
-              :disabled="!editable"
-              placeholder="Name of the business function"
-            />
-          </UFormField>
           <BiancaFunctionEditor
             :key="selected"
             v-model="currentFunction"
@@ -1391,6 +1920,7 @@ const people = [
       >
         <BiancaReference
           :part="referencePart"
+          :active="tab === 'functions'"
           :category-by-mtd="lookups.expected_mtd"
           @close="toggleReference"
         />
@@ -1410,15 +1940,45 @@ const people = [
           For BCM: an overview of the business functions' criticality and their MTD. Filled in from Part 1 and Part 2a, nothing to type here.
         </p>
       </template>
-      <div class="flex flex-wrap gap-x-6 gap-y-1 border-b border-default px-4 py-2 text-sm">
-        <span><span class="text-muted">Sub directorate:</span> {{ org.sub_directorate || '—' }}</span>
-        <span><span class="text-muted">Group:</span> {{ org.org_group || '—' }}</span>
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-2 text-sm">
+        <div class="flex flex-wrap gap-x-6 gap-y-1">
+          <span><span class="text-muted">Sub directorate:</span> {{ org.sub_directorate || '—' }}</span>
+          <span><span class="text-muted">Group:</span> {{ org.org_group || '—' }}</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-file-spreadsheet"
+            :label="picked.length ? `Export ${picked.length} selected to Excel` : 'Export selected to Excel'"
+            :disabled="!picked.length"
+            :loading="exporter.busy.value"
+            @click="exportFunctions(picked)"
+          />
+          <UButton
+            size="sm"
+            icon="i-lucide-file-spreadsheet"
+            label="Export all to Excel"
+            :disabled="!appendixRows.length"
+            :loading="exporter.busy.value"
+            @click="exportFunctions()"
+          />
+        </div>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
           <thead class="bg-elevated/60 text-xs text-muted">
             <tr>
-              <th class="w-12 px-4 py-2 font-medium">
+              <th class="w-10 px-4 py-2">
+                <UCheckbox
+                  :model-value="allPicked ? true : picked.length ? 'indeterminate' : false"
+                  aria-label="Select every function"
+                  :disabled="!appendixRows.length"
+                  @update:model-value="toggleAll($event === true)"
+                />
+              </th>
+              <th class="w-12 px-2 py-2 font-medium">
                 No.
               </th>
               <th class="px-4 py-2 font-medium">
@@ -1430,21 +1990,33 @@ const people = [
               <th class="px-4 py-2 font-medium">
                 Expected MTD
               </th>
+              <th class="w-48 px-4 py-2 font-medium">
+                <span class="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-default">
             <tr
               v-for="row in appendixRows"
               :key="row.index"
+              :class="picked.includes(row.index) ? 'bg-primary/5' : ''"
             >
-              <td class="px-4 py-2 tabular-nums text-muted">
+              <td class="px-4 py-2">
+                <UCheckbox
+                  :model-value="picked.includes(row.index)"
+                  :aria-label="`Select ${row.name}`"
+                  @update:model-value="togglePick(row.index, $event === true)"
+                />
+              </td>
+              <td class="px-2 py-2 tabular-nums text-muted">
                 {{ row.index + 1 }}
               </td>
               <td class="px-4 py-2">
                 <button
                   type="button"
                   class="text-left font-medium text-primary hover:underline"
-                  @click="openFunction(row.index)"
+                  :title="`Open the report of ${row.name}`"
+                  @click="openReport(row.index)"
                 >
                   {{ row.name }}
                 </button>
@@ -1462,23 +2034,44 @@ const people = [
                 >—</span>
               </td>
               <td class="px-4 py-2">
-                <button
-                  v-if="row.expected_mtd"
-                  type="button"
-                  class="hover:underline"
-                  @click="openFunction(row.index, 'p2a')"
-                >
-                  {{ row.expected_mtd }}
-                </button>
+                <span v-if="row.expected_mtd">{{ row.expected_mtd }}</span>
                 <span
                   v-else
                   class="text-muted"
                 >Not picked yet (Part 2a)</span>
               </td>
+              <td class="px-4 py-2">
+                <div class="flex justify-end gap-1">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Excel"
+                    :aria-label="`Export ${row.name} to Excel`"
+                    :disabled="exporter.busy.value"
+                    @click="exportFunctions([row.index])"
+                  />
+                  <UButton
+                    v-if="editable"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-pencil"
+                    :aria-label="`Edit ${row.name} in the form`"
+                    @click="openFunction(row.index)"
+                  />
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <template #footer>
+        <p class="text-xs text-muted">
+          Click a function for its report. The Excel export is the BIA workbook (Template BIA Ver 2.4), filled in with the saved BIA.
+        </p>
+      </template>
     </UCard>
 
     <UCard v-show="tab === 'approval'">

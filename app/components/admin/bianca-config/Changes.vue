@@ -59,7 +59,7 @@ const guideLabels: Record<string, string> = {
   suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',
   customer: 'Customer impact', recovery: 'Recovery', attestation: 'Attestation statement',
   it_dependency: 'IT dependencies', non_it_dependency: 'Non-IT dependencies',
-  alternate_site: 'Alternate site strategy', risk_assessment: 'Personnel and risk assessment',
+  alternate_site: 'Alternate site strategy', risk_assessment: 'Personel and risk assessment',
   critical_timings: 'Critical timings',
 }
 function changeLabel(change: BiancaConfigVersion['changes'][number], fallback: string) {

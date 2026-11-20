@@ -47,7 +47,7 @@ export const BIANCA_PARTS: readonly BiancaPartInfo[] = [
     objective: 'To identify the inter-dependency between the business function and its upstream and downstream, and to make sure their MTDs are in sync.',
     notes: [
       'Upstream: who triggers the activity. Downstream: who receives or processes your output / instruction. Write NA when there is none.',
-      'Justify at the bottom (Notes for all functions) when their planned capacity is less than your function\'s, or their MTD longer.',
+      'Justify on its row when their planned capacity is less than your function\'s, or their MTD longer than your Expected MTD.',
       'SLA: the time agreed in the agreement, or NA when there is no SLA.',
     ],
   },
@@ -111,13 +111,12 @@ export function biancaPartDone(fn: FunctionLike, part: BiancaPart, periods: numb
           return filled(row.rto, row.rpo, row.workaround, row.backlog_hours, row.system_usage)
         })
     case 'p2b':
-      return filled(value('planned_capacity')) && rows('dependencies').length > 0
-        && rows('dependencies').every((row) => (['up', 'down'] as const).every((side) => {
-          const name = row[`${side}_name`]
-          if (blank(name)) return false
-          if (isNa(name)) return true
-          return filled(row[`${side}_capacity`], row[`${side}_mtd`], row[`${side}_sla`], row[`${side}_outsourced`], row[`${side}_material`])
-        }))
+      // The upstreams and the downstreams are two lists: each needs one entry at least (NA when none).
+      return filled(value('planned_capacity')) && (['up', 'down'] as const).every((side) => {
+        const entries = rows('dependencies').filter((row) => !blank(row[`${side}_name`]))
+        return entries.length > 0 && entries.every((row) => isNa(row[`${side}_name`])
+          || filled(row[`${side}_capacity`], row[`${side}_mtd`], row[`${side}_sla`], row[`${side}_outsourced`], row[`${side}_material`]))
+      })
     case 'p3':
       return filled(
         value('total_staff'), value('staff_required'), value('recovery_level'), value('prioritization_strategy'),

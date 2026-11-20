@@ -74,7 +74,7 @@ function selectedSigner(id: number | null) {
         <div class="flex items-center justify-between gap-3">
           <div>
             <h2 class="text-lg font-semibold">
-              Personnel levels
+              Personel levels
             </h2>
             <p class="text-sm text-muted">
               Category codes are stable. Deactivate published categories instead of deleting them. Active U ranges cannot overlap.

@@ -124,13 +124,19 @@ function where(problem: { sheet: string | null, cell: string | null }) {
               Use the template downloaded here, for this draft's Group ({{ draft.org_group || '-' }}).
             </template>
             <template v-else>
-              Pick the Group, then download its template. The draft is made for that Group.
+              <template v-if="lookups?.can_pick_group">
+                Pick the Group, then download its template. The draft is made for that Group.
+              </template>
+              <template v-else>
+                Download the template of your Group. The draft is made for your Group.
+              </template>
             </template>
             It is the BIA workbook (Template BIA ver 2.4) with its drop-downs taken from the system when you download it: buildings, application systems, MTDs and Groups. Fill the input boxes (the floor goes in the box under each building) and pick values from the drop-downs. The file name doesn't matter.
           </p>
           <BiancaOrgPicker
             v-if="!draft && open"
             v-model="org"
+            :locked="!lookups?.can_pick_group"
           />
           <UButton
             :to="draft ? `${BIANCA_TEMPLATE_URL}?assessment_id=${draft.id}` : templateUrl"

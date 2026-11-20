@@ -13,10 +13,13 @@ const props = withDefaults(defineProps<{
   group?: string
   disabled?: boolean
   ariaLabel?: string
+  /** Someone who can't be picked here (the person picked for the other role). */
+  excludeId?: number
 }>(), {
   selected: null,
   typedName: undefined,
   group: undefined,
+  excludeId: undefined,
   disabled: false,
   ariaLabel: 'Find a person',
 })
@@ -48,7 +51,7 @@ onMounted(() => load(''))
 onBeforeUnmount(() => clearTimeout(timer))
 
 const items = computed(() => {
-  const rows = [...found.value]
+  const rows = found.value.filter((row) => row.id !== props.excludeId)
   if (props.selected && !rows.some((row) => row.id === props.selected!.id)) rows.unshift(props.selected)
   const out = rows.map((person) => ({
     label: person.label,

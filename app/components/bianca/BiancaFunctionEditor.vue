@@ -73,9 +73,6 @@ function pickApplication(row: BiancaItDependency, picked: { label: string, rto?:
 function addIt() {
   if (fn.value.it_dependencies.length < props.lookups.it_slots) fn.value.it_dependencies.push({})
 }
-function addDependency() {
-  if (fn.value.dependencies.length < props.lookups.dependency_slots) fn.value.dependencies.push({})
-}
 
 function daat(index: number) {
   return props.preview?.it_dependencies[index]
@@ -84,9 +81,54 @@ function daat(index: number) {
 const losses = computed(() => fn.value.loss ?? [])
 const nonNumeric = 'tabular-nums'
 const sides = [
-  { key: 'up', label: 'Upstream' },
-  { key: 'down', label: 'Downstream' },
+  {
+    key: 'up',
+    title: 'Upstream',
+    name: 'Upstream',
+    description: 'Who triggers the activity. Type NA as the name when there is none.',
+  },
+  {
+    key: 'down',
+    title: 'Downstream',
+    name: 'Downstream',
+    description: 'Who receives or processes your output / instruction. Type NA as the name when there is none.',
+  },
 ] as const
+type Side = typeof sides[number]['key']
+type DependencyRow = Record<string, string | undefined>
+
+/**
+ * Part 2b keeps the workbook's rows: each row holds an upstream and a downstream side by side.
+ * The form shows the two as their own lists; an entry is a row whose side has a name (an empty
+ * string while it is being typed).
+ */
+function sideRows(side: Side) {
+  return fn.value.dependencies
+    .map((data, index) => ({ data: data as DependencyRow, index }))
+    .filter((row) => row.data[`${side}_name`] != null)
+}
+function addSide(side: Side) {
+  const free = fn.value.dependencies.findIndex((row) => (row as DependencyRow)[`${side}_name`] == null)
+  if (free >= 0) (fn.value.dependencies[free] as DependencyRow)[`${side}_name`] = ''
+  else if (fn.value.dependencies.length < props.lookups.dependency_slots) fn.value.dependencies.push({ [`${side}_name`]: '' })
+}
+const SIDE_FIELDS = ['name', 'capacity', 'mtd', 'sla', 'outsourced', 'material', 'justification'] as const
+function removeSide(index: number, side: Side) {
+  const row = fn.value.dependencies[index] as DependencyRow
+  for (const field of SIDE_FIELDS) row[`${side}_${field}`] = undefined
+  const other = side === 'up' ? 'down' : 'up'
+  if (row[`${other}_name`] == null) fn.value.dependencies.splice(index, 1)
+}
+const isNaName = (value: string | undefined) => value?.trim().toUpperCase() === 'NA'
+/** Why the entry needs a justification (lower capacity, longer MTD), as the API works it out. */
+function justifyReasons(index: number, side: Side) {
+  // The preview is worked out without the empty rows (see BiancaForm's toInput).
+  const blank = (row: object) => Object.values(row).every((item) => item == null || (typeof item === 'string' && !item.trim()))
+  const rows = fn.value.dependencies
+  if (!rows[index] || blank(rows[index])) return []
+  const at = rows.slice(0, index).filter((row) => !blank(row)).length
+  return props.preview?.dependencies?.[at]?.[side] ?? []
+}
 const long = TEXT_LIMITS.long
 
 /** Part 1's rule for the Suggested MTD, worked out from the impact typed so far. */
@@ -115,6 +157,36 @@ function withCurrent(items: readonly string[], value: string | null | undefined)
 
 /** The parts whose sheet has a REFERENCE box at the bottom (Part 4's has none). */
 const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['p1', 'p2a', 'p2b', 'p3'].includes(value)
+
+/** The parts can be filled once the function has a name (typed in Part 1). */
+const named = computed(() => !!fn.value.name?.trim())
+const off = computed(() => props.disabled || !named.value)
+
+/**
+ * What each sheet of the workbook shows from the earlier parts (its formula columns), read only:
+ * the name, and e.g. Part 2a's Suggested MTD from Part 1.
+ */
+const carried = computed(() => {
+  const category = props.preview?.category ?? null
+  const fields: Record<BiancaPart, { label: string, value: string | null | undefined, from: string }[]> = {
+    p1: [],
+    p2a: [
+      { label: 'Suggested MTD (hours / days)', value: fn.value.suggested_mtd, from: 'Part 1' },
+    ],
+    p2b: [
+      { label: 'Expected MTD (hours / days)', value: fn.value.expected_mtd, from: 'Part 2a' },
+    ],
+    p3: [
+      { label: 'Planned capacity (%) of the function', value: fn.value.planned_capacity, from: 'Part 2b' },
+      { label: 'Business function category', value: category, from: 'Part 2a' },
+      { label: 'Expected MTD (hours / days)', value: fn.value.expected_mtd, from: 'Part 2a' },
+    ],
+    p4: [
+      { label: 'Business function category', value: category, from: 'Part 2a' },
+    ],
+  }
+  return fields[part.value]
+})
 </script>
 
 <template>
@@ -155,6 +227,51 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         </li>
       </ul>
     </div>
+
+    <!-- The name: typed once, in Part 1; the other parts show it, as the workbook's sheets do -->
+    <div
+      class="grid gap-4"
+      :class="carried.length ? '@xl:grid-cols-2 @3xl:grid-cols-4' : ''"
+    >
+      <UFormField
+        label="Name of business function"
+        :required="part === 'p1'"
+        :help="part === 'p1' ? 'Type it here, in Part 1; the other parts show it.' : 'From Part 1'"
+        :class="carried.length ? '@3xl:col-span-1' : 'max-w-2xl'"
+      >
+        <UInput
+          v-model="fn.name"
+          class="w-full"
+          :maxlength="TEXT_LIMITS.name"
+          :disabled="disabled || part !== 'p1'"
+          :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-muted' }"
+          placeholder="Name of the business function"
+        />
+      </UFormField>
+      <UFormField
+        v-for="field in carried"
+        :key="field.label"
+        :label="field.label"
+        :help="`From ${field.from}`"
+      >
+        <UInput
+          :model-value="field.value ?? ''"
+          class="w-full"
+          disabled
+          :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-muted' }"
+          :placeholder="`Not filled in ${field.from} yet`"
+        />
+      </UFormField>
+    </div>
+    <UAlert
+      v-if="!named && !disabled"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-pencil-line"
+      :title="part === 'p1' ? 'Type the name of the business function first' : 'This function has no name yet'"
+      :description="part === 'p1' ? 'The parts open once the function has a name.' : 'Go to Part 1 and type its name; the parts open once it has one.'"
+      :actions="part === 'p1' ? undefined : [{ label: 'Go to Part 1', color: 'warning', variant: 'outline', onClick: () => { part = 'p1' } }]"
+    />
 
     <!-- Part 1 -->
     <section
@@ -200,7 +317,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                   type="number"
                   min="0"
                   size="sm"
-                  :disabled="disabled"
+                  :disabled="off"
                   :class="[nonNumeric, lookups.loss_alert_idr < (Number(fn.loss[i]) || 0) ? 'ring-1 ring-error' : '']"
                   :aria-label="`Loss ${periods[i]}`"
                 />
@@ -209,7 +326,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             <tr>
               <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
-                  Regulatory score
+                  Regulatory impact (A) score (1–3)
                   <BiancaNote
                     note="regulatory_score"
                     label="Regulatory score"
@@ -228,7 +345,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                   size="sm"
                   class="w-full"
                   :ui="fn.regulatory_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
-                  :disabled="disabled"
+                  :disabled="off"
                   :aria-label="`Regulatory score ${periods[i]}`"
                 />
               </td>
@@ -236,7 +353,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             <tr>
               <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
-                  Customer service score
+                  Customer service impact (B) score (1–3)
                   <BiancaNote
                     note="customer_score"
                     label="Customer service score"
@@ -255,7 +372,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                   size="sm"
                   class="w-full"
                   :ui="fn.customer_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
-                  :disabled="disabled"
+                  :disabled="off"
                   :aria-label="`Customer score ${periods[i]}`"
                 />
               </td>
@@ -274,7 +391,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         A loss above IDR {{ formatIdr(lookups.loss_alert_idr) }} is highlighted in the workbook.
       </p>
       <BiancaField
-        label="Suggested MTD"
+        label="Suggested MTD (hours / days)"
         note="suggested_mtd"
         :note-text="lookups.guides?.suggested_mtd || undefined"
         class="max-w-md"
@@ -283,7 +400,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           v-model="fn.suggested_mtd"
           :items="lookups.suggested_mtd"
           class="w-full max-w-xs"
-          :disabled="disabled"
+          :disabled="off"
         />
         <template #help>
           <span v-if="!ruleMtd">The maximum tolerable downtime suggested by the impact above.</span>
@@ -294,7 +411,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           >
             By the workbook's rule, the impact above suggests <strong class="text-default">{{ ruleMtd }}</strong>.
             <UButton
-              v-if="!disabled"
+              v-if="!off"
               size="xs"
               variant="link"
               label="Use it"
@@ -313,7 +430,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
     >
       <div class="flex flex-wrap items-end gap-4">
         <BiancaField
-          label="Expected MTD"
+          label="Expected MTD (hours / days)"
           note="expected_mtd"
           help="Should be equal to or shorter than the Suggested MTD."
           class="w-56"
@@ -322,20 +439,22 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             v-model="fn.expected_mtd"
             :items="withCurrent(lookups.expected_mtd.map(item => item.value), fn.expected_mtd)"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
-        <div class="pb-2">
-          <StatusBadge
-            v-if="preview?.category"
-            :scale="BIANCA_CATEGORY"
-            :value="preview.category as keyof typeof BIANCA_CATEGORY"
+        <UFormField
+          label="Business function category"
+          help="Follows the Expected MTD (BIA Category)"
+          class="w-64"
+        >
+          <UInput
+            :model-value="preview?.category ?? ''"
+            class="w-full"
+            disabled
+            :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-muted' }"
+            placeholder="Pick the Expected MTD"
           />
-          <span
-            v-else
-            class="text-sm text-muted"
-          >Category follows the Expected MTD</span>
-        </div>
+        </UFormField>
       </div>
       <UAlert
         v-if="preview?.within_suggested_mtd === false"
@@ -354,7 +473,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           <div class="flex items-center justify-between gap-2">
             <span class="text-sm font-semibold">IT system {{ index + 1 }}</span>
             <UButton
-              v-if="!disabled && fn.it_dependencies.length > 1"
+              v-if="!off && fn.it_dependencies.length > 1"
               color="neutral"
               variant="ghost"
               size="xs"
@@ -373,7 +492,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
               :model-value="modeOf(row)"
               :items="modes"
               class="w-full"
-              :disabled="disabled"
+              :disabled="off"
               @update:model-value="setMode(row, $event as Mode)"
             />
           </BiancaField>
@@ -385,7 +504,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
               v-model="row.application_id"
               kind="applications"
               :selected="row.application_id && row.application_name ? { id: row.application_id, label: row.application_name } : null"
-              :disabled="disabled"
+              :disabled="off"
               aria-label="IT application system"
               @pick="pickApplication(row, $event)"
             />
@@ -398,7 +517,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
               v-model="row.application_name"
               class="w-full"
               :maxlength="TEXT_LIMITS.name"
-              :disabled="disabled"
+              :disabled="off"
             />
           </UFormField>
         </div>
@@ -406,7 +525,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         <template v-if="modeOf(row) !== 'na'">
           <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
             <BiancaField
-              label="RTO"
+              label="IT committed RTO (hours / days)"
               note="rto"
               :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
             >
@@ -415,12 +534,12 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                 class="w-full"
                 :readonly="modeOf(row) === 'master'"
                 :maxlength="TEXT_LIMITS.medium"
-                :disabled="disabled"
+                :disabled="off"
                 placeholder="e.g. 6 hrs"
               />
             </BiancaField>
             <BiancaField
-              label="RPO"
+              label="IT committed RPO (LDB / LST / LSB)"
               note="rpo"
               :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
             >
@@ -429,19 +548,19 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                 class="w-full"
                 :readonly="modeOf(row) === 'master'"
                 :maxlength="TEXT_LIMITS.medium"
-                :disabled="disabled"
+                :disabled="off"
                 placeholder="LDB, LST, LSB or NA"
               />
             </BiancaField>
             <BiancaField
-              label="Workaround available"
+              label="Process workaround in place (Yes / No)"
               note="workaround"
             >
               <USelect
                 v-model="row.workaround"
                 :items="lookups.yes_no"
                 class="w-full"
-                :disabled="disabled"
+                :disabled="off"
               />
             </BiancaField>
             <BiancaField
@@ -453,26 +572,27 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                 type="number"
                 min="0"
                 class="w-full"
-                :disabled="disabled"
+                :disabled="off"
               />
             </BiancaField>
           </div>
           <div class="grid gap-4 @xl:grid-cols-2">
             <BiancaField
-              label="System usage"
+              label="System usage (inquiry / transaction)"
               note="system_usage"
             >
               <USelect
                 v-model="row.system_usage"
                 :items="lookups.system_usage"
                 class="w-full"
-                :disabled="disabled"
+                :disabled="off"
               />
             </BiancaField>
             <BiancaField
               label="Workaround critical gaps"
               note="gaps"
-              :help="daat(index)?.gaps_required ? 'Required: RTO is longer than the MTD, there is no workaround and the system is a full dependency.' : 'Needed only if RTO > MTD, no workaround and full dependency.'"
+              :required="!!daat(index)?.gaps_required"
+              :help="daat(index)?.gaps_required ? 'Required: RTO is longer than the MTD, there is no workaround and the system is a full dependency.' : 'Opens only if RTO > MTD, no workaround and full dependency.'"
               :error="daat(index)?.gaps_required && !row.gaps ? 'Required' : undefined"
             >
               <UTextarea
@@ -480,7 +600,9 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
                 class="w-full"
                 :rows="2"
                 :maxlength="long"
-                :disabled="disabled"
+                :disabled="off || !daat(index)?.gaps_required"
+                :ui="{ base: 'disabled:bg-elevated' }"
+                :placeholder="daat(index)?.gaps_required ? 'The critical gaps, since there is no workaround' : 'Not needed for this system'"
               />
             </BiancaField>
           </div>
@@ -523,7 +645,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         </template>
       </UCard>
       <UButton
-        v-if="!disabled && fn.it_dependencies.length < lookups.it_slots"
+        v-if="!off && fn.it_dependencies.length < lookups.it_slots"
         color="neutral"
         variant="outline"
         icon="i-lucide-plus"
@@ -532,128 +654,222 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
       />
     </section>
 
-    <!-- Part 2b -->
+    <!-- Part 2b: the workbook's columns D (the function's capacity), then the upstreams and the
+         downstreams, each a table filled across like SCCA's interdependencies -->
     <section
       v-show="part === 'p2b'"
       class="space-y-4"
     >
       <BiancaField
-        label="Function planned capacity"
+        label="Planned capacity (%) for the business function"
         note="planned_capacity"
-        class="max-w-xs"
+        required
+        help="Its upstreams and downstreams are compared with it."
+        class="max-w-sm"
       >
         <USelect
           v-model="fn.planned_capacity"
           :items="lookups.percentages"
           class="w-full"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
+
       <UCard
-        v-for="(row, index) in fn.dependencies"
-        :key="index"
-        :ui="{ body: 'space-y-4' }"
+        v-for="side in sides"
+        :key="side.key"
+        :ui="{ body: 'p-0 sm:p-0' }"
       >
         <template #header>
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-sm font-semibold">Dependency {{ index + 1 }}</span>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 class="flex items-center gap-1.5 text-sm font-semibold">
+                {{ side.title }} <span class="text-error">*</span>
+                <BiancaNote
+                  :note="side.key === 'up' ? 'upstream' : 'downstream'"
+                  :label="side.title"
+                />
+              </h4>
+              <p class="text-xs text-muted">
+                {{ side.description }}
+              </p>
+            </div>
             <UButton
-              v-if="!disabled && fn.dependencies.length > 1"
+              v-if="!off && sideRows(side.key).length < lookups.dependency_slots"
               color="neutral"
-              variant="ghost"
-              size="xs"
-              icon="i-lucide-trash-2"
-              :aria-label="`Remove dependency ${index + 1}`"
-              @click="fn.dependencies.splice(index, 1)"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-plus"
+              :label="`Add ${side.key === 'up' ? 'upstream' : 'downstream'}`"
+              @click="addSide(side.key)"
             />
           </div>
         </template>
-        <div
-          v-for="side in sides"
-          :key="side.key"
-          class="space-y-2"
+
+        <p
+          v-if="!sideRows(side.key).length"
+          class="p-4 text-sm text-muted"
         >
-          <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">
-            {{ side.label }}
-          </h4>
-          <div class="grid gap-3 @xl:grid-cols-2 @3xl:grid-cols-3">
-            <BiancaField
-              label="Name"
-              :note="side.key === 'up' ? 'upstream' : 'downstream'"
-            >
-              <UInput
-                v-model="row[`${side.key}_name`]"
-                class="w-full"
-                :maxlength="TEXT_LIMITS.name"
-                :disabled="disabled"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Planned capacity"
-              note="dependency_capacity"
-            >
-              <USelect
-                v-model="row[`${side.key}_capacity`]"
-                :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
-                class="w-full"
-                :disabled="disabled"
-              />
-            </BiancaField>
-            <BiancaField
-              label="MTD"
-              note="dependency_mtd"
-            >
-              <USelect
-                v-model="row[`${side.key}_mtd`]"
-                :items="withCurrent(lookups.dependency_mtd, row[`${side.key}_mtd`])"
-                class="w-full"
-                :disabled="disabled"
-              />
-            </BiancaField>
-            <BiancaField
-              label="SLA"
-              note="sla"
-            >
-              <UInput
-                v-model="row[`${side.key}_sla`]"
-                class="w-full"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="disabled"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Outsourced"
-              note="outsourced"
-            >
-              <USelect
-                v-model="row[`${side.key}_outsourced`]"
-                :items="lookups.yes_no"
-                class="w-full"
-                :disabled="disabled"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Material"
-              note="material"
-            >
-              <USelect
-                v-model="row[`${side.key}_material`]"
-                :items="lookups.yes_no"
-                class="w-full"
-                :disabled="disabled"
-              />
-            </BiancaField>
-          </div>
+          None yet. Add one, or type NA as the name when there is none.
+        </p>
+        <div
+          v-else
+          class="overflow-x-auto"
+        >
+          <table class="w-full min-w-[78rem] text-sm">
+            <thead>
+              <tr class="bg-elevated/50 text-left text-xs font-medium text-muted">
+                <th class="sticky left-0 z-10 w-10 bg-elevated px-3 py-2">
+                  No.
+                </th>
+                <th class="sticky left-10 z-10 min-w-56 bg-elevated px-3 py-2">
+                  {{ side.name }} <span class="text-error">*</span>
+                </th>
+                <th class="w-36 px-3 py-2">
+                  Planned capacity (%) <span class="text-error">*</span>
+                </th>
+                <th class="w-40 px-3 py-2">
+                  Expected MTD (hours / days) <span class="text-error">*</span>
+                </th>
+                <th class="w-40 px-3 py-2">
+                  SLA (time in the agreement) <span class="text-error">*</span>
+                </th>
+                <th class="w-32 px-3 py-2">
+                  Outsourcing service provider (Yes / No) <span class="text-error">*</span>
+                </th>
+                <th class="w-32 px-3 py-2">
+                  Material services (Yes / No) <span class="text-error">*</span>
+                </th>
+                <th class="min-w-64 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">
+                    Justification of a lower capacity or a longer MTD
+                    <BiancaNote
+                      note="dependency_justification"
+                      label="Justification"
+                    />
+                  </span>
+                </th>
+                <th class="w-10 px-2 py-2">
+                  <span class="sr-only">Remove</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr
+                v-for="(row, number) in sideRows(side.key)"
+                :key="`${side.key}${row.index}`"
+                class="align-top"
+              >
+                <td class="sticky left-0 z-10 bg-default px-3 py-2 tabular-nums text-muted">
+                  {{ number + 1 }}
+                </td>
+                <td class="sticky left-10 z-10 bg-default px-3 py-2">
+                  <UInput
+                    v-model="row.data[`${side.key}_name`]"
+                    class="w-full"
+                    :maxlength="TEXT_LIMITS.name"
+                    :disabled="off"
+                    placeholder="Name, or NA"
+                    :aria-label="`${side.name} ${number + 1}`"
+                  />
+                </td>
+                <template v-if="isNaName(row.data[`${side.key}_name`])">
+                  <td
+                    colspan="6"
+                    class="px-3 py-2 text-xs text-muted"
+                  >
+                    NA: no {{ side.key === 'up' ? 'upstream' : 'downstream' }}, nothing more to fill in.
+                  </td>
+                </template>
+                <template v-else>
+                  <td class="px-3 py-2">
+                    <USelect
+                      v-model="row.data[`${side.key}_capacity`]"
+                      :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
+                      class="w-full"
+                      :disabled="off"
+                      :aria-label="`Planned capacity, ${side.name} ${number + 1}`"
+                    />
+                  </td>
+                  <td class="px-3 py-2">
+                    <USelect
+                      v-model="row.data[`${side.key}_mtd`]"
+                      :items="withCurrent(lookups.dependency_mtd, row.data[`${side.key}_mtd`])"
+                      class="w-full"
+                      :disabled="off"
+                      :aria-label="`Expected MTD, ${side.name} ${number + 1}`"
+                    />
+                  </td>
+                  <td class="px-3 py-2">
+                    <UInput
+                      v-model="row.data[`${side.key}_sla`]"
+                      class="w-full"
+                      :maxlength="TEXT_LIMITS.medium"
+                      :disabled="off"
+                      placeholder="E.g. 1 day, or NA"
+                      :aria-label="`SLA, ${side.name} ${number + 1}`"
+                    />
+                  </td>
+                  <td class="px-3 py-2">
+                    <USelect
+                      v-model="row.data[`${side.key}_outsourced`]"
+                      :items="lookups.yes_no"
+                      class="w-full"
+                      :disabled="off"
+                      :aria-label="`Outsourcing service provider, ${side.name} ${number + 1}`"
+                    />
+                  </td>
+                  <td class="px-3 py-2">
+                    <USelect
+                      v-model="row.data[`${side.key}_material`]"
+                      :items="lookups.yes_no"
+                      class="w-full"
+                      :disabled="off"
+                      :aria-label="`Material services, ${side.name} ${number + 1}`"
+                    />
+                  </td>
+                  <td class="px-3 py-2">
+                    <UTextarea
+                      v-model="row.data[`${side.key}_justification`]"
+                      class="w-full"
+                      :rows="2"
+                      autoresize
+                      :maxlength="long"
+                      :disabled="off || !justifyReasons(row.index, side.key).length"
+                      :color="justifyReasons(row.index, side.key).length && !row.data[`${side.key}_justification`]?.trim() ? 'error' : undefined"
+                      :highlight="!!justifyReasons(row.index, side.key).length && !row.data[`${side.key}_justification`]?.trim()"
+                      :ui="{ base: 'disabled:bg-elevated' }"
+                      :placeholder="justifyReasons(row.index, side.key).length ? 'Why it is acceptable' : 'Not needed'"
+                      :aria-label="`Justification, ${side.name} ${number + 1}`"
+                    />
+                    <p
+                      v-for="reason in justifyReasons(row.index, side.key)"
+                      :key="reason"
+                      class="mt-1 flex items-start gap-1 text-xs text-warning"
+                    >
+                      <UIcon
+                        name="i-lucide-triangle-alert"
+                        class="mt-px size-3.5 shrink-0"
+                      />{{ reason }}
+                    </p>
+                  </td>
+                </template>
+                <td class="px-2 py-2">
+                  <UButton
+                    v-if="!off"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-trash-2"
+                    :aria-label="`Remove ${side.name} ${number + 1}`"
+                    @click="removeSide(row.index, side.key)"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </UCard>
-      <UButton
-        v-if="!disabled && fn.dependencies.length < lookups.dependency_slots"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-plus"
-        label="Add dependency"
-        @click="addDependency"
-      />
     </section>
 
     <!-- Part 3 -->
@@ -663,7 +879,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
     >
       <div class="grid gap-4 @xl:grid-cols-3">
         <BiancaField
-          label="Total staff"
+          label="Total staff strength (no. of staff)"
           note="total_staff"
         >
           <UInput
@@ -671,11 +887,11 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
         <BiancaField
-          label="Staff required"
+          label="Staff required for the planned capacity (no. of staff)"
           note="staff_required"
         >
           <UInput
@@ -683,18 +899,18 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
         <BiancaField
-          label="Recovery level"
+          label="Expected recovery level (%)"
           note="recovery_level"
         >
           <USelect
             v-model="fn.recovery_level"
             :items="lookups.percentages"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
       </div>
@@ -707,7 +923,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="2"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <BiancaField
@@ -719,7 +935,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="2"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <BiancaField
@@ -740,12 +956,12 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           v-model="fn.alt_site_strategy"
           :items="lookups.alt_site_strategies"
           class="w-full"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
         <BiancaField
-          label="Current seats"
+          label="Current BCP seats in place (seats)"
           note="seats_current"
         >
           <UInput
@@ -753,11 +969,11 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
         <BiancaField
-          label="Seats required"
+          label="BCP seats required after the BIA (seats)"
           note="seats_required"
         >
           <UInput
@@ -765,7 +981,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
       </div>
@@ -777,45 +993,45 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         />
       </p>
       <div class="grid gap-4 @xl:grid-cols-4">
-        <UFormField label="PC">
+        <UFormField label="PC (units)">
           <UInput
             v-model.number="fn.res_pc"
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </UFormField>
-        <UFormField label="Phone">
+        <UFormField label="Phone, fixed line (units)">
           <UInput
             v-model.number="fn.res_phone"
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </UFormField>
-        <UFormField label="Fax">
+        <UFormField label="Fax (units)">
           <UInput
             v-model.number="fn.res_fax"
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </UFormField>
-        <UFormField label="Copier">
+        <UFormField label="Copier (units)">
           <UInput
             v-model.number="fn.res_copier"
             type="number"
             min="0"
             class="w-full"
-            :disabled="disabled"
+            :disabled="off"
           />
         </UFormField>
       </div>
       <BiancaField
-        label="Other resources"
+        label="Other resources (please specify)"
         note="res_others"
       >
         <UTextarea
@@ -823,7 +1039,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="2"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <div class="grid gap-4 @xl:grid-cols-2">
@@ -836,7 +1052,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             class="w-full"
             :rows="2"
             :maxlength="long"
-            :disabled="disabled"
+            :disabled="off"
           />
         </BiancaField>
         <UFormField label="Vital records location">
@@ -845,7 +1061,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
             class="w-full"
             :rows="2"
             :maxlength="long"
-            :disabled="disabled"
+            :disabled="off"
           />
         </UFormField>
       </div>
@@ -865,7 +1081,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="3"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <BiancaField
@@ -877,7 +1093,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           v-model="fn.frequency"
           :items="lookups.frequencies"
           class="w-full"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <BiancaField
@@ -889,7 +1105,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="2"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
       <BiancaField
@@ -901,7 +1117,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
           class="w-full"
           :rows="2"
           :maxlength="long"
-          :disabled="disabled"
+          :disabled="off"
         />
       </BiancaField>
     </section>
@@ -927,6 +1143,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p2b' | 'p3' => ['
         variant="outline"
         trailing-icon="i-lucide-arrow-right"
         :label="`Next: ${nextPart.label}`"
+        :disabled="!named && !disabled"
         @click="goNext"
       />
     </div>
