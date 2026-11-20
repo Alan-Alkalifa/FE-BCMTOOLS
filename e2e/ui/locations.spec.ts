@@ -290,14 +290,14 @@ test('the Buildings list shows the latest Risk Assessment ID and its residual ap
 })
 
 test('the Location permission alone opens the Sites menu, not the building pages (Master building)', async ({ page }) => {
-  await mockRa(page, { permissions: ['scca.access', 'location.access'] })
+  await mockRa(page, { permissions: ['scca.access', 'sites.access'] })
   await page.goto('/')
   const sidebar = page.getByRole('navigation', { name: 'Main' })
   await expect(sidebar.getByRole('link', { name: 'Building map', exact: true })).toBeVisible({ timeout: 60_000 })
   for (const name of ['Sites', 'Disaster', 'Incident']) {
     await expect(sidebar.getByRole('button', { name, exact: true })).toBeVisible()
   }
-  // No Buildings list, and a building's page is only in Master building (location.master).
+  // No Buildings list, and a building's page is only in Master building (sites.master).
   await expect(sidebar.getByRole('link', { name: 'Buildings', exact: true })).toHaveCount(0)
   await expect(sidebar.locator('a[href="/ra/manage"]')).toHaveCount(0)
   await page.goto('/admin/buildings/1')

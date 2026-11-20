@@ -4,7 +4,7 @@ import type { LocationQueryRaw } from 'vue-router'
 import type { RaLocation } from '~/composables/useRa'
 
 /**
- * Administration › Master data › Master building, the Buildings register: head office buildings and branches
+ * Administration › Master building, the Buildings register: head office buildings and branches
  * in one table, filtered by type,
  * province and status and sorted by a column (all in the URL; the newest change first by
  * default), one page at a time. A row opens the building's profile.
@@ -12,8 +12,8 @@ import type { RaLocation } from '~/composables/useRa'
  * Building column shows it (one badge: Waiting for approval, Deactivation requested, Rejected,
  * Active or Inactive), and the status filter lists the ones waiting. The Inactive filter lists
  * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
- * building's page, not here. Its buildings open in Master building too
- * (/masterdata/masterbuilding/{id}), as does Input building data.
+ * building's page, not here. Its buildings open in Master building too (/admin/buildings/{id}),
+ * as does Input building data.
  */
 const { can } = useAuth()
 /** Every building and branch with the Location permission, otherwise the RA sides the user
@@ -94,14 +94,11 @@ const typeModel = computed<TypeFilter>({ get: () => type.value, set: (value) => 
 const provinceModel = computed<string>({ get: () => province.value ?? 'all', set: (value) => setQuery('province', value) })
 const statusModel = computed<StatusFilter>({ get: () => statusFilter.value, set: (value) => setQuery('status', value) })
 
-/** Import from Excel opens as a dialog; `?import=head_office|branch` (or `1`) opens it too. */
-const importOpen = computed<boolean>({
-  get: () => route.query.import !== undefined && canEdit.value,
-  set: (value) => {
-    router.replace({ query: { ...route.query, import: value ? 'head_office' : undefined } })
-  },
-})
-const importKind = computed<RaKind | undefined>(() => (route.query.import === 'branch' ? 'branch' : route.query.import === 'head_office' ? 'head_office' : undefined))
+// Import from Excel is in RA HO and RA Branch › Manage: an old `?import=` link opens it there.
+if (route.query.import !== undefined) {
+  const kind: RaKind = route.query.import === 'branch' ? 'branch' : 'head_office'
+  await navigateTo({ path: raPath(kind, 'manage'), query: { import: '1' } }, { replace: true })
+}
 
 const { data, status, error, refresh } = useRaLocationRegister(() => ({
   kind: type.value,
@@ -145,7 +142,7 @@ const statusItems = [
 const NUMBER = { class: { th: 'text-right', td: 'text-right tabular-nums' } }
 const columns: TableColumn<RaLocation>[] = [
   { accessorKey: 'name', header: 'Name' },
-  { accessorKey: 'kind', header: 'Type' },
+  { accessorKey: 'kind', header: 'Type', meta: { class: { th: 'text-center', td: 'text-center' } } },
   { accessorKey: 'province', header: 'Province' },
   { accessorKey: 'city', header: 'City' },
   { accessorKey: 'district', header: 'District' },
@@ -186,7 +183,7 @@ const addTo = computed(() => {
     title="Master building"
     icon="i-lucide-building"
     description="Head office buildings and branches: each one's profile, map pin and RAs."
-    :crumbs="[{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Master building' }]"
+    :crumbs="[{ label: 'Administration' }, { label: 'Master building' }]"
   >
     <template #actions>
       <UButton
@@ -195,14 +192,6 @@ const addTo = computed(() => {
         variant="outline"
         icon="i-lucide-map"
         label="Building map"
-      />
-      <UButton
-        v-if="canEdit"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-file-up"
-        label="Import from Excel"
-        @click="importOpen = true"
       />
       <UButton
         v-if="canEdit"
@@ -505,10 +494,5 @@ const addTo = computed(() => {
         label="Buildings"
       />
     </UCard>
-    <RaImportModal
-      v-model:open="importOpen"
-      :kind="importKind"
-      @imported="refresh()"
-    />
   </AppPage>
 </template>

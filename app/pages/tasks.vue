@@ -85,7 +85,7 @@ const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: '
 const { can } = useAuth()
 /** Buildings waiting for approval are reviewed in Master building: only for who opens it. */
 const moduleTypes = computed(() => (module.value ? TASK_MODULE_TYPES[module.value] : TYPES)
-  .filter((type) => type !== 'building' || can('location.master')))
+  .filter((type) => type !== 'building' || can('sites.master')))
 const typeItems = computed(() => [
   { label: 'Every task', value: 'all' },
   ...moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], value: type })),

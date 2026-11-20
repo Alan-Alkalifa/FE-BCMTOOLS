@@ -533,6 +533,45 @@ export const RA_PIN_CLASS: Record<RaLevel | 'na' | 'none', string> = {
   none: 'text-muted',
 }
 
+/** US EPA's AQI bands as WAQI colours them, on its map and widget. */
+export const WAQI_BANDS: { code: RaWaqiBand, label: string, range: string, hex: string, text: string }[] = [
+  { code: 'good', label: 'Good', range: '0–50', hex: '#009966', text: '#ffffff' },
+  { code: 'moderate', label: 'Moderate', range: '51–100', hex: '#ffde33', text: '#1f2937' },
+  { code: 'sensitive', label: 'Unhealthy for sensitive groups', range: '101–150', hex: '#ff9933', text: '#1f2937' },
+  { code: 'unhealthy', label: 'Unhealthy', range: '151–200', hex: '#cc0033', text: '#ffffff' },
+  { code: 'very_unhealthy', label: 'Very unhealthy', range: '201–300', hex: '#660099', text: '#ffffff' },
+  { code: 'hazardous', label: 'Hazardous', range: '301+', hex: '#7e0023', text: '#ffffff' },
+]
+
+/** The AQI band a number falls in (US EPA, as WAQI uses). */
+export function waqiBand(aqi: number) {
+  const tops = [50, 100, 150, 200, 300]
+  const index = tops.findIndex((top) => aqi <= top)
+  return WAQI_BANDS[index === -1 ? WAQI_BANDS.length - 1 : index]!
+}
+
+/** A BMKG weather warning's severity (CAP: Extreme, Severe, Moderate, Minor): its badge colour,
+ *  the same for every warning of that severity. */
+export function raWeatherSeverityColor(severity: string | null | undefined): 'error' | 'warning' | 'info' | 'neutral' {
+  switch ((severity ?? '').toLowerCase()) {
+    case 'extreme':
+    case 'severe':
+      return 'error'
+    case 'moderate':
+      return 'warning'
+    case 'minor':
+      return 'info'
+    default:
+      return 'neutral'
+  }
+}
+
+/** How far an earthquake of this magnitude may be felt, in km: e^(M / 1.01 - 0.13), one
+ *  decimal, as the backend (bmkg.alert_radius_km). M5,0 124 km, M6,0 334 km. */
+export function raAlertRadiusKm(magnitude: number) {
+  return Math.round(Math.exp(magnitude / 1.01 - 0.13) * 10) / 10
+}
+
 /** Distance rings the location map can draw around the selected place, in km. */
 export const RA_RING_KM = [1, 2, 5, 10, 25] as const
 
@@ -793,19 +832,24 @@ export const BUILDINGS_GROUP = 'Sites'
 /** Import from Excel: a building and its RA from the HO or Cabang workbook. */
 export const LOCATION_IMPORT_PATH = '/locations/import'
 
-/** Where one file of Import from Excel stands (`RaImportFileCard`). */
-export type RaImportCardStatus = 'reading' | 'unreadable' | 'wrong_type' | 'ready' | 'importing' | 'imported' | 'failed'
 export const LOCATION_MAP_PATH = '/locations/map'
+
+/** Administration > Sites configuration and its tabs (old RA configuration links to them open it). */
+export const SITES_CONFIG_PATH = '/admin/sites-config'
+export const SITES_CONFIG_TABS = ['hazard-types', 'earthquakes', 'past-disasters'] as const
+export type SitesConfigTab = (typeof SITES_CONFIG_TABS)[number]
 
 /** The Disaster and Incident menus (a crisis is one or the other by its hazard): their names,
  *  pages and icon. Manage is at `path`, Monitoring, Approval and Guidebook under it. */
 export const RA_CRISIS_TYPES: Record<RaCrisisType, { label: string, plural: string, lower: string, path: string, icon: string }> = {
   disaster: { label: 'Disaster', plural: 'Disasters', lower: 'disaster', path: '/disasters', icon: 'i-lucide-siren' },
-  incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-triangle-alert' },
+  incident: { label: 'Incident', plural: 'Incidents', lower: 'incident', path: '/incidents', icon: 'i-lucide-flag' },
 }
 
-/** Administration › Master data › Master building, and a building's page there. */
-export const MASTER_BUILDINGS_PATH = '/masterdata/masterbuilding'
+/** Administration › Master building, and a building's page there, on a tab (`map`,
+ *  `contacts`, ...) when given: the only page of a building (`sites.master`). Show a link to
+ *  it only to who may open it (`can('sites.master')`). */
+export const MASTER_BUILDINGS_PATH = '/admin/buildings'
 export function masterBuildingPath(id: number, tab?: string) {
   return `${MASTER_BUILDINGS_PATH}/${id}${tab ? `?tab=${tab}` : ''}`
 }
@@ -866,3 +910,16 @@ export const raLocationKind = defineStatusScale<RaKind>({
   head_office: { label: 'Head office', color: 'neutral', icon: 'i-lucide-building-2' },
   branch: { label: 'Branch', color: 'neutral', icon: 'i-lucide-landmark' },
 })
+
+/** The years a review can pick from, newest first: from `first` to this year. */
+export function raYearItems(first = 2000, last = new Date().getFullYear()) {
+  const items: { label: string, value: number }[] = []
+  for (let year = last; year >= first; year--) items.push({ label: String(year), value: year })
+  return items
+}
+
+/** The review years when none are picked: the last 10, this one included (as the API counts). */
+export function raDefaultReviewYears(span = 10) {
+  const to = new Date().getFullYear()
+  return { from: to - span + 1, to }
+}

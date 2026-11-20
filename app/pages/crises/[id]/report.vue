@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Disasters moved to /disasters: old links keep working. */
 definePageMeta({
-  permission: ['location.access', 'ra.access', 'ra_branch.access'],
+  permission: ['sites.access', 'ra.access', 'ra_branch.access'],
   redirect: (to) => ({ path: `/disasters/${String(to.params.id)}/report`, query: to.query }),
 })
 </script>

@@ -7,7 +7,7 @@ const { data: lookups } = useBiancaLookups()
 
 function onSaved(assessment: { id: number }, tab?: string) {
   // On the saved BIA, the tab that was open (e.g. Business functions, after the RA questionnaire).
-  return navigateTo({ path: biancaPath(assessment.id), query: tab && tab !== 'sign' ? { tab } : undefined })
+  return navigateTo({ path: biancaPath(assessment.id), query: tab && tab !== 'sign' ? { tab } : undefined }, { replace: true })
 }
 </script>
 

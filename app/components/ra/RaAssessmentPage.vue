@@ -118,19 +118,8 @@ function openHazard(code: string) {
   return openTab('hazards', { hazard: code })
 }
 
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return
-  if (!(await confirmLeave())) return false
-})
-
-function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: confirmLeave })
 
 /** The assessor accepted the return: the RA can be changed again (In revision). */
 function onAccepted(saved: RaAssessment) {
@@ -344,6 +333,34 @@ async function moveVersion() {
             :loading="moving"
             :label="`Move to ${assessment.latest_version}`"
             @click="moveVersion"
+          />
+        </template>
+      </UAlert>
+      <UAlert
+        v-if="assessment.migrated"
+        class="mb-6"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-file-up"
+        :title="assessment.status === 'approved' ? 'Brought in from the signed workbook' : 'Brought in from a workbook as a draft'"
+        :description="[
+          assessment.migrated.approved_outside_on && assessment.status === 'approved' ? `Approved outside BCM Tools on ${formatDate(assessment.migrated.approved_outside_on)}.` : null,
+          `Migrated on ${formatDate(assessment.migrated.at)}.`,
+        ].filter(Boolean).join(' ')"
+      >
+        <template
+          v-if="assessment.migrated.workbook"
+          #actions
+        >
+          <UButton
+            :to="assessment.migrated.workbook.url"
+            external
+            download
+            size="sm"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-download"
+            label="Signed workbook"
           />
         </template>
       </UAlert>

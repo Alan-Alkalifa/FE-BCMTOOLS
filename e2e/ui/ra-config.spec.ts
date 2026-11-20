@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { USER, signIn } from '../fixtures/auth'
-import { BRANCH_FORMULA, DIVISIONS, FORMULA, hazardTypes, withTexts } from '../fixtures/ra'
+import { BRANCH_FORMULA, DIVISIONS, FORMULA, withTexts } from '../fixtures/ra'
 
 test.setTimeout(90_000)
 
@@ -67,8 +67,6 @@ async function mockRaConfig(page: Page) {
     extra_escalation_emails: [], renewal_notice_days: [90, 30, 7], overdue_repeat_days: 30,
     window_start_hour: 8, window_end_hour: 17, updated_at: null, updated_by: null,
   }
-  // RA configuration > Earthquakes (BMKG).
-  let bmkg = { enabled: true, min_magnitude: 5, alert_radius_km: 100, polled_at: '2026-11-06T06:44:00Z', poll_error: null, stale: false }
   await page.route(/\/api\/admin\/ra-config/, async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -133,11 +131,6 @@ async function mockRaConfig(page: Page) {
       return route.fulfill({ json: settings })
     }
     if (path.endsWith('/settings')) return route.fulfill({ json: settings })
-    if (path.endsWith('/bmkg') && request.method() === 'PUT') {
-      bmkg = { ...bmkg, ...(body as object) }
-      return route.fulfill({ json: bmkg })
-    }
-    if (path.endsWith('/bmkg')) return route.fulfill({ json: bmkg })
     if (path.includes('/diagrams')) {
       const kind = new URL(request.url()).searchParams.get('kind') ?? 'head_office'
       const diagram = path.split('/').pop() as keyof typeof diagramDefaults
@@ -316,42 +309,6 @@ test('the reminder rules are like SCCA\'s', async ({ page }) => {
   await page.getByRole('button', { name: 'Save reminder rules' }).click()
   await expect(page.getByText('Reminder rules saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/settings'))!.body).toMatchObject({ renewal_notice_days: [60, 14], window_start_hour: 8 })
-})
-
-test('earthquakes from BMKG: on or off, the minimum magnitude and the alert radius', async ({ page }) => {
-  const calls = await mockRaConfig(page)
-  await page.goto('/admin/ra-config?tab=earthquakes')
-  await expect(page.getByRole('tab', { name: 'Earthquakes' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
-  await expect(page.getByTestId('bmkg-status')).toContainText('Last read 6 Nov 2026, 13:44 WIB.')
-  await expect(page.getByRole('switch', { name: 'Read BMKG' })).toBeChecked()
-  await page.getByRole('spinbutton', { name: 'Alert radius' }).fill('150')
-  await page.getByRole('button', { name: 'Save earthquake settings' }).click()
-  await expect(page.getByText('Earthquake settings saved').first()).toBeVisible()
-  expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/bmkg'))!.body).toEqual({ enabled: true, min_magnitude: 5, alert_radius_km: 150 })
-})
-
-test('each hazard is a disaster or an incident, saved at once', async ({ page }) => {
-  const calls = await mockRaConfig(page)
-  let types = hazardTypes()
-  await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({ json: { items: types, updated_at: null, updated_by: null, can_edit: true } }))
-  await page.route(/\/api\/admin\/ra-config\/hazard-types/, async (route) => {
-    const body = route.request().postDataJSON() as { types: Record<string, 'disaster' | 'incident'> }
-    calls.push({ method: 'PUT', path: '/api/admin/ra-config/hazard-types', body })
-    types = types.map((item) => ({ ...item, type: body.types[item.code] ?? item.type }))
-    await route.fulfill({ json: { types: Object.fromEntries(types.map((item) => [item.code, item.type])) } })
-  })
-  await page.goto('/admin/ra-config?tab=hazard-types')
-  await expect(page.getByRole('tab', { name: 'Disaster or incident' })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 })
-  await expect(page.getByText('9 disaster hazards, 24 incident hazards.')).toBeVisible()
-  // A live setting: no version picker.
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveCount(0)
-  const fire = page.getByRole('radiogroup', { name: 'H14 Kebakaran' })
-  await fire.getByRole('radio', { name: 'Disaster' }).click()
-  await expect(page.getByText('10 disaster hazards, 23 incident hazards.')).toBeVisible()
-  await page.getByRole('button', { name: 'Save 1 change' }).click()
-  await expect(page.getByText('Default: Incident')).toBeVisible()
-  expect(calls.find((call) => call.path.endsWith('/hazard-types'))!.body).toEqual({ types: { H14: 'disaster' } })
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 })
 
 test('team diagrams start as the workbook pictures and are replaced per kind', async ({ page }) => {

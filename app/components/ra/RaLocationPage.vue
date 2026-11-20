@@ -7,7 +7,7 @@ type Tab = (typeof TABS)[number]
 /** The LCP sheets are only in the HO workbook. */
 const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 
-/** A building's page, under Administration › Master data › Master building (its only page). */
+/** A building's page, under Administration › Master building (its only page). */
 
 const route = useRoute()
 const router = useRouter()
@@ -61,19 +61,8 @@ async function selectTab(next: string | number) {
   formKey.value += 1
 }
 
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return
-  if (!(await confirmLeave())) return false
-})
-
-function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+// Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
+useUnsavedChanges(dirty, { confirm: confirmLeave })
 
 function onSaved(saved: RaLocationDetail) {
   location.value = saved
@@ -123,7 +112,6 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
     :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
       { label: 'Administration' },
-      { label: 'Master data', to: MASTER_DATA_PATH },
       { label: 'Master building', to: MASTER_BUILDINGS_PATH },
       ...(location ? [{ label: location.name }] : []),
     ]"

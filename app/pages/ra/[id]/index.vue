@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ permission: 'ra.access' })
+definePageMeta({
+  // Forwards to another page: never an in-app tab (docs/tabs.md).
+  tab: false, permission: 'ra.access' })
 </script>
 
 <template>

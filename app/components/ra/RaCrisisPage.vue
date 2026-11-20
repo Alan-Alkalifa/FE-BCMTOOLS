@@ -63,7 +63,7 @@ const canOpenRa = useCanOpenRa()
 /** A building's page is in Master building: linked only for who may open it. */
 const { can } = useAuth()
 function locationUrl(location: { id: number, kind: string }) {
-  return can('location.master') ? masterBuildingPath(location.id) : undefined
+  return can('sites.master') ? masterBuildingPath(location.id) : undefined
 }
 
 function set(next: RaCrisis) {
@@ -319,7 +319,7 @@ const historyIcon: Record<string, string> = {
               class="mt-3"
               :items="['building', 'branch', crisis.status === 'pending' ? 'crisis_pending' : 'crisis']"
               :labels="{ building: 'Affected head office building', branch: 'Affected branch', crisis: `${t.label} and its affected area`, crisis_pending: `${t.label} waiting for approval (dashed area)` }"
-              :residual="`Colour: residual risk for ${crisis.hazard.short_name}`"
+              :residual="`Residual risk for ${crisis.hazard.short_name}`"
             />
           </UCard>
 

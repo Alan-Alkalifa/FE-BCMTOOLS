@@ -52,6 +52,7 @@ function printReport() {
   <AppPage
     icon="i-lucide-file-text"
     :title="`${assessment?.application_name ?? 'Assessment'} report`"
+    :tab-title="assessment ? [assessment.ref_no, assessment.application_name].filter(Boolean).join(' · ') : undefined"
     :crumbs="[
       { label: 'SCCA' },
       { label: SCCA_SECTIONS[props.section].label, to: SCCA_SECTIONS[props.section].to },

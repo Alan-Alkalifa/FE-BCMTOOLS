@@ -4,8 +4,8 @@ import type { RaLocationDetail } from '~/composables/useRa'
 /**
  * Building Data Entry: add a head office building or a branch. The type comes from the link
  * (`?type=branch`, e.g. from RA Branch > New assessment), otherwise the user picks it in the
- * form; every field follows it. Opened from Administration › Master data › Master building,
- * where the saved building then opens.
+ * form; every field follows it. Opened from Administration › Master building, where the saved
+ * building then opens.
  */
 const route = useRoute()
 
@@ -25,7 +25,7 @@ const kind = computed<RaKind>(() => fixedType.value ?? chosen.value)
 provide(raKindKey, kind)
 
 function onSaved(location: RaLocationDetail) {
-  return navigateTo(masterBuildingPath(location.id, 'contacts'))
+  return navigateTo(masterBuildingPath(location.id, 'contacts'), { replace: true })
 }
 </script>
 
@@ -33,7 +33,7 @@ function onSaved(location: RaLocationDetail) {
   <AppPage
     title="Building Data Entry"
     icon="i-lucide-building"
-    :crumbs="[{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }, { label: 'Building Data Entry' }]"
+    :crumbs="[{ label: 'Administration' }, { label: 'Master building', to: MASTER_BUILDINGS_PATH }, { label: 'Building Data Entry' }]"
   >
     <div class="max-w-5xl space-y-6">
       <p class="text-sm text-muted">

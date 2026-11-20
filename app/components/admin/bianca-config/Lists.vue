@@ -337,7 +337,7 @@ function add() {
           variant="outline"
           label="Application systems"
         /><UButton
-          to="/masterdata/masterbuilding"
+          to="/admin/buildings"
           color="neutral"
           variant="outline"
           label="Office locations"

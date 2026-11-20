@@ -292,7 +292,9 @@ const pickedNote = computed(() => {
   return {
     color: 'info' as const,
     title: `Existing ${noun}`,
-    description: `${copied} Check each rating and change anything that is different now.`,
+    description: state.reason === 'annual_review'
+      ? `${copied} An annual review rates every hazard from scratch.`
+      : `${copied} Check each rating and change anything that is different now.`,
   }
 })
 
@@ -410,7 +412,7 @@ async function createWithBuilding() {
       licom_phone: state.licom_phone.trim(),
     })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(raPath(ra.value.kind, 'manage', created.id))
+    await navigateTo(raPath(ra.value.kind, 'manage', created.id), { replace: true })
   } catch (error) {
     const errors = apiFieldErrors(error)
     const own = errors.filter((item) => item.name?.startsWith('location.')).map((item) => ({ ...item, name: item.name!.slice('location.'.length) }))
@@ -440,7 +442,7 @@ async function onSubmit() {
       licom_phone: state.licom_phone.trim(),
     })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
-    await navigateTo(raPath(ra.value.kind, 'manage', created.id))
+    await navigateTo(raPath(ra.value.kind, 'manage', created.id), { replace: true })
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
     formError.value = raErrorText(error)
