@@ -1,3 +1,5 @@
+import type { BiancaLocationLabels } from './useBianca'
+
 export interface BiancaGrade {
   code: string
   label: string
@@ -27,8 +29,23 @@ export type BiancaListKey = 'periods' | 'suggested_mtd' | 'dependency_mtd' | 'pe
   | 'upstream_capacity' | 'yes_no' | 'system_usage' | 'alt_site_strategies' | 'frequencies'
   | 'generic_values' | 'downstream_capacity' | 'expected_support_capacity'
 
+export interface BiancaMtdOption {
+  code: string
+  value: string
+  label: string
+  category: string | null
+  description: string | null
+  use_it: boolean
+  use_non_it: boolean
+  active: boolean
+}
+
 export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   expected_mtd: { value: string, category: string }[]
+  mtd_options?: BiancaMtdOption[] | null
+  suggested_mtd_by_period?: Record<string, string>
+  suggested_mtd_fallback?: string | null
+  office_location_labels?: BiancaLocationLabels
   scores: number[]
   loss_alert_idr: number
   score_alert: number
@@ -89,7 +106,7 @@ export interface BiancaConfigVersion {
 const BIA_CONFIG = '/api/admin/bianca-config/versions'
 export const biancaConfigApi = {
   start: () => $fetch<BiancaConfigVersion>(BIA_CONFIG, { method: 'POST' }),
-  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload, list_items: BiancaListItems }) =>
+  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload, list_items: Partial<BiancaListItems> }) =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}`, { method: 'PUT', body }),
   action: (id: number, revision: number, action: 'request-publish' | 'withdraw' | 'publish') =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}/${action}`, { method: 'POST', body: { revision } }),

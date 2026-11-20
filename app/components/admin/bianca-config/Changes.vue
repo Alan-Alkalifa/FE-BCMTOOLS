@@ -28,6 +28,10 @@ const parts: Record<string, [section: string, label: string]> = {
   it_slots: ['Impact and MTD', 'IT rows per function'],
   dependency_slots: ['Impact and MTD', 'Non-IT rows per function'],
   expected_mtd: ['Impact and MTD', 'Expected MTD'],
+  mtd_options: ['Impact and MTD', 'Expected MTD master'],
+  suggested_mtd_by_period: ['Impact and MTD', 'Suggested MTD by impact period'],
+  suggested_mtd_fallback: ['Impact and MTD', 'Suggested MTD fallback'],
+  office_location_labels: ['Office location types', 'Location label'],
   guides: ['Guides and statements', 'Guide and statement text'],
   signoff_steps: ['Approval template', 'Sign-off steps'],
 }
@@ -54,6 +58,7 @@ const fieldLabels: Record<string, string> = {
   'signer_mode': 'Signer selection', 'user_id': 'Signer', 'required': 'Required', 'title': 'Title',
   'category': 'Category', 'regulatory': 'Regulatory impact', 'customer': 'Customer impact',
   'description': 'Description',
+  'use_it': 'MTD IT', 'use_non_it': 'MTD Non IT',
 }
 const guideLabels: Record<string, string> = {
   suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',

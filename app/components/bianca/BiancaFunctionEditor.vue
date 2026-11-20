@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BiancaItDependency, BiancaLookups, BiancaPreview, BiancaFunction } from '~/composables/useBianca'
+import type { BiancaListKey } from '~/composables/useBiancaConfigAdmin'
 
 /**
  * One business function across the workbook's parts: 1 impact, 2a IT dependency, 2b non-IT
@@ -71,17 +72,20 @@ const sides = [
 const long = TEXT_LIMITS.long
 
 /** Part 1's rule for the Suggested MTD, worked out from the impact typed so far. */
-const ruleMtd = computed(() => biancaSuggestedMtd(fn.value, {
-  suggested: props.lookups.suggested_mtd,
-  lossAlert: props.lookups.loss_alert_idr,
-  scoreAlert: props.lookups.score_alert,
-}))
+const ruleMtd = computed(() => props.preview?.recommended_suggested_mtd ?? null)
 
 const recommendedSites = computed(() => props.lookups.alternate_site_by_category?.[props.preview?.category ?? ''] ?? [])
 
 /** The choices of the BIA configuration, plus the value already chosen when it is no longer offered. */
 function withCurrent(items: readonly string[], value: string | null | undefined) {
   return value && !items.includes(value) ? [value, ...items] : [...items]
+}
+function mtdChoices(items: readonly string[], selected: string | null | undefined) {
+  return withCurrent(items, selected).map((value) => ({ value, label: props.lookups.mtd_options?.find((row) => row.value === value)?.label ?? value }))
+}
+function listChoices(key: BiancaListKey, items: readonly string[], current?: string | null) {
+  const metadata = new Map(props.lookups.list_items?.[key].map((row) => [row.code, row.label]))
+  return withCurrent(items, current).map((value) => ({ value, label: metadata.get(value) || value }))
 }
 
 const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2a', 'p3'].includes(value)
@@ -234,7 +238,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       >
         <USelect
           v-model="fn.suggested_mtd"
-          :items="lookups.suggested_mtd"
+          :items="listChoices('suggested_mtd', lookups.suggested_mtd, fn.suggested_mtd)"
           class="w-full max-w-xs"
           :disabled="disabled"
         />
@@ -273,7 +277,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         >
           <USelect
             v-model="fn.expected_mtd"
-            :items="withCurrent(lookups.expected_mtd.map(item => item.value), fn.expected_mtd)"
+            :items="mtdChoices(lookups.expected_mtd.map(item => item.value), fn.expected_mtd)"
             class="w-full"
             :disabled="disabled"
           />
@@ -392,7 +396,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row.workaround"
-                :items="lookups.yes_no"
+                :items="listChoices('yes_no', lookups.yes_no, row.workaround)"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -417,7 +421,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row.system_usage"
-                :items="lookups.system_usage"
+                :items="listChoices('system_usage', lookups.system_usage, row.system_usage)"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -500,7 +504,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       >
         <USelect
           v-model="fn.planned_capacity"
-          :items="lookups.percentages"
+          :items="listChoices('percentages', lookups.percentages, fn.planned_capacity)"
           class="w-full"
           :disabled="disabled"
         />
@@ -550,7 +554,9 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row[`${side.key}_capacity`]"
-                :items="side.key === 'up' ? lookups.upstream_capacity : (lookups.downstream_capacity ?? lookups.upstream_capacity)"
+                :items="side.key === 'down' && lookups.downstream_capacity
+                  ? listChoices('downstream_capacity', lookups.downstream_capacity, row.down_capacity)
+                  : listChoices('upstream_capacity', lookups.upstream_capacity, row[`${side.key}_capacity`])"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -561,7 +567,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row[`${side.key}_mtd`]"
-                :items="withCurrent(lookups.dependency_mtd, row[`${side.key}_mtd`])"
+                :items="mtdChoices(lookups.dependency_mtd, row[`${side.key}_mtd`])"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -583,7 +589,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row[`${side.key}_outsourced`]"
-                :items="lookups.yes_no"
+                :items="listChoices('yes_no', lookups.yes_no, row[`${side.key}_outsourced`])"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -594,7 +600,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
             >
               <USelect
                 v-model="row[`${side.key}_material`]"
-                :items="lookups.yes_no"
+                :items="listChoices('yes_no', lookups.yes_no, row[`${side.key}_material`])"
                 class="w-full"
                 :disabled="disabled"
               />
@@ -648,7 +654,9 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         >
           <USelect
             v-model="fn.recovery_level"
-            :items="lookups.expected_support_capacity ?? lookups.percentages"
+            :items="lookups.expected_support_capacity
+              ? listChoices('expected_support_capacity', lookups.expected_support_capacity, fn.recovery_level)
+              : listChoices('percentages', lookups.percentages, fn.recovery_level)"
             class="w-full"
             :disabled="disabled"
           />
@@ -684,14 +692,17 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
         class="max-w-xl"
       >
         <template #help>
-          <span v-if="recommendedSites.length" :class="fn.alt_site_strategy && !recommendedSites.includes(fn.alt_site_strategy) ? 'text-warning' : ''">
+          <span
+            v-if="recommendedSites.length"
+            :class="fn.alt_site_strategy && !recommendedSites.includes(fn.alt_site_strategy) ? 'text-warning' : ''"
+          >
             Recommended for {{ preview?.category }}: {{ recommendedSites.join(' or ') }}.
           </span>
           <span v-else>{{ lookups.guides.alternate_site }}</span>
         </template>
         <USelect
           v-model="fn.alt_site_strategy"
-          :items="lookups.alt_site_strategies"
+          :items="listChoices('alt_site_strategies', lookups.alt_site_strategies, fn.alt_site_strategy)"
           class="w-full"
           :disabled="disabled"
         />
@@ -828,7 +839,7 @@ const hasReference = (value: string): value is 'p1' | 'p2a' | 'p3' => ['p1', 'p2
       >
         <USelect
           v-model="fn.frequency"
-          :items="lookups.frequencies"
+          :items="listChoices('frequencies', lookups.frequencies, fn.frequency)"
           class="w-full"
           :disabled="disabled"
         />

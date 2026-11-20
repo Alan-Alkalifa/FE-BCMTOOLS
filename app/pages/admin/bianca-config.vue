@@ -32,6 +32,7 @@ const tabs = computed(() => [
   { label: 'Personnel levels', value: 'personnel', icon: 'i-lucide-users' },
   { label: 'Lists', value: 'lists', icon: 'i-lucide-list' },
   { label: 'Impact and MTD', value: 'impact', icon: 'i-lucide-calculator' },
+  { label: 'Office location types', value: 'locations', icon: 'i-lucide-map-pin' },
   { label: 'Guides and statements', value: 'guides', icon: 'i-lucide-list-checks' },
   { label: 'Approval template', value: 'steps', icon: 'i-lucide-signature' },
   ...(can('bianca.approval.manage')
@@ -95,9 +96,11 @@ async function save() {
   const activeSites = new Set(activeCodes.alt_site_strategies)
   const recommendations = payload.alternate_site_by_category
   const configured = { ...payload, ...activeCodes, alternate_site_by_category: recommendations && Object.fromEntries(
-    Object.entries(recommendations).map(([category, sites]) => [category, sites.filter(site => activeSites.has(site))]),
+    Object.entries(recommendations).map(([category, sites]) => [category, sites.filter((site) => activeSites.has(site))]),
   ) }
-  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: configured, list_items }), 'Draft configuration saved')
+  const lists: Partial<typeof list_items> = { ...list_items }
+  if (payload.mtd_options) delete lists.dependency_mtd
+  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: configured, list_items: lists }), 'Draft configuration saved')
 }
 async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'discard') {
   const selected = version.value
@@ -394,6 +397,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-else
               :key="version.id"
               v-model="form.payload"
+              :list-items="form.list_items"
               class="mt-4"
               :signers="version.signer_profiles ?? {}"
               :saved-step-codes="version.payload.signoff_steps.map(step => step.code)"

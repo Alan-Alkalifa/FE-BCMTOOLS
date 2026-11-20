@@ -10,7 +10,7 @@ export const BIANCA_LISTS: { key: BiancaListKey, label: string, help: string, ma
   { key: 'expected_support_capacity', label: 'Expected business support capacity', help: 'MST_Generic Value column H. Recovery level options for Part 3.', maxCode: 8, maxActive: 103 },
   { key: 'generic_values', label: 'Generic percentages', help: 'MST_Generic Value column E. Includes NA and SLA. Planned capacity for each business function uses percentages only (column I).', maxCode: 8, maxActive: 103 },
   { key: 'alt_site_strategies', label: 'Alternate site strategies', help: 'Use the workbook value as the code.', maxCode: 128, maxActive: 50 },
-  { key: 'frequencies', label: 'Critical timing frequencies', help: 'Use the workbook frequency as the code.', maxCode: 64, maxActive: 64 },
+  { key: 'frequencies', label: 'Critical timing frequencies', help: 'Use the workbook frequency as the code. If only Quartly or Quarterly is active, import accepts the alternate spelling.', maxCode: 64, maxActive: 64 },
   { key: 'system_usage', label: 'System dependency codes', help: 'The BIA gap rule uses these codes. You can edit their label and text.', maxCode: 32, maxActive: 3, locked: true },
   { key: 'yes_no', label: 'Yes / No codes', help: 'BIA uses these codes in validation and Excel. You can edit their label and text.', maxCode: 3, maxActive: 2, locked: true },
 ]

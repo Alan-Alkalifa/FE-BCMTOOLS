@@ -95,13 +95,18 @@ export const BIANCA_HEADER_TEXT = [
 export const BIANCA_HEADER_BOOL = ['ra_considers_bc', 'ra_controls_included', 'ra_completed'] as const
 export const BIANCA_STAFF = ['staff_senior', 'staff_middle', 'staff_manager', 'staff_non_staff', 'staff_others'] as const
 
+export type BiancaLocationMode = 'work_from_home' | 'hyspace'
+export type BiancaLocationLabels = Record<BiancaLocationMode, string>
+
 export type BiancaHeader
   = { [K in typeof BIANCA_HEADER_TEXT[number]]: string | undefined }
     & { [K in typeof BIANCA_HEADER_BOOL[number]]: boolean | undefined }
     & { [K in typeof BIANCA_STAFF[number]]: number | undefined }
     & {
       main_location_id: number | undefined
+      main_location_mode: BiancaLocationMode | undefined
       alt_location_id: number | undefined
+      alt_location_mode: BiancaLocationMode | undefined
       bcm_coordinator_id: number | undefined
       bcm_alternate_id: number | undefined
       personnel_counts: Record<string, number | undefined>
@@ -150,10 +155,11 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   can_delete: boolean
 }
 
-export interface BiancaPlace { id: number, code: string | null, name: string, label: string, kind?: string, city?: string | null }
+export interface BiancaPlace { id: number, code: string | null, name: string, label: string, kind?: string, city?: string | null, address?: string | null }
 export interface BiancaApplication { id: number, code: string, name: string, label: string, category: string | null, rto: string | null, rpo: string | null }
 
 export interface BiancaLookups {
+  office_location_labels?: BiancaLocationLabels
   list_items?: BiancaListItems
   signer_profiles?: Record<string, BiancaSigner>
   config_version_id: number | null
@@ -165,6 +171,7 @@ export interface BiancaLookups {
   periods: string[]
   suggested_mtd: string[]
   expected_mtd: { value: string, category: string | null }[]
+  mtd_options?: { value: string, label: string }[] | null
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
@@ -191,6 +198,7 @@ export interface BiancaPreview {
   functions: {
     category: string | null
     within_suggested_mtd: boolean | null
+    recommended_suggested_mtd?: string | null
     it_dependencies: { daat_hours: number | null, warnings: string[], rto_reaches_mtd: boolean | null, gaps_required: boolean }[]
   }[]
   total_staff: number

@@ -1,181 +1,224 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+import type { OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
+import BiancaOrganizationForm from '~/components/bianca/BiancaOrganizationForm.vue'
+import { organizationLevels, organizationEndpoint } from '~/utils/bianca-organization'
+
 definePageMeta({ permission: ['masterdata.access', 'masterdata.organization.manage'] })
-interface Unit {
-  directorate: string
-  sub_directorate: string | null
-  org_group: string | null
-}
-const levels = [
-  { label: 'Directorate', value: 'directorate' },
-  { label: 'Sub directorate', value: 'sub_directorate' },
-  { label: 'Group', value: 'org_group' },
-] as const
-type Level = typeof levels[number]['value']
 const { can } = useAuth()
-const toast = useToast()
+const form = useOverlay().create(BiancaOrganizationForm)
 const orgRevision = useBiancaOrgRevision()
-const endpoint = '/api/masterdata/organization'
-const { data, error, status, refresh } = await useFetch<{ items: Unit[] }>(endpoint)
-const units = computed(() => data.value?.items ?? [])
-const level = ref<Level>('directorate')
-const label = computed(() => levels.find(item => item.value === level.value)!.label)
-const columns = computed(() => levels.slice(0, levels.findIndex(item => item.value === level.value) + 1))
-const adding = ref(false)
-const saving = ref(false)
-const failure = ref('')
-const name = ref('')
-const directorate = ref<string>()
-const sub = ref<string>()
-const search = ref('')
-const dirs = computed(() => [...new Set(units.value.map(unit => unit.directorate))])
-const subs = computed(() => [...new Set(units.value.filter(unit => unit.directorate === directorate.value)
-  .flatMap(unit => unit.sub_directorate ? [unit.sub_directorate] : []))])
-const rows = computed(() => {
-  const paths = new Map<string, string[]>()
-  for (const unit of units.value) {
-    const path = columns.value.map(col => unit[col.value] || '')
-    if (path.every(Boolean) && path.some(part => part.toLowerCase().includes(search.value.trim().toLowerCase()))) {
-      paths.set(JSON.stringify(path), path)
-    }
-  }
-  return [...paths.values()]
+const perPage = useRowsPerPage()
+const route = useRoute()
+const router = useRouter()
+const level = computed({
+  get: () => organizationLevels.find((item) => item.value === route.query.level)?.value ?? 'directorate',
+  set: (value: UnitLevel) => router.replace({ query: { ...route.query, level: value, page: undefined } }),
 })
-function reset() {
-  adding.value = false
-  name.value = ''
-  directorate.value = undefined
-  sub.value = undefined
-  failure.value = ''
-}
-watch(level, reset)
-watch(directorate, () => { sub.value = undefined })
-async function save() {
-  if (saving.value) return
-  saving.value = true
-  failure.value = ''
-  const body = {
-    directorate: level.value === 'directorate' ? name.value.trim() : directorate.value,
-    sub_directorate: level.value === 'sub_directorate' ? name.value.trim() : sub.value || '',
-    org_group: level.value === 'org_group' ? name.value.trim() : '',
-  }
-  try {
-    await $fetch(endpoint, { method: 'POST', body })
+const label = computed(() => organizationLevels.find((item) => item.value === level.value)!.label)
+const search = ref('')
+const active = ref('all')
+const statusItems = [
+  { label: 'Active and inactive', value: 'all' },
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+]
+const { data, error, status, refresh } = useFetch<{ items: OrganizationRow[] }>(organizationEndpoint, { query: { details: 1 } })
+const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+const units = computed(() => data.value?.items ?? [])
+const matching = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return units.value.filter((row) => row.level === level.value
+    && (active.value === 'all' || row.available === (active.value === 'active'))
+    && [row.directorate, row.sub_directorate, row.org_group, row.code, row.description, row.owner?.name, row.owner?.email]
+      .some((value) => value?.toLowerCase().includes(term)))
+})
+const filtered = computed(() => !!search.value.trim() || active.value !== 'all')
+const page = computed(() => Math.min(Math.max(1, Math.floor(Number(route.query.page)) || 1), Math.max(1, Math.ceil(matching.value.length / perPage.value))))
+const rows = computed(() => matching.value.slice((page.value - 1) * perPage.value, page.value * perPage.value))
+watch([search, active, perPage], () => {
+  if (route.query.page) router.replace({ query: { ...route.query, page: undefined } })
+})
+const columns = computed<TableColumn<OrganizationRow>[]>(() => [
+  ...organizationLevels.slice(0, organizationLevels.findIndex((item) => item.value === level.value)).map((item) => ({ accessorKey: item.value, header: item.label })),
+  { id: 'unit', header: label.value },
+  { id: 'owner', header: 'Assigned user' },
+  { accessorKey: 'description', header: 'Description' },
+  { id: 'source', header: 'Source' },
+  { id: 'status', header: 'Status' },
+  { id: 'actions', header: '', meta: { class: { td: 'w-12 text-end' } } },
+])
+
+async function openForm(unit?: OrganizationRow) {
+  if (!can('masterdata.organization.manage')) return
+  const saved = await form.open({ level: level.value, unit, units: units.value }).result
+  if (saved) {
     orgRevision.value++
     await refresh()
-    toast.add({ title: label.value + ' added', color: 'success' })
-    reset()
-  } catch (err) {
-    failure.value = biancaConfigError(err)
-  } finally {
-    saving.value = false
   }
 }
 </script>
 
 <template>
-  <AppPage title="Organization structure" icon="i-lucide-network"
-    description="Manage the directorates, sub directorates and groups available to BIA."
+  <AppPage
+    title="Organization structure"
+    icon="i-lucide-network"
+    description="Browse the HR hierarchy and manage unit mappings and BIA-specific units."
     :crumbs="[{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Organization structure' }]"
   >
-    <UTabs v-model="level" :items="levels.map(item => ({ ...item, disabled: saving }))" :content="false" />
+    <template #actions>
+      <UButton
+        :to="`${organizationEndpoint}/export.xlsx`"
+        external
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-download"
+        label="Export to Excel"
+      />
+      <UButton
+        v-if="can('masterdata.organization.manage')"
+        icon="i-lucide-plus"
+        :label="'New ' + label.toLowerCase()"
+        :disabled="!data || !!error"
+        @click="openForm()"
+      />
+    </template>
+
+    <UTabs
+      v-model="level"
+      :items="[...organizationLevels]"
+      variant="link"
+      :content="false"
+    />
+    <SkeletonTable
+      v-if="showSkeleton"
+      toolbar
+      :columns="columns.length"
+      label="Loading organization units"
+    />
     <UAlert
-      v-if="error"
+      v-else-if="error"
       color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
       title="Could not load the organization structure"
+      :description="adminErrorText(error)"
     >
       <template #actions>
-        <UButton label="Try again" @click="refresh()" />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Try again"
+          @click="refresh()"
+        />
       </template>
     </UAlert>
-    <template v-else>
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <UInput
-          v-model="search"
-          placeholder="Search units"
-          aria-label="Search units"
-          icon="i-lucide-search"
+    <UCard
+      v-else
+      :ui="{ body: 'p-0 sm:p-0' }"
+    >
+      <ListFilterBar
+        :filtered="filtered"
+        @clear="search = ''; active = 'all'"
+      >
+        <template #search>
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Search units"
+            aria-label="Search units"
+            class="w-full"
+          />
+        </template>
+        <USelectMenu
+          v-model="active"
+          :items="statusItems"
+          value-key="value"
+          :search-input="false"
+          aria-label="Filter by status"
+          class="w-48"
         />
-        <UButton
-          v-if="can('masterdata.organization.manage') && !adding"
-          :label="'Add ' + label.toLowerCase()"
-          icon="i-lucide-plus"
-          @click="adding = true"
-        />
-      </div>
-      <UCard v-if="adding">
-        <form class="space-y-4" @submit.prevent="save">
-          <div class="grid gap-4 sm:grid-cols-3">
-            <UFormField
-              v-if="level !== 'directorate'"
-              label="Parent directorate"
-              required
-            >
-              <USelectMenu
-                v-model="directorate"
-                :items="dirs"
-                aria-label="Parent directorate"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              v-if="level === 'org_group'"
-              label="Parent sub directorate"
-              required
-            >
-              <USelectMenu
-                v-model="sub"
-                :items="subs"
-                :disabled="!directorate"
-                aria-label="Parent sub directorate"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField :label="label + ' name'" required>
-              <UInput
-                v-model="name"
-                :aria-label="label + ' name'"
-                required
-                :maxlength="255"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
-          <p v-if="failure" role="alert" class="text-sm text-error">{{ failure }}</p>
-          <div class="flex gap-2">
+      </ListFilterBar>
+      <UTable
+        :data="rows"
+        :columns="columns"
+        :loading="status === 'pending'"
+        :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
+      >
+        <template #unit-cell="{ row }">
+          <component
+            :is="can('masterdata.organization.manage') ? 'button' : 'span'"
+            class="block text-start font-medium text-highlighted"
+            :class="can('masterdata.organization.manage') ? 'hover:text-primary hover:underline' : ''"
+            @click="openForm(row.original)"
+          >
+            {{ row.original[level] }}
+          </component>
+          <span
+            v-if="row.original.code"
+            class="text-xs text-muted"
+          >{{ row.original.code }}</span>
+        </template>
+        <template #owner-cell="{ row }">
+          <template v-if="row.original.owner">
+            <p>{{ row.original.owner.name }} <span class="text-xs text-muted">#{{ row.original.owner.id }}</span></p>
+            <p class="text-xs text-muted">
+              {{ row.original.owner.email }}
+            </p>
+          </template>
+          <span
+            v-else
+            class="text-muted"
+          >—</span>
+        </template>
+        <template #description-cell="{ row }">
+          <p class="max-w-64 whitespace-normal wrap-break-word">
+            {{ row.original.description || '—' }}
+          </p>
+        </template>
+        <template #source-cell="{ row }">
+          <UBadge
+            variant="subtle"
+            color="neutral"
+            :label="row.original.source.toUpperCase()"
+          />
+        </template>
+        <template #status-cell="{ row }">
+          <UBadge
+            variant="subtle"
+            :color="row.original.available ? 'success' : 'neutral'"
+            :label="row.original.available ? 'Active' : 'Inactive'"
+            :icon="row.original.available ? 'i-lucide-circle-check' : 'i-lucide-circle-minus'"
+          />
+        </template>
+        <template #actions-cell="{ row }">
+          <UDropdownMenu
+            v-if="can('masterdata.organization.manage')"
+            :items="[{ label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openForm(row.original) }]"
+            :content="{ align: 'end' }"
+          >
             <UButton
-              type="submit"
-              label="Save unit"
-              :loading="saving"
-              :disabled="!name.trim() || (level !== 'directorate' && !directorate) || (level === 'org_group' && !sub)"
-            />
-            <UButton
-              type="button"
-              label="Cancel"
               color="neutral"
-              variant="outline"
-              :disabled="saving"
-              @click="reset"
+              variant="ghost"
+              icon="i-lucide-ellipsis-vertical"
+              :aria-label="`Actions for ${row.original[level]}`"
             />
-          </div>
-        </form>
-      </UCard>
-      <div class="overflow-x-auto rounded-lg border border-default">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-muted">
-            <tr>
-              <th v-for="col in columns" :key="col.value" scope="col" class="p-3">{{ col.label }}</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr v-for="path in rows" :key="JSON.stringify(path)">
-              <td v-for="(part, i) in path" :key="i" class="p-3">{{ part }}</td>
-            </tr>
-            <tr v-if="!rows.length">
-              <td :colspan="columns.length" class="p-3 text-muted">{{ status === 'pending' ? 'Loading units…' : 'No matching units.' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
+          </UDropdownMenu>
+        </template>
+        <template #empty>
+          <p class="py-6 text-center text-sm text-muted">
+            {{ filtered ? 'No units match these filters.' : 'No units yet.' }}
+          </p>
+        </template>
+      </UTable>
+      <TablePagination
+        v-model:per-page="perPage"
+        :page="page"
+        page-sizes
+        :total="matching.length"
+        :to="(next) => ({ query: { ...route.query, page: next } })"
+        label="Organization units"
+      />
+    </UCard>
   </AppPage>
 </template>

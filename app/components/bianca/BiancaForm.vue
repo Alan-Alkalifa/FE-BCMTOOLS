@@ -50,7 +50,9 @@ function blankHeader(): BiancaHeader {
   for (const name of BIANCA_HEADER_BOOL) header[name] = undefined
   for (const name of BIANCA_STAFF) header[name] = undefined
   header.main_location_id = undefined
+  header.main_location_mode = undefined
   header.alt_location_id = undefined
+  header.alt_location_mode = undefined
   header.bcm_coordinator_id = undefined
   header.bcm_alternate_id = undefined
   header.personnel_counts = {}
@@ -64,6 +66,12 @@ const org = ref<BiancaOrg>({ directorate: undefined, sub_directorate: undefined,
 /** How the main location reads in its picker, also when it was filled from the database. */
 const mainPlace = ref<BiancaPlace | null>(null)
 const mainHint = ref<{ text: string, color: 'muted' | 'warning' } | null>(null)
+const locationLabels = computed(() => lookups.value?.office_location_labels ?? { work_from_home: 'Work From Home', hyspace: 'Hyspace' })
+let mainLookup = 0
+function onMainChoice() {
+  mainLookup++
+  mainHint.value = null
+}
 type PersonKey = 'bcm_coordinator' | 'bcm_alternate'
 /** The picked users, as the directory has them (null: none, or typed before). */
 const persons = reactive<Record<PersonKey, BiancaPerson | null>>({ bcm_coordinator: null, bcm_alternate: null })
@@ -121,8 +129,11 @@ watch(lookups, startNew, { immediate: true })
 /** Main location (and its floor, when the building's occupants list has it) from the database. */
 async function fillMainLocation(picked: BiancaOrg) {
   mainHint.value = null
+  const request = ++mainLookup
+  if (header.main_location_mode) return
   try {
     const found = await biancaApi.mainLocation(picked)
+    if (request !== mainLookup) return
     if (!found.location) {
       // The location of the Group picked before doesn't belong to this one.
       header.main_location_id = undefined
@@ -133,7 +144,7 @@ async function fillMainLocation(picked: BiancaOrg) {
     }
     mainPlace.value = found.location
     header.main_location_id = found.location.id
-    if (found.floor) header.main_floor = found.floor
+    header.main_floor = found.floor ?? undefined
     const from = {
       location: 'the location registered to the Group',
       occupants: 'the building\'s occupant list',
@@ -141,7 +152,7 @@ async function fillMainLocation(picked: BiancaOrg) {
     }[found.source ?? 'location']
     mainHint.value = { text: `Filled from ${from}. Change it if it's wrong.`, color: 'muted' }
   } catch {
-    mainHint.value = { text: 'The main location couldn\'t be looked up: pick it below.', color: 'warning' }
+    if (request === mainLookup) mainHint.value = { text: 'The main location couldn\'t be looked up: pick it below.', color: 'warning' }
   }
 }
 
@@ -515,18 +526,17 @@ const people = [
             />
           </BiancaField>
           <div class="grid gap-4 sm:grid-cols-2">
-            <BiancaField
+            <BiancaLocationField
+              v-model:mode="header.main_location_mode"
+              v-model:site="header.main_location_id"
+              v-model:floor="header.main_floor"
               label="Main location"
               note="main_location"
+              :labels="locationLabels"
+              :selected="mainPlace"
+              :disabled="!editable"
+              @change="onMainChoice"
             >
-              <BiancaPicker
-                v-model="header.main_location_id"
-                kind="locations"
-                :selected="mainPlace"
-                :disabled="!editable"
-                aria-label="Main location"
-                @pick="mainHint = null"
-              />
               <p
                 v-if="mainHint && editable"
                 class="mt-1 text-xs"
@@ -534,35 +544,17 @@ const people = [
               >
                 {{ mainHint.text }}
               </p>
-            </BiancaField>
-            <UFormField label="Main location floor">
-              <UInput
-                v-model="header.main_floor"
-                class="w-full"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="!editable"
-              />
-            </UFormField>
-            <BiancaField
+            </BiancaLocationField>
+            <BiancaLocationField
+              v-model:mode="header.alt_location_mode"
+              v-model:site="header.alt_location_id"
+              v-model:floor="header.alt_floor"
               label="Alternate location"
               note="alt_location"
-            >
-              <BiancaPicker
-                v-model="header.alt_location_id"
-                kind="locations"
-                :selected="saved?.alt_location ?? null"
-                :disabled="!editable"
-                aria-label="Alternate location"
-              />
-            </BiancaField>
-            <UFormField label="Alternate location floor">
-              <UInput
-                v-model="header.alt_floor"
-                class="w-full"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="!editable"
-              />
-            </UFormField>
+              :labels="locationLabels"
+              :selected="saved?.alt_location ?? null"
+              :disabled="!editable"
+            />
           </div>
           <BiancaField
             label="Recovery strategy"

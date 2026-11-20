@@ -101,24 +101,3 @@ export const BIANCA_CATEGORY_CRITERIA = [
     points: ['Other / minor business functions and processes, prioritised last while business operations are being recovered.'],
   },
 ]
-
-/**
- * Part 1's rule for the Suggested MTD: the first period where the loss is more than the alert
- * (IDR 4 billion) or a score is 3; otherwise the last (4 weeks). Null until something is filled.
- */
-export function biancaSuggestedMtd(
-  fn: { loss?: (number | null | undefined)[] | null, regulatory_scores?: (number | null | undefined)[] | null, customer_scores?: (number | null | undefined)[] | null },
-  options: { suggested: readonly string[], lossAlert: number, scoreAlert: number },
-): string | null {
-  const loss = fn.loss ?? []
-  const reg = fn.regulatory_scores ?? []
-  const cust = fn.customer_scores ?? []
-  const filled = [...loss, ...reg, ...cust].some((value) => value != null && String(value) !== '')
-  if (!filled || !options.suggested.length) return null
-  for (let i = 0; i < options.suggested.length; i++) {
-    if ((Number(loss[i]) || 0) > options.lossAlert || reg[i] === options.scoreAlert || cust[i] === options.scoreAlert) {
-      return options.suggested[i] ?? null
-    }
-  }
-  return options.suggested[options.suggested.length - 1] ?? null
-}
