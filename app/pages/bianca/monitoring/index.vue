@@ -550,8 +550,19 @@ function directorateSeverityBar(severity: BiaDirectorateRow['severity']) {
   return 'border-s-4 border-s-transparent'
 }
 
-function coveragePct(part: number, total: number) {
-  return total > 0 ? `${Math.round((part / total) * 100)}%` : '0%'
+function coverageBarColor(pct: number) {
+  if (pct >= 80) return 'bg-success'
+  if (pct >= 40) return 'bg-warning'
+  return 'bg-error'
+}
+
+function coverageTooltip(dir: BiaDirectorateRow) {
+  const c = dir.coverage
+  const parts = [`${c.valid_final} valid`]
+  if (c.due_soon) parts.push(`${c.due_soon} due soon`)
+  if (c.overdue) parts.push(`${c.overdue} overdue`)
+  if (c.no_final) parts.push(`${c.no_final} no final BIA`)
+  return `${c.pct}% valid (${parts.join(' · ')})`
 }
 
 function directorateOpenLabel(row: BiaDirectorateRow) {
@@ -1397,27 +1408,22 @@ function record(id: number) {
                     />
                   </div>
                   <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div class="flex items-center gap-2">
-                      <div class="flex h-2 w-20 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                    <div class="w-36 space-y-1">
+                      <div class="flex items-baseline justify-between gap-2 tabular-nums">
+                        <span class="font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
+                        <span class="text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
+                      </div>
+                      <div
+                        class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"
+                        :title="coverageTooltip(dir)"
+                      >
                         <div
-                          v-if="dir.coverage.approved"
-                          class="bg-success"
-                          :style="{ width: coveragePct(dir.coverage.approved, dir.coverage.total) }"
-                        />
-                        <div
-                          v-if="dir.coverage.due_soon"
-                          class="bg-warning"
-                          :style="{ width: coveragePct(dir.coverage.due_soon, dir.coverage.total) }"
-                        />
-                        <div
-                          v-if="dir.coverage.overdue"
-                          class="bg-error"
-                          :style="{ width: coveragePct(dir.coverage.overdue, dir.coverage.total) }"
+                          v-if="dir.coverage.pct > 0"
+                          class="h-full rounded-full transition-all"
+                          :class="coverageBarColor(dir.coverage.pct)"
+                          :style="{ width: `${dir.coverage.pct}%` }"
                         />
                       </div>
-                      <span class="font-medium tabular-nums text-highlighted">
-                        {{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid
-                      </span>
                     </div>
                     <span class="text-muted">Open: {{ directorateOpenLabel(dir) }}</span>
                   </div>
@@ -1451,7 +1457,7 @@ function record(id: number) {
                       <th class="px-3 py-2.5">
                         <span class="inline-flex items-center gap-1">
                           <span>Final coverage</span>
-                          <UTooltip text="Groups with an approved Final BIA that has not expired. Green = valid, amber = due within 30 days, red = overdue, grey = no final BIA yet.">
+                          <UTooltip text="Percentage of groups with an approved Final BIA that has not expired. Hover a bar for details.">
                             <UIcon
                               name="i-lucide-info"
                               class="size-3.5 text-muted"
@@ -1525,30 +1531,22 @@ function record(id: number) {
                       </td>
 
                       <td class="px-3 py-3.5 align-middle">
-                        <div class="flex items-center gap-2.5">
-                          <div
-                            class="flex h-2 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"
-                            :title="`Valid Final: ${dir.coverage.valid_final} of ${dir.coverage.total} (${dir.coverage.pct}%)`"
-                          >
+                        <div
+                          class="w-36 space-y-1"
+                          :title="coverageTooltip(dir)"
+                        >
+                          <div class="flex items-baseline justify-between gap-2 text-xs tabular-nums">
+                            <span class="font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
+                            <span class="text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
+                          </div>
+                          <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                             <div
-                              v-if="dir.coverage.approved"
-                              class="bg-success"
-                              :style="{ width: coveragePct(dir.coverage.approved, dir.coverage.total) }"
-                            />
-                            <div
-                              v-if="dir.coverage.due_soon"
-                              class="bg-warning"
-                              :style="{ width: coveragePct(dir.coverage.due_soon, dir.coverage.total) }"
-                            />
-                            <div
-                              v-if="dir.coverage.overdue"
-                              class="bg-error"
-                              :style="{ width: coveragePct(dir.coverage.overdue, dir.coverage.total) }"
+                              v-if="dir.coverage.pct > 0"
+                              class="h-full rounded-full transition-all"
+                              :class="coverageBarColor(dir.coverage.pct)"
+                              :style="{ width: `${dir.coverage.pct}%` }"
                             />
                           </div>
-                          <span class="whitespace-nowrap text-xs font-medium tabular-nums text-highlighted">
-                            {{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid
-                          </span>
                         </div>
                       </td>
 
@@ -1598,27 +1596,6 @@ function record(id: number) {
                     </tr>
                   </tbody>
                 </table>
-              </div>
-
-              <!-- Coverage color legend -->
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default bg-elevated/20 px-4 py-2 text-[11px] text-muted">
-                <span class="font-medium text-highlighted">Coverage bar:</span>
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="size-2 rounded-full bg-success" />
-                  Valid final
-                </span>
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="size-2 rounded-full bg-warning" />
-                  Due soon (≤ 30 days)
-                </span>
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="size-2 rounded-full bg-error" />
-                  Overdue
-                </span>
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                  No final BIA yet
-                </span>
               </div>
             </template>
 
