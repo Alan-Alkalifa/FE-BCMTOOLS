@@ -262,6 +262,8 @@ onMounted(() => {
     resizeObserver.observe(container.value)
   }
 })
+// Back from another in-app tab (docs/tabs.md): the map was off screen, measure it again.
+onActivated(() => onResize())
 watch(settings, () => init())
 watch(() => props.scrollZoom, (on) => {
   if (on) map?.scrollWheelZoom.enable()

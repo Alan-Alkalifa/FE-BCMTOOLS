@@ -10,7 +10,7 @@ provide(sccaSavingKey, saving)
 const uploading = ref(false)
 
 function onSaved(assessment: SccaAssessment) {
-  return navigateTo({ path: sccaPath('manage', assessment.id), query: { tab: 'rating' } })
+  return navigateTo({ path: sccaPath('manage', assessment.id), query: { tab: 'rating' } }, { replace: true })
 }
 </script>
 
