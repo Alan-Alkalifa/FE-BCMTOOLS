@@ -40,7 +40,7 @@ function text(name: string) {
 type Period = 'all' | 'year' | '12m' | 'custom'
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
-const STATES = ['approved', 'overdue', 'due_soon', 'open', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none'] as const
+const STATES = ['approved', 'valid', 'overdue', 'due_soon', 'open', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none', 'not_started'] as const
 
 const filters = computed<BiaMonitoringFilters>(() => ({
   q: text('q'),
@@ -108,10 +108,12 @@ const state = computed<string>({
 })
 const stateItems = [
   { label: 'Any state', value: 'any' },
+  { label: 'Existing: Valid final BIA', value: 'valid' },
   { label: 'Existing: Has a final BIA', value: 'approved' },
   { label: 'Existing: Overdue', value: 'overdue' },
   { label: 'Existing: Due soon (≤ 30 days)', value: 'due_soon' },
   { label: 'Existing: No final BIA yet', value: 'none' },
+  { label: 'Existing: Not started', value: 'not_started' },
   { label: 'Open BIA: Any open', value: 'open' },
   { label: 'Open BIA: Draft', value: 'draft' },
   { label: 'Open BIA: Need revision', value: 'need_revision' },
@@ -536,6 +538,10 @@ function directorateLink(name: string) {
 
 function openDirectorate(row: BiaDirectorateRow) {
   router.push(directorateLink(row.name))
+}
+
+function displayOrgName(value: string | null | undefined) {
+  return !value || value === '—' ? 'Unassigned' : value
 }
 
 function directorateSeverityBar(severity: BiaDirectorateRow['severity']) {
@@ -1130,19 +1136,76 @@ function record(id: number) {
           <!-- Top toolbar -->
           <div class="space-y-3 border-b border-default p-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex flex-wrap items-center gap-2 text-sm text-muted">
-                <template v-if="effectiveListMode === 'directorates'">
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+                <template v-if="effectiveListMode === 'directorates' && directorates.data.value?.summary">
+                  <span class="font-medium text-highlighted">
+                    {{ plural(directorates.data.value.summary.total_groups, 'group') }}
+                  </span>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    class="font-medium text-success hover:underline"
+                    @click="setQuery({ state: filters.state === 'valid' ? undefined : 'valid' })"
+                  >
+                    {{ directorates.data.value.summary.valid_final }} valid
+                  </button>
+                  <template v-if="directorates.data.value.summary.overdue">
+                    <span>·</span>
+                    <button
+                      type="button"
+                      class="font-medium text-error hover:underline"
+                      @click="setQuery({ state: filters.state === 'overdue' ? undefined : 'overdue' })"
+                    >
+                      {{ directorates.data.value.summary.overdue }} overdue
+                    </button>
+                  </template>
+                  <template v-if="directorates.data.value.summary.returned">
+                    <span>·</span>
+                    <button
+                      type="button"
+                      class="font-medium text-error hover:underline"
+                      @click="setQuery({ state: filters.state === 'returned' ? undefined : 'returned' })"
+                    >
+                      {{ directorates.data.value.summary.returned }} returned
+                    </button>
+                  </template>
+                  <template v-if="directorates.data.value.summary.stuck">
+                    <span>·</span>
+                    <NuxtLink
+                      :to="cardLink({ tab: 'bottlenecks' })"
+                      class="font-medium text-error hover:underline"
+                    >
+                      {{ directorates.data.value.summary.stuck }} stuck approval
+                    </NuxtLink>
+                  </template>
+                  <template v-if="directorates.data.value.summary.due_soon">
+                    <span>·</span>
+                    <button
+                      type="button"
+                      class="font-medium text-warning hover:underline"
+                      @click="setQuery({ state: filters.state === 'due_soon' ? undefined : 'due_soon' })"
+                    >
+                      {{ directorates.data.value.summary.due_soon }} due soon
+                    </button>
+                  </template>
+                  <template v-if="directorates.data.value.summary.not_started">
+                    <span>·</span>
+                    <button
+                      type="button"
+                      class="font-medium text-highlighted hover:underline"
+                      @click="setQuery({ state: filters.state === 'not_started' ? undefined : 'not_started' })"
+                    >
+                      {{ directorates.data.value.summary.not_started }} not started
+                    </button>
+                  </template>
+                  <span class="text-xs text-muted">
+                    — as of {{ formatDate(directorates.data.value.summary.as_of) }}
+                  </span>
+                </template>
+                <template v-else-if="effectiveListMode === 'directorates'">
                   <span>
                     {{ plural(directorates.data.value?.total ?? 0, 'directorate') }} · {{ plural(directorates.data.value?.total_groups ?? 0, 'group') }}
                   </span>
-                  <UBadge
-                    v-if="(directorates.data.value?.attention_directorates ?? 0) > 0"
-                    color="warning"
-                    variant="subtle"
-                    size="xs"
-                    icon="i-lucide-triangle-alert"
-                    :label="`${plural(directorates.data.value!.attention_directorates, 'directorate')} need attention`"
-                  />
                 </template>
                 <template v-else>
                   <span>{{ plural(register.data.value?.total ?? 0, 'group') }}</span>
@@ -1154,6 +1217,28 @@ function record(id: number) {
 
               <div class="flex flex-wrap items-center gap-2">
                 <template v-if="effectiveListMode === 'directorates'">
+                  <UPopover>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-help-circle"
+                      label="How to read"
+                    />
+                    <template #content>
+                      <div class="max-w-xs space-y-2 p-3 text-xs leading-relaxed text-muted">
+                        <p class="font-semibold text-highlighted">
+                          How to read this list
+                        </p>
+                        <ul class="list-disc space-y-1 ps-4">
+                          <li><strong class="text-error">Red</strong> means action is needed now (Overdue, Returned, or Stuck ≥ {{ directorates.data.value?.escalation_days ?? 5 }} working days).</li>
+                          <li><strong class="text-warning">Amber</strong> means renewal is due within 30 days.</li>
+                          <li><strong>Most urgent</strong> puts Directorates with the most urgent issues at the top.</li>
+                          <li>Click any Directorate row to inspect its Sub-Directorates and Groups.</li>
+                        </ul>
+                      </div>
+                    </template>
+                  </UPopover>
                   <UButton
                     size="xs"
                     :color="attentionOnly ? 'warning' : 'neutral'"
@@ -1298,7 +1383,7 @@ function record(id: number) {
                         class="font-semibold text-highlighted hover:text-primary hover:underline"
                         @click.stop
                       >
-                        {{ dir.name }}
+                        {{ displayOrgName(dir.name) }}
                       </NuxtLink>
                       <p class="mt-0.5 text-xs text-muted">
                         {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
@@ -1331,7 +1416,7 @@ function record(id: number) {
                         />
                       </div>
                       <span class="font-medium tabular-nums text-highlighted">
-                        {{ dir.coverage.valid_final }}/{{ dir.coverage.total }} final
+                        {{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid
                       </span>
                     </div>
                     <span class="text-muted">Open: {{ directorateOpenLabel(dir) }}</span>
@@ -1339,6 +1424,8 @@ function record(id: number) {
                   <div @click.stop>
                     <BiancaHealthChips
                       :alerts="dir.alerts"
+                      :escalation-days="directorates.data.value?.escalation_days"
+                      :in-progress-count="dir.status_counts.no_final"
                       size="xs"
                     />
                   </div>
@@ -1351,19 +1438,59 @@ function record(id: number) {
                   <thead class="border-b border-default bg-elevated/40 text-xs font-medium uppercase text-muted">
                     <tr>
                       <th class="py-2.5 ps-4 pe-3">
-                        Directorate
+                        <span class="inline-flex items-center gap-1">
+                          <span>Directorate</span>
+                          <UTooltip text="Click a Directorate to open its Sub-Directorates and Groups.">
+                            <UIcon
+                              name="i-lucide-info"
+                              class="size-3.5 text-muted"
+                            />
+                          </UTooltip>
+                        </span>
                       </th>
                       <th class="px-3 py-2.5">
-                        Final coverage
+                        <span class="inline-flex items-center gap-1">
+                          <span>Final coverage</span>
+                          <UTooltip text="Groups with an approved Final BIA that has not expired. Green = valid, amber = due within 30 days, red = overdue, grey = no final BIA yet.">
+                            <UIcon
+                              name="i-lucide-info"
+                              class="size-3.5 text-muted"
+                            />
+                          </UTooltip>
+                        </span>
                       </th>
                       <th class="px-3 py-2.5">
-                        Needs attention
+                        <span class="inline-flex items-center gap-1">
+                          <span>Needs attention</span>
+                          <UTooltip :text="`Issues requiring follow-up: Overdue, Returned, Stuck approval (waiting ≥ ${directorates.data.value?.escalation_days ?? 5} working days), Due soon (≤ 30 days), or Not started. Hover a chip to see group names.`">
+                            <UIcon
+                              name="i-lucide-info"
+                              class="size-3.5 text-muted"
+                            />
+                          </UTooltip>
+                        </span>
                       </th>
                       <th class="px-3 py-2.5">
-                        Open BIA
+                        <span class="inline-flex items-center gap-1">
+                          <span>Open BIA</span>
+                          <UTooltip text="Active drafts, revisions, or submissions currently in approval.">
+                            <UIcon
+                              name="i-lucide-info"
+                              class="size-3.5 text-muted"
+                            />
+                          </UTooltip>
+                        </span>
                       </th>
                       <th class="py-2.5 ps-3 pe-4 text-right">
-                        Highest
+                        <span class="inline-flex items-center justify-end gap-1">
+                          <span>Highest category</span>
+                          <UTooltip text="Most critical Business Function Category among groups in this Directorate.">
+                            <UIcon
+                              name="i-lucide-info"
+                              class="size-3.5 text-muted"
+                            />
+                          </UTooltip>
+                        </span>
                       </th>
                     </tr>
                   </thead>
@@ -1373,7 +1500,7 @@ function record(id: number) {
                       :key="dir.name"
                       tabindex="0"
                       role="link"
-                      :aria-label="`Open ${dir.name} (${dir.sub_directorate_count} sub-directorates, ${dir.group_count} groups)`"
+                      :aria-label="`Open ${displayOrgName(dir.name)} (${dir.sub_directorate_count} sub-directorates, ${dir.group_count} groups)`"
                       class="cursor-pointer transition hover:bg-elevated/50 focus-visible:bg-elevated/60 focus-visible:outline-none"
                       @click="openDirectorate(dir)"
                       @keydown.enter.prevent="openDirectorate(dir)"
@@ -1387,7 +1514,7 @@ function record(id: number) {
                           class="font-semibold text-highlighted hover:text-primary hover:underline"
                           @click.stop
                         >
-                          {{ dir.name }}
+                          {{ displayOrgName(dir.name) }}
                         </NuxtLink>
                         <p class="mt-0.5 text-xs text-muted">
                           {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
@@ -1401,7 +1528,7 @@ function record(id: number) {
                         <div class="flex items-center gap-2.5">
                           <div
                             class="flex h-2 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"
-                            :title="`Valid Final: ${dir.coverage.valid_final}/${dir.coverage.total} (${dir.coverage.pct}%)`"
+                            :title="`Valid Final: ${dir.coverage.valid_final} of ${dir.coverage.total} (${dir.coverage.pct}%)`"
                           >
                             <div
                               v-if="dir.coverage.approved"
@@ -1419,8 +1546,8 @@ function record(id: number) {
                               :style="{ width: coveragePct(dir.coverage.overdue, dir.coverage.total) }"
                             />
                           </div>
-                          <span class="font-medium tabular-nums text-highlighted">
-                            {{ dir.coverage.valid_final }}/{{ dir.coverage.total }}
+                          <span class="whitespace-nowrap text-xs font-medium tabular-nums text-highlighted">
+                            {{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid
                           </span>
                         </div>
                       </td>
@@ -1429,7 +1556,11 @@ function record(id: number) {
                         class="px-3 py-3.5 align-middle"
                         @click.stop
                       >
-                        <BiancaHealthChips :alerts="dir.alerts" />
+                        <BiancaHealthChips
+                          :alerts="dir.alerts"
+                          :escalation-days="directorates.data.value?.escalation_days"
+                          :in-progress-count="dir.status_counts.no_final"
+                        />
                       </td>
 
                       <td class="px-3 py-3.5 align-middle">
@@ -1442,7 +1573,7 @@ function record(id: number) {
                           v-if="dir.open_counts.longest_working_days != null"
                           class="mt-0.5 text-xs text-muted"
                         >
-                          longest {{ dir.open_counts.longest_working_days }} wd
+                          waiting up to {{ plural(dir.open_counts.longest_working_days, 'working day') }}
                         </p>
                       </td>
 
@@ -1467,6 +1598,27 @@ function record(id: number) {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+
+              <!-- Coverage color legend -->
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default bg-elevated/20 px-4 py-2 text-[11px] text-muted">
+                <span class="font-medium text-highlighted">Coverage bar:</span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-success" />
+                  Valid final
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-warning" />
+                  Due soon (≤ 30 days)
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-error" />
+                  Overdue
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+                  No final BIA yet
+                </span>
               </div>
             </template>
 

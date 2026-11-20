@@ -60,7 +60,7 @@ export interface BiaMonitorGroupRow {
   history: BiaAssessmentRef[]
 }
 
-export type BiaAlertKey = 'overdue' | 'returned' | 'stuck' | 'due_soon' | 'no_final'
+export type BiaAlertKey = 'overdue' | 'returned' | 'stuck' | 'due_soon' | 'not_started'
 export type BiaSeverity = 'error' | 'warning' | 'ok'
 export type BiaDirectorateSort = 'urgent' | 'name' | 'groups'
 
@@ -114,6 +114,17 @@ export interface BiaDirectoratesResponse extends BiaPaginatedResponse<BiaDirecto
   total_directorates: number
   total_groups: number
   attention_directorates: number
+  escalation_days?: number
+  summary?: {
+    total_groups: number
+    valid_final: number
+    overdue: number
+    returned: number
+    stuck: number
+    due_soon: number
+    not_started: number
+    as_of: string
+  }
 }
 
 export interface BiaNeedsActionItem {
@@ -154,6 +165,7 @@ export interface BiaDirectorateDetailResponse {
   needs_action: BiaNeedsActionItem[]
   sub_directorates: BiaSubDirectorateRow[]
   directorates: BiaDirectorateSwitcherItem[]
+  escalation_days?: number
 }
 
 export interface BiaSignoffWaitingRow {
@@ -345,7 +357,7 @@ export interface BiaAssessmentDetail {
 export interface BiaMonitoringFilters {
   q?: string
   category?: BiaCategory | 'none'
-  state?: 'approved' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none' | 'overdue' | 'due_soon' | 'open'
+  state?: 'approved' | 'valid' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none' | 'not_started' | 'overdue' | 'due_soon' | 'open'
   reason?: BiaReason
   from?: string
   to?: string

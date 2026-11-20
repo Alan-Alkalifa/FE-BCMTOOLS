@@ -5,17 +5,21 @@ const props = withDefaults(defineProps<{
   alerts: BiaAlertItem[]
   maxVisible?: number
   size?: 'xs' | 'sm'
+  escalationDays?: number
+  inProgressCount?: number
 }>(), {
   maxVisible: 4,
   size: 'sm',
+  escalationDays: 5,
+  inProgressCount: 0,
 })
 
 const meta: Record<BiaAlertKey, { label: string, color: 'error' | 'warning' | 'neutral', icon: string, unit: string }> = {
   overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-alert-circle', unit: 'overdue group' },
   returned: { label: 'Returned', color: 'error', icon: 'i-lucide-undo-2', unit: 'returned BIA' },
-  stuck: { label: 'Stuck', color: 'error', icon: 'i-lucide-flame', unit: 'stuck approval' },
+  stuck: { label: 'Stuck approval', color: 'error', icon: 'i-lucide-flame', unit: 'stuck approval' },
   due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-clock-alert', unit: 'group due within 30 days' },
-  no_final: { label: 'No final', color: 'neutral', icon: 'i-lucide-circle-dashed', unit: 'group without a final BIA' },
+  not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed', unit: 'group with no BIA yet' },
 }
 
 const visible = computed(() => props.alerts.slice(0, props.maxVisible))
@@ -24,9 +28,11 @@ const hidden = computed(() => props.alerts.slice(props.maxVisible))
 function tooltipText(item: BiaAlertItem) {
   const names = item.groups.slice(0, 3)
   const extra = item.groups.length - names.length
-  const head = `${item.count} ${meta[item.key].label.toLowerCase()}`
-  if (!names.length) return head
-  return `${head}: ${names.join(', ')}${extra > 0 ? `, +${extra} more` : ''}`
+  const base = item.key === 'stuck'
+    ? `${item.count} waiting ≥ ${props.escalationDays} working days`
+    : `${item.count} ${meta[item.key].label.toLowerCase()}`
+  if (!names.length) return base
+  return `${base}: ${names.join(', ')}${extra > 0 ? `, +${extra} more` : ''}`
 }
 
 function ariaLabel(item: BiaAlertItem) {
@@ -63,6 +69,19 @@ function ariaLabel(item: BiaAlertItem) {
         />
       </UTooltip>
     </template>
+    <UTooltip
+      v-else-if="inProgressCount > 0"
+      text="Initial BIA is currently in draft or approval — no overdue or stuck items."
+    >
+      <UBadge
+        color="neutral"
+        variant="subtle"
+        :size="size"
+        icon="i-lucide-clock"
+        :aria-label="`${inProgressCount} initial BIA in progress`"
+        :label="`${inProgressCount} In progress`"
+      />
+    </UTooltip>
     <UBadge
       v-else
       color="success"

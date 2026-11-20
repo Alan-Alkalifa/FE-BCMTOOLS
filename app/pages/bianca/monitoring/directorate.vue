@@ -32,7 +32,7 @@ const sort = computed<BiaDirectorateSort>(() => {
 const attentionOnly = computed(() => text('attention_only') === '1')
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
-const STATES = ['approved', 'overdue', 'due_soon', 'open', 'in_signoff', 'draft', 'returned', 'in_revision', 'need_revision', 'none'] as const
+const STATES = ['approved', 'valid', 'overdue', 'due_soon', 'open', 'in_signoff', 'draft', 'returned', 'in_revision', 'need_revision', 'none', 'not_started'] as const
 
 const filters = computed<BiaMonitoringFilters>(() => ({
   q: text('q'),
@@ -209,7 +209,15 @@ function collapseAll() {
 
 const needsAction = computed(() => detail.data.value?.needs_action ?? [])
 const needsActionOpen = ref(true)
+const needsActionShowAll = ref(false)
+const visibleNeedsAction = computed(() =>
+  needsActionShowAll.value ? needsAction.value : needsAction.value.slice(0, 5),
+)
 const busyActionKey = ref<string | null>(null)
+
+function displayOrgName(value: string | null | undefined) {
+  return !value || value === '—' ? 'Unassigned' : value
+}
 
 function actionKindBadge(kind: BiaNeedsActionItem['kind']) {
   const map: Record<BiaNeedsActionItem['kind'], { label: string, color: 'error' | 'warning' | 'neutral', icon: string }> = {
@@ -217,7 +225,7 @@ function actionKindBadge(kind: BiaNeedsActionItem['kind']) {
     returned: { label: 'Returned', color: 'error', icon: 'i-lucide-undo-2' },
     stuck: { label: 'Stuck approval', color: 'error', icon: 'i-lucide-flame' },
     due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-clock-alert' },
-    no_final: { label: 'No final BIA', color: 'neutral', icon: 'i-lucide-circle-dashed' },
+    not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed' },
   }
   return map[kind]
 }
@@ -601,7 +609,7 @@ const summary = computed(() => detail.data.value?.summary)
                 </span>
                 <span class="text-xs text-muted">
                   <template v-if="baseSummary.open_counts.longest_working_days != null">
-                    longest {{ baseSummary.open_counts.longest_working_days }} wd
+                    waiting up to {{ plural(baseSummary.open_counts.longest_working_days, 'working day') }}
                   </template>
                   <template v-else>
                     in draft / approval
@@ -646,7 +654,7 @@ const summary = computed(() => detail.data.value?.summary)
 
             <ul class="divide-y divide-default">
               <li
-                v-for="(item, idx) in needsAction"
+                v-for="(item, idx) in visibleNeedsAction"
                 :key="`${item.kind}-${item.group_id}-${item.bia_id ?? idx}`"
                 class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
@@ -660,7 +668,7 @@ const summary = computed(() => detail.data.value?.summary)
                       :label="actionKindBadge(item.kind).label"
                     />
                     <span class="font-medium text-highlighted">{{ item.group_name }}</span>
-                    <span class="text-xs text-muted">· {{ item.sub_directorate }}</span>
+                    <span class="text-xs text-muted">· {{ displayOrgName(item.sub_directorate) }}</span>
                   </div>
                   <p class="text-xs text-muted">
                     {{ item.summary }}
@@ -709,6 +717,18 @@ const summary = computed(() => detail.data.value?.summary)
                 </div>
               </li>
             </ul>
+            <div
+              v-if="needsAction.length > 5"
+              class="border-t border-default px-4 py-2 text-center"
+            >
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :label="needsActionShowAll ? 'Show top 5' : `Show all (${needsAction.length})`"
+                @click="needsActionShowAll = !needsActionShowAll"
+              />
+            </div>
           </UCard>
 
           <!-- Toolbar: local search, filters, expand/collapse, export -->
@@ -827,10 +847,10 @@ const summary = computed(() => detail.data.value?.summary)
                     />
                     <div class="min-w-0">
                       <p class="truncate font-semibold text-highlighted">
-                        {{ sub.name }}
+                        {{ displayOrgName(sub.name) }}
                       </p>
                       <p class="text-xs text-muted">
-                        {{ plural(sub.group_count, 'group') }} · Final {{ sub.coverage.valid_final }}/{{ sub.coverage.total }}
+                        {{ plural(sub.group_count, 'group') }} · {{ sub.coverage.valid_final }} of {{ sub.coverage.total }} valid
                         <template v-if="sub.shortest_mtd">
                           · Shortest MTD {{ sub.shortest_mtd }}
                         </template>
@@ -842,6 +862,8 @@ const summary = computed(() => detail.data.value?.summary)
                 <div class="flex flex-wrap items-center gap-3 ps-7 sm:ps-0">
                   <BiancaHealthChips
                     :alerts="sub.alerts"
+                    :escalation-days="detail.data.value?.escalation_days"
+                    :in-progress-count="sub.status_counts.no_final"
                     size="xs"
                   />
                   <span class="text-xs text-muted whitespace-nowrap">
