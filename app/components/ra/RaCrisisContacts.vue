@@ -99,7 +99,7 @@ const cellClass = 'px-3 py-2 align-top print:px-2 print:py-1'
         v-else
         class="mt-2 text-sm text-muted"
       >
-        None recorded.<template v-if="!print && can('location.master')">
+        None recorded.<template v-if="!print && can('sites.master')">
           <NuxtLink
             :to="masterBuildingPath(place.location.id, 'contacts')"
             class="text-primary hover:underline"

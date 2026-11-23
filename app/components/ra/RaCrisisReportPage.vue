@@ -200,7 +200,7 @@ const cell = 'px-3 py-2 align-top print:px-2 print:py-1'
         <RaMapLegend
           :items="['building', 'branch', crisis.status === 'pending' ? 'crisis_pending' : 'crisis']"
           :labels="{ building: 'Affected head office building', branch: 'Affected branch', crisis: `${t.label} and its affected area`, crisis_pending: `${t.label} waiting for approval (dashed area)` }"
-          :residual="`Colour: residual risk for ${crisis.hazard.short_name}`"
+          :residual="`Residual risk for ${crisis.hazard.short_name}`"
         />
       </section>
 

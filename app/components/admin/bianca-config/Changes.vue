@@ -24,10 +24,15 @@ const parts: Record<string, [section: string, label: string]> = {
   scores: ['Impact and MTD', 'Allowed impact scores'],
   hours_per_day: ['Impact and MTD', 'Hours per day'],
   days_per_week: ['Impact and MTD', 'Days per week'],
-  max_functions: ['Impact and MTD', 'Maximum functions'],
+  max_functions: ['Impact and MTD', 'Function rows in the Excel template'],
   it_slots: ['Impact and MTD', 'IT rows per function'],
   dependency_slots: ['Impact and MTD', 'Non-IT rows per function'],
+  review_period_months: ['Impact and MTD', 'Review period of a final BIA (months)'],
   expected_mtd: ['Impact and MTD', 'Expected MTD'],
+  mtd_options: ['Impact and MTD', 'Expected MTD master'],
+  suggested_mtd_by_period: ['Impact and MTD', 'Suggested MTD by impact period'],
+  suggested_mtd_fallback: ['Impact and MTD', 'Suggested MTD fallback'],
+  office_location_labels: ['Office location types', 'Location label'],
   guides: ['Guides and statements', 'Guide and statement text'],
   signoff_steps: ['Approval template', 'Sign-off steps'],
 }
@@ -54,12 +59,14 @@ const fieldLabels: Record<string, string> = {
   'signer_mode': 'Signer selection', 'user_id': 'Signer', 'required': 'Required', 'title': 'Title',
   'category': 'Category', 'regulatory': 'Regulatory impact', 'customer': 'Customer impact',
   'description': 'Description',
+  'use_it': 'MTD IT', 'use_non_it': 'MTD Non IT',
+  'bcm_role': 'Operational BCM role',
 }
 const guideLabels: Record<string, string> = {
   suggested_mtd: 'Suggested MTD', expected_mtd: 'Expected MTD', regulatory: 'Regulatory impact',
   customer: 'Customer impact', recovery: 'Recovery', attestation: 'Attestation statement',
   it_dependency: 'IT dependencies', non_it_dependency: 'Non-IT dependencies',
-  alternate_site: 'Alternate site strategy', risk_assessment: 'Personnel and risk assessment',
+  alternate_site: 'Alternate site strategy', risk_assessment: 'Personel and risk assessment',
   critical_timings: 'Critical timings',
 }
 function changeLabel(change: BiancaConfigVersion['changes'][number], fallback: string) {

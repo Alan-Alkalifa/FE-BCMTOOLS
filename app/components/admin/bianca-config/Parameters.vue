@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import type { BiancaConfigPayload, BiancaGrade, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
+import type { BiancaConfigPayload, BiancaGrade, BiancaListItems, BiancaSigner, BiancaStep } from '~/composables/useBiancaConfigAdmin'
+import type { BiancaLocationMode } from '~/composables/useBianca'
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
-const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, savedStepCodes: string[], versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string> }>()
+const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, savedStepCodes: string[], versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string>, listItems: BiancaListItems }>()
 const confirm = useConfirm()
+const { can } = useAuth()
+const locationDefaults = { work_from_home: 'Work From Home', hyspace: 'Hyspace' }
+const locationLabels = computed(() => model.value.office_location_labels ?? locationDefaults)
+function setLocationLabel(key: BiancaLocationMode, value: string) {
+  model.value.office_location_labels = { ...locationLabels.value, [key]: value }
+}
 
 function canRemoveGrade(grade: BiancaGrade) {
   return model.value.staff_grades.length > 1
@@ -257,7 +264,59 @@ function selectedSigner(id: number | null) {
       v-else-if="section === 'impact'"
       v-model="model"
       :disabled="disabled"
+      :list-items="listItems"
     />
+
+    <UCard v-else-if="section === 'locations'">
+      <template #header>
+        <h2 class="font-semibold text-highlighted">
+          Office location types
+        </h2>
+        <p class="mt-1 text-sm text-muted">
+          These labels appear in both location fields on the Sign Off Page and in the Excel template.
+        </p>
+      </template>
+      <div class="space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField
+            label="Work From Home label"
+            help="Address and floor are not applicable."
+            required
+          >
+            <UInput
+              :model-value="locationLabels.work_from_home"
+              :maxlength="255"
+              :disabled="disabled"
+              class="w-full"
+              @update:model-value="setLocationLabel('work_from_home', $event)"
+            />
+          </UFormField>
+          <UFormField
+            label="Hyspace label"
+            help="The site and floor are optional; a selected site supplies the address."
+            required
+          >
+            <UInput
+              :model-value="locationLabels.hyspace"
+              :maxlength="255"
+              :disabled="disabled"
+              class="w-full"
+              @update:model-value="setLocationLabel('hyspace', $event)"
+            />
+          </UFormField>
+        </div>
+        <p class="text-sm text-muted">
+          Physical buildings, addresses and available sites follow Master Building.
+        </p>
+        <UButton
+          v-if="can('sites.master')"
+          :to="MASTER_BUILDINGS_PATH"
+          label="Open Master Building"
+          color="neutral"
+          variant="outline"
+        />
+      </div>
+    </UCard>
 
     <div
       v-else-if="section === 'steps'"
@@ -360,12 +419,28 @@ function selectedSigner(id: number | null) {
                     required
                   >
                     <UserPicker
+                      :key="step.bcm_role ?? 'all'"
                       v-model="step.user_id"
+                      :endpoint="bcmSignerEndpoint(step.bcm_role)"
                       :selected="selectedSigner(step.user_id)"
                       permission="bianca.access"
                       :disabled="disabled"
                       :aria-label="step.title + ' signer'"
                       @pick="rememberSigner"
+                    />
+                  </UFormField>
+                  <UFormField
+                    v-if="i > 0"
+                    label="Operational BCM role"
+                    help="Restrict eligible signers for this step to users with an active assignment in Master Data."
+                  >
+                    <USelect
+                      :model-value="step.bcm_role ?? 'all'"
+                      :items="[{ label: 'Any BIA signer', value: 'all' as const }, ...bcmRoleTabs]"
+                      :disabled="disabled"
+                      :aria-label="`${step.title} operational BCM role`"
+                      class="w-full"
+                      @update:model-value="step.bcm_role = $event === 'all' ? null : $event; step.user_id = null"
                     />
                   </UFormField>
                 </div>

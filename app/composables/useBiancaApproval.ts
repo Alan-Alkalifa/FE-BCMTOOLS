@@ -65,6 +65,8 @@ export interface BiancaEvent {
   role_title: string | null
   actor: string | null
   note: string | null
+  /** What the activity log says. */
+  label?: string
   created_at: string | null
 }
 

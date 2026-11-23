@@ -33,6 +33,58 @@ function version(): BiancaConfigVersion {
   return { id: 1, code: 'V1', name: 'BIA workbook baseline', notes: null, status: 'active', revision: 1, requested_by_id: null, requested_at: null, published_at: null, used_by: 0, payload: payload(), changes: [] }
 }
 
+test('Sign Off accepts WFH and generic or specified Hyspace without requiring a floor', async ({ page }) => {
+  await signIn(page, { permissions })
+  await page.route('**/api/users?*', (route) => route.fulfill({ json: { items: [] } }))
+  await page.route('**/api/bianca/**', (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/lookups')) {
+      const config = payload()
+      return route.fulfill({ json: { ...config, personnel_grades: config.staff_grades, staff_grades: {}, config_version_id: 2, config_version: 'V2', organisation: {} } })
+    }
+    if (path.endsWith('/org-options')) return route.fulfill({ json: { directorates: [], sub_directorates: [], groups: [] } })
+    if (path.endsWith('/calculate')) return route.fulfill({ json: { functions: [], total_staff: 0, loss_totals: [0, 0], loss_alerts: [false, false] } })
+    if (path.endsWith('/locations')) return route.fulfill({ json: { items: [{ id: 1, label: 'Example Site (HO-01)', address: 'Example Office Address' }] } })
+    return route.fulfill({ json: { items: [] } })
+  })
+  await page.goto('/bianca/manage/new')
+  await page.getByRole('combobox', { name: 'Main location type' }).click()
+  await page.getByRole('option', { name: 'Work From Home', exact: true }).click()
+  await expect(page.getByText('Address and floor are not applicable.')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: /Main location floor/ })).toHaveCount(0)
+  await page.getByRole('combobox', { name: 'Alternate location type' }).click()
+  await page.getByRole('option', { name: 'Hyspace', exact: true }).click()
+  await expect(page.getByText('Site not specified')).toBeVisible()
+  await page.getByRole('button', { name: 'Alternate location site', exact: true }).click()
+  await page.getByRole('option', { name: 'Example Site (HO-01)', exact: true }).click()
+  await expect(page.getByText('Example Office Address')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Alternate location floor', exact: true })).not.toHaveAttribute('required', '')
+})
+
+test('Expected MTD edits one master for IT and non-IT', async ({ page }) => {
+  await signIn(page, { permissions })
+  const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
+  let saved: BiancaConfigPayload | undefined
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON()
+      saved = body.payload
+      expect(body.list_items.dependency_mtd).toBeUndefined()
+      Object.assign(draft, body, { revision: 2 })
+      return route.fulfill({ json: draft })
+    }
+    return route.fulfill({ json: { items: [draft] } })
+  })
+  await page.goto('/admin/bianca-config?version=2&tab=impact&impact=expected-mtd')
+  const headings = page.getByRole('heading', { name: 'Expected MTD', exact: true })
+  await expect(headings).toBeVisible({ timeout: 45000 })
+  await expect(page.getByRole('switch', { name: 'MTD IT', exact: true }).nth(1)).toBeDisabled()
+  await page.getByRole('textbox', { name: /^Name\*?$/ }).first().fill('Four hours')
+  await page.getByRole('switch', { name: 'MTD Non IT', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  await expect.poll(() => saved?.mtd_options?.[0]).toMatchObject({ value: '4 hours', label: 'Four hours', use_it: true, use_non_it: false })
+})
+
 test('an administrator adds a personnel category and saves the typed payload with CSRF', async ({ page }) => {
   await signIn(page, { permissions })
   let versions = [version()]
@@ -239,6 +291,7 @@ test('a user without configuration permission is sent to forbidden', async ({ pa
 
 test('new BIA questionnaire renders a configured sixth category', async ({ page }) => {
   await signIn(page, { permissions })
+  await page.route('**/api/users?*', (route) => route.fulfill({ json: { items: [] } }))
   const config = payload()
   config.staff_grades.push({ code: 'specialists', label: 'Specialist Support', min_level: 12, max_level: 13, active: true, requires_note: false })
   await page.route('**/api/bianca/**', (route) => {
@@ -246,14 +299,34 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
       return route.fulfill({ json: { ...config, personnel_grades: config.staff_grades, staff_grades: {}, config_version_id: 2, config_version: 'V2', organisation: { directorate: 'Dir', sub_directorate: 'Sub', org_group: 'Group' } } })
     }
     if (route.request().url().includes('/calculate')) return route.fulfill({ json: { functions: [], total_staff: 0, loss_totals: [0, 0], loss_alerts: [false, false] } })
+    if (route.request().url().includes('/org-options')) return route.fulfill({ json: { directorates: ['Dir'], sub_directorates: ['Sub'], groups: ['Group'] } })
+    if (route.request().url().includes('/people')) {
+      return route.fulfill({ json: { items: [
+        { id: 2, name: 'Test Coordinator', label: 'Test Coordinator', phone: '081234567890' },
+        { id: 3, name: 'Test Alternate', label: 'Test Alternate', phone: '081234567891' },
+      ] } })
+    }
     return route.fulfill({ json: { items: [] } })
   })
   await page.goto('/bianca/manage/new')
+  await page.getByPlaceholder('What the Group does').fill('Supports the business.')
+  await page.getByPlaceholder('How the Group recovers, at a high level').fill('Resume work remotely.')
+  await page.getByRole('combobox', { name: 'Main location type' }).click()
+  await page.getByRole('option', { name: 'Work From Home', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Alternate location type' }).click()
+  await page.getByRole('option', { name: 'Hyspace', exact: true }).click()
+  await page.getByRole('button', { name: 'BCM Coordinator', exact: true }).click()
+  await page.getByRole('option', { name: 'Test Coordinator' }).click()
+  await page.getByRole('button', { name: 'Alternate BCM Coordinator', exact: true }).click()
+  await page.getByRole('option', { name: 'Test Alternate' }).click()
+  const riskQuestions = page.locator('#bianca-sign').getByRole('radiogroup')
+  await riskQuestions.nth(0).getByRole('radio', { name: 'No', exact: true }).check()
+  await riskQuestions.nth(1).getByRole('radio', { name: 'Yes', exact: true }).check()
+
   await page.getByRole('tab', { name: 'RA questionnaire', exact: true }).click()
-  const count = page.getByRole('spinbutton', { name: 'Specialist Support (U12–U13)', exact: true })
+  const count = page.getByRole('spinbutton', { name: 'Number of personnel, Specialist Support', exact: true })
   await count.fill('7')
-  await expect(page.getByText('(configured categories · V2)', { exact: true })).toBeVisible()
-  await expect(page.getByText('7', { exact: true })).toBeVisible()
+  await expect(page.locator('#bianca-ra tfoot').getByRole('cell', { name: '7', exact: true })).toBeVisible()
 })
 
 test('configuration sections keep draft edits across tabs and compare saved values', async ({ page }) => {
@@ -309,7 +382,9 @@ test('configuration sections keep draft edits across tabs and compare saved valu
   await expect(page.getByRole('spinbutton', { name: 'Hours per day' })).toBeVisible()
   await impact.getByRole('button', { name: 'Expected MTD', exact: true }).click()
   await page.getByRole('button', { name: 'Add MTD', exact: true }).click()
-  await page.getByRole('textbox', { name: 'Expected MTD 2', exact: true }).fill('2 days')
+  await page.getByRole('textbox', { name: /^Code\*?$/ }).last().fill('2days')
+  await page.getByRole('textbox', { name: /^Name\*?$/ }).last().fill('Two days')
+  await page.getByRole('textbox', { name: /^Workbook value\*?$/ }).last().fill('2 days')
 
   await page.getByRole('tab', { name: 'Guides and statements', exact: true }).click()
   await page.getByRole('textbox', { name: 'Attestation statement' }).fill('I confirm the assessment.')
@@ -339,7 +414,7 @@ test('configuration sections keep draft edits across tabs and compare saved valu
     { code: '4 hours', label: '4 hours', text: null, active: true },
     { code: '1 day', label: '1 day', text: null, active: false },
   ])
-  expect(saved?.expected_mtd[1]).toEqual({ value: '2 days', category: 'Others' })
+  expect(saved?.mtd_options?.at(-1)).toMatchObject({ value: '2 days', category: 'Others', use_it: true })
   expect(saved?.guides.attestation).toBe('I confirm the assessment.')
   expect(saved?.signoff_steps.at(-1)).toMatchObject({ code: 'head_of', required: true })
 })
@@ -429,8 +504,10 @@ test('financial and non-financial matrices save their typed configuration', asyn
   })
   await page.goto('/admin/bianca-config?tab=impact&impact=financial-bands')
   await page.getByRole('textbox', { name: 'very_high description', exact: true }).fill('Review loss above IDR 4 billion.')
-  await page.getByRole('navigation', { name: 'Impact and MTD', exact: true }).getByRole('button', { name: 'Regulatory and customer matrix', exact: true }).click()
+  const impact = page.getByRole('navigation', { name: 'Impact and MTD', exact: true })
+  await impact.getByRole('button', { name: 'Regulatory impact matrix', exact: true }).click()
   await page.getByRole('textbox', { name: 'Regulatory score 3', exact: true }).fill('Breach of laws and regulations.')
+  await impact.getByRole('button', { name: 'Customer impact matrix', exact: true }).click()
   await expect(page.getByText(/Exactly 20% is not defined/)).toBeVisible()
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await expect.poll(() => saved?.financial_bands[0]?.description).toBe('Review loss above IDR 4 billion.')

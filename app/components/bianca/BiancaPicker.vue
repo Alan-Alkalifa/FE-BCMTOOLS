@@ -4,13 +4,13 @@
  * locations), searched by name or code as you type. Nothing is typed in free: what isn't in the
  * list is added in the master (Administration).
  */
-interface Row { id: number, label: string, code?: string | null, rto?: string | null, rpo?: string | null }
+interface Row { id: number, label: string, code?: string | null, rto?: string | null, rpo?: string | null, address?: string | null }
 
 const model = defineModel<number | undefined>()
 const props = withDefaults(defineProps<{
   kind: 'applications' | 'locations'
   /** How the saved value reads before the list loads. */
-  selected?: { id: number, label: string } | null
+  selected?: Row | null
   placeholder?: string
   ariaLabel?: string
   disabled?: boolean
@@ -44,7 +44,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 const items = computed(() => {
   const rows = [...found.value]
   if (props.selected && !rows.some((row) => row.id === props.selected!.id)) {
-    rows.unshift({ id: props.selected.id, label: props.selected.label })
+    rows.unshift(props.selected)
   }
   return rows.map((row) => ({ label: row.label, value: row.id, row }))
 })

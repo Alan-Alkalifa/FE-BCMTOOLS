@@ -48,6 +48,9 @@ export interface BiancaDependency {
   down_sla?: string
   down_outsourced?: 'Yes' | 'No' | undefined
   down_material?: 'Yes' | 'No' | undefined
+  /** Why a lower capacity or a longer MTD than the function's is accepted. */
+  up_justification?: string
+  down_justification?: string
 }
 
 export interface BiancaFunction {
@@ -87,13 +90,16 @@ export interface BiancaFunction {
 
 export const BIANCA_HEADER_TEXT = [
   'group_description', 'main_floor', 'alt_floor', 'recovery_strategy',
-  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_email',
-  'bcm_alternate', 'bcm_alternate_nik', 'bcm_alternate_phone', 'bcm_alternate_email',
+  'bcm_coordinator', 'bcm_coordinator_nik', 'bcm_coordinator_phone', 'bcm_coordinator_phone_2', 'bcm_coordinator_email',
+  'bcm_alternate', 'bcm_alternate_nik', 'bcm_alternate_phone', 'bcm_alternate_phone_2', 'bcm_alternate_email',
   'ra_tools', 'ra_justification', 'staff_others_note',
   'loss_formula', 'justification_regulatory', 'justification_customer', 'justification_rto', 'justification_dependency',
 ] as const
 export const BIANCA_HEADER_BOOL = ['ra_considers_bc', 'ra_controls_included', 'ra_completed'] as const
 export const BIANCA_STAFF = ['staff_senior', 'staff_middle', 'staff_manager', 'staff_non_staff', 'staff_others'] as const
+
+export type BiancaLocationMode = 'work_from_home' | 'hyspace'
+export type BiancaLocationLabels = Record<BiancaLocationMode, string>
 
 export type BiancaHeader
   = { [K in typeof BIANCA_HEADER_TEXT[number]]: string | undefined }
@@ -101,7 +107,9 @@ export type BiancaHeader
     & { [K in typeof BIANCA_STAFF[number]]: number | undefined }
     & {
       main_location_id: number | undefined
+      main_location_mode: BiancaLocationMode | undefined
       alt_location_id: number | undefined
+      alt_location_mode: BiancaLocationMode | undefined
       bcm_coordinator_id: number | undefined
       bcm_alternate_id: number | undefined
       personnel_counts: Record<string, number | undefined>
@@ -122,7 +130,29 @@ export interface BiancaSummary {
   functions: number
   updated_at: string | null
   created_by: string | null
+  created_by_id?: number | null
+  /** The final BIA this draft renews. */
+  renewal_of?: { id: number, ref_no: string | null } | null
+  /** Manage list: owner, or someone of the BIA's Group (read only). */
+  my_role?: 'owner' | 'group' | null
+  /** Manage list: when the BIA it renews is due for review. */
+  due_date?: string | null
+  next_step?: string
+  next_tone?: 'error' | 'warning' | 'neutral'
 }
+
+/** A review comment on one tab, written by an approver while the BIA is in approval. */
+export interface BiancaComment {
+  id: number
+  tab: BiancaCommentTab
+  role: string | null
+  role_title: string | null
+  author: string | null
+  author_id: number | null
+  body: string
+  created_at: string | null
+}
+export type BiancaCommentTab = 'sign' | 'ra' | 'functions' | 'appendix' | 'approval'
 
 export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, BiancaHeader {
   config_version_id: number | null
@@ -130,6 +160,13 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   approval_problems: string[]
   signoffs: BiancaSignoffRow[]
   events: BiancaEvent[]
+  comments?: BiancaComment[]
+  can_comment?: boolean
+  /** A final BIA: when it is due for review, whether the reader may start its renewal, and the
+   * renewal started from it. */
+  renewal_due?: string | null
+  can_renew?: boolean
+  renewal?: { id: number, ref_no: string | null, status: BiancaStatus } | null
   submitted_at: string | null
   finalised_at: string | null
   /** The signed-in user signs the step the BIA waits on now. */
@@ -147,13 +184,16 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   problems: string[]
   warnings: string[]
   can_edit: boolean
+  /** The Group's organisation structure, attached on the RA Questionnaire. */
+  org_structure: BiancaAttachment | null
   can_delete: boolean
 }
 
-export interface BiancaPlace { id: number, code: string | null, name: string, label: string, kind?: string, city?: string | null }
+export interface BiancaPlace { id: number, code: string | null, name: string, label: string, kind?: string, city?: string | null, address?: string | null }
 export interface BiancaApplication { id: number, code: string, name: string, label: string, category: string | null, rto: string | null, rpo: string | null }
 
 export interface BiancaLookups {
+  office_location_labels?: BiancaLocationLabels
   list_items?: BiancaListItems
   signer_profiles?: Record<string, BiancaSigner>
   config_version_id: number | null
@@ -165,6 +205,7 @@ export interface BiancaLookups {
   periods: string[]
   suggested_mtd: string[]
   expected_mtd: { value: string, category: string | null }[]
+  mtd_options?: { value: string, label: string }[] | null
   dependency_mtd: string[]
   percentages: string[]
   upstream_capacity: string[]
@@ -185,13 +226,18 @@ export interface BiancaLookups {
   loss_alert_idr: number
   signoff_roles: { code: string, title: string }[]
   organisation: { directorate: string | null, sub_directorate: string | null, org_group: string | null }
+  /** Whether the user picks the Group of a BIA (BCM Admin); the others' BIA is their own Group's. */
+  can_pick_group?: boolean
 }
 
 export interface BiancaPreview {
   functions: {
     category: string | null
     within_suggested_mtd: boolean | null
+    recommended_suggested_mtd?: string | null
     it_dependencies: { daat_hours: number | null, warnings: string[], rto_reaches_mtd: boolean | null, gaps_required: boolean }[]
+    /** Part 2b: why each upstream / downstream needs a justification (empty: it doesn't). */
+    dependencies?: { up: string[], down: string[] }[]
   }[]
   total_staff: number
   loss_totals: number[]
@@ -204,6 +250,13 @@ export interface BiancaListQuery {
   q?: string
   status?: BiancaStatus
   mine?: '1'
+  /** Manage: your drafts and your Group's. */
+  scope?: 'manage'
+  role?: 'owner' | 'group'
+  state?: 'new' | 'renewal' | 'returned'
+  input_method?: 'web' | 'excel'
+  sort?: string
+  dir?: 'asc' | 'desc'
   page?: number
   per_page?: number
 }
@@ -274,6 +327,18 @@ function upload(file: File) {
 
 const BASE = '/api/bianca/assessments'
 
+/** A file kept with a BIA. */
+export interface BiancaAttachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  uploaded_by: string | null
+  uploaded_at: string | null
+  /** Downloads it. */
+  url: string
+}
+
 export const BIANCA_TEMPLATE_URL = '/api/bianca/imports/template'
 
 /** The template for a Group; without one, the signed-in user's own Group. */
@@ -302,10 +367,14 @@ export const biancaApi = {
   update: (id: number, body: BiancaInput) => $fetch<BiancaAssessment>(`${BASE}/${id}`, { method: 'PUT', body }),
   remove: (id: number) => $fetch(`${BASE}/${id}`, { method: 'DELETE' }),
   submit: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/submit`, { method: 'POST' }),
+  uploadOrgStructure: (id: number, file: File) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'POST', body: upload(file) }),
+  removeOrgStructure: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/org-structure`, { method: 'DELETE' }),
   importPreview: (file: File) => $fetch<BiancaImportResult>('/api/bianca/imports/preview', { method: 'POST', body: upload(file) }),
   importCreate: (file: File) => $fetch<BiancaAssessment>('/api/bianca/imports', { method: 'POST', body: upload(file) }),
   importPreviewDraft: (id: number, file: File) => $fetch<BiancaImportResult>(`${BASE}/${id}/import/preview`, { method: 'POST', body: upload(file) }),
   importReplace: (id: number, file: File) => $fetch<BiancaAssessment>(`${BASE}/${id}/import`, { method: 'POST', body: upload(file) }),
+  renew: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/renew`, { method: 'POST' }),
+  addComment: (id: number, tab: BiancaCommentTab, body: string) => $fetch<{ items: BiancaComment[], can_comment: boolean }>(`${BASE}/${id}/comments`, { method: 'POST', body: { tab, body } }),
 }
 
 /** A refused upload answers 422 with the list of problems (import_failed), a bad file with `details`. */
@@ -334,7 +403,8 @@ export function emptyBiancaFunction(periods: number): BiancaFunction {
     expected_mtd: undefined,
     planned_capacity: undefined,
     it_dependencies: [{}],
-    dependencies: [{}],
+    // One upstream and one downstream to fill in (NA when there's none).
+    dependencies: [{ up_name: '', down_name: '' }],
     total_staff: undefined,
     staff_required: undefined,
     recovery_level: undefined,
@@ -365,4 +435,63 @@ export function nullToUndefined<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, nullToUndefined(item)])) as T
   }
   return value
+}
+
+/**
+ * Export a BIA to the BIA workbook (all its functions, or those numbered, 1-based) and save the
+ * file the server names; a refusal is shown as a toast.
+ */
+/** Download a file from the API and save it under the name the server gives; a refusal is
+ * shown as a toast. */
+export function useBiancaDownload() {
+  const toast = useToast()
+  const busy = ref(false)
+  async function download(url: string, fallback: string, done: string) {
+    busy.value = true
+    try {
+      const response = await $fetch.raw<Blob>(url, { responseType: 'blob' })
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
+      const href = URL.createObjectURL(response._data!)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = name ? decodeURIComponent(name) : fallback
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 10_000)
+      toast.add({ title: done, color: 'success', icon: 'i-lucide-download' })
+    } catch (failure) {
+      // The error comes back as a Blob: read its JSON for the message.
+      let message = 'Could not download the file.'
+      const data = (failure as { data?: unknown }).data
+      try {
+        const body = data instanceof Blob ? JSON.parse(await data.text()) : data
+        const details = (body as { details?: Record<string, string> })?.details
+        message = (details && Object.values(details)[0]) || (body as { message?: string })?.message || message
+      } catch { /* keep the general message */ }
+      toast.add({ title: 'Download failed', description: message, color: 'error', icon: 'i-lucide-circle-alert' })
+    } finally {
+      busy.value = false
+    }
+  }
+  return { busy, download }
+}
+
+/** Export a BIA to the BIA workbook (all its functions, or those numbered, 1-based). */
+export function useBiancaExport() {
+  const { busy, download } = useBiancaDownload()
+  return { busy, run: (id: number, functions?: number[]) => download(biancaExportUrl(id, functions), `BIA-${id}.xlsx`, 'Excel file downloaded') }
+}
+
+/** The whole BIA as a PDF report. */
+export function useBiancaPdf() {
+  const { busy, download } = useBiancaDownload()
+  return { busy, run: (id: number) => download(`/api/bianca/assessments/${id}/report.pdf`, `BIA-${id}.pdf`, 'PDF report downloaded') }
+}
+
+/** A part of the form shown in "Is this correct?" (BiancaReviewDialog). */
+export interface BiancaReviewSection {
+  title: string
+  rows: { label: string, value: string | null | undefined }[]
 }

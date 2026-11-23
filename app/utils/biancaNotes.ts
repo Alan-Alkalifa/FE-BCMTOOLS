@@ -9,7 +9,7 @@ export const BIANCA_NOTES = {
   group_description: 'Describe the main functions of the Group.',
   main_location: 'The building the Group works from: full address, building name and floor.',
   alt_location: 'Where the Group works when the main location can\'t be used: full address, building name and floor.',
-  recovery_strategy: 'Write the Group\'s high-level recovery strategy. The recovery level of each function (Part 3) should align with it.',
+  recovery_strategy: 'Write the Group\'s high-level recovery strategy.',
   bcm_person: 'The PIC appointed as BCM Coordinator / Alternate BCM Coordinator for the Group. They sign the BIA as its maker.',
   ra_considers_bc: 'Have you considered business continuity in your risk assessment process?',
   ra_controls_included: 'Have you included business continuity controls in the risk score cards / profiling?',
@@ -47,8 +47,9 @@ export const BIANCA_NOTES = {
   planned_capacity: 'The capacity (%) this business function must run at during a disruption.',
   upstream: 'Who triggers the activity. If there is no upstream, type NA.',
   downstream: 'Who receives or processes your output / instruction. If there is no downstream, type NA.',
-  dependency_capacity: 'Planned capacity (%) of the upstream / downstream. Justify it in the Part 2b note if it is lower than your function\'s.',
-  dependency_mtd: 'Expected MTD of the upstream / downstream. Justify it in the Part 2b note if it is longer than your function\'s.',
+  dependency_capacity: 'Planned capacity (%) of the upstream / downstream. Justify it on its row if it is lower than your function\'s.',
+  dependency_mtd: 'Expected MTD of the upstream / downstream. Justify it on its row if it is longer than your function\'s.',
+  dependency_justification: 'Needed when their planned capacity is less than your business function\'s, or their MTD is longer than your function\'s Expected MTD.',
   sla: 'The SLA time in the agreement. If there is no SLA, pick or type NA.',
   outsourced: 'Are they an outsourcing service provider?',
   material: 'Do they provide material services?',
@@ -101,24 +102,3 @@ export const BIANCA_CATEGORY_CRITERIA = [
     points: ['Other / minor business functions and processes, prioritised last while business operations are being recovered.'],
   },
 ]
-
-/**
- * Part 1's rule for the Suggested MTD: the first period where the loss is more than the alert
- * (IDR 4 billion) or a score is 3; otherwise the last (4 weeks). Null until something is filled.
- */
-export function biancaSuggestedMtd(
-  fn: { loss?: (number | null | undefined)[] | null, regulatory_scores?: (number | null | undefined)[] | null, customer_scores?: (number | null | undefined)[] | null },
-  options: { suggested: readonly string[], lossAlert: number, scoreAlert: number },
-): string | null {
-  const loss = fn.loss ?? []
-  const reg = fn.regulatory_scores ?? []
-  const cust = fn.customer_scores ?? []
-  const filled = [...loss, ...reg, ...cust].some((value) => value != null && String(value) !== '')
-  if (!filled || !options.suggested.length) return null
-  for (let i = 0; i < options.suggested.length; i++) {
-    if ((Number(loss[i]) || 0) > options.lossAlert || reg[i] === options.scoreAlert || cust[i] === options.scoreAlert) {
-      return options.suggested[i] ?? null
-    }
-  }
-  return options.suggested[options.suggested.length - 1] ?? null
-}
