@@ -201,8 +201,8 @@ function triggerSummary(fn: BiaFunctionItem) {
   return `Triggered at ${fn.suggested_trigger_period || fn.computed_suggested_mtd} (${labels.join(', ')})`
 }
 
-function isTriggerPeriod(fn: BiaFunctionItem, idx: number) {
-  return Boolean(fn.suggested_triggers?.length) && fn.suggested_trigger_index === idx
+function isTriggerPeriod(fn: BiaFunctionItem, idx: number, kind: 'loss' | 'regulatory' | 'customer') {
+  return Boolean(fn.suggested_triggers?.includes(kind)) && fn.suggested_trigger_index === idx
 }
 
 const detailSummary = computed(() => {
@@ -1021,7 +1021,7 @@ const lossPeriodTotals = computed(() =>
                       v-for="(periodLabel, idx) in impactPeriods"
                       :key="`loss-${fn.seq_no}-${periodLabel}`"
                       class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
-                      :class="[lossTone(fn.losses?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                      :class="[lossTone(fn.losses?.[idx]), isTriggerPeriod(fn, idx, 'loss') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                       :title="lossCellTitle(fn.losses?.[idx])"
                     >
                       {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
@@ -1106,7 +1106,7 @@ const lossPeriodTotals = computed(() =>
                         v-for="(periodLabel, idx) in impactPeriods"
                         :key="`reg-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
-                        :class="[scoreTone(fn.regulatory_scores?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                        :class="[scoreTone(fn.regulatory_scores?.[idx]), isTriggerPeriod(fn, idx, 'regulatory') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                         :title="impactScoreTitle('regulatory', fn.regulatory_scores?.[idx])"
                       >
                         {{ fn.regulatory_scores?.[idx] ?? '—' }}
@@ -1140,7 +1140,7 @@ const lossPeriodTotals = computed(() =>
                         v-for="(periodLabel, idx) in impactPeriods"
                         :key="`cust-${fn.seq_no}-${periodLabel}`"
                         class="py-2 px-3 text-center tabular-nums"
-                        :class="[scoreTone(fn.customer_scores?.[idx]), isTriggerPeriod(fn, idx) ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                        :class="[scoreTone(fn.customer_scores?.[idx]), isTriggerPeriod(fn, idx, 'customer') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
                         :title="impactScoreTitle('customer', fn.customer_scores?.[idx])"
                       >
                         {{ fn.customer_scores?.[idx] ?? '—' }}
