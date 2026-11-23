@@ -545,15 +545,23 @@ function displayOrgName(value: string | null | undefined) {
 }
 
 function directorateSeverityBar(severity: BiaDirectorateRow['severity']) {
-  if (severity === 'error') return 'border-s-4 border-s-error'
-  if (severity === 'warning') return 'border-s-4 border-s-warning'
-  return 'border-s-4 border-s-transparent'
+  if (severity === 'error') return 'border-s-2 border-s-error'
+  return 'border-s-2 border-s-transparent'
 }
 
 function coverageBarColor(pct: number) {
-  if (pct >= 80) return 'bg-success'
-  if (pct >= 40) return 'bg-warning'
-  return 'bg-error'
+  if (pct >= 100) return 'bg-success'
+  return 'bg-neutral-700 dark:bg-neutral-300'
+}
+
+function directorateCategoryMix(row: BiaDirectorateRow) {
+  const cc = row.category_counts
+  if (!cc) return row.highest_category || 'Not rated'
+  const parts: string[] = []
+  if (cc.critical) parts.push(`${cc.critical} Critical`)
+  if (cc.important) parts.push(`${cc.important} Important`)
+  if (cc.others) parts.push(`${cc.others} Others`)
+  return parts.length ? parts.join(' · ') : 'Not rated'
 }
 
 function coverageTooltip(dir: BiaDirectorateRow) {
@@ -1149,68 +1157,68 @@ function record(id: number) {
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
                 <template v-if="effectiveListMode === 'directorates' && directorates.data.value?.summary">
-                  <span class="font-medium text-highlighted">
+                  <span class="font-medium tabular-nums text-highlighted">
                     {{ plural(directorates.data.value.summary.total_groups, 'group') }}
                   </span>
-                  <span>·</span>
+                  <span class="text-dimmed">/</span>
                   <button
                     type="button"
-                    class="font-medium text-success hover:underline"
+                    class="tabular-nums text-highlighted hover:underline"
                     @click="setQuery({ state: filters.state === 'valid' ? undefined : 'valid' })"
                   >
                     {{ directorates.data.value.summary.valid_final }} valid
                   </button>
                   <template v-if="directorates.data.value.summary.overdue">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-error hover:underline"
                       @click="setQuery({ state: filters.state === 'overdue' ? undefined : 'overdue' })"
                     >
                       {{ directorates.data.value.summary.overdue }} overdue
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.returned">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-error hover:underline"
                       @click="setQuery({ state: filters.state === 'returned' ? undefined : 'returned' })"
                     >
                       {{ directorates.data.value.summary.returned }} returned
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.stuck">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <NuxtLink
                       :to="cardLink({ tab: 'bottlenecks' })"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-warning hover:underline"
                     >
                       {{ directorates.data.value.summary.stuck }} stuck approval
                     </NuxtLink>
                   </template>
                   <template v-if="directorates.data.value.summary.due_soon">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-warning hover:underline"
+                      class="tabular-nums text-muted hover:text-highlighted hover:underline"
                       @click="setQuery({ state: filters.state === 'due_soon' ? undefined : 'due_soon' })"
                     >
                       {{ directorates.data.value.summary.due_soon }} due soon
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.not_started">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-highlighted hover:underline"
+                      class="tabular-nums text-muted hover:text-highlighted hover:underline"
                       @click="setQuery({ state: filters.state === 'not_started' ? undefined : 'not_started' })"
                     >
                       {{ directorates.data.value.summary.not_started }} not started
                     </button>
                   </template>
-                  <span class="text-xs text-muted">
-                    — as of {{ formatDate(directorates.data.value.summary.as_of) }}
+                  <span class="text-xs text-dimmed">
+                    (as of {{ formatDate(directorates.data.value.summary.as_of) }})
                   </span>
                 </template>
                 <template v-else-if="effectiveListMode === 'directorates'">
@@ -1228,28 +1236,6 @@ function record(id: number) {
 
               <div class="flex flex-wrap items-center gap-2">
                 <template v-if="effectiveListMode === 'directorates'">
-                  <UPopover>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-help-circle"
-                      label="How to read"
-                    />
-                    <template #content>
-                      <div class="max-w-xs space-y-2 p-3 text-xs leading-relaxed text-muted">
-                        <p class="font-semibold text-highlighted">
-                          How to read this list
-                        </p>
-                        <ul class="list-disc space-y-1 ps-4">
-                          <li><strong class="text-error">Red</strong> means action is needed now (Overdue, Returned, or Stuck ≥ {{ directorates.data.value?.escalation_days ?? 5 }} working days).</li>
-                          <li><strong class="text-warning">Amber</strong> means renewal is due within 30 days.</li>
-                          <li><strong>Most urgent</strong> puts Directorates with the most urgent issues at the top.</li>
-                          <li>Click any Directorate row to inspect its Sub-Directorates and Groups.</li>
-                        </ul>
-                      </div>
-                    </template>
-                  </UPopover>
                   <UButton
                     size="xs"
                     :color="attentionOnly ? 'warning' : 'neutral'"
@@ -1400,12 +1386,9 @@ function record(id: number) {
                         {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
                       </p>
                     </div>
-                    <StatusBadge
-                      v-if="dir.highest_category"
-                      :scale="biaCategory"
-                      :value="dir.highest_category"
-                      size="sm"
-                    />
+                    <span class="text-xs font-medium text-muted">
+                      {{ directorateCategoryMix(dir) }}
+                    </span>
                   </div>
                   <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div class="w-36 space-y-1">
@@ -1444,59 +1427,29 @@ function record(id: number) {
                   <thead class="border-b border-default bg-elevated/40 text-xs font-medium uppercase text-muted">
                     <tr>
                       <th class="py-2.5 ps-4 pe-3">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Directorate</span>
-                          <UTooltip text="Click a Directorate to open its Sub-Directorates and Groups.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Click a Directorate to open its Sub-Directorates and Groups.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Directorate</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Final coverage</span>
-                          <UTooltip text="Percentage of groups with an approved Final BIA that has not expired. Hover a bar for details.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Percentage of groups with an approved Final BIA that has not expired.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Final coverage</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Needs attention</span>
-                          <UTooltip :text="`Issues requiring follow-up: Overdue, Returned, Stuck approval (waiting ≥ ${directorates.data.value?.escalation_days ?? 5} working days), Due soon (≤ 30 days), or Not started. Hover a chip to see group names.`">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip :text="`Issues requiring follow-up: Overdue, Returned, Stuck approval (waiting ≥ ${directorates.data.value?.escalation_days ?? 5} working days), Due soon (≤ 30 days), or Not started. Hover any item for group names.`">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Needs attention</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Open BIA</span>
-                          <UTooltip text="Active drafts, revisions, or submissions currently in approval.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Active drafts, revisions, or submissions currently in approval.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Open BIA</span>
+                        </UTooltip>
                       </th>
                       <th class="py-2.5 ps-3 pe-4 text-right">
-                        <span class="inline-flex items-center justify-end gap-1">
-                          <span>Highest category</span>
-                          <UTooltip text="Most critical Business Function Category among groups in this Directorate.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Distribution of Business Function Categories across groups in this Directorate.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Criticality mix</span>
+                        </UTooltip>
                       </th>
                     </tr>
                   </thead>
@@ -1532,12 +1485,12 @@ function record(id: number) {
 
                       <td class="px-3 py-3.5 align-middle">
                         <div
-                          class="w-36 space-y-1"
+                          class="w-40 space-y-1.5"
                           :title="coverageTooltip(dir)"
                         >
-                          <div class="flex items-baseline justify-between gap-2 text-xs tabular-nums">
-                            <span class="font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
-                            <span class="text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
+                          <div class="flex items-baseline justify-between gap-2 tabular-nums">
+                            <span class="text-base font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
+                            <span class="text-xs text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
                           </div>
                           <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                             <div
@@ -1563,13 +1516,14 @@ function record(id: number) {
 
                       <td class="px-3 py-3.5 align-middle">
                         <span
-                          :class="dir.open_counts.total ? 'font-medium text-highlighted' : 'text-xs text-muted'"
+                          class="tabular-nums"
+                          :class="dir.open_counts.total ? 'text-sm font-semibold text-highlighted' : 'text-xs text-muted'"
                         >
                           {{ directorateOpenLabel(dir) }}
                         </span>
                         <p
                           v-if="dir.open_counts.longest_working_days != null"
-                          class="mt-0.5 text-xs text-muted"
+                          class="mt-0.5 text-xs text-muted tabular-nums"
                         >
                           waiting up to {{ plural(dir.open_counts.longest_working_days, 'working day') }}
                         </p>
@@ -1577,19 +1531,12 @@ function record(id: number) {
 
                       <td class="py-3.5 ps-3 pe-4 text-right align-middle">
                         <div class="inline-flex items-center justify-end gap-2">
-                          <StatusBadge
-                            v-if="dir.highest_category"
-                            :scale="biaCategory"
-                            :value="dir.highest_category"
-                            size="sm"
-                          />
-                          <span
-                            v-else
-                            class="text-xs text-muted"
-                          >Not rated</span>
+                          <span class="text-xs font-medium tabular-nums text-muted">
+                            {{ directorateCategoryMix(dir) }}
+                          </span>
                           <UIcon
                             name="i-lucide-chevron-right"
-                            class="size-4 text-muted"
+                            class="size-4 text-dimmed"
                           />
                         </div>
                       </td>

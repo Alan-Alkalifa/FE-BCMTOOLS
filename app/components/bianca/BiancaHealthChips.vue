@@ -14,12 +14,19 @@ const props = withDefaults(defineProps<{
   inProgressCount: 0,
 })
 
-const meta: Record<BiaAlertKey, { label: string, color: 'error' | 'warning' | 'neutral', icon: string, unit: string }> = {
-  overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-alert-circle', unit: 'overdue group' },
-  returned: { label: 'Returned', color: 'error', icon: 'i-lucide-undo-2', unit: 'returned BIA' },
-  stuck: { label: 'Stuck approval', color: 'error', icon: 'i-lucide-flame', unit: 'stuck approval' },
-  due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-clock-alert', unit: 'group due within 30 days' },
-  not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed', unit: 'group with no BIA yet' },
+const meta: Record<BiaAlertKey, {
+  label: string
+  kind: 'badge' | 'inline'
+  color: 'error' | 'warning' | 'neutral'
+  variant?: 'solid' | 'subtle' | 'soft'
+  icon: string
+  unit: string
+}> = {
+  overdue: { label: 'Overdue', kind: 'badge', color: 'error', variant: 'solid', icon: 'i-lucide-alert-circle', unit: 'overdue group' },
+  returned: { label: 'Returned', kind: 'badge', color: 'error', variant: 'subtle', icon: 'i-lucide-undo-2', unit: 'returned BIA' },
+  stuck: { label: 'Stuck approval', kind: 'badge', color: 'warning', variant: 'soft', icon: 'i-lucide-clock', unit: 'stuck approval' },
+  due_soon: { label: 'Due soon', kind: 'inline', color: 'neutral', icon: 'i-lucide-calendar-clock', unit: 'group due within 30 days' },
+  not_started: { label: 'Not started', kind: 'inline', color: 'neutral', icon: 'i-lucide-circle-dashed', unit: 'group with no BIA yet' },
 }
 
 const visible = computed(() => props.alerts.slice(0, props.maxVisible))
@@ -41,7 +48,7 @@ function ariaLabel(item: BiaAlertItem) {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-1.5">
+  <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
     <template v-if="alerts.length">
       <UTooltip
         v-for="item in visible"
@@ -49,47 +56,58 @@ function ariaLabel(item: BiaAlertItem) {
         :text="tooltipText(item)"
       >
         <UBadge
+          v-if="meta[item.key].kind === 'badge'"
           :color="meta[item.key].color"
-          variant="subtle"
+          :variant="meta[item.key].variant"
           :size="size"
           :icon="meta[item.key].icon"
           :aria-label="ariaLabel(item)"
           :label="`${item.count} ${meta[item.key].label}`"
         />
+        <span
+          v-else
+          class="inline-flex items-center gap-1 text-xs text-muted tabular-nums"
+          :aria-label="ariaLabel(item)"
+        >
+          <UIcon
+            :name="meta[item.key].icon"
+            class="size-3.5 text-dimmed"
+          />
+          <span>{{ item.count }} {{ meta[item.key].label.toLowerCase() }}</span>
+        </span>
       </UTooltip>
       <UTooltip
         v-if="hidden.length"
         :text="hidden.map((item) => tooltipText(item)).join(' · ')"
       >
-        <UBadge
-          color="neutral"
-          variant="outline"
-          :size="size"
-          :label="`+${hidden.length} more`"
-        />
+        <span class="text-xs text-muted">+{{ hidden.length }} more</span>
       </UTooltip>
     </template>
     <UTooltip
       v-else-if="inProgressCount > 0"
       text="Initial BIA is currently in draft or approval — no overdue or stuck items."
     >
-      <UBadge
-        color="neutral"
-        variant="subtle"
-        :size="size"
-        icon="i-lucide-clock"
+      <span
+        class="inline-flex items-center gap-1 text-xs text-muted tabular-nums"
         :aria-label="`${inProgressCount} initial BIA in progress`"
-        :label="`${inProgressCount} In progress`"
-      />
+      >
+        <UIcon
+          name="i-lucide-clock"
+          class="size-3.5 text-dimmed"
+        />
+        <span>{{ inProgressCount }} in progress</span>
+      </span>
     </UTooltip>
-    <UBadge
+    <span
       v-else
-      color="success"
-      variant="subtle"
-      :size="size"
-      icon="i-lucide-circle-check"
+      class="inline-flex items-center gap-1 text-xs font-medium text-success"
       aria-label="All groups on track"
-      label="All on track"
-    />
+    >
+      <UIcon
+        name="i-lucide-circle-check"
+        class="size-3.5"
+      />
+      <span>On track</span>
+    </span>
   </div>
 </template>

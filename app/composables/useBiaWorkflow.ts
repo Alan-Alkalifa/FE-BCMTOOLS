@@ -102,6 +102,11 @@ export interface BiaRollupSummary {
   severity: BiaSeverity
   highest_category: BiaCategory | null
   critical_count: number
+  category_counts?: {
+    critical: number
+    important: number
+    others: number
+  }
   shortest_mtd: string | null
 }
 
