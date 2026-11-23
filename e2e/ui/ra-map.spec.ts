@@ -577,9 +577,9 @@ test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', 
   await expect(page.getByTestId('mmi-scale')).toHaveCount(0)
   // Filtered by year.
   await who.getByRole('button', { name: 'WHO news from year' }).click()
-  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await page.getByRole('listbox', { name: 'WHO news from year' }).getByRole('option', { name: '2023', exact: true }).click()
   await who.getByRole('button', { name: 'WHO news to year' }).click()
-  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await page.getByRole('listbox', { name: 'WHO news to year' }).getByRole('option', { name: '2023', exact: true }).click()
   await expect(who).toContainText('1 item.')
   await expect(who).toContainText('Measles - Indonesia')
   await expect(who).not.toContainText('Poliomyelitis - Indonesia')
