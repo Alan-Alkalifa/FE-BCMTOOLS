@@ -376,15 +376,15 @@ function daysLeft(row: BiaMonitorGroupRow) {
 const renewalColumns: TableColumn<BiaMonitorGroupRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
   { id: 'group', header: 'Group' },
-  { id: 'code', header: 'Group ID' },
+  { id: 'renewal', header: 'Renewal' },
+  { accessorKey: 'days_left', header: 'Due' },
+  { accessorKey: 'renewal_date', header: 'Renewal date' },
   { id: 'category', header: 'Highest category' },
   { id: 'approved', header: 'Last final BIA' },
   { id: 'approved_date', header: 'Last final BIA date' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { accessorKey: 'days_left', header: 'Due' },
+  { id: 'code', header: 'Group ID' },
   { id: 'assessor', header: 'BCM Coordinator' },
   { id: 'alt_coordinator', header: 'Alternate' },
-  { id: 'renewal', header: 'Renewal' },
   { id: 'actions', header: '' },
 ]
 
