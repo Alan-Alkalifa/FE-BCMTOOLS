@@ -223,10 +223,20 @@ const carried = computed(() => {
   }
   return fields[part.value]
 })
+/** Part 2b's names offer the Groups of Master data > Organization structure. */
+const groupListId = useId()
 </script>
 
 <template>
   <div class="@container space-y-4">
+    <datalist :id="groupListId">
+      <option value="NA" />
+      <option
+        v-for="group in lookups.org_groups ?? []"
+        :key="group"
+        :value="group"
+      />
+    </datalist>
     <!-- The sheet's heading in the workbook: title, objective and the instructions -->
     <div class="space-y-2 rounded-md border border-default bg-elevated/40 p-3">
       <div class="flex flex-wrap items-start justify-between gap-2">
@@ -863,12 +873,16 @@ const carried = computed(() => {
                   {{ number + 1 }}
                 </td>
                 <td class="sticky left-10 z-10 bg-default px-3 py-2">
+                  <!-- A Group of Master data, as the workbook's Master Group sheet lists them; or a
+                       name typed (a vendor, another party), or NA -->
                   <UInput
                     v-model="row.data[`${side.key}_name`]"
                     class="w-full"
                     :maxlength="TEXT_LIMITS.name"
                     :disabled="off"
-                    placeholder="Name, or NA"
+                    :list="groupListId"
+                    trailing-icon="i-lucide-chevrons-up-down"
+                    placeholder="Pick a Group, or type a name"
                     :aria-label="`${side.name} ${number + 1}`"
                   />
                 </td>
