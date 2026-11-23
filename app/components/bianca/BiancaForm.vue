@@ -353,6 +353,35 @@ function onOrgPicked(picked: BiancaOrg) {
 }
 
 /**
+ * The Group description comes from Master data > Organization structure, read only; it is typed
+ * only when the Group has none there. The API applies the same rule when it saves.
+ */
+const masterDescription = ref<string | null>(null)
+let descriptionLookup = 0
+watch(() => [org.value.directorate, org.value.sub_directorate, org.value.org_group] as const, async (path) => {
+  const request = ++descriptionLookup
+  const before = masterDescription.value
+  let found: string | null = null
+  if (path.every(Boolean)) {
+    try {
+      found = (await biancaApi.orgUnit({ directorate: path[0], sub_directorate: path[1], org_group: path[2] })).description
+    } catch {
+      found = null
+    }
+  }
+  if (request !== descriptionLookup) return
+  masterDescription.value = found
+  if (!editable.value) return
+  // Filled for the user: the form isn't any more unsaved than it was.
+  const wasDirty = dirty.value
+  if (found && header.group_description !== found) header.group_description = found
+  else if (!found && before && header.group_description === before) header.group_description = undefined
+  else return
+  await nextTick()
+  dirty.value = wasDirty
+}, { immediate: true })
+
+/**
  * The BCM Coordinator and Alternate are picked from the user directory. What the directory has
  * (name, NIK, phone, email) is filled in and locked; only what it lacks is typed. The API applies
  * the same rule when it saves.
@@ -1304,7 +1333,7 @@ const people = [
             <BiancaField
               label="Group description"
               note="group_description"
-              help="Describe the main functions of the Group."
+              :help="masterDescription ? 'From Master data › Organization structure.' : 'Describe the main functions of the Group.'"
               required
               :error="signError('group_description')"
               :data-missing="!!signError('group_description')"
@@ -1313,8 +1342,10 @@ const people = [
                 v-model="header.group_description"
                 class="w-full"
                 :rows="3"
+                autoresize
                 :maxlength="long"
-                :disabled="!editable"
+                :disabled="!editable || !!masterDescription"
+                :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-default' }"
                 placeholder="What the Group does"
               />
             </BiancaField>

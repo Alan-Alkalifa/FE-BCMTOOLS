@@ -83,8 +83,6 @@ const showSkeleton = useDelayedLoading(() =>
 function onSaved(saved: RaConfigVersion) {
   current.data.value = saved
   void versions.refresh()
-  // The draft's code was changed (e.g. to V.05): follow it.
-  if (saved.code !== code.value) code.value = saved.code
   // The assessment pages read the configuration: drop their cached copy.
   clearNuxtData((key) => key.startsWith('ra-formula-') || key === 'ra-building-types')
 }

@@ -260,7 +260,7 @@ const trendSummary = computed(() => {
 
         <ul
           v-if="rows.length"
-          class="divide-y divide-default rounded-md border border-default"
+          class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
         >
           <li
             v-for="row in rows"

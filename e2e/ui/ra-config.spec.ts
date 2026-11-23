@@ -348,18 +348,18 @@ test('team diagrams start as the workbook pictures and are replaced per kind', a
   await expect(page.getByRole('region', { name: 'Location call tree' }).getByRole('img')).toHaveAttribute('src', '/api/ra/diagrams/call_tree?kind=branch&v=wb-call_tree')
 })
 
-test('the draft\'s code is changed on the Versions tab', async ({ page }) => {
+test('the draft\'s name and notes are changed on the Versions tab, its code is given, as SCCA\'s', async ({ page }) => {
   const calls = await mockRaConfig(page)
   await page.goto('/admin/ra-config?tab=versions')
-  const code = page.getByRole('textbox', { name: 'Version code' })
-  await expect(code).toHaveValue('2025-r5', { timeout: 60_000 })
-  await code.fill('V.05')
+  const name = page.getByRole('textbox', { name: 'Name' })
+  await expect(name).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: 'Version code' })).toHaveCount(0)
+  await name.fill('RA HO Tools V.5 for CIMB Niaga')
   await page.getByRole('button', { name: 'Save version' }).click()
   await expect(page.getByText('Version saved').first()).toBeVisible()
   const patch = calls.find((call) => call.method === 'PATCH')!
   expect(patch.path).toMatch(/\/versions\/2025-r5$/)
-  expect(patch.body).toMatchObject({ code: 'V.05' })
-  await expect(page).toHaveURL(/version=V\.05/)
+  expect(patch.body).toEqual({ name: 'RA HO Tools V.5 for CIMB Niaga', notes: null })
 })
 
 test('the access scope says who works on which locations, as SCCA\'s', async ({ page }) => {

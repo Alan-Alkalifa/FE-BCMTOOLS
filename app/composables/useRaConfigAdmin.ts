@@ -107,7 +107,7 @@ export interface RaDiagramInfo {
 const BASE = '/api/admin/ra-config'
 const VERSIONS = `${BASE}/versions`
 
-/** A version is named by its code within its kind: RA and RA Branch can both have V.04. */
+/** A version is named by its code within its kind: RA and RA Branch can both have V.4. */
 export interface RaVersionRef {
   code: string
   kind: RaKind
@@ -121,7 +121,7 @@ export const raConfigApi = {
   versions: () => $fetch<{ items: RaConfigVersionMeta[], can_start_draft: Record<RaKind, boolean> }>(VERSIONS),
   get: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version)),
   startDraft: (kind: RaKind) => $fetch<RaConfigVersion>(VERSIONS, { method: 'POST', body: { kind } }),
-  update: (version: RaVersionRef, body: { code?: string, name: string, notes: string | null }) =>
+  update: (version: RaVersionRef, body: { name: string, notes: string | null }) =>
     $fetch<RaConfigVersion>(at(version), { method: 'PATCH', body }),
   discard: (version: RaVersionRef) => $fetch(at(version), { method: 'DELETE' }),
   setHazards: (version: RaVersionRef, body: RaHazardsInput) =>
