@@ -297,6 +297,7 @@ test('the sidebar marks only the section of the page as current', async ({ page 
 test('disasters and incidents each have their own guidebook', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/incidents/guidebook')
+  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
   await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Sites\s*Incident\s*Guidebook/, { timeout: 30_000 })
   const hazards = page.getByRole('navigation', { name: 'Hazards' })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toBeVisible()
@@ -306,6 +307,8 @@ test('disasters and incidents each have their own guidebook', async ({ page }) =
   await expect(nav.locator('a[href="/incidents/guidebook"]')).toHaveAttribute('aria-current', 'page')
 
   await page.goto('/disasters/guidebook')
+  await expect(page.getByRole('tab', { name: 'Disaster guidebook' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toBeVisible()
   await expect(hazards.getByRole('button', { name: 'Natural disasters' })).toBeVisible({ timeout: 30_000 })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toHaveCount(0)
   // A link to an incident's hazard opens the incident guidebook.
