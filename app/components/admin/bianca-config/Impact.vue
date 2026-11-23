@@ -11,7 +11,7 @@ const items = [
   { value: 'customer-matrix', label: 'Customer impact matrix', description: 'Workbook guidance for customer service impact scores 1–3.' },
   { value: 'regulator-matrix', label: 'Regulatory impact matrix', description: 'Workbook guidance for regulatory impact scores 1–3.' },
   { value: 'mtd-guide', label: 'Suggested MTD rule', description: 'First qualifying impact period, with the workbook fallback.' },
-  { value: 'expected-mtd', label: 'Expected MTD', description: 'Expected MTD must be equal to or shorter than Suggested MTD. Categories follow the workbook mapping.' },
+  { value: 'expected-mtd', label: 'Expected MTD', description: 'Expected MTD must be equal to or shorter than Suggested MTD. The choices and their categories come from Master data › Master MTD.' },
   { value: 'conversion', label: 'Time conversion', description: 'Convert days and weeks to hours for duration comparisons.' },
   { value: 'limits', label: 'Workbook limits', description: 'Rows of the Excel template: business functions and dependency rows. The web form takes any number of functions.' },
   { value: 'review', label: 'Review period', description: 'How long a final BIA stays valid before it is due for review (renewal). Manage and Monitoring show the renewal date from it.' },
@@ -45,28 +45,9 @@ const mtdRows = computed(() => model.value.mtd_options ?? [...new Set([
     use_it: !!expected, use_non_it: !!dependency, active: !!expected || !!dependency?.active,
   }
 }))
-const categories = ['Business Critical', 'Important', 'Others']
-function changeMtd(index: number, patch: Partial<BiancaMtdOption>) {
-  const rows = mtdRows.value.map((row) => ({ ...row }))
-  const next = { ...rows[index]!, ...patch }
-  if (next.value === 'NA' || next.value === 'SLA') {
-    next.use_it = false
-    next.category = null
-  }
-  rows[index] = next
-  model.value.mtd_options = rows
-}
-function moveMtd(index: number, delta: number) {
-  const rows = [...mtdRows.value]
-  const [row] = rows.splice(index, 1)
-  if (row) rows.splice(index + delta, 0, row)
-  model.value.mtd_options = rows
-}
-function addMtd() {
-  model.value.mtd_options = [...mtdRows.value, {
-    code: '', value: '', label: '', category: 'Others', description: null, use_it: true, use_non_it: true, active: true,
-  }]
-}
+// The MTD choices are read-only here: they come from Master data › Master MTD (the server
+// copies it into the draft on every save).
+const { can } = useAuth()
 function durationHours(value: string) {
   const duration = /^(\d+(?:\.\d+)?) (hour|day|week)s?$/.exec(value)
   if (!duration) return '—'
@@ -80,7 +61,6 @@ function setPeriod(period: string, value: string) {
 }
 const mappedPeriods = computed(() => [...new Set([...activePeriods.value, ...Object.keys(model.value.suggested_mtd_by_period ?? {})])])
 const workbookDefault = '__workbook_default__'
-const noCategory = '__no_category__'
 function mappingChoices(current?: string | null) {
   const durations = [...new Set([...suggested.value, ...(current ? [current] : [])])]
   return [{ label: 'Workbook default', value: workbookDefault }, ...durations.map((value) => ({ value, label: value }))]
@@ -103,14 +83,12 @@ function mappingChoices(current?: string | null) {
           </p>
         </div>
         <UButton
-          v-if="selected === 'expected-mtd' && !disabled"
-          type="button"
+          v-if="selected === 'expected-mtd' && can('masterdata.mtd.view', 'masterdata.mtd.manage')"
+          :to="{ path: MASTER_MTD_PATH, query: { part: 'options' } }"
           color="neutral"
           variant="outline"
-          icon="i-lucide-plus"
-          label="Add MTD"
-          :disabled="mtdRows.length >= 66"
-          @click="addMtd"
+          icon="i-lucide-timer"
+          :label="can('masterdata.mtd.manage') ? 'Edit in Master MTD' : 'Open Master MTD'"
         />
       </div>
     </template>
@@ -244,131 +222,93 @@ function mappingChoices(current?: string | null) {
           />
         </UFormField>
         <p class="text-sm text-muted">
-          Review written guidance whenever alert parameters change. Impact periods and Suggested MTD choices are managed under Lists.
+          Review written guidance whenever alert parameters change. Impact periods are managed under Lists; Suggested MTD choices in Master data › Master MTD.
         </p>
       </template>
       <template v-else-if="selected === 'expected-mtd'">
-        <p class="text-sm text-muted">
-          This master supplies the IT and non-IT choices. NA and SLA have no category or hours and are non-IT only. Converted hours follow Time conversion.
-        </p>
-        <UCard
-          v-for="(row, index) in mtdRows"
-          :key="index"
+        <UAlert
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-lock"
+          title="Managed in Master data › Master MTD"
+          description="This version keeps a copy of Master MTD, refreshed whenever the draft is saved, submitted and published. Change the choices in Master MTD; the IT and non-IT choices below are read-only. Converted hours follow Time conversion."
+        />
+        <fieldset
+          disabled
+          class="min-w-0 space-y-5"
         >
-          <div class="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
-            <div class="flex items-start gap-1 lg:flex-col">
-              <span class="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold tabular-nums">{{ index + 1 }}</span>
-              <UButton
-                type="button"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-arrow-up"
-                :aria-label="`Move ${row.label || 'MTD'} up`"
-                :disabled="disabled || index === 0"
-                @click="moveMtd(index, -1)"
-              />
-              <UButton
-                type="button"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-arrow-down"
-                :aria-label="`Move ${row.label || 'MTD'} down`"
-                :disabled="disabled || index === mtdRows.length - 1"
-                @click="moveMtd(index, 1)"
-              />
-            </div>
-            <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <UFormField
-                label="Code"
-                required
-              >
-                <UInput
-                  :model-value="row.code"
-                  :maxlength="64"
-                  class="w-full"
-                  @update:model-value="changeMtd(index, { code: $event })"
-                />
-              </UFormField>
-              <UFormField
-                label="Name"
-                required
-              >
-                <UInput
-                  :model-value="row.label"
-                  :maxlength="255"
-                  class="w-full"
-                  @update:model-value="changeMtd(index, { label: $event })"
-                />
-              </UFormField>
-              <UFormField
-                label="Workbook value"
-                required
-              >
-                <UInput
-                  :model-value="row.value"
-                  :maxlength="16"
-                  class="w-full"
-                  @update:model-value="changeMtd(index, { value: $event })"
-                />
-              </UFormField>
-              <UFormField label="Business function category">
-                <USelect
-                  :model-value="row.category ?? noCategory"
-                  :items="[{ label: 'No category', value: noCategory }, ...categories.map(value => ({ value, label: value }))]"
-                  :disabled="disabled || ['NA', 'SLA'].includes(row.value)"
-                  class="w-full"
-                  @update:model-value="changeMtd(index, { category: $event === noCategory ? null : $event })"
-                />
-              </UFormField>
-              <UFormField label="Converted hours">
-                <UInput
-                  :model-value="durationHours(row.value) ?? '—'"
-                  readonly
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Description">
-                <UInput
-                  :model-value="row.description ?? ''"
-                  :maxlength="2000"
-                  class="w-full"
-                  @update:model-value="changeMtd(index, { description: $event || null })"
-                />
-              </UFormField>
-              <div class="flex flex-wrap gap-4 sm:col-span-2 xl:col-span-3">
-                <USwitch
-                  :model-value="row.use_it"
-                  :disabled="disabled || ['NA', 'SLA'].includes(row.value)"
-                  label="MTD IT"
-                  @update:model-value="changeMtd(index, { use_it: $event })"
-                />
-                <USwitch
-                  :model-value="row.use_non_it"
-                  :disabled="disabled"
-                  label="MTD Non IT"
-                  @update:model-value="changeMtd(index, { use_non_it: $event })"
-                />
-                <USwitch
-                  :model-value="row.active"
-                  :disabled="disabled"
-                  label="Active"
-                  @update:model-value="changeMtd(index, { active: $event })"
-                />
-                <UButton
-                  v-if="!disabled"
-                  type="button"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-x"
-                  label="Remove"
-                  @click="model.mtd_options = mtdRows.filter((_, position) => position !== index)"
-                />
+          <UCard
+            v-for="(row, index) in mtdRows"
+            :key="index"
+          >
+            <div class="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+              <div class="flex items-start gap-1 lg:flex-col">
+                <span class="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold tabular-nums">{{ index + 1 }}</span>
+              </div>
+              <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <UFormField label="Code">
+                  <UInput
+                    :model-value="row.code"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Name">
+                  <UInput
+                    :model-value="row.label"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Workbook value">
+                  <UInput
+                    :model-value="row.value"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Business function category">
+                  <UInput
+                    :model-value="row.category ?? 'No category'"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Converted hours">
+                  <UInput
+                    :model-value="durationHours(row.value) ?? '—'"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Description">
+                  <UInput
+                    :model-value="row.description ?? ''"
+                    disabled
+                    class="w-full"
+                  />
+                </UFormField>
+                <div class="flex flex-wrap gap-4 sm:col-span-2 xl:col-span-3">
+                  <USwitch
+                    :model-value="row.use_it"
+                    disabled
+                    label="MTD IT"
+                  />
+                  <USwitch
+                    :model-value="row.use_non_it"
+                    disabled
+                    label="MTD Non IT"
+                  />
+                  <USwitch
+                    :model-value="row.active"
+                    disabled
+                    label="Active"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </UCard>
+          </UCard>
+        </fieldset>
       </template>
       <div
         v-else
