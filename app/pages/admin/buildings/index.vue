@@ -1,9 +1,8 @@
 <script setup lang="ts">
-/** Administration › Master building: the Buildings register (every head office building and
- *  branch), under its own menu and permission. A building opens here too (/admin/buildings/{id}). */
-definePageMeta({ permission: ['sites.master'] })
+/** Master building moved to Administration › Master data (/masterdata/masterbuilding). */
+definePageMeta({ redirect: (to) => ({ path: '/masterdata/masterbuilding', query: to.query }) })
 </script>
 
 <template>
-  <RaLocationsPage />
+  <div />
 </template>

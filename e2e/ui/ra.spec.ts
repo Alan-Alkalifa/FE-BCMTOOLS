@@ -886,7 +886,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await page.goto('/admin/buildings')
   await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toBeVisible({ timeout: 60_000 })
   await page.getByRole('link', { name: 'Input building data' }).click()
-  await expect(page).toHaveURL(/\/admin\/buildings\/new$/)
+  await expect(page).toHaveURL(/\/masterdata\/masterbuilding\/new$/)
   await expect(page.getByRole('heading', { name: 'Building Data Entry' })).toBeVisible()
   await page.getByRole('button', { name: 'Add building' }).click()
   await expect(page.getByText('Enter the building name.')).toBeVisible()
@@ -907,7 +907,7 @@ test('adding a location opens its profile, starting with the emergency contacts'
   await expect(page.getByLabel('Department', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Division', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add building' }).click()
-  await expect(page).toHaveURL(/\/admin\/buildings\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/masterdata\/masterbuilding\/3\?tab=contacts$/)
 
   // A new building waits for approval.
   await expect(page.getByTestId('approval-banner')).toContainText('Waiting for approval. Test User added this building')

@@ -485,7 +485,7 @@ test('RA activity shows every edit of a building, its profile, its RAs and disas
   await expect(table.getByText('2 hazards: H01, H03')).toBeVisible()
   await expect(table.getByText('Approvers reminded')).toBeVisible()
   await expect(table.getByText('BCM Tools', { exact: true })).toBeVisible()
-  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toHaveAttribute('href', '/admin/buildings/1')
+  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' }).first()).toHaveAttribute('href', '/masterdata/masterbuilding/1')
   await expect(table.getByRole('row', { name: /Hazard ratings saved/ }).getByRole('link', { name: 'Menara Sentraya' })).toHaveAttribute('href', '/ra/manage/9')
 
   await page.getByLabel('Activity', { exact: true }).click()

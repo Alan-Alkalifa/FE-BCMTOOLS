@@ -16,18 +16,35 @@ const details: Record<string, [string, string]> = {
   risk_assessment: ['Personnel and risk assessment', 'Organization structure and location risk assessment.'],
   critical_timings: ['Critical timings', 'Frequency, deadlines and critical activities.'],
 }
-const keys = computed(() => [...new Set([...Object.keys(model.value), ...Object.keys(props.referenceGuides)])])
-const items = computed(() => keys.value.map((key) => ({ value: key, label: details[key]?.[0] ?? key.replaceAll('_', ' ') })))
+const group = computed({
+  get: () => route.query.notes === 'fields' ? 'fields' : 'topics',
+  set: (value: string) => router.replace({ query: { ...route.query, notes: value, guide: undefined } }),
+})
+const keys = computed(() => [...new Set([...Object.keys(model.value), ...Object.keys(props.referenceGuides)])]
+  .filter((key) => key.startsWith('field_') === (group.value === 'fields')))
+function guideLabel(key: string) {
+  const text = key.replace(/^field_/, '').replaceAll('_', ' ')
+  return details[key]?.[0] ?? text.charAt(0).toUpperCase() + text.slice(1)
+}
+const items = computed(() => keys.value.map((key) => ({ value: key, label: guideLabel(key) })))
 const selected = computed({
   get: () => keys.value.includes(String(route.query.guide)) ? String(route.query.guide) : (keys.value.includes('attestation') ? 'attestation' : keys.value[0]!),
   set: (value: string) => router.replace({ query: { ...route.query, guide: value } }),
 })
-const title = computed(() => details[selected.value]?.[0] ?? selected.value.replaceAll('_', ' '))
+const title = computed(() => selected.value ? guideLabel(selected.value) : '')
 const paragraphs = computed(() => (model.value[selected.value] ?? '').split(/\n\s*\n/).filter(Boolean))
 </script>
 
 <template>
+  <USelect
+    v-if="Object.keys(model).some(key => key.startsWith('field_'))"
+    v-model="group"
+    :items="[{ label: 'Guides and statements', value: 'topics' }, { label: 'Form field notes', value: 'fields' }]"
+    aria-label="Guidance section"
+    class="mb-4 w-full sm:w-60"
+  />
   <AdminBiancaConfigSectionLayout
+    v-if="keys.length"
     v-model="selected"
     label="Guides and statements"
     :items="items"

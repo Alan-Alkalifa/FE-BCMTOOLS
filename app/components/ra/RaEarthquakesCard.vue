@@ -178,7 +178,7 @@ function nearText(quake: RaEarthquake) {
 
       <p class="text-xs text-muted">
         Source. {{ list?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }},
-          <a
+        <a
           :href="list?.source_url ?? 'https://data.bmkg.go.id/gempabumi/'"
           target="_blank"
           rel="noopener"

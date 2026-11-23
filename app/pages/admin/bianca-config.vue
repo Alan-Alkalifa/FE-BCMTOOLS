@@ -27,15 +27,19 @@ const editable = computed(() => version.value?.status === 'draft' && can('bianca
 const busy = ref<string | null>(null)
 const failure = ref<string | null>(null)
 const schema = z.object({ name: z.string().trim().min(1, 'Enter a version name.').max(255) }).passthrough()
-const tabs = [
+const tabs = computed(() => [
   { label: 'Versions', value: 'versions', icon: 'i-lucide-git-branch' },
   { label: 'Personnel levels', value: 'personnel', icon: 'i-lucide-users' },
   { label: 'Lists', value: 'lists', icon: 'i-lucide-list' },
   { label: 'Impact and MTD', value: 'impact', icon: 'i-lucide-calculator' },
+  { label: 'Office location types', value: 'locations', icon: 'i-lucide-map-pin' },
   { label: 'Guides and statements', value: 'guides', icon: 'i-lucide-list-checks' },
   { label: 'Approval template', value: 'steps', icon: 'i-lucide-signature' },
+  ...(can('bianca.approval.manage')
+    ? [{ label: 'Reminders and escalation', value: 'reminders', icon: 'i-lucide-bell-ring' }]
+    : []),
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare' },
-]
+])
 const versionStatus = defineStatusScale<BiancaConfigVersion['status']>({
   draft: { label: 'Draft', color: 'warning', icon: 'i-lucide-pencil' },
   active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
@@ -53,7 +57,7 @@ const versionColumns: TableColumn<BiancaConfigVersion>[] = [
   { accessorKey: 'published_at', header: 'Published' },
 ]
 const tab = computed({
-  get: () => tabs.some((t) => t.value === route.query.tab) ? String(route.query.tab) : 'versions',
+  get: () => tabs.value.some((t) => t.value === route.query.tab) ? String(route.query.tab) : 'versions',
   set: (value) => router.replace({ query: { ...route.query, tab: value } }),
 })
 async function discardEdits() {
@@ -79,7 +83,7 @@ async function run(operation: string, work: () => Promise<unknown>, message: str
 async function start() {
   await run('start', async () => {
     const created = await biancaConfigApi.start()
-    await router.replace({ query: { tab: 'personnel', version: created.id } })
+    await router.replace({ query: { ...route.query, tab: tab.value === 'versions' ? 'personnel' : tab.value, version: created.id } })
   }, 'Draft configuration created')
 }
 async function save() {
@@ -89,7 +93,14 @@ async function save() {
   const activeCodes = Object.fromEntries(Object.entries(list_items).map(([key, items]) => [
     key, items.filter((item) => item.active).map((item) => item.code.trim()),
   ]))
-  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: { ...payload, ...activeCodes }, list_items }), 'Draft configuration saved')
+  const activeSites = new Set(activeCodes.alt_site_strategies)
+  const recommendations = payload.alternate_site_by_category
+  const configured = { ...payload, ...activeCodes, alternate_site_by_category: recommendations && Object.fromEntries(
+    Object.entries(recommendations).map(([category, sites]) => [category, sites.filter((site) => activeSites.has(site))]),
+  ) }
+  const lists: Partial<typeof list_items> = { ...list_items }
+  if (payload.mtd_options) delete lists.dependency_mtd
+  await run('save', () => biancaConfigApi.save(id, { name, notes, revision, payload: configured, list_items: lists }), 'Draft configuration saved')
 }
 async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'discard') {
   const selected = version.value
@@ -123,73 +134,75 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
   <AppPage
     title="BIA configuration"
     icon="i-lucide-file-cog"
-    description="Personnel levels, assessment parameters, guides and the approval template by version."
+    description="Personnel levels, assessment parameters, guides, approval template by version, and live reminder rules."
     :crumbs="[{ label: 'Administration' }, { label: 'BIA configuration' }]"
   >
     <template #actions>
-      <USelect
-        v-if="versionItems.length"
-        :model-value="version?.id"
-        :items="versionItems"
-        :disabled="!!busy"
-        class="w-32"
-        aria-label="Configuration version"
-        @update:model-value="chooseVersion"
-      />
-      <UButton
-        v-if="can('bianca.config.manage') && !draft"
-        label="Start draft version"
-        icon="i-lucide-file-plus"
-        :loading="busy === 'start'"
-        :disabled="!!busy"
-        @click="start"
-      />
-      <UButton
-        v-if="editable"
-        type="submit"
-        form="bianca-config-form"
-        icon="i-lucide-save"
-        label="Save draft"
-        :loading="busy === 'save'"
-        :disabled="!dirty || !!busy"
-      />
-      <template v-if="version?.status === 'draft'">
-        <UButton
-          v-if="editable && !version.requested_by_id"
-          color="error"
-          variant="soft"
-          icon="i-lucide-trash-2"
-          label="Discard draft"
-          :loading="busy === 'discard'"
-          :disabled="dirty || !!busy"
-          @click="action('discard')"
+      <template v-if="tab !== 'reminders'">
+        <USelect
+          v-if="versionItems.length"
+          :model-value="version?.id"
+          :items="versionItems"
+          :disabled="!!busy"
+          class="w-32"
+          aria-label="Configuration version"
+          @update:model-value="chooseVersion"
         />
         <UButton
-          v-if="editable && version.requested_by_id"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-undo-2"
-          label="Withdraw request"
-          :loading="busy === 'withdraw'"
-          :disabled="dirty || !!busy"
-          @click="action('withdraw')"
+          v-if="can('bianca.config.manage') && !draft"
+          label="Start draft version"
+          icon="i-lucide-file-plus"
+          :loading="busy === 'start'"
+          :disabled="!!busy"
+          @click="start"
         />
         <UButton
-          v-if="editable && !version.requested_by_id"
-          icon="i-lucide-send"
-          label="Request publish"
-          :loading="busy === 'request-publish'"
-          :disabled="dirty || !!busy"
-          @click="action('request-publish')"
+          v-if="editable"
+          type="submit"
+          form="bianca-config-form"
+          icon="i-lucide-save"
+          label="Save draft"
+          :loading="busy === 'save'"
+          :disabled="!dirty || !!busy"
         />
-        <UButton
-          v-if="version.requested_by_id && can('bianca.config.publish')"
-          icon="i-lucide-badge-check"
-          label="Approve publication"
-          :loading="busy === 'publish'"
-          :disabled="dirty || !!busy || version.requested_by_id === user?.id"
-          @click="action('publish')"
-        />
+        <template v-if="version?.status === 'draft'">
+          <UButton
+            v-if="editable && !version.requested_by_id"
+            color="error"
+            variant="soft"
+            icon="i-lucide-trash-2"
+            label="Discard draft"
+            :loading="busy === 'discard'"
+            :disabled="dirty || !!busy"
+            @click="action('discard')"
+          />
+          <UButton
+            v-if="editable && version.requested_by_id"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-undo-2"
+            label="Withdraw request"
+            :loading="busy === 'withdraw'"
+            :disabled="dirty || !!busy"
+            @click="action('withdraw')"
+          />
+          <UButton
+            v-if="editable && !version.requested_by_id"
+            icon="i-lucide-send"
+            label="Request publish"
+            :loading="busy === 'request-publish'"
+            :disabled="dirty || !!busy"
+            @click="action('request-publish')"
+          />
+          <UButton
+            v-if="version.requested_by_id && can('bianca.config.publish')"
+            icon="i-lucide-badge-check"
+            label="Approve publication"
+            :loading="busy === 'publish'"
+            :disabled="dirty || !!busy || version.requested_by_id === user?.id"
+            @click="action('publish')"
+          />
+        </template>
       </template>
     </template>
 
@@ -217,60 +230,67 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
     />
 
     <template v-else-if="version && form">
-      <UAlert
-        v-if="failure"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-circle-alert"
-        title="Configuration action failed"
-        :description="failure"
-      />
-      <UAlert
-        v-if="version.status === 'draft' && version.requested_by_id"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-hourglass"
-        :title="'Publication requested for ' + version.code"
-        :description="version.requested_by_id === user?.id
-          ? 'You requested publication. Another person must approve it.'
-          : can('bianca.config.publish')
-            ? 'Review Changes before approving. Saving changes to this draft withdraws the request.'
-            : 'A user with publish permission must review and approve this draft.'"
-      />
-      <UAlert
-        v-else-if="!editable"
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-lock"
-        :title="version.code + ' is read-only'"
-        :description="draft && can('bianca.config.manage')
-          ? 'Select draft ' + draft.code + ' to edit the configuration.'
-          : !draft && can('bianca.config.manage') ? 'Start a draft to edit a copy of the active version.' : undefined"
-      />
-      <UAlert
-        v-if="dirty"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-pencil"
-        title="Unsaved changes"
-        description="Save the draft to include these edits in the publication review."
-      />
+      <template v-if="tab !== 'reminders'">
+        <UAlert
+          v-if="failure"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          title="Configuration action failed"
+          :description="failure"
+        />
+        <UAlert
+          v-if="version.status === 'draft' && version.requested_by_id"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-hourglass"
+          :title="'Publication requested for ' + version.code"
+          :description="version.requested_by_id === user?.id
+            ? 'You requested publication. Another person must approve it.'
+            : can('bianca.config.publish')
+              ? 'Review Changes before approving. Saving changes to this draft withdraws the request.'
+              : 'A user with publish permission must review and approve this draft.'"
+        />
+        <UAlert
+          v-else-if="!editable"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-lock"
+          :title="version.code + ' is read-only'"
+          :description="draft && can('bianca.config.manage')
+            ? 'Select draft ' + draft.code + ' to edit the configuration.'
+            : !draft && can('bianca.config.manage') ? 'Start a draft to edit a copy of the active version.' : undefined"
+        />
+        <UAlert
+          v-if="dirty"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-pencil"
+          title="Unsaved changes"
+          description="Save the draft to include these edits in the publication review."
+        />
+      </template>
 
-      <UForm
-        id="bianca-config-form"
-        :state="form"
-        :schema="schema"
-        @submit="save"
-        @error="tab = 'versions'"
+      <UTabs
+        v-model="tab"
+        :items="tabs"
+        variant="link"
+        class="min-w-0"
+        :ui="{ list: 'min-w-0 overflow-x-auto', indicator: 'bottom-0', trigger: 'shrink-0 whitespace-nowrap' }"
       >
-        <UTabs
-          v-model="tab"
-          :items="tabs"
-          variant="link"
-          class="min-w-0"
-          :ui="{ list: 'min-w-0 overflow-x-auto', indicator: 'bottom-0', trigger: 'shrink-0 whitespace-nowrap' }"
-        >
-          <template #content="{ item }">
+        <template #content="{ item }">
+          <AdminBiancaConfigReminders
+            v-if="item.value === 'reminders'"
+            class="mt-4"
+          />
+          <UForm
+            v-else
+            id="bianca-config-form"
+            :state="form"
+            :schema="schema"
+            @submit="save"
+            @error="tab = 'versions'"
+          >
             <div
               v-if="item.value === 'versions'"
               class="mt-4 grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]"
@@ -367,6 +387,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
             <AdminBiancaConfigLists
               v-else-if="item.value === 'lists'"
               v-model="form.list_items"
+              v-model:recommendations="form.payload.alternate_site_by_category"
               class="mt-4"
               :disabled="!editable || !!busy"
               :payload="form.payload"
@@ -376,17 +397,19 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               v-else
               :key="version.id"
               v-model="form.payload"
+              :list-items="form.list_items"
               class="mt-4"
               :signers="version.signer_profiles ?? {}"
+              :saved-step-codes="version.payload.signoff_steps.map(step => step.code)"
               :version-id="version.id"
               :export-disabled="dirty || !!busy"
               :reference-guides="version.reference_guides ?? {}"
               :section="item.value"
               :disabled="!editable || !!busy"
             />
-          </template>
-        </UTabs>
-      </UForm>
+          </UForm>
+        </template>
+      </UTabs>
     </template>
 
     <UAlert
