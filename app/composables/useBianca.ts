@@ -228,6 +228,8 @@ export interface BiancaLookups {
   organisation: { directorate: string | null, sub_directorate: string | null, org_group: string | null }
   /** Whether the user picks the Group of a BIA (BCM Admin); the others' BIA is their own Group's. */
   can_pick_group?: boolean
+  /** Part 2b's upstream / downstream names: the Groups of Master data > Organization structure. */
+  org_groups?: string[]
 }
 
 export interface BiancaPreview {
@@ -358,6 +360,7 @@ export const biancaApi = {
   orgOptions: (directorate?: string, subDirectorate?: string) => $fetch<BiancaOrgOptions>('/api/bianca/org-options', {
     query: { directorate: directorate || undefined, sub_directorate: subDirectorate || undefined },
   }),
+  orgUnit: (org: BiancaOrg) => $fetch<{ description: string | null }>('/api/bianca/org-unit', { query: { ...org } }),
   mainLocation: (org: BiancaOrg) => $fetch<BiancaMainLocation>('/api/bianca/main-location', { query: { ...org } }),
   people: (q: string, orgGroup?: string) => $fetch<{ items: BiancaPerson[] }>('/api/bianca/people', {
     query: { q: q || undefined, org_group: orgGroup || undefined },

@@ -64,13 +64,11 @@ const reasonItems = [
 ]
 
 const { data, status, error, refresh } = useRaAssessments(query)
-/** Import from Excel, as a dialog on this module's type (`?import=1` opens it). */
-const importOpen = computed<boolean>({
-  get: () => route.query.import !== undefined && can(ra.value.perm.edit),
-  set: (value) => {
-    router.replace({ query: { ...route.query, import: value ? '1' : undefined } })
-  },
-})
+// Import from Excel moved to New assessment (as SCCA's Upload Excel): an old `?import=1` link
+// opens it there.
+if (route.query.import !== undefined && can(ra.value.perm.edit)) {
+  navigateTo({ path: raPath(ra.value.kind, 'manage', 'new'), query: { import: '1' } }, { replace: true })
+}
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind }))
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason))
@@ -117,14 +115,6 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage' }]"
   >
     <template #actions>
-      <UButton
-        v-if="can(ra.perm.edit)"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-file-up"
-        label="Import from Excel"
-        @click="importOpen = true"
-      />
       <UButton
         v-if="can(ra.perm.edit)"
         :to="raPath(ra.kind, 'manage', 'new')"
@@ -312,10 +302,5 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         label="Drafts"
       />
     </UCard>
-    <RaImportModal
-      v-model:open="importOpen"
-      :kind="ra.kind"
-      @imported="refresh()"
-    />
   </AppPage>
 </template>

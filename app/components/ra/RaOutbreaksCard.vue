@@ -97,7 +97,7 @@ const backwards = computed(() => from.value !== null && to.value !== null && fro
 
       <ul
         v-if="report?.items.length"
-        class="divide-y divide-default rounded-md border border-default"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
       >
         <li
           v-for="item in report.items"

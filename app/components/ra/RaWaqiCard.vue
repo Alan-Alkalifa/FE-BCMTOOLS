@@ -191,7 +191,7 @@ onBeforeUnmount(() => script?.remove())
 
       <ul
         v-if="shown.length"
-        class="divide-y divide-default rounded-md border border-default"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
       >
         <li
           v-for="station in shown"

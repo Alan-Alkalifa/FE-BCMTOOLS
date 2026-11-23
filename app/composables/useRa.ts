@@ -905,7 +905,7 @@ export function raPin(location: { latitude?: number | null, longitude?: number |
 export function useRaFormula(kind: MaybeRefOrGetter<RaKind>, version?: MaybeRefOrGetter<string | null | undefined>) {
   return useFetch<RaFormula>('/api/ra/formula', {
     key: computed(() => `ra-formula-${toValue(kind)}-${toValue(version) ?? 'active'}`),
-    // Version codes are numbered per kind (RA and RA Branch can both have V.04).
+    // Version codes are numbered per kind (RA and RA Branch can both have V.4).
     query: computed(() => (toValue(version) ? { version: toValue(version), kind: toValue(kind) } : { kind: toValue(kind) })),
     getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key],
   })
@@ -1300,6 +1300,9 @@ export interface RaImportWarning {
   sheet: string
   cell: string | null
   message: string
+  /** `error`: a required input missing or unreadable, so the workbook can't be imported (as
+   *  SCCA's). `warning`: imported, or left for the form. */
+  level: 'error' | 'warning'
 }
 export interface RaImportPreview {
   filename: string | null
@@ -1365,6 +1368,10 @@ export interface RaImportPreview {
   risk_summary: string | null
   missing: { field: string, label: string, why: string }[]
   warnings: RaImportWarning[]
+  /** How many notes are errors. */
+  errors: number
+  /** No error: the workbook can be imported. */
+  can_import: boolean
 }
 export interface RaImportOptions {
   location_id?: number
