@@ -51,14 +51,15 @@ test('Sign Off accepts WFH and generic or specified Hyspace without requiring a 
   await page.getByRole('combobox', { name: 'Main location type' }).click()
   await page.getByRole('option', { name: 'Work From Home', exact: true }).click()
   await expect(page.getByText('Address and floor are not applicable.')).toBeVisible()
-  await expect(page.getByRole('textbox', { name: /Main location floor/ })).toHaveCount(0)
+  // The floor takes whole numbers from 1: a spinbutton.
+  await expect(page.getByRole('spinbutton', { name: /Main location floor/ })).toHaveCount(0)
   await page.getByRole('combobox', { name: 'Alternate location type' }).click()
   await page.getByRole('option', { name: 'Hyspace', exact: true }).click()
   await expect(page.getByText('Site not specified')).toBeVisible()
   await page.getByRole('button', { name: 'Alternate location site', exact: true }).click()
   await page.getByRole('option', { name: 'Example Site (HO-01)', exact: true }).click()
   await expect(page.getByText('Example Office Address')).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Alternate location floor', exact: true })).not.toHaveAttribute('required', '')
+  await expect(page.getByRole('spinbutton', { name: 'Alternate location floor', exact: true })).not.toHaveAttribute('required', '')
 })
 
 test('Expected MTD edits one master for IT and non-IT', async ({ page }) => {
@@ -324,6 +325,10 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
   await riskQuestions.nth(1).getByRole('radio', { name: 'Yes', exact: true }).check()
 
   await page.getByRole('tab', { name: 'RA questionnaire', exact: true }).click()
+  // Leaving the Sign off page asks to check what was filled in.
+  const review = page.getByRole('dialog', { name: 'Is this correct?' })
+  await expect(review).toBeVisible()
+  await review.getByRole('button', { name: 'Yes, continue', exact: true }).click()
   const count = page.getByRole('spinbutton', { name: 'Number of personnel, Specialist Support', exact: true })
   await count.fill('7')
   await expect(page.locator('#bianca-ra tfoot').getByRole('cell', { name: '7', exact: true })).toBeVisible()
