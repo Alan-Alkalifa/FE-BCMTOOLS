@@ -17,6 +17,7 @@ function plural(count: number, one: string, many = `${one}s`) {
 }
 
 function isWfhStrategy(fn: BiaFunctionItem) {
+  if (typeof fn.is_wfh === 'boolean') return fn.is_wfh
   const code = (fn.alt_site_strategy_code || fn.alt_site_strategy || '').toLowerCase()
   return code.includes('work from home') || code.includes('wfh')
 }
@@ -1391,7 +1392,7 @@ const lossPeriodTotals = computed(() =>
                         <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>Committed RTO</span>
-                            <UTooltip text="Recovery Time Objective — target maximum time to restore the IT application.">
+                            <UTooltip :text="detail.guides?.rto || 'Recovery Time Objective — target maximum time to restore the IT application.'">
                               <UIcon
                                 name="i-lucide-info"
                                 class="size-3.5 text-muted"
@@ -1402,7 +1403,7 @@ const lossPeriodTotals = computed(() =>
                         <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>Committed RPO</span>
-                            <UTooltip text="Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).">
+                            <UTooltip :text="detail.guides?.rpo || 'Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).'">
                               <UIcon
                                 name="i-lucide-info"
                                 class="size-3.5 text-muted"
@@ -1419,7 +1420,7 @@ const lossPeriodTotals = computed(() =>
                         <th class="px-3 py-2 whitespace-nowrap">
                           <span class="inline-flex items-center gap-1">
                             <span>DAAT</span>
-                            <UTooltip text="Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.">
+                            <UTooltip :text="detail.guides?.daat || 'Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.'">
                               <UIcon
                                 name="i-lucide-info"
                                 class="size-3.5 text-muted"

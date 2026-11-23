@@ -249,6 +249,7 @@ export interface BiaFunctionItem {
   outstanding_strategy?: string
   alt_site_strategy: string
   alt_site_strategy_code?: string | null
+  is_wfh?: boolean
   bcp_seats_current: number
   bcp_seats_required: number
   equipment?: {
