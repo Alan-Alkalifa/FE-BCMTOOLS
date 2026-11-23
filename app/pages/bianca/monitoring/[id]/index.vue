@@ -138,6 +138,18 @@ const timingColumns: TableColumn<BiaFunctionItem>[] = [
   { accessorKey: 'critical_activity', header: 'Activity performed' },
 ]
 
+const COMMENT_TAB_LABELS: Record<string, string> = {
+  sign: 'Sign off page',
+  ra: 'RA questionnaire',
+  functions: 'Business functions',
+  appendix: 'Appendix',
+  approval: 'Approval template',
+}
+
+function commentTabLabel(key: string) {
+  return COMMENT_TAB_LABELS[key] || key
+}
+
 const signoffStatus = defineStatusScale<'approved' | 'pending' | 'rejected'>({
   approved: { label: 'Approved', color: 'success', icon: 'i-lucide-circle-check' },
   pending: { label: 'Waiting', color: 'warning', icon: 'i-lucide-hourglass' },
@@ -245,7 +257,13 @@ const detailSummary = computed(() => {
   const notes = detail.value?.notes
   const missingRaJustification = Boolean(ra?.ra_justification_required && !notes?.ra_justification)
   const missingRtoJustification = Boolean(rtoReachesMtdCount > 0 && !notes?.justification_rto)
-  const missingDepJustification = Boolean(unalignedNonItCount > 0 && !notes?.justification_dependency)
+  const missingDepJustification = Boolean(
+    fns.some((fn) =>
+      fn.non_it_dependencies.some((ndep) =>
+        Boolean(ndep.alignment_warnings?.length && !ndep.justification && !notes?.justification_dependency),
+      ),
+    ),
+  )
 
   return {
     fnCount: fns.length,
@@ -396,6 +414,15 @@ const lossPeriodTotals = computed(() =>
       >
         Config {{ detail.config_version }}
       </UBadge>
+      <UButton
+        v-if="detail.renewal_of"
+        :to="`/bianca/monitoring/${detail.renewal_of.id}`"
+        color="neutral"
+        variant="subtle"
+        size="sm"
+        icon="i-lucide-history"
+        :label="`Renewing ${detail.renewal_of.ref_no}`"
+      />
       <StatusBadge
         :scale="biaStatus"
         :value="biaStatusKey(detail)"
@@ -404,6 +431,13 @@ const lossPeriodTotals = computed(() =>
         v-if="detail.highest_category"
         :scale="biaCategory"
         :value="detail.highest_category"
+      />
+      <UButton
+        :to="`/bianca/report/${detail.id}`"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-text"
+        label="View report / PDF"
       />
       <UButton
         v-if="detail.can_edit"
@@ -675,7 +709,9 @@ const lossPeriodTotals = computed(() =>
                       />
                     </div>
                     <p class="text-xs text-muted">
-                      {{ detail.alt_coordinator.email }} · {{ detail.alt_coordinator.phone }}
+                      {{ detail.alt_coordinator.email }} · {{ detail.alt_coordinator.phone }}<template v-if="detail.alt_coordinator.phone_2">
+                        / {{ detail.alt_coordinator.phone_2 }}
+                      </template>
                     </p>
                   </dd>
                 </div>
@@ -1521,12 +1557,15 @@ const lossPeriodTotals = computed(() =>
                         <th class="px-3 py-2">
                           Alignment
                         </th>
+                        <th class="px-3 py-2">
+                          Justification
+                        </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-default">
                       <tr v-if="!section.rows.length">
                         <td
-                          colspan="7"
+                          colspan="8"
                           class="px-3 py-3 text-xs text-muted"
                         >
                           {{ section.empty }}
@@ -1573,6 +1612,22 @@ const lossPeriodTotals = computed(() =>
                             size="xs"
                             label="Aligned"
                           />
+                        </td>
+                        <td class="max-w-xs px-3 py-2 whitespace-pre-line text-xs text-muted">
+                          <span
+                            v-if="ndep.justification"
+                            class="text-default"
+                          >{{ ndep.justification }}</span>
+                          <UBadge
+                            v-else-if="ndep.alignment_warnings?.length && !detail.notes?.justification_dependency"
+                            color="error"
+                            variant="subtle"
+                            size="xs"
+                            label="Required"
+                          />
+                          <template v-else>
+                            —
+                          </template>
                         </td>
                       </tr>
                     </tbody>
@@ -2032,6 +2087,49 @@ const lossPeriodTotals = computed(() =>
               </div>
             </UCard>
           </div>
+
+          <UCard v-if="detail.comments?.length">
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-base font-semibold text-highlighted">
+                  Review comments
+                </h2>
+                <span class="text-xs text-muted">{{ plural(detail.comments.length, 'comment') }}</span>
+              </div>
+            </template>
+            <ul class="divide-y divide-default text-sm">
+              <li
+                v-for="comment in detail.comments"
+                :key="comment.id"
+                class="space-y-1 py-3"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <UBadge
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                      :label="commentTabLabel(comment.tab)"
+                    />
+                    <span class="font-medium text-highlighted">{{ comment.author || 'Approver' }}</span>
+                    <span
+                      v-if="comment.role_title"
+                      class="text-xs text-muted"
+                    >· {{ comment.role_title }}</span>
+                  </div>
+                  <span
+                    v-if="comment.created_at"
+                    class="text-xs text-muted whitespace-nowrap"
+                  >
+                    {{ formatDateTime(comment.created_at) }}
+                  </span>
+                </div>
+                <p class="whitespace-pre-line text-sm text-default">
+                  {{ comment.body }}
+                </p>
+              </li>
+            </ul>
+          </UCard>
 
           <UCard v-if="detail.events?.length">
             <template #header>

@@ -209,6 +209,7 @@ export interface BiaNonItDependencyItem {
   sla: string
   is_outsourcing: string
   is_material: string
+  justification?: string | null
   alignment_warnings?: string[]
 }
 
@@ -330,6 +331,7 @@ export interface BiaAssessmentDetail {
     nik: string
     email: string
     phone: string
+    phone_2?: string | null
   }
   ra_questionnaire: {
     considered_bc: string
@@ -354,6 +356,10 @@ export interface BiaAssessmentDetail {
     }[]
     total_staff: number
   }
+  renewal_of?: {
+    id: number
+    ref_no: string
+  } | null
   functions: BiaFunctionItem[]
   signoffs: {
     role: string
@@ -371,6 +377,16 @@ export interface BiaAssessmentDetail {
     role_title: string | null
     actor: string | null
     note: string | null
+    created_at: string | null
+  }[]
+  comments?: {
+    id: number
+    tab: string
+    role: string | null
+    role_title: string | null
+    author: string | null
+    author_id: number | null
+    body: string
     created_at: string | null
   }[]
   org_structure?: {
