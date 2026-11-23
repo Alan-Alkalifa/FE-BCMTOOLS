@@ -1093,14 +1093,14 @@ function record(id: number) {
               <NuxtLink
                 v-if="row.original.open"
                 :to="record(row.original.open.id)"
-                class="hover:underline"
+                class="inline-flex flex-col items-start gap-1 hover:underline"
               >
                 <StatusBadge
                   :scale="biaStatus"
                   :value="biaStatusKey(row.original.open)"
                   size="sm"
                 />
-                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
+                <span class="font-mono text-xs text-muted">{{ refLabel(row.original.open) }}</span>
               </NuxtLink>
               <span
                 v-else
