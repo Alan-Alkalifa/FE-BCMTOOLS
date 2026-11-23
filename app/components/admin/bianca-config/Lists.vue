@@ -12,6 +12,9 @@ const router = useRouter()
 const capacityKeys = ['percentages', 'upstream_capacity', 'downstream_capacity', 'expected_support_capacity', 'generic_values']
 const capacity = computed(() => route.query.list === 'capacity')
 const dependencyReference = computed(() => route.query.list === 'dependency_mtd')
+// Suggested MTD comes from Master data › Master MTD: shown here, changed there.
+const suggestedReference = computed(() => route.query.list === 'suggested_mtd')
+const mtdMaster = computed(() => can('masterdata.mtd.view', 'masterdata.mtd.manage'))
 
 const list = computed(() => BIANCA_LISTS.find(({ key }) => key === route.query.list) ?? BIANCA_LISTS[0]!)
 const selected = computed({
@@ -99,7 +102,7 @@ function add() {
             </p>
           </div>
           <UButton
-            v-if="!disabled && !list.locked && !reference && !capacity && !dependencyReference"
+            v-if="!disabled && !list.locked && !reference && !capacity && !dependencyReference && !suggestedReference"
             type="button"
             color="neutral"
             variant="outline"
@@ -139,14 +142,86 @@ function add() {
         class="space-y-3 p-4"
       >
         <p class="text-sm text-muted">
-          Dependency choices are managed with Expected MTD. Enable MTD Non IT on the options that should appear in Part 2b.
+          Dependency choices are managed with Expected MTD in Master data › Master MTD. Enable MTD Non IT on the options that should appear in Part 2b.
         </p>
-        <UButton
-          :to="{ query: { ...route.query, tab: 'impact', impact: 'expected-mtd' } }"
-          color="neutral"
-          variant="outline"
-          label="Open Expected MTD"
-        />
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-if="mtdMaster"
+            :to="{ path: MASTER_MTD_PATH, query: { part: 'options' } }"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-timer"
+            label="Open Master MTD"
+          />
+          <UButton
+            :to="{ query: { ...route.query, tab: 'impact', impact: 'expected-mtd' } }"
+            color="neutral"
+            variant="ghost"
+            label="See this version's Expected MTD"
+          />
+        </div>
+      </div>
+      <div
+        v-else-if="suggestedReference"
+        class="space-y-3"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
+          <p class="min-w-0 flex-1 basis-60 text-sm text-muted">
+            Managed in Master data › Master MTD. This version keeps a copy, refreshed whenever the draft is saved, submitted and published.
+          </p>
+          <UButton
+            v-if="mtdMaster"
+            :to="{ path: MASTER_MTD_PATH, query: { part: 'suggested' } }"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-timer"
+            :label="can('masterdata.mtd.manage') ? 'Edit in Master MTD' : 'Open Master MTD'"
+          />
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[40rem] text-sm">
+            <caption class="sr-only">
+              Suggested MTD items
+            </caption>
+            <thead class="bg-muted text-left text-xs uppercase text-muted">
+              <tr>
+                <th class="w-16 px-3 py-2 ps-4">
+                  Order
+                </th><th class="px-3 py-2">
+                  ID
+                </th><th class="px-3 py-2">
+                  Value
+                </th><th class="px-3 py-2">
+                  Label
+                </th><th class="px-3 py-2">
+                  Text
+                </th><th class="px-3 py-2 pe-4">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr
+                v-for="(item, index) in rows"
+                :key="item.code"
+              >
+                <td class="px-3 py-2 ps-4 tabular-nums text-muted">
+                  {{ index + 1 }}
+                </td><td class="px-3 py-2 font-mono text-xs text-muted">
+                  {{ item.id ?? '—' }}
+                </td><td class="px-3 py-2 font-mono">
+                  {{ item.code }}
+                </td><td class="px-3 py-2">
+                  {{ item.label }}
+                </td><td class="px-3 py-2">
+                  {{ item.text || '—' }}
+                </td><td class="px-3 py-2 pe-4">
+                  {{ item.active ? 'Active' : 'Inactive' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <div
         v-else-if="reference"
@@ -400,7 +475,7 @@ function add() {
         Shared master data
       </h3>
       <p class="mt-1 text-sm text-muted">
-        The workbook also contains application systems, office locations and organization groups. These follow the existing shared masters instead of being copied into a BIA version.
+        The workbook also contains application systems, office locations and organization groups. These follow the existing shared masters instead of being copied into a BIA version. The MTD choices are a master too (Master MTD); each version keeps a copy of it.
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <UButton
@@ -409,6 +484,13 @@ function add() {
           color="neutral"
           variant="outline"
           label="Application systems"
+        />
+        <UButton
+          v-if="mtdMaster"
+          :to="MASTER_MTD_PATH"
+          color="neutral"
+          variant="outline"
+          label="Master MTD"
         />
         <UButton
           v-if="can('masterdata.access', 'masterdata.organization.manage')"
