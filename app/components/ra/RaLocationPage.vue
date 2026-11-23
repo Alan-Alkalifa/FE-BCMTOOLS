@@ -7,7 +7,7 @@ type Tab = (typeof TABS)[number]
 /** The LCP sheets are only in the HO workbook. */
 const LCP_TABS: Tab[] = ['occupants', 'team', 'calltree']
 
-/** A building's page, under Administration › Master building (its only page). */
+/** A building's page, under Administration › Master data › Master building (its only page). */
 
 const route = useRoute()
 const router = useRouter()
@@ -112,6 +112,7 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
     :description="location?.code ? `${ra.location.single} ID ${location.code}` : undefined"
     :crumbs="[
       { label: 'Administration' },
+      { label: 'Master data', to: MASTER_DATA_PATH },
       { label: 'Master building', to: MASTER_BUILDINGS_PATH },
       ...(location ? [{ label: location.name }] : []),
     ]"

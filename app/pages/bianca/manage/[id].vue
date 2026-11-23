@@ -1,10 +1,19 @@
 <script setup lang="ts">
+import type { BiancaAssessment } from '~/composables/useBianca'
+
 definePageMeta({ permission: 'bianca.access' })
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 const { data, status, error, refresh } = useBiancaAssessment(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+/**
+ * The report and the approval page read this BIA from the same cache: put what was saved in
+ * it, or they would show the BIA as it was when the form opened.
+ */
+function onSaved(result: BiancaAssessment) {
+  data.value = result
+}
 </script>
 
 <template>
@@ -43,6 +52,7 @@ const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data
       v-else-if="data"
       :key="data.id"
       :assessment="data"
+      @saved="onSaved"
     />
   </AppPage>
 </template>

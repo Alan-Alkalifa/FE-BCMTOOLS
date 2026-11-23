@@ -4,8 +4,14 @@ import { BIANCA_LISTS } from '~/utils/bianca-config'
 
 const props = defineProps<{ disabled: boolean, payload: BiancaConfigPayload, referenceLists?: { expected_mtd: BiancaReferenceItem[], scores: BiancaReferenceItem[] } }>()
 const model = defineModel<BiancaListItems>({ required: true })
+const recommendations = defineModel<Record<string, string[]>>('recommendations')
+const siteOptions = computed(() => model.value.alt_site_strategies.filter((site) => site.active && site.code).map((site) => site.code))
+const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
+const capacityKeys = ['percentages', 'upstream_capacity', 'downstream_capacity', 'expected_support_capacity', 'generic_values']
+const capacity = computed(() => route.query.list === 'capacity')
+const dependencyReference = computed(() => route.query.list === 'dependency_mtd')
 
 const list = computed(() => BIANCA_LISTS.find(({ key }) => key === route.query.list) ?? BIANCA_LISTS[0]!)
 const selected = computed({
@@ -13,13 +19,14 @@ const selected = computed({
   set: (value: string) => router.replace({ query: { ...route.query, list: value } }),
 })
 const rows = computed(() => model.value[list.value.key])
-const menu = computed<{ value: string, label: string, count: number }[]>(() => [...BIANCA_LISTS.map(({ key, label }) => ({
+const menu = computed<{ value: string, label: string, count?: number }[]>(() => [...BIANCA_LISTS.map(({ key, label }) => ({
   value: key,
   label,
   count: model.value[key].filter((item) => item.active).length,
 })),
 { value: 'expected_mtd', label: 'Expected MTD reference', count: props.payload.expected_mtd.length + 2 },
 { value: 'scores', label: 'Impact scores', count: props.payload.scores.length },
+{ value: 'capacity', label: 'Planned capacity' },
 ])
 const reference = computed(() => route.query.list === 'expected_mtd' || route.query.list === 'scores')
 const referenceId = (value: string) => props.referenceLists?.expected_mtd.find((item) => item.value === value)?.id ?? value.replaceAll(' ', '_')
@@ -28,7 +35,7 @@ const referenceRows = computed(() => route.query.list === 'scores'
   : [...props.payload.expected_mtd.map((item) => ({ id: referenceId(item.value), value: item.value, type: 'string', detail: item.category, active: true })),
       ...['NA', 'SLA'].map((value) => ({ id: referenceId(value), value, type: 'string', detail: 'Workbook reference only: no business function category is defined.', active: false }))])
 const sectionSelection = computed({
-  get: () => reference.value ? String(route.query.list) : selected.value,
+  get: () => reference.value || capacity.value ? String(route.query.list) : selected.value,
   set: (value: string) => router.replace({ query: { ...route.query, list: value } }),
 })
 
@@ -68,25 +75,31 @@ function add() {
           <div class="min-w-0 flex-1 basis-60">
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="font-semibold text-highlighted">
-                {{ reference ? (route.query.list === 'scores' ? 'Impact scores' : 'Expected MTD reference') : list.label }}
+                {{ capacity ? 'Planned capacity' : reference ? (route.query.list === 'scores' ? 'Impact scores' : 'Expected MTD reference') : list.label }}
               </h2>
               <UBadge
-                v-if="list.locked && !reference"
+                v-if="list.locked && !reference && !capacity"
                 color="neutral"
                 variant="subtle"
                 icon="i-lucide-lock"
                 label="Fixed codes"
               />
             </div>
-            <p class="mt-1 text-sm text-muted">
+            <p
+              v-if="!capacity"
+              class="mt-1 text-sm text-muted"
+            >
               {{ reference ? 'Complete workbook reference. Manage durations, categories and scoring guidance under Impact and MTD.' : list.help }}
             </p>
-            <p class="mt-1 text-sm text-muted">
+            <p
+              v-if="!capacity && !dependencyReference"
+              class="mt-1 text-sm text-muted"
+            >
               ID identifies an option independently of its order. Value is the stored choice; data type describes it. Code is kept for existing BIA and Excel integrations.
             </p>
           </div>
           <UButton
-            v-if="!disabled && !list.locked && !reference"
+            v-if="!disabled && !list.locked && !reference && !capacity && !dependencyReference"
             type="button"
             color="neutral"
             variant="outline"
@@ -99,7 +112,44 @@ function add() {
       </template>
 
       <div
-        v-if="reference"
+        v-if="capacity"
+        class="grid gap-4 p-4 sm:grid-cols-2"
+      >
+        <UCard
+          v-for="item in BIANCA_LISTS.filter(option => capacityKeys.includes(option.key))"
+          :key="item.key"
+        >
+          <h3 class="font-semibold">
+            {{ item.label }}
+          </h3>
+          <p class="my-2 text-sm text-muted">
+            {{ item.help }}
+          </p>
+          <UButton
+            :to="{ query: { ...route.query, list: item.key } }"
+            color="neutral"
+            variant="outline"
+            label="Open list"
+            :aria-label="`Open ${item.label.toLowerCase()}`"
+          />
+        </UCard>
+      </div>
+      <div
+        v-else-if="dependencyReference"
+        class="space-y-3 p-4"
+      >
+        <p class="text-sm text-muted">
+          Dependency choices are managed with Expected MTD. Enable MTD Non IT on the options that should appear in Part 2b.
+        </p>
+        <UButton
+          :to="{ query: { ...route.query, tab: 'impact', impact: 'expected-mtd' } }"
+          color="neutral"
+          variant="outline"
+          label="Open Expected MTD"
+        />
+      </div>
+      <div
+        v-else-if="reference"
         class="overflow-x-auto"
       >
         <table class="w-full min-w-[40rem] text-sm">
@@ -322,6 +372,28 @@ function add() {
           </tbody>
         </table>
       </div>
+      <div
+        v-if="list.key === 'alt_site_strategies' && recommendations"
+        class="grid gap-4 border-t border-default p-4"
+      >
+        <h3 class="font-semibold">
+          Recommended sites by business function category
+        </h3>
+        <UFormField
+          v-for="(_, category) in recommendations"
+          :key="category"
+          :label="String(category)"
+        >
+          <USelectMenu
+            v-model="recommendations[category]"
+            :items="siteOptions"
+            :disabled="disabled"
+            multiple
+            class="w-full"
+            :aria-label="'Recommended sites for ' + category"
+          />
+        </UFormField>
+      </div>
     </AdminBiancaConfigSectionLayout>
     <UCard>
       <h3 class="text-sm font-semibold">
@@ -332,12 +404,22 @@ function add() {
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <UButton
+          v-if="can('scca.application.view', 'scca.application.manage')"
           to="/admin/applications"
           color="neutral"
           variant="outline"
           label="Application systems"
-        /><UButton
-          to="/admin/buildings"
+        />
+        <UButton
+          v-if="can('masterdata.access', 'masterdata.organization.manage')"
+          to="/masterdata/organization"
+          color="neutral"
+          variant="outline"
+          label="Organization structure"
+        />
+        <UButton
+          v-if="can('sites.master')"
+          :to="MASTER_BUILDINGS_PATH"
           color="neutral"
           variant="outline"
           label="Office locations"

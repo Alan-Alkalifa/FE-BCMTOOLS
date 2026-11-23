@@ -120,7 +120,7 @@ test('a disaster gives each affected place its instructions and keeps a history'
   await expect(page.getByText('Pompa Buang (8 sampit) dan genset di GF')).toBeVisible()
   await expect(page.getByRole('link', { name: '113' })).toHaveAttribute('href', 'tel:113')
   await expect(page.getByRole('link', { name: '0812-1111-2222' })).toHaveAttribute('href', 'tel:081211112222')
-  await expect(page.getByRole('link', { name: 'KC Pondok Indah', exact: true })).toHaveAttribute('href', '/admin/buildings/12')
+  await expect(page.getByRole('link', { name: 'KC Pondok Indah', exact: true })).toHaveAttribute('href', '/masterdata/masterbuilding/12')
   // The call tree chart of the place's kind.
   await page.getByRole('button', { name: 'View call tree chart' }).first().click()
   await expect(page.getByRole('dialog', { name: 'Location call tree (RA HO)' }).getByRole('img'))

@@ -3,8 +3,11 @@ definePageMeta({ permission: 'bianca.create' })
 
 useHead({ title: 'New BIA · BCM Tools' })
 
-function onSaved(assessment: { id: number }) {
-  return navigateTo(biancaPath(assessment.id), { replace: true })
+const { data: lookups } = useBiancaLookups()
+
+function onSaved(assessment: { id: number }, tab?: string) {
+  // On the saved BIA, the tab that was open (e.g. Business functions, after the RA questionnaire).
+  return navigateTo({ path: biancaPath(assessment.id), query: tab && tab !== 'sign' ? { tab } : undefined }, { replace: true })
 }
 </script>
 
@@ -12,7 +15,9 @@ function onSaved(assessment: { id: number }) {
   <AppPage
     icon="i-lucide-file-plus"
     title="New BIA"
-    description="Fill the BIA here, or upload the Excel template. Your Group comes from your profile."
+    :description="lookups?.can_pick_group
+      ? 'Fill the BIA here, or upload the Excel template. Your own Group is filled in; pick another if the BIA is for one.'
+      : 'Fill the BIA here, or upload the Excel template. The BIA is for your own Group.'"
     :crumbs="[
       { label: 'BIANCA' },
       { label: 'Manage', to: '/bianca/manage' },

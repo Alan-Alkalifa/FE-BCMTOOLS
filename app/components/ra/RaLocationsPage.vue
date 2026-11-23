@@ -4,7 +4,7 @@ import type { LocationQueryRaw } from 'vue-router'
 import type { RaLocation } from '~/composables/useRa'
 
 /**
- * Administration › Master building, the Buildings register: head office buildings and branches
+ * Administration › Master data › Master building, the Buildings register: head office buildings and branches
  * in one table, filtered by type,
  * province and status and sorted by a column (all in the URL; the newest change first by
  * default), one page at a time. A row opens the building's profile.
@@ -12,8 +12,8 @@ import type { RaLocation } from '~/composables/useRa'
  * Building column shows it (one badge: Waiting for approval, Deactivation requested, Rejected,
  * Active or Inactive), and the status filter lists the ones waiting. The Inactive filter lists
  * every building not in service (inactive, new and waiting, or rejected). Approving, rejecting and deleting are done on the
- * building's page, not here. Its buildings open in Master building too (/admin/buildings/{id}),
- * as does Input building data.
+ * building's page, not here. Its buildings open in Master building too
+ * (/masterdata/masterbuilding/{id}), as does Input building data.
  */
 const { can } = useAuth()
 /** Every building and branch with the Location permission, otherwise the RA sides the user
@@ -183,7 +183,7 @@ const addTo = computed(() => {
     title="Master building"
     icon="i-lucide-building"
     description="Head office buildings and branches: each one's profile, map pin and RAs."
-    :crumbs="[{ label: 'Administration' }, { label: 'Master building' }]"
+    :crumbs="[{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Master building' }]"
   >
     <template #actions>
       <UButton

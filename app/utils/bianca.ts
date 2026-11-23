@@ -28,6 +28,18 @@ export function biancaPath(id?: number | 'new') {
   return id === undefined ? '/bianca/manage' : `/bianca/manage/${id}`
 }
 
+/** The report of a BIA's business function (1-based number). */
+export function biancaReportPath(id: number, fn?: number) {
+  return fn ? `/bianca/report/${id}?fn=${fn}` : `/bianca/report/${id}`
+}
+
+/** The BIA written into the BIA workbook: all its functions, or those numbered (1-based). */
+export function biancaExportUrl(id: number, functions?: number[]) {
+  return functions?.length
+    ? `/api/bianca/assessments/${id}/export?functions=${functions.join(',')}`
+    : `/api/bianca/assessments/${id}/export`
+}
+
 /** Plain IDR with thousands separators (the cumulative loss cells). */
 export function formatIdr(value: number | null | undefined) {
   return value == null ? '—' : new Intl.NumberFormat('id-ID').format(value)

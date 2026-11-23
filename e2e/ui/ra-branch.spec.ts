@@ -117,7 +117,7 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   const log = await mockRa(page)
   // The old RA Branch link lands on Building Data Entry with the type fixed to branch.
   await page.goto('/ra-branch/locations/new')
-  await expect(page).toHaveURL(/\/admin\/buildings\/new\?type=branch$/, { timeout: 60_000 })
+  await expect(page).toHaveURL(/\/masterdata\/masterbuilding\/new\?type=branch$/, { timeout: 60_000 })
   await expect(page.getByRole('combobox', { name: 'Type of building' })).toBeDisabled({ timeout: 60_000 })
   await expect(page.getByTestId('building-type-hint')).toContainText('The branch that is assessed each RA cycle.')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Asia Afrika', { timeout: 60_000 })
@@ -141,7 +141,7 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   await page.getByLabel('Group', { exact: true }).click()
   await page.getByRole('option', { name: 'Building Management' }).click()
   await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page).toHaveURL(/\/admin\/buildings\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/masterdata\/masterbuilding\/3\?tab=contacts$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch', name: 'KC Bandung Asia Afrika', address: 'Jl. Jend. Sudirman Kav. 25', province: 'DKI Jakarta', org_group: 'Building Management', region_description: 'Region Jabar, Bandung Raya' })
   expect(log.created[0]).not.toHaveProperty('region')
 })
@@ -176,7 +176,7 @@ test('a branch\'s region and area are picked from the region directory, with the
   await area.click()
   await page.getByRole('option', { name: /Jakarta Region Area I/ }).click()
   await page.getByRole('button', { name: 'Add branch' }).click()
-  await expect(page).toHaveURL(/\/admin\/buildings\/3\?tab=contacts$/)
+  await expect(page).toHaveURL(/\/masterdata\/masterbuilding\/3\?tab=contacts$/)
   expect(log.created[0]).toMatchObject({ kind: 'branch', region: 'Network - Jakarta Region', area: 'Jakarta Region Area I' })
 })
 

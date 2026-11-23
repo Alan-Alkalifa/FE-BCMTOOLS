@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import type { BiancaConfigPayload } from '~/composables/useBiancaConfigAdmin'
+import type { BiancaConfigPayload, BiancaListItems, BiancaMtdOption } from '~/composables/useBiancaConfigAdmin'
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
-defineProps<{ disabled: boolean }>()
+const props = defineProps<{ disabled: boolean, listItems: BiancaListItems }>()
 const route = useRoute()
 const router = useRouter()
 const items = [
   { value: 'thresholds', label: 'Impact thresholds', description: 'Financial loss and score alerts used by the assessment.' },
   { value: 'financial-bands', label: 'Financial loss matrix', description: 'Five risk bands transcribed from Part 1 of the completed workbook.' },
-  { value: 'impact-matrix', label: 'Regulatory and customer matrix', description: 'Meaning of scores 1–3 for regulatory and customer service impact.' },
+  { value: 'customer-matrix', label: 'Customer impact matrix', description: 'Workbook guidance for customer service impact scores 1–3.' },
+  { value: 'regulator-matrix', label: 'Regulatory impact matrix', description: 'Workbook guidance for regulatory impact scores 1–3.' },
   { value: 'mtd-guide', label: 'Suggested MTD rule', description: 'First qualifying impact period, with the workbook fallback.' },
   { value: 'expected-mtd', label: 'Expected MTD', description: 'Expected MTD must be equal to or shorter than Suggested MTD. Categories follow the workbook mapping.' },
   { value: 'conversion', label: 'Time conversion', description: 'Convert days and weeks to hours for duration comparisons.' },
-  { value: 'limits', label: 'Workbook limits', description: 'Maximum business functions and dependency rows.' },
+  { value: 'limits', label: 'Workbook limits', description: 'Rows of the Excel template: business functions and dependency rows. The web form takes any number of functions.' },
+  { value: 'review', label: 'Review period', description: 'How long a final BIA stays valid before it is due for review (renewal). Manage and Monitoring show the renewal date from it.' },
 ]
 const selected = computed({
-  get: () => items.find((item) => item.value === route.query.impact)?.value ?? 'thresholds',
+  get: () => route.query.impact === 'impact-matrix' ? 'customer-matrix' : items.find((item) => item.value === route.query.impact)?.value ?? 'thresholds',
   set: (value: string) => router.replace({ query: { ...route.query, impact: value } }),
 })
 const current = computed(() => items.find((item) => item.value === selected.value)!)
@@ -24,11 +26,65 @@ const numeric = [
   { group: 'thresholds', key: 'score_alert', label: 'Highlighted impact score', min: 1, max: 3 },
   { group: 'conversion', key: 'hours_per_day', label: 'Hours per day', min: 0.1, max: 24, step: 0.1 },
   { group: 'conversion', key: 'days_per_week', label: 'Days per week', min: 0.1, max: 7, step: 0.1 },
-  { group: 'limits', key: 'max_functions', label: 'Maximum functions', min: 1, max: 30 },
+  { group: 'limits', key: 'max_functions', label: 'Function rows in the Excel template', min: 1, max: 30 },
   { group: 'limits', key: 'it_slots', label: 'IT rows per function', min: 1, max: 4 },
   { group: 'limits', key: 'dependency_slots', label: 'Non-IT rows per function', min: 1, max: 4 },
+  { group: 'review', key: 'review_period_months', label: 'Review period of a final BIA (months)', min: 1, max: 60 },
 ] as const
 const fields = computed(() => numeric.filter((field) => field.group === selected.value))
+const activePeriods = computed(() => props.listItems.periods.filter((row) => row.active && row.code).map((row) => row.code.trim()))
+const suggested = computed(() => props.listItems.suggested_mtd.filter((row) => row.active && row.code).map((row) => row.code.trim()))
+const mtdRows = computed(() => model.value.mtd_options ?? [...new Set([
+  ...model.value.expected_mtd.map((row) => row.value), ...props.listItems.dependency_mtd.map((row) => row.code),
+])].map((value): BiancaMtdOption => {
+  const expected = model.value.expected_mtd.find((row) => row.value === value)
+  const dependency = props.listItems.dependency_mtd.find((row) => row.code === value)
+  return {
+    value, code: value.replaceAll(' ', ''), label: dependency?.label ?? value,
+    category: expected?.category ?? null, description: dependency?.text ?? null,
+    use_it: !!expected, use_non_it: !!dependency, active: !!expected || !!dependency?.active,
+  }
+}))
+const categories = ['Business Critical', 'Important', 'Others']
+function changeMtd(index: number, patch: Partial<BiancaMtdOption>) {
+  const rows = mtdRows.value.map((row) => ({ ...row }))
+  const next = { ...rows[index]!, ...patch }
+  if (next.value === 'NA' || next.value === 'SLA') {
+    next.use_it = false
+    next.category = null
+  }
+  rows[index] = next
+  model.value.mtd_options = rows
+}
+function moveMtd(index: number, delta: number) {
+  const rows = [...mtdRows.value]
+  const [row] = rows.splice(index, 1)
+  if (row) rows.splice(index + delta, 0, row)
+  model.value.mtd_options = rows
+}
+function addMtd() {
+  model.value.mtd_options = [...mtdRows.value, {
+    code: '', value: '', label: '', category: 'Others', description: null, use_it: true, use_non_it: true, active: true,
+  }]
+}
+function durationHours(value: string) {
+  const duration = /^(\d+(?:\.\d+)?) (hour|day|week)s?$/.exec(value)
+  if (!duration) return '—'
+  const unit = duration[2] === 'week' ? model.value.hours_per_day * model.value.days_per_week : duration[2] === 'day' ? model.value.hours_per_day : 1
+  return formatNumber(Number(duration[1]) * unit)
+}
+function setPeriod(period: string, value: string) {
+  const mapping = Object.fromEntries(Object.entries(model.value.suggested_mtd_by_period ?? {}).filter(([key]) => key !== period))
+  if (value) mapping[period] = value
+  model.value.suggested_mtd_by_period = mapping
+}
+const mappedPeriods = computed(() => [...new Set([...activePeriods.value, ...Object.keys(model.value.suggested_mtd_by_period ?? {})])])
+const workbookDefault = '__workbook_default__'
+const noCategory = '__no_category__'
+function mappingChoices(current?: string | null) {
+  const durations = [...new Set([...suggested.value, ...(current ? [current] : [])])]
+  return [{ label: 'Workbook default', value: workbookDefault }, ...durations.map((value) => ({ value, label: value }))]
+}
 </script>
 
 <template>
@@ -53,7 +109,8 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
           variant="outline"
           icon="i-lucide-plus"
           label="Add MTD"
-          @click="model.expected_mtd.push({ value: '', category: 'Others' })"
+          :disabled="mtdRows.length >= 66"
+          @click="addMtd"
         />
       </div>
     </template>
@@ -91,8 +148,9 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
           </UFormField>
         </div>
       </template>
-      <template v-else-if="selected === 'impact-matrix'">
+      <template v-else-if="selected === 'customer-matrix' || selected === 'regulator-matrix'">
         <UAlert
+          v-if="selected === 'customer-matrix'"
           color="neutral"
           variant="subtle"
           title="Customer threshold in workbook"
@@ -106,8 +164,11 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
           <h3 class="font-semibold">
             Score {{ row.score }}
           </h3>
-          <div class="grid gap-4 xl:grid-cols-2">
-            <UFormField label="Regulatory impact (A)">
+          <div>
+            <UFormField
+              v-if="selected === 'regulator-matrix'"
+              label="Regulatory impact (A)"
+            >
               <UTextarea
                 v-model="row.regulatory"
                 :rows="4"
@@ -117,7 +178,10 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
                 :aria-label="'Regulatory score ' + row.score"
               />
             </UFormField>
-            <UFormField label="Customer service impact (B)">
+            <UFormField
+              v-else
+              label="Customer service impact (B)"
+            >
               <UTextarea
                 v-model="row.customer"
                 :rows="4"
@@ -139,22 +203,37 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
             <li>Potential cumulative financial loss is greater than {{ formatNumber(model.loss_alert_idr) }} IDR.</li><li>Regulatory impact reaches score {{ model.score_alert }}.</li><li>Customer service impact reaches score {{ model.score_alert }}.</li>
           </ol>
           <p class="mt-4">
-            Workbook fallback: 4 weeks if no trigger is met. Suggested MTD remains selected by the assessor.
+            Fallback: {{ model.suggested_mtd_fallback || (suggested.includes('4 weeks') ? '4 weeks' : 'Not available') }} if no trigger is met. Suggested MTD remains selected by the assessor.
           </p>
         </div>
-        <div>
-          <h3 class="mb-2 text-sm font-semibold">
-            Configured impact timeline
-          </h3><ol class="flex flex-wrap gap-2">
-            <li
-              v-for="(period, index) in model.periods"
-              :key="period"
-              class="rounded-md border border-default px-3 py-2 text-sm"
-            >
-              {{ index + 1 }}. {{ period }}
-            </li>
-          </ol>
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <UFormField
+            v-for="period in mappedPeriods"
+            :key="period"
+            :label="period"
+            :help="activePeriods.includes(period) ? undefined : 'Inactive period: clear its override before saving.'"
+          >
+            <USelect
+              :model-value="model.suggested_mtd_by_period?.[period] ?? workbookDefault"
+              :items="mappingChoices(model.suggested_mtd_by_period?.[period])"
+              :disabled="disabled"
+              class="w-full"
+              @update:model-value="setPeriod(period, $event === workbookDefault ? '' : $event)"
+            />
+          </UFormField>
+          <UFormField label="Fallback when no threshold is reached">
+            <USelect
+              :model-value="model.suggested_mtd_fallback ?? workbookDefault"
+              :items="mappingChoices(model.suggested_mtd_fallback)"
+              :disabled="disabled"
+              class="w-full"
+              @update:model-value="model.suggested_mtd_fallback = $event === workbookDefault ? null : $event"
+            />
+          </UFormField>
         </div>
+        <p class="text-sm text-muted">
+          Workbook default matches the horizon duration, regardless of list order. Map a custom horizon explicitly to enable a suggestion for it.
+        </p>
         <UFormField label="Suggested MTD guidance">
           <UTextarea
             v-model="model.guides.suggested_mtd"
@@ -169,40 +248,127 @@ const fields = computed(() => numeric.filter((field) => field.group === selected
         </p>
       </template>
       <template v-else-if="selected === 'expected-mtd'">
-        <div
-          v-for="(row, index) in model.expected_mtd"
-          :key="index"
-          class="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-        >
-          <UFormField :label="'Expected MTD ' + (index + 1)">
-            <UInput
-              v-model="row.value"
-              :maxlength="16"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="Category">
-            <USelect
-              v-model="row.category"
-              :items="['Business Critical', 'Important', 'Others']"
-              :disabled="disabled"
-              class="w-full"
-            />
-          </UFormField>
-          <UButton
-            v-if="!disabled"
-            type="button"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-x"
-            :disabled="model.expected_mtd.length === 1"
-            :aria-label="'Remove MTD ' + (index + 1)"
-            @click="model.expected_mtd.splice(index, 1)"
-          />
-        </div>
         <p class="text-sm text-muted">
-          NA and SLA exist in the workbook master but have no function category. They remain reference values and are available for dependencies.
+          This master supplies the IT and non-IT choices. NA and SLA have no category or hours and are non-IT only. Converted hours follow Time conversion.
         </p>
+        <UCard
+          v-for="(row, index) in mtdRows"
+          :key="index"
+        >
+          <div class="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+            <div class="flex items-start gap-1 lg:flex-col">
+              <span class="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold tabular-nums">{{ index + 1 }}</span>
+              <UButton
+                type="button"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-arrow-up"
+                :aria-label="`Move ${row.label || 'MTD'} up`"
+                :disabled="disabled || index === 0"
+                @click="moveMtd(index, -1)"
+              />
+              <UButton
+                type="button"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-arrow-down"
+                :aria-label="`Move ${row.label || 'MTD'} down`"
+                :disabled="disabled || index === mtdRows.length - 1"
+                @click="moveMtd(index, 1)"
+              />
+            </div>
+            <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <UFormField
+                label="Code"
+                required
+              >
+                <UInput
+                  :model-value="row.code"
+                  :maxlength="64"
+                  class="w-full"
+                  @update:model-value="changeMtd(index, { code: $event })"
+                />
+              </UFormField>
+              <UFormField
+                label="Name"
+                required
+              >
+                <UInput
+                  :model-value="row.label"
+                  :maxlength="255"
+                  class="w-full"
+                  @update:model-value="changeMtd(index, { label: $event })"
+                />
+              </UFormField>
+              <UFormField
+                label="Workbook value"
+                required
+              >
+                <UInput
+                  :model-value="row.value"
+                  :maxlength="16"
+                  class="w-full"
+                  @update:model-value="changeMtd(index, { value: $event })"
+                />
+              </UFormField>
+              <UFormField label="Business function category">
+                <USelect
+                  :model-value="row.category ?? noCategory"
+                  :items="[{ label: 'No category', value: noCategory }, ...categories.map(value => ({ value, label: value }))]"
+                  :disabled="disabled || ['NA', 'SLA'].includes(row.value)"
+                  class="w-full"
+                  @update:model-value="changeMtd(index, { category: $event === noCategory ? null : $event })"
+                />
+              </UFormField>
+              <UFormField label="Converted hours">
+                <UInput
+                  :model-value="durationHours(row.value) ?? '—'"
+                  readonly
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Description">
+                <UInput
+                  :model-value="row.description ?? ''"
+                  :maxlength="2000"
+                  class="w-full"
+                  @update:model-value="changeMtd(index, { description: $event || null })"
+                />
+              </UFormField>
+              <div class="flex flex-wrap gap-4 sm:col-span-2 xl:col-span-3">
+                <USwitch
+                  :model-value="row.use_it"
+                  :disabled="disabled || ['NA', 'SLA'].includes(row.value)"
+                  label="MTD IT"
+                  @update:model-value="changeMtd(index, { use_it: $event })"
+                />
+                <USwitch
+                  :model-value="row.use_non_it"
+                  :disabled="disabled"
+                  label="MTD Non IT"
+                  @update:model-value="changeMtd(index, { use_non_it: $event })"
+                />
+                <USwitch
+                  :model-value="row.active"
+                  :disabled="disabled"
+                  label="Active"
+                  @update:model-value="changeMtd(index, { active: $event })"
+                />
+                <UButton
+                  v-if="!disabled"
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-x"
+                  label="Remove"
+                  @click="model.mtd_options = mtdRows.filter((_, position) => position !== index)"
+                />
+              </div>
+            </div>
+          </div>
+        </UCard>
       </template>
       <div
         v-else

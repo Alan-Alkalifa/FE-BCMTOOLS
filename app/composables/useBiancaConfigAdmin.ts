@@ -1,3 +1,6 @@
+import type { BiancaLocationLabels } from './useBianca'
+import type { BcmOperationalRole } from '~/utils/bianca-bcm-roles'
+
 export interface BiancaGrade {
   code: string
   label: string
@@ -8,6 +11,7 @@ export interface BiancaGrade {
 }
 
 export interface BiancaStep {
+  bcm_role?: BcmOperationalRole | null
   code: string
   title: string
   required: boolean
@@ -27,8 +31,23 @@ export type BiancaListKey = 'periods' | 'suggested_mtd' | 'dependency_mtd' | 'pe
   | 'upstream_capacity' | 'yes_no' | 'system_usage' | 'alt_site_strategies' | 'frequencies'
   | 'generic_values' | 'downstream_capacity' | 'expected_support_capacity'
 
+export interface BiancaMtdOption {
+  code: string
+  value: string
+  label: string
+  category: string | null
+  description: string | null
+  use_it: boolean
+  use_non_it: boolean
+  active: boolean
+}
+
 export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   expected_mtd: { value: string, category: string }[]
+  mtd_options?: BiancaMtdOption[] | null
+  suggested_mtd_by_period?: Record<string, string>
+  suggested_mtd_fallback?: string | null
+  office_location_labels?: BiancaLocationLabels
   scores: number[]
   loss_alert_idr: number
   score_alert: number
@@ -37,9 +56,12 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   max_functions: number
   it_slots: number
   dependency_slots: number
+  /** How long a final BIA stays valid before it is due for review, in months (12 by default). */
+  review_period_months: number
   staff_grades: BiancaGrade[]
   signoff_steps: BiancaStep[]
   guides: Record<string, string>
+  alternate_site_by_category?: Record<string, string[]>
   financial_bands: { code: string, label: string, description: string }[]
   impact_matrix: { score: number, regulatory: string, customer: string }[]
 }
@@ -88,7 +110,7 @@ export interface BiancaConfigVersion {
 const BIA_CONFIG = '/api/admin/bianca-config/versions'
 export const biancaConfigApi = {
   start: () => $fetch<BiancaConfigVersion>(BIA_CONFIG, { method: 'POST' }),
-  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload, list_items: BiancaListItems }) =>
+  save: (id: number, body: { revision: number, name: string, notes: string | null, payload: BiancaConfigPayload, list_items: Partial<BiancaListItems> }) =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}`, { method: 'PUT', body }),
   action: (id: number, revision: number, action: 'request-publish' | 'withdraw' | 'publish') =>
     $fetch<BiancaConfigVersion>(`${BIA_CONFIG}/${id}/${action}`, { method: 'POST', body: { revision } }),
