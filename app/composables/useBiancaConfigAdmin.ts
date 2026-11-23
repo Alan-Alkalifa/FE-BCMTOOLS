@@ -56,6 +56,8 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   max_functions: number
   it_slots: number
   dependency_slots: number
+  /** How long a final BIA stays valid before it is due for review, in months (12 by default). */
+  review_period_months: number
   staff_grades: BiancaGrade[]
   signoff_steps: BiancaStep[]
   guides: Record<string, string>

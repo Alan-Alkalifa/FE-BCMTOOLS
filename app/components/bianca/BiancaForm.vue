@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import BiancaReviewDialog from '~/components/bianca/BiancaReviewDialog.vue'
 import type {
+  BiancaComment,
+  BiancaReviewSection,
   BiancaAssessment,
   BiancaFunction,
   BiancaHeader,
@@ -31,6 +34,40 @@ const saved = ref<BiancaAssessment | null>(props.assessment ?? null)
 const saving = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
+
+// --- As SCCA's record: activity, report, PDF, renewal, review comments ------------------------
+const activityOpen = ref(false)
+const pdf = useBiancaPdf()
+const renewing = ref(false)
+/** A final BIA: start its renewal (a draft copied from it, for its owner) and open the draft. */
+async function startRenewal() {
+  if (!saved.value) return
+  if (!await confirm({
+    title: 'Start the renewal of this BIA?',
+    description: 'A new draft is copied from this final BIA (its functions and attachments too) for its owner to review, update and submit. This BIA stays final until the renewal is.',
+    confirmLabel: 'Start renewal',
+  })) return
+  renewing.value = true
+  try {
+    const draft = await biancaApi.renew(saved.value.id)
+    toast.add({ title: `Renewal ${draft.ref_no ?? ''} started`.trim(), color: 'success', icon: 'i-lucide-refresh-cw' })
+    await navigateTo(biancaPath(draft.id))
+  } catch (failure) {
+    const details = (failure as { data?: { details?: Record<string, string> } }).data?.details
+    toast.add({ title: 'Could not start the renewal', description: details ? Object.values(details).join(' ') : apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  } finally {
+    renewing.value = false
+  }
+}
+/** Days until a final BIA is due for review (negative: overdue). */
+const renewalDays = computed(() => {
+  const due = saved.value?.renewal_due
+  if (!due) return null
+  return Math.round((Date.parse(`${due}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000)
+})
+function onComments(rows: BiancaComment[]) {
+  if (saved.value) saved.value = { ...saved.value, comments: rows }
+}
 const failure = ref<string | null>(null)
 const dirty = ref(false)
 // Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
@@ -137,12 +174,21 @@ async function savedFirst() {
   if (dirty.value && editable.value) {
     if (!await confirm({
       title: 'Save your changes first?',
-      description: 'The report and the Excel export are made from the saved BIA.',
+      description: 'You have changes that are only kept on this device. The report, the PDF and the Excel export are made from what is saved, so save them first to see them there.',
       confirmLabel: 'Save and continue',
     })) return false
     if (!await save(true)) return false
   }
   return true
+}
+/** The header's View report and PDF: made from the saved BIA, so save what is typed first. */
+async function viewReport() {
+  if (!await savedFirst()) return
+  await navigateTo(biancaReportPath(saved.value!.id))
+}
+async function downloadPdf() {
+  if (!await savedFirst()) return
+  await pdf.run(saved.value!.id)
 }
 async function openReport(index: number) {
   if (!await savedFirst()) return
@@ -157,18 +203,52 @@ async function openFunction(index: number, value: BiancaPart = 'p1') {
   if (!await goTab('functions')) return
   openPart(index, value)
 }
-// The guidance panel (the workbook's REFERENCE): it opens by itself when the Business functions
-// tab is opened and on every part shown, so it's there while filling; it can be hidden.
-const referenceOpen = ref(true)
+// The guidance panel (the workbook's REFERENCE): closed at first; Show Guidance opens it.
+const referenceOpen = ref(false)
 /** Part 4's sheet has no REFERENCE box. */
 const referenceShown = computed(() => referenceOpen.value && part.value !== 'p4')
 const referencePart = computed(() => (part.value === 'p4' ? 'p3' : part.value) as 'p1' | 'p2a' | 'p2b' | 'p3')
-watch(tab, (value) => {
-  if (value === 'functions') referenceOpen.value = true
+// A hint at Show Guidance, 2.5 seconds after the Business functions open: "Got it!" keeps it
+// quiet for 24 hours on this device.
+const HINT_KEY = 'bianca:guidance-hint-until'
+const HINT_QUIET_MS = 24 * 60 * 60 * 1000
+const guidanceHint = ref(false)
+let hintTimer: ReturnType<typeof setTimeout> | undefined
+function hintQuiet() {
+  try {
+    return Number(localStorage.getItem(HINT_KEY) || 0) > Date.now()
+  } catch {
+    return false
+  }
+}
+function pageLoaded() {
+  return new Promise<void>((resolve) => {
+    if (document.readyState === 'complete') resolve()
+    else window.addEventListener('load', () => resolve(), { once: true })
+  })
+}
+const hintWanted = () => tab.value === 'functions' && !referenceOpen.value && part.value !== 'p4' && !hintQuiet()
+async function scheduleHint() {
+  clearTimeout(hintTimer)
+  guidanceHint.value = false
+  if (!import.meta.client || !hintWanted()) return
+  await pageLoaded()
+  hintTimer = setTimeout(() => {
+    if (hintWanted()) guidanceHint.value = true
+  }, 2500)
+}
+function quietHint() {
+  guidanceHint.value = false
+  try {
+    localStorage.setItem(HINT_KEY, String(Date.now() + HINT_QUIET_MS))
+  } catch { /* shown again next time */ }
+}
+watch(tab, scheduleHint)
+watch(referenceOpen, (open) => {
+  if (open) guidanceHint.value = false
 })
-watch([part, selected], () => {
-  referenceOpen.value = true
-})
+onMounted(scheduleHint)
+onBeforeUnmount(() => clearTimeout(hintTimer))
 function toggleReference() {
   referenceOpen.value = !referenceOpen.value
   if (referenceOpen.value) nextTick(() => document.getElementById('bianca-reference')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
@@ -195,7 +275,10 @@ function hydrate(source: BiancaAssessment | null) {
 
     persons.bcm_coordinator = source.bcm_coordinator_user
     persons.bcm_alternate = source.bcm_alternate_user
-  } else if (!functions.value.length) {
+  }
+  // A draft always shows a function to fill in: a function not named yet isn't saved, so a
+  // saved draft can come back with none.
+  if (!functions.value.length && (!source || source.can_edit)) {
     functions.value = [emptyBiancaFunction(lookups.value?.periods.length ?? 8)]
   }
   selected.value = Math.min(selected.value, Math.max(functions.value.length - 1, 0))
@@ -204,6 +287,8 @@ function hydrate(source: BiancaAssessment | null) {
   })
 }
 hydrate(props.assessment ?? null)
+/** The form has filled itself in (a saved BIA: at once; a new one: once startNew is done). */
+const formReady = ref(!!props.assessment)
 /** A new BIA starts with the user's own Group and, from the database, where it works. */
 let started = false
 async function startNew() {
@@ -227,6 +312,7 @@ async function startNew() {
   }
   nextTick(() => {
     dirty.value = false
+    formReady.value = true
   })
 }
 watch(lookups, startNew, { immediate: true })
@@ -249,7 +335,8 @@ async function fillMainLocation(picked: BiancaOrg) {
     }
     mainPlace.value = found.location
     header.main_location_id = found.location.id
-    header.main_floor = found.floor ?? undefined
+    // The floor is a number from 1 (none known: typed by the user).
+    header.main_floor = String(found.floor ?? '').match(/[1-9]\d*/)?.[0] ?? undefined
     const from = {
       location: 'the location registered to the Group',
       occupants: 'the building\'s occupant list',
@@ -349,7 +436,9 @@ function blankRow(row: object) {
 function toInput(): BiancaInput {
   const legacyFields = new Set<string>(BIANCA_STAFF)
   const raw = Object.fromEntries(Object.entries(toRaw(header)).filter(([name]) => !legacyFields.has(name)))
-  const body = clean({ ...raw, ...toRaw(org.value), config_version_id: lookups.value?.config_version_id, functions: toRaw(functions.value) }) as BiancaInput
+  // A function not named yet is still empty (its parts open once it has a name): not sent.
+  const named = toRaw(functions.value).filter((fn) => fn.name?.trim())
+  const body = clean({ ...raw, ...toRaw(org.value), config_version_id: lookups.value?.config_version_id, functions: named }) as BiancaInput
   for (const fn of body.functions ?? []) {
     fn.it_dependencies = fn.it_dependencies.filter((row) => !blankRow(row))
     fn.dependencies = fn.dependencies.filter((row) => !blankRow(row))
@@ -418,7 +507,7 @@ function readUnsaved(): Unsaved | null {
 }
 function keepUnsaved() {
   const key = unsavedKey()
-  if (!key || !editable.value || !dirty.value) return
+  if (!key || !unsavedChecked || !editable.value || !dirty.value) return
   const copy: Unsaved = {
     at: new Date().toISOString(),
     header: toRaw(header),
@@ -453,8 +542,11 @@ const KEPT_TIME = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZon
 function keptTime(value: string) {
   return KEPT_TIME.format(new Date(value))
 }
-/** A copy newer than what the server has, offered when the form opens. */
-const restorable = ref<Unsaved | null>(null)
+/** When a copy kept on this device was brought back as the form opened (shown with Discard). */
+const restoredAt = ref<string | null>(null)
+/** Copies are kept only once the form has checked for one: the form filling itself in as it
+ * opens (the Group, its location) must not overwrite what was kept before a refresh. */
+let unsavedChecked = false
 let keepTimer: ReturnType<typeof setTimeout> | undefined
 watch([header, org, functions], () => {
   clearTimeout(keepTimer)
@@ -464,21 +556,18 @@ function keepNow() {
   clearTimeout(keepTimer)
   keepUnsaved()
 }
-onMounted(() => {
+/** A copy newer than what the server has is brought back by itself (a refresh, a lost
+ * connection); an older one is dropped. Runs once, when the form has filled itself in. */
+function checkUnsaved() {
+  if (unsavedChecked || !user.value || !editable.value || !formReady.value) return
+  unsavedChecked = true
   const copy = readUnsaved()
-  if (!copy || !editable.value) return
-  const server = saved.value?.updated_at ? Date.parse(saved.value.updated_at) : 0
-  if (Date.parse(copy.at) > server) restorable.value = copy
-  else dropUnsaved()
-  window.addEventListener('pagehide', keepNow)
-})
-onBeforeUnmount(() => {
-  keepNow()
-  window.removeEventListener('pagehide', keepNow)
-})
-function restoreUnsaved() {
-  const copy = restorable.value
   if (!copy) return
+  const server = saved.value?.updated_at ? Date.parse(saved.value.updated_at) : 0
+  if (Date.parse(copy.at) <= server) {
+    dropUnsaved()
+    return
+  }
   Object.assign(header, blankHeader(), copy.header)
   org.value = copy.org
   functions.value = copy.functions.length ? copy.functions : functions.value
@@ -486,15 +575,34 @@ function restoreUnsaved() {
   persons.bcm_coordinator = copy.persons?.bcm_coordinator ?? null
   persons.bcm_alternate = copy.persons?.bcm_alternate ?? null
   selected.value = 0
-  restorable.value = null
-  nextTick(() => {
+  restoredAt.value = copy.at
+  keptAt.value = copy.at
+  nextTick(() => nextTick(() => {
     dirty.value = true
-  })
-  toast.add({ title: 'Your unsaved changes are back', description: 'Save the draft to keep them.', color: 'success', icon: 'i-lucide-history' })
+  }))
 }
+watch([user, formReady], checkUnsaved)
+onMounted(() => {
+  checkUnsaved()
+  window.addEventListener('pagehide', keepNow)
+})
+onBeforeUnmount(() => {
+  keepNow()
+  window.removeEventListener('pagehide', keepNow)
+})
+/** Back to what is saved (or a blank new BIA): the copy on this device is dropped. */
 function discardUnsaved() {
-  restorable.value = null
+  restoredAt.value = null
   dropUnsaved()
+  if (saved.value) {
+    hydrate(saved.value)
+  } else {
+    functions.value = []
+    hydrate(null)
+    started = false
+    formReady.value = false
+    startNew()
+  }
 }
 
 const totalStaff = computed(() => Object.values(header.personnel_counts).reduce<number>((sum, count) => sum + (Number(count) || 0), 0))
@@ -550,7 +658,7 @@ const raStatus = computed(() => {
 const SIGN_GUIDE = [
   { title: 'Section A · the Group', text: 'Directorate, Sub Directorate and Group come from the organisation in the system. Describe what the Group does.' },
   { title: 'Work locations', text: 'The building and floor the Group works from, and where it works when that one can\'t be used. The address comes from the building master.' },
-  { title: 'Recovery strategy', text: 'The Group\'s recovery strategy at a high level. The recovery level of each function (Part 3) follows it.' },
+  { title: 'Recovery strategy', text: 'Write the Group\'s recovery strategy at a high level.' },
   { title: 'BCM Coordinator and Alternate', text: 'Two different people, picked from the user directory: their NIK, phone and email are filled in and locked. Give an additional phone only when the one there is no longer active.' },
   { title: 'Risk assessment', text: 'Yes to the first question: name the tools (e.g. ShARP, ORMS). No to both: justify it.' },
 ]
@@ -587,9 +695,10 @@ async function removeFunction(index: number) {
   opened.value = new Set([selected.value])
 }
 
+/** The API's refusal: each field it names with what is wrong, e.g. "Function 1 · Part 1 · ...: ...". */
 function formError(error: unknown) {
   const { data } = (error ?? {}) as { data?: { details?: Record<string, string> } }
-  return data?.details ? Object.values(data.details).join(' ') : apiErrorMessage(error)
+  return data?.details ? biancaFieldErrors(data.details).join('\n') : apiErrorMessage(error)
 }
 
 /** The organisation structure picked before the draft existed, attached once it does. */
@@ -637,6 +746,65 @@ const raMissing = computed(() => {
   if (header.ra_completed == null) found.push('Risk assessment')
   return found
 })
+// --- "Is this correct?" before going on -----------------------------------------------------
+const reviewDialog = useOverlay().create(BiancaReviewDialog)
+/** The building picked on each side, by name (the form keeps only its id). */
+const placeLabel = reactive<{ main: string | null, alt: string | null }>({ main: null, alt: null })
+const answer = (value: boolean | null | undefined) => (value == null ? null : value ? 'Yes' : 'No')
+function locationText(side: 'main' | 'alt') {
+  const mode = header[`${side}_location_mode`]
+  const id = header[`${side}_location_id`]
+  const known = side === 'main' ? mainPlace.value : saved.value?.alt_location
+  const name = placeLabel[side] ?? (known?.id === id ? known?.label : null) ?? (id ? `Building #${id}` : null)
+  if (mode === 'work_from_home') return locationLabels.value.work_from_home
+  if (mode === 'hyspace') return name ? `${locationLabels.value.hyspace}: ${name}` : locationLabels.value.hyspace
+  const floor = header[`${side}_floor`]
+  return name ? `${name}${floor ? `, floor ${floor}` : ''}` : null
+}
+function personText(key: PersonKey) {
+  const phone = [header[`${key}_phone`], header[`${key}_phone_2`]].filter(Boolean).join(' / ')
+  return [header[key], header[`${key}_nik`] && `NIK ${header[`${key}_nik`]}`, phone, header[`${key}_email`]].filter(Boolean).join('\n') || null
+}
+function signReview(): BiancaReviewSection {
+  return {
+    title: 'Sign off page',
+    rows: [
+      { label: 'Directorate', value: org.value.directorate },
+      { label: 'Sub directorate', value: org.value.sub_directorate },
+      { label: 'Group', value: org.value.org_group },
+      { label: 'Group description', value: header.group_description },
+      { label: 'Main location', value: locationText('main') },
+      { label: 'Alternate location', value: locationText('alt') },
+      { label: 'Group recovery strategy', value: header.recovery_strategy },
+      { label: 'BCM Coordinator', value: personText('bcm_coordinator') },
+      { label: 'Alternate BCM Coordinator', value: personText('bcm_alternate') },
+      { label: 'Business continuity in the risk assessment', value: answer(header.ra_considers_bc) },
+      ...(header.ra_considers_bc ? [{ label: 'Risk assessment tools', value: header.ra_tools }] : []),
+      { label: 'Business continuity controls in the risk score cards', value: answer(header.ra_controls_included) },
+      ...(raNeedsJustification.value ? [{ label: 'Justification', value: header.ra_justification }] : []),
+    ],
+  }
+}
+function raReview(): BiancaReviewSection {
+  return {
+    title: 'RA questionnaire',
+    rows: [
+      ...grades.value.map((grade) => ({ label: grade.label, value: String(header.personnel_counts[grade.code] ?? 0) })),
+      ...grades.value
+        .filter((grade) => grade.requires_note && (Number(header.personnel_counts[grade.code]) || 0) > 0)
+        .map((grade) => ({ label: `${grade.label}: please specify`, value: header.personnel_notes[grade.code] })),
+      { label: 'Total personnel', value: String(totalStaff.value) },
+      { label: 'Organisation structure', value: saved.value?.org_structure?.filename ?? pendingOrgStructure.value?.name },
+      { label: 'Risk assessment completed for the location', value: answer(header.ra_completed) },
+    ],
+  }
+}
+
+/** A floor is a whole number from 1 (null: missing or not one). */
+function floorOk(value: string | undefined) {
+  return value && /^[1-9]\d*$/.test(value.trim()) ? value : null
+}
+
 // The Sign off page is all required too, as Submit asks.
 const signTried = ref(false)
 const signMissing = computed(() => {
@@ -648,11 +816,11 @@ const signMissing = computed(() => {
   need('group_description', 'Group description', header.group_description)
   if (!header.main_location_mode) {
     need('main_location_id', 'Main location building', header.main_location_id)
-    need('main_floor', 'Main location floor', header.main_floor)
+    need('main_floor', 'Main location floor', floorOk(header.main_floor))
   }
   if (!header.alt_location_mode) {
     need('alt_location_id', 'Alternate location building', header.alt_location_id)
-    need('alt_floor', 'Alternate location floor', header.alt_floor)
+    need('alt_floor', 'Alternate location floor', floorOk(header.alt_floor))
   }
   need('recovery_strategy', 'Group recovery strategy', header.recovery_strategy)
   for (const person of people) {
@@ -689,7 +857,6 @@ async function goTab(value: string | number) {
       if (to <= TAB_ORDER.indexOf(gate.tab) || !gate.missing.length) continue
       gate.tried.value = true
       tab.value = gate.tab
-      toast.remove('bianca-tab-missing')
       toast.add({
         id: 'bianca-tab-missing',
         title: gate.title,
@@ -700,22 +867,32 @@ async function goTab(value: string | number) {
       nextTick(() => document.querySelector(`${gate.at} [data-missing="true"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
       return false
     }
-    // Into the Business functions from the questionnaires: save what is typed first.
-    const from = TAB_ORDER.indexOf(tab.value)
-    if (target === 'functions' && from < to && (dirty.value || !saved.value)) {
-      tab.value = 'ra'
-      const ok = await confirm({
-        title: 'Save the draft before continuing?',
-        description: 'The Sign off page and the RA questionnaire are saved as a draft, then the Business functions open. You can still change them later.',
-        confirmLabel: 'Save and continue',
-      })
+    // Going on from the Sign off page or the RA questionnaire: is what was filled in correct?
+    // Into the Business functions, it is saved as a draft first.
+    const current = tab.value
+    const from = TAB_ORDER.indexOf(current)
+    if (from < to && (current === 'sign' || current === 'ra')) {
+      const sections: BiancaReviewSection[] = []
+      if (current === 'sign') sections.push(signReview())
+      if (to > TAB_ORDER.indexOf('ra')) sections.push(raReview())
+      const saveToo = to >= TAB_ORDER.indexOf('functions') && (dirty.value || !saved.value)
+      const ok = (await reviewDialog.open({
+        title: 'Is this correct?',
+        description: saveToo
+          ? 'Check what you filled in. It is saved as a draft, then the Business functions open; you can still change it later.'
+          : 'Check what you filled in before going on; you can still change it later.',
+        sections,
+        confirmLabel: saveToo ? 'Yes, save and continue' : 'Yes, continue',
+      }).result) === true
       if (!ok) return false
-      tab.value = 'functions'
-      if (!await save()) {
-        tab.value = 'ra'
-        return false
+      if (saveToo) {
+        tab.value = target
+        if (!await save()) {
+          tab.value = current
+          return false
+        }
+        return true
       }
-      return true
     }
   }
   tab.value = target
@@ -732,10 +909,14 @@ async function save(quiet = false) {
     const wasNew = !saved.value
     saved.value = await attachPending(result)
     hydrate(saved.value)
+    // Saved: not dirty any more before the page moves on (a new BIA opens at its address), or
+    // leaving would ask to discard changes that are saved.
+    await nextTick()
+    dirty.value = false
     clearTimeout(keepTimer)
     dropUnsaved('new', result.id)
     if (!quiet) toast.add({ title: wasNew ? `Draft ${result.ref_no} created` : 'Draft saved', color: 'success', icon: 'i-lucide-circle-check' })
-    emit('saved', result, tab.value)
+    emit('saved', saved.value, tab.value)
     return result
   } catch (error) {
     keepNow()
@@ -762,6 +943,8 @@ async function submit() {
     if (!result) return
     const sent = await biancaApi.submit(result.id)
     toast.add({ title: `${sent.ref_no} submitted for approval`, color: 'success', icon: 'i-lucide-circle-check' })
+    // Pages that read this BIA (the report, its tab here) now show it locked for approval.
+    refreshNuxtData(`bianca-assessment-${result.id}`)
     await navigateTo('/bianca/manage')
   } catch (error) {
     failure.value = formError(error)
@@ -812,7 +995,7 @@ const noteGroups: { part: BiancaPart, notes: readonly { key: NoteKey, label: str
   {
     part: 'p1',
     notes: [
-      { key: 'loss_formula', label: 'How the financial loss is worked out' },
+      { key: 'loss_formula', label: 'Formula for Calculating Potential Financial Loss' },
       { key: 'justification_regulatory', label: 'Justification of the regulatory scores' },
       { key: 'justification_customer', label: 'Justification of the customer scores' },
     ],
@@ -878,9 +1061,44 @@ const people = [
           Kept on this device at {{ keptTime(keptAt) }}
         </span>
       </div>
+      <div class="flex flex-wrap gap-2">
+        <template v-if="saved">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-history"
+            label="Activity"
+            @click="activityOpen = true"
+          />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-file-text"
+            label="View report"
+            @click="viewReport"
+          />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-file-down"
+            label="PDF"
+            :loading="pdf.busy.value"
+            @click="downloadPdf"
+          />
+          <UButton
+            v-if="saved.can_renew && !saved.renewal"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            label="Start renewal"
+            :loading="renewing"
+            @click="startRenewal"
+          />
+        </template>
+      </div>
       <div
         v-if="editable"
-        class="flex flex-wrap gap-2"
+        class="flex w-full flex-wrap justify-end gap-2 sm:w-auto"
       >
         <UButton
           color="neutral"
@@ -917,12 +1135,14 @@ const people = [
     </div>
 
     <UAlert
-      v-if="restorable"
+      v-if="restoredAt && editable"
       color="info"
       variant="subtle"
       icon="i-lucide-history"
-      title="You have unsaved changes on this device"
-      :description="`Kept on ${formatDateTime(restorable.at)}, after the last save. Bring them back, or discard them to keep what is saved.`"
+      title="Your unsaved changes are back"
+      :description="`Kept on this device at ${formatDateTime(restoredAt)} (e.g. before a refresh or a lost connection). Save the draft to keep them, or discard them to go back to what is saved.`"
+      :close="{ color: 'neutral', variant: 'link' }"
+      @update:open="restoredAt = null"
     >
       <template #actions>
         <UButton
@@ -931,19 +1151,58 @@ const people = [
           label="Discard"
           @click="discardUnsaved"
         />
-        <UButton
-          icon="i-lucide-history"
-          label="Restore"
-          @click="restoreUnsaved"
-        />
       </template>
     </UAlert>
+    <!-- Whose it is, and its renewal -->
+    <UAlert
+      v-if="saved && saved.my_role === 'group' && saved.status === 'draft'"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-eye"
+      title="Your Group's draft (read only)"
+      :description="`${saved.created_by ?? 'Its owner'} is filling it in; you can read it and follow its activity.`"
+    />
+    <UAlert
+      v-if="saved?.renewal_of"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-refresh-cw"
+      :title="`This draft renews ${saved.renewal_of.ref_no ?? 'a final BIA'}`"
+      description="It started as a copy of the final BIA: review every tab, update what changed, and submit it."
+      :actions="[{ label: `Open ${saved.renewal_of.ref_no ?? 'the final BIA'}`, color: 'info', variant: 'outline', to: biancaPath(saved.renewal_of.id) }]"
+    />
+    <UAlert
+      v-if="saved?.status === 'final' && saved.renewal"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-refresh-cw"
+      :title="`Its renewal ${saved.renewal.ref_no ?? ''} is ${saved.renewal.status === 'in_approval' ? 'in approval' : 'in progress'}`.replace('  ', ' ')"
+      :actions="[{ label: 'Open the renewal', color: 'info', variant: 'outline', to: biancaPath(saved.renewal.id) }]"
+    />
+    <UAlert
+      v-else-if="saved?.status === 'final' && renewalDays !== null && renewalDays <= 90"
+      :color="renewalDays < 0 ? 'error' : 'warning'"
+      variant="subtle"
+      icon="i-lucide-calendar-clock"
+      :title="renewalDays < 0 ? `Review overdue by ${-renewalDays} days` : `Due for review in ${renewalDays} days`"
+      :description="`Valid until ${formatDate(saved.renewal_due)}. Start its renewal to review it.`"
+    />
+
+    <BiancaActivityDialog
+      v-if="saved"
+      v-model:open="activityOpen"
+      :events="saved.events"
+      :ref-no="saved.ref_no"
+    />
+
     <UAlert
       v-if="failure"
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      :title="failure"
+      :title="failure.includes('\n') ? 'Check these fields:' : failure"
+      :description="failure.includes('\n') ? failure : undefined"
+      :ui="{ description: 'whitespace-pre-line' }"
     />
     <UAlert
       v-if="!editable && saved"
@@ -998,6 +1257,14 @@ const people = [
       @update:model-value="goTab"
     />
 
+    <BiancaTabComments
+      v-show="tab === 'sign'"
+      :assessment-id="saved?.id"
+      tab="sign"
+      :comments="saved?.comments"
+      :can-comment="saved?.can_comment"
+      @changed="onComments"
+    />
     <!-- Sign Off Page: the workbook's sheet, top to bottom, with what to fill in beside it -->
     <div
       v-show="tab === 'sign'"
@@ -1075,8 +1342,9 @@ const people = [
               :selected="mainPlace"
               :disabled="!editable"
               :building-error="signError('main_location_id')"
-              :floor-error="signError('main_floor')"
+              :floor-error="signError('main_floor', 'Type the floor: a number from 1.')"
               class="rounded-md border border-default p-3"
+              @place="placeLabel.main = $event"
               @change="onMainChoice"
             >
               <p
@@ -1097,8 +1365,9 @@ const people = [
               :selected="saved?.alt_location"
               :disabled="!editable"
               :building-error="signError('alt_location_id')"
-              :floor-error="signError('alt_floor')"
+              :floor-error="signError('alt_floor', 'Type the floor: a number from 1.')"
               class="rounded-md border border-default p-3"
+              @place="placeLabel.alt = $event"
             />
           </div>
         </UCard>
@@ -1119,7 +1388,7 @@ const people = [
           </template>
           <BiancaField
             label="High-level recovery strategy"
-            help="The recovery level of each function (Part 3) should align with it."
+            help="Write the Group's high-level recovery strategy."
             required
             :error="signError('recovery_strategy')"
             :data-missing="!!signError('recovery_strategy')"
@@ -1353,6 +1622,74 @@ const people = [
           </div>
         </UCard>
 
+        <!-- Business Function Criticality: filled in by itself from Part 1 & 2, as the workbook does -->
+        <UCard :ui="{ body: 'p-0 sm:p-0' }">
+          <template #header>
+            <h2 class="text-sm font-semibold">
+              Business function criticality
+            </h2>
+            <p class="text-xs text-muted">
+              Filled in by itself once Part 1 and Part 2 are done (read only).
+            </p>
+          </template>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-elevated/60 text-xs text-muted">
+                <tr>
+                  <th class="w-12 px-4 py-2 font-medium">
+                    No.
+                  </th>
+                  <th class="px-4 py-2 font-medium">
+                    Business function
+                  </th>
+                  <th class="px-4 py-2 font-medium">
+                    Business function category
+                  </th>
+                  <th class="px-4 py-2 font-medium">
+                    MTD
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-default">
+                <tr
+                  v-for="row in appendixRows.filter((item) => functions[item.index]?.name?.trim())"
+                  :key="row.index"
+                >
+                  <td class="px-4 py-2 tabular-nums text-muted">
+                    {{ row.index + 1 }}
+                  </td>
+                  <td class="px-4 py-2">
+                    {{ row.name }}
+                  </td>
+                  <td class="px-4 py-2">
+                    <StatusBadge
+                      v-if="row.category"
+                      :scale="BIANCA_CATEGORY"
+                      :value="row.category as keyof typeof BIANCA_CATEGORY"
+                      size="sm"
+                    />
+                    <span
+                      v-else
+                      class="text-muted"
+                    >—</span>
+                  </td>
+                  <td class="px-4 py-2">
+                    {{ row.expected_mtd ?? '—' }}
+                  </td>
+                </tr>
+                <tr v-if="!functions.some((fn) => fn.name?.trim())">
+                  <td
+                    colspan="4"
+                    class="px-4 py-3 text-muted"
+                  >
+                    No business function yet: they show here once added in Business functions.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </UCard>
+
         <div
           v-if="editable"
           class="flex flex-wrap items-center justify-between gap-3"
@@ -1413,6 +1750,14 @@ const people = [
     </div>
 
     <!-- RA Questionnaire -->
+    <BiancaTabComments
+      v-show="tab === 'ra'"
+      :assessment-id="saved?.id"
+      tab="ra"
+      :comments="saved?.comments"
+      :can-comment="saved?.can_comment"
+      @changed="onComments"
+    />
     <!-- RA Questionnaire: the workbook's sheet, top to bottom -->
     <div
       v-show="tab === 'ra'"
@@ -1746,6 +2091,36 @@ const people = [
       </UCard>
     </div>
 
+    <BiancaTabComments
+      v-show="tab === 'functions'"
+      :assessment-id="saved?.id"
+      tab="functions"
+      :comments="saved?.comments"
+      :can-comment="saved?.can_comment"
+      @changed="onComments"
+    />
+    <!-- Business functions: whose they are, as each sheet of the workbook heads it (read only) -->
+    <dl
+      v-show="tab === 'functions'"
+      class="grid gap-3 rounded-md border border-default bg-elevated/50 px-4 py-3 text-sm sm:grid-cols-3"
+    >
+      <div
+        v-for="item in [
+          { label: 'Directorate', value: org.directorate },
+          { label: 'Sub directorate', value: org.sub_directorate },
+          { label: 'Group', value: org.org_group },
+        ]"
+        :key="item.label"
+      >
+        <dt class="text-xs text-muted">
+          {{ item.label }}
+        </dt>
+        <dd class="font-medium">
+          {{ item.value || 'Pick it on the Sign off page' }}
+        </dd>
+      </div>
+    </dl>
+
     <!-- Business functions -->
     <div
       v-show="tab === 'functions'"
@@ -1845,11 +2220,13 @@ const people = [
             :key="selected"
             v-model="currentFunction"
             v-model:part="part"
+            v-model:hint="guidanceHint"
             :reference-open="referenceShown"
             :lookups="lookups"
             :preview="preview?.functions[selected] ?? null"
             :disabled="!editable"
             @toggle-reference="toggleReference"
+            @quiet-hint="quietHint"
           >
             <template #notes="{ part: shown }">
               <div
@@ -1899,19 +2276,35 @@ const people = [
 
       <!-- The workbook's REFERENCE for the part being filled, beside the form (below it on a
            narrower screen) -->
-      <aside
-        v-if="referenceShown"
-        class="lg:col-span-2 xl:sticky xl:top-4 xl:col-span-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
+      <Transition
+        enter-active-class="transition duration-300 ease-out"
+        enter-from-class="opacity-0 translate-x-6"
+        enter-to-class="opacity-100 translate-x-0"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
       >
-        <BiancaReference
-          :part="referencePart"
-          :active="tab === 'functions'"
-          :lookups="lookups"
-          @close="toggleReference"
-        />
-      </aside>
+        <aside
+          v-if="referenceShown"
+          class="lg:col-span-2 xl:sticky xl:top-4 xl:col-span-1 xl:max-h-[calc(100vh-9.5rem)] xl:overflow-y-auto"
+        >
+          <BiancaReference
+            :part="referencePart"
+            :lookups="lookups"
+            @close="toggleReference"
+          />
+        </aside>
+      </Transition>
     </div>
 
+    <BiancaTabComments
+      v-show="tab === 'appendix'"
+      :assessment-id="saved?.id"
+      tab="appendix"
+      :comments="saved?.comments"
+      :can-comment="saved?.can_comment"
+      @changed="onComments"
+    />
     <!-- Appendix: the workbook's summary for BCM -->
     <UCard
       v-show="tab === 'appendix'"
@@ -2059,6 +2452,14 @@ const people = [
       </template>
     </UCard>
 
+    <BiancaTabComments
+      v-show="tab === 'approval'"
+      :assessment-id="saved?.id"
+      tab="approval"
+      :comments="saved?.comments"
+      :can-comment="saved?.can_comment"
+      @changed="onComments"
+    />
     <UCard v-show="tab === 'approval'">
       <template #header>
         <h2 class="text-sm font-semibold">

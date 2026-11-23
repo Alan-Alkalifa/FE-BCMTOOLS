@@ -27,6 +27,7 @@ const parts: Record<string, [section: string, label: string]> = {
   max_functions: ['Impact and MTD', 'Function rows in the Excel template'],
   it_slots: ['Impact and MTD', 'IT rows per function'],
   dependency_slots: ['Impact and MTD', 'Non-IT rows per function'],
+  review_period_months: ['Impact and MTD', 'Review period of a final BIA (months)'],
   expected_mtd: ['Impact and MTD', 'Expected MTD'],
   mtd_options: ['Impact and MTD', 'Expected MTD master'],
   suggested_mtd_by_period: ['Impact and MTD', 'Suggested MTD by impact period'],

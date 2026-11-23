@@ -13,7 +13,7 @@ const props = defineProps<{
   buildingError?: string
   floorError?: string
 }>()
-const emit = defineEmits<{ change: [] }>()
+const emit = defineEmits<{ change: [], place: [label: string | null] }>()
 const picked = ref<{ id: number, address?: string | null } | null>(null)
 const address = computed(() => [picked.value, props.selected].find((row) => row?.id === site.value)?.address)
 const modes = computed<{ label: string, value: 'building' | BiancaLocationMode }[]>(() => [
@@ -26,6 +26,14 @@ function setMode(value: 'building' | BiancaLocationMode) {
   mode.value = value === 'building' ? undefined : value
   if (value === 'work_from_home') clearSite()
   emit('change')
+}
+
+/** The floor is a whole number from 1: a 0 can't be typed. */
+function setFloor(value: string | number | null | undefined) {
+  floor.value = String(value ?? '').replace(/\D/g, '').replace(/^0+/, '')
+}
+function blockNonDigits(event: KeyboardEvent) {
+  if (['e', 'E', '+', '-', '.', ','].includes(event.key)) event.preventDefault()
 }
 
 function clearSite() {
@@ -71,7 +79,7 @@ function clearSite() {
             :selected="selected?.id === site ? selected : null"
             :aria-label="mode === 'hyspace' ? `${label} site` : `${label} building`"
             :disabled="disabled"
-            @pick="picked = $event; floor = undefined; emit('change')"
+            @pick="picked = $event; floor = undefined; emit('place', ($event as { label?: string } | null)?.label ?? null); emit('change')"
           />
           <UButton
             v-if="mode === 'hyspace' && site && !disabled"
@@ -102,10 +110,18 @@ function clearSite() {
         :data-missing="!!floorError"
       >
         <UInput
-          v-model="floor"
-          :maxlength="TEXT_LIMITS.medium"
+          :model-value="floor"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          placeholder="E.g. 12"
+          step="1"
           :disabled="disabled"
           class="w-full"
+          :ui="{ base: 'tabular-nums' }"
+          :aria-label="`${label} floor`"
+          @update:model-value="setFloor"
+          @keydown="blockNonDigits"
         />
       </UFormField>
     </template>

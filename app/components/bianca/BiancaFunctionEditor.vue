@@ -16,7 +16,9 @@ const props = defineProps<{
   /** The reference panel beside the form (BiancaForm) is open. */
   referenceOpen?: boolean
 }>()
-const emit = defineEmits<{ 'toggle-reference': [] }>()
+const emit = defineEmits<{ 'toggle-reference': [], 'quiet-hint': [] }>()
+/** The hint at Show Guidance ("You can see the details here"), shown by the form. */
+const hint = defineModel<boolean>('hint', { default: false })
 
 type Mode = 'master' | 'other' | 'na'
 
@@ -33,9 +35,49 @@ defineSlots<{
 }>()
 
 /** On to the next part, once the user confirms (nothing is locked: they can come back). */
+// Part 1 is all required: the other parts open once it is filled in.
+const toast = useToast()
+const p1Tried = ref(false)
+const blankValue = (value: unknown) => value == null || value === '' || (typeof value === 'number' && Number.isNaN(value))
+function blankCell(name: 'loss' | 'regulatory_scores' | 'customer_scores', index: number) {
+  return blankValue(fn.value[name]?.[index])
+}
+const p1Missing = computed(() => {
+  const found: string[] = []
+  const rows = [
+    ['loss', 'Cumulative financial loss'],
+    ['regulatory_scores', 'Regulatory impact (A) score'],
+    ['customer_scores', 'Customer service impact (B) score'],
+  ] as const
+  for (const [name, label] of rows) {
+    const empty = periods.value.filter((_, i) => blankCell(name, i))
+    if (empty.length) found.push(`${label} (${empty.join(', ')})`)
+  }
+  if (blankValue(fn.value.suggested_mtd)) found.push('Suggested MTD')
+  return found
+})
+/** Whether Part 1 may be left; if not, says what is empty. */
+function part1Done() {
+  if (props.disabled || !named.value || !p1Missing.value.length) return true
+  p1Tried.value = true
+  toast.add({
+    id: 'bianca-p1-missing',
+    title: 'Fill in Part 1 first',
+    description: `Still empty: ${p1Missing.value.join('; ')}.`,
+    color: 'error',
+    icon: 'i-lucide-circle-alert',
+  })
+  return false
+}
+// Picked another part in the function list while Part 1 isn't filled in: back to Part 1.
+watch(part, (value, old) => {
+  if (old === 'p1' && value !== 'p1' && !part1Done()) part.value = 'p1'
+})
+
 async function goNext() {
   const next = nextPart.value
   if (!next) return
+  if (part.value === 'p1' && !part1Done()) return
   if (!props.disabled && !await confirm({
     title: `Continue to ${next.label}?`,
     description: 'You can still change this part at any time.',
@@ -196,15 +238,40 @@ const carried = computed(() => {
             {{ info.title }}
           </h3>
         </div>
-        <UButton
-          v-if="hasReference(part)"
-          color="neutral"
-          variant="link"
-          icon="i-lucide-book-open"
-          :label="referenceOpen ? 'Hide Guidance' : 'Show Guidance'"
-          class="px-0"
-          @click="emit('toggle-reference')"
-        />
+        <!-- Open, the guidance panel closes from its own button -->
+        <UPopover
+          v-if="hasReference(part) && !referenceOpen"
+          v-model:open="hint"
+          :content="{ side: 'bottom', align: 'end', sideOffset: 4, onOpenAutoFocus: (event: Event) => event.preventDefault() }"
+          arrow
+        >
+          <UButton
+            color="neutral"
+            variant="link"
+            icon="i-lucide-book-open"
+            label="Show Guidance"
+            class="px-0"
+            @click="hint = false; emit('toggle-reference')"
+          />
+          <template #content>
+            <div class="max-w-60 space-y-2 p-3 text-xs">
+              <div class="flex items-start gap-2">
+                <UIcon
+                  name="i-lucide-info"
+                  class="mt-px size-4 shrink-0 text-primary"
+                />
+                <p>You can see the details here: the workbook's guidance for this part.</p>
+              </div>
+              <div class="flex justify-end">
+                <UButton
+                  size="xs"
+                  label="Got it!"
+                  @click="emit('quiet-hint')"
+                />
+              </div>
+            </div>
+          </template>
+        </UPopover>
       </div>
       <p class="text-sm">
         <span class="font-medium">Objective:</span> {{ info.objective }}
@@ -222,40 +289,60 @@ const carried = computed(() => {
       </ul>
     </div>
 
-    <!-- The name: typed once, in Part 1; the other parts show it, as the workbook's sheets do -->
-    <div
-      class="grid gap-4"
-      :class="carried.length ? '@xl:grid-cols-2 @3xl:grid-cols-4' : ''"
+    <!-- The name: typed once, in Part 1; the other parts show it, read only, with what the
+         workbook's sheet carries over from the earlier parts (its formula columns) -->
+    <UFormField
+      v-if="part === 'p1'"
+      label="Name of business function"
+      required
+      help="Type it here, in Part 1; the other parts show it."
+      class="max-w-2xl"
     >
-      <UFormField
-        label="Name of business function"
-        :required="part === 'p1'"
-        :help="part === 'p1' ? 'Type it here, in Part 1; the other parts show it.' : 'From Part 1'"
-        :class="carried.length ? '@3xl:col-span-1' : 'max-w-2xl'"
-      >
-        <UInput
-          v-model="fn.name"
-          class="w-full"
-          :maxlength="TEXT_LIMITS.name"
-          :disabled="disabled || part !== 'p1'"
-          :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-muted' }"
-          placeholder="Name of the business function"
+      <UInput
+        v-model="fn.name"
+        class="w-full"
+        :maxlength="TEXT_LIMITS.name"
+        :disabled="disabled"
+        placeholder="Name of the business function"
+      />
+    </UFormField>
+    <div
+      v-else
+      class="rounded-md border border-default bg-elevated/50 px-4 py-3"
+    >
+      <p class="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+        <UIcon
+          name="i-lucide-lock"
+          class="size-3.5"
         />
-      </UFormField>
-      <UFormField
-        v-for="field in carried"
-        :key="field.label"
-        :label="field.label"
-        :help="`From ${field.from}`"
-      >
-        <UInput
-          :model-value="field.value ?? ''"
-          class="w-full"
-          disabled
-          :ui="{ base: 'disabled:bg-elevated disabled:opacity-100 disabled:text-muted' }"
-          :placeholder="`Not filled in ${field.from} yet`"
-        />
-      </UFormField>
+        From the earlier parts · read only
+      </p>
+      <dl class="grid gap-x-6 gap-y-3 @xl:grid-cols-2 @3xl:grid-cols-4">
+        <div
+          v-for="field in [{ label: 'Name of business function', value: fn.name, from: 'Part 1' }, ...carried]"
+          :key="field.label"
+          class="min-w-0"
+        >
+          <dt class="text-xs text-muted">
+            {{ field.label }}
+          </dt>
+          <dd
+            v-if="field.value"
+            class="mt-0.5 truncate text-sm font-medium text-highlighted"
+          >
+            {{ field.value }}
+          </dd>
+          <dd
+            v-else
+            class="mt-0.5 text-sm text-dimmed italic"
+          >
+            Not filled in {{ field.from }} yet
+          </dd>
+          <dd class="text-xs text-dimmed">
+            From {{ field.from }}
+          </dd>
+        </div>
+      </dl>
     </div>
     <UAlert
       v-if="!named && !disabled"
@@ -293,7 +380,7 @@ const carried = computed(() => {
             <tr>
               <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
-                  Cumulative financial loss (IDR)
+                  <span>Cumulative financial loss (IDR) <span class="text-error">*</span></span>
                   <BiancaNote
                     note="loss"
                     label="Cumulative financial loss (IDR)"
@@ -312,6 +399,8 @@ const carried = computed(() => {
                   min="0"
                   size="sm"
                   :disabled="off"
+                  :color="p1Tried && blankCell('loss', i) ? 'error' : undefined"
+                  :highlight="p1Tried && blankCell('loss', i)"
                   :class="[nonNumeric, lookups.loss_alert_idr < (Number(fn.loss[i]) || 0) ? 'ring-1 ring-error' : '']"
                   :aria-label="`Loss ${periods[i]}`"
                 />
@@ -320,7 +409,7 @@ const carried = computed(() => {
             <tr>
               <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
-                  Regulatory impact (A) score (1–3)
+                  <span>Regulatory impact (A) score (1–3) <span class="text-error">*</span></span>
                   <BiancaNote
                     note="regulatory_score"
                     label="Regulatory score"
@@ -339,6 +428,8 @@ const carried = computed(() => {
                   size="sm"
                   class="w-full"
                   :ui="fn.regulatory_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
+                  :color="p1Tried && blankCell('regulatory_scores', i) ? 'error' : undefined"
+                  :highlight="p1Tried && blankCell('regulatory_scores', i)"
                   :disabled="off"
                   :aria-label="`Regulatory score ${periods[i]}`"
                 />
@@ -347,7 +438,7 @@ const carried = computed(() => {
             <tr>
               <th class="sticky left-0 z-10 bg-default shadow-[1px_0_0_var(--ui-border)] w-48 py-1 pe-2 text-left font-medium">
                 <span class="inline-flex items-center gap-1.5">
-                  Customer service impact (B) score (1–3)
+                  <span>Customer service impact (B) score (1–3) <span class="text-error">*</span></span>
                   <BiancaNote
                     note="customer_score"
                     label="Customer service score"
@@ -366,6 +457,8 @@ const carried = computed(() => {
                   size="sm"
                   class="w-full"
                   :ui="fn.customer_scores[i] === lookups.score_alert ? { base: 'ring-1 ring-warning' } : undefined"
+                  :color="p1Tried && blankCell('customer_scores', i) ? 'error' : undefined"
+                  :highlight="p1Tried && blankCell('customer_scores', i)"
                   :disabled="off"
                   :aria-label="`Customer score ${periods[i]}`"
                 />
@@ -374,6 +467,16 @@ const carried = computed(() => {
           </tbody>
         </table>
       </div>
+      <p
+        v-if="p1Tried && p1Missing.some((item) => item !== 'Suggested MTD')"
+        class="flex items-center gap-1.5 text-sm text-error"
+      >
+        <UIcon
+          name="i-lucide-circle-alert"
+          class="size-4"
+        />
+        Fill every period: put 0 where there is no loss.
+      </p>
       <p
         v-if="losses.some(v => (Number(v) || 0) > lookups.loss_alert_idr)"
         class="flex items-center gap-1.5 text-sm text-warning"
@@ -389,6 +492,8 @@ const carried = computed(() => {
         note="suggested_mtd"
         :note-text="lookups.guides?.suggested_mtd || undefined"
         class="max-w-md"
+        required
+        :error="p1Tried && blankValue(fn.suggested_mtd) ? 'Pick the Suggested MTD.' : undefined"
       >
         <USelect
           v-model="fn.suggested_mtd"
@@ -868,256 +973,316 @@ const carried = computed(() => {
       </UCard>
     </section>
 
-    <!-- Part 3 -->
+    <!-- Part 3: the workbook's columns, in its order, grouped as the SCCA assessment groups its fields -->
     <section
       v-show="part === 'p3'"
-      class="space-y-4"
+      class="space-y-5"
     >
-      <div class="grid gap-4 @xl:grid-cols-3">
-        <BiancaField
-          label="Total staff strength (no. of staff)"
-          note="total_staff"
-        >
-          <UInput
-            v-model.number="fn.total_staff"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </BiancaField>
-        <BiancaField
-          label="Staff required for the planned capacity (no. of staff)"
-          note="staff_required"
-        >
-          <UInput
-            v-model.number="fn.staff_required"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </BiancaField>
-        <BiancaField
-          label="Expected recovery level (%)"
-          note="recovery_level"
-        >
-          <USelect
-            v-model="fn.recovery_level"
-            :items="lookups.expected_support_capacity
-              ? listChoices('expected_support_capacity', lookups.expected_support_capacity, fn.recovery_level)
-              : listChoices('percentages', lookups.percentages, fn.recovery_level)"
-            class="w-full"
-            :disabled="off"
-          />
-        </BiancaField>
-      </div>
-      <BiancaField
-        label="Prioritization strategy"
-        note="prioritization_strategy"
+      <BiancaPartCard
+        title="Staff and recovery level"
+        description="How many people the function has, how many it needs to run at the planned capacity, and the level it recovers to."
       >
-        <UTextarea
-          v-model="fn.prioritization_strategy"
-          class="w-full"
-          :rows="2"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
-      <BiancaField
-        label="Outstanding strategy"
-        note="outstanding_strategy"
-      >
-        <UTextarea
-          v-model="fn.outstanding_strategy"
-          class="w-full"
-          :rows="2"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
-      <BiancaField
-        label="Recommended alternate site strategy"
-        note="alt_site_strategy"
-        class="max-w-xl"
-      >
-        <template #help>
-          <span
-            v-if="recommendedSites.length"
-            :class="fn.alt_site_strategy && !recommendedSites.includes(fn.alt_site_strategy) ? 'text-warning' : ''"
+        <div class="grid items-end gap-5 @xl:grid-cols-2 @3xl:grid-cols-3">
+          <BiancaField
+            label="Total staff strength (no. of staff)"
+            note="total_staff"
           >
-            Recommended for {{ preview?.category }}: {{ recommendedSites.join(' or ') }}.
-          </span>
-          <span v-else>{{ lookups.guides.alternate_site }}</span>
-        </template>
-        <USelect
-          v-model="fn.alt_site_strategy"
-          :items="listChoices('alt_site_strategies', lookups.alt_site_strategies, fn.alt_site_strategy)"
-          class="w-full"
-          :disabled="off"
-        />
-      </BiancaField>
-      <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-        <BiancaField
-          label="Current BCP seats in place (seats)"
-          note="seats_current"
-        >
-          <UInput
-            v-model.number="fn.seats_current"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </BiancaField>
-        <BiancaField
-          label="BCP seats required after the BIA (seats)"
-          note="seats_required"
-        >
-          <UInput
-            v-model.number="fn.seats_required"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </BiancaField>
-      </div>
-      <p class="flex items-center gap-1.5 text-sm font-medium">
-        Resources at the alternate site
-        <BiancaNote
-          note="resources"
-          label="Resources at the alternate site"
-        />
-      </p>
-      <div class="grid gap-4 @xl:grid-cols-4">
-        <UFormField label="PC (units)">
-          <UInput
-            v-model.number="fn.res_pc"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </UFormField>
-        <UFormField label="Phone, fixed line (units)">
-          <UInput
-            v-model.number="fn.res_phone"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </UFormField>
-        <UFormField label="Fax (units)">
-          <UInput
-            v-model.number="fn.res_fax"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </UFormField>
-        <UFormField label="Copier (units)">
-          <UInput
-            v-model.number="fn.res_copier"
-            type="number"
-            min="0"
-            class="w-full"
-            :disabled="off"
-          />
-        </UFormField>
-      </div>
-      <BiancaField
-        label="Other resources (please specify)"
-        note="res_others"
+            <UInput
+              v-model.number="fn.total_staff"
+              type="number"
+              min="0"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+          <BiancaField
+            label="Staff required for the planned capacity (no. of staff)"
+            note="staff_required"
+          >
+            <UInput
+              v-model.number="fn.staff_required"
+              type="number"
+              min="0"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+          <BiancaField
+            label="Expected recovery level (%)"
+            note="recovery_level"
+          >
+            <USelect
+              v-model="fn.recovery_level"
+              :items="lookups.expected_support_capacity
+                ? listChoices('expected_support_capacity', lookups.expected_support_capacity, fn.recovery_level)
+                : listChoices('percentages', lookups.percentages, fn.recovery_level)"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+        </div>
+      </BiancaPartCard>
+
+      <BiancaPartCard
+        title="Recovery strategies"
+        description="Which work comes first when the function recovers, and how the work left over is cleared."
       >
-        <UTextarea
-          v-model="fn.res_others"
-          class="w-full"
-          :rows="2"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
-      <div class="grid gap-4 @xl:grid-cols-2">
-        <BiancaField
-          label="Vital records"
-          note="vital_record"
-        >
-          <UTextarea
-            v-model="fn.vital_record"
-            class="w-full"
-            :rows="2"
-            :maxlength="long"
-            :disabled="off"
-          />
-        </BiancaField>
-        <UFormField label="Vital records location">
-          <UTextarea
-            v-model="fn.vital_record_location"
-            class="w-full"
-            :rows="2"
-            :maxlength="long"
-            :disabled="off"
-          />
-        </UFormField>
-      </div>
+        <div class="grid gap-5 @3xl:grid-cols-2">
+          <BiancaField
+            label="Prioritization strategy"
+            note="prioritization_strategy"
+          >
+            <UTextarea
+              v-model="fn.prioritization_strategy"
+              class="w-full"
+              :rows="3"
+              autoresize
+              :maxlength="long"
+              :disabled="off"
+            />
+          </BiancaField>
+          <BiancaField
+            label="Outstanding strategy"
+            note="outstanding_strategy"
+          >
+            <UTextarea
+              v-model="fn.outstanding_strategy"
+              class="w-full"
+              :rows="3"
+              autoresize
+              :maxlength="long"
+              :disabled="off"
+            />
+          </BiancaField>
+        </div>
+      </BiancaPartCard>
+
+      <BiancaPartCard
+        title="Alternate site"
+        description="Where the function works from when its main location can't be used, and the BCP seats it has there."
+      >
+        <div class="grid gap-5 @3xl:grid-cols-3">
+          <BiancaField
+            label="Recommended alternate site strategy"
+            note="alt_site_strategy"
+            class="@3xl:col-span-3 @3xl:max-w-xl"
+          >
+            <template #help>
+              <span
+                v-if="recommendedSites.length"
+                :class="fn.alt_site_strategy && !recommendedSites.includes(fn.alt_site_strategy) ? 'text-warning' : ''"
+              >
+                Recommended for {{ preview?.category }}: {{ recommendedSites.join(' or ') }}.
+              </span>
+              <span v-else>{{ lookups.guides.alternate_site }}</span>
+            </template>
+            <USelect
+              v-model="fn.alt_site_strategy"
+              :items="listChoices('alt_site_strategies', lookups.alt_site_strategies, fn.alt_site_strategy)"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+          <BiancaField
+            label="Current BCP seats in place (seats)"
+            note="seats_current"
+          >
+            <UInput
+              v-model.number="fn.seats_current"
+              type="number"
+              min="0"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+          <BiancaField
+            label="BCP seats required after the BIA (seats)"
+            note="seats_required"
+          >
+            <UInput
+              v-model.number="fn.seats_required"
+              type="number"
+              min="0"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+        </div>
+      </BiancaPartCard>
+
+      <BiancaPartCard
+        title="Resources at the alternate site"
+        description="What the function needs at the alternate site to meet the planned capacity (excluding work from home)."
+        note="resources"
+      >
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-5 @3xl:grid-cols-4">
+            <UFormField
+              label="PC (units)"
+            >
+              <UInput
+                v-model.number="fn.res_pc"
+                type="number"
+                min="0"
+                class="w-full"
+                :disabled="off"
+              />
+            </UFormField>
+            <UFormField
+              label="Phone, fixed line (units)"
+            >
+              <UInput
+                v-model.number="fn.res_phone"
+                type="number"
+                min="0"
+                class="w-full"
+                :disabled="off"
+              />
+            </UFormField>
+            <UFormField
+              label="Fax (units)"
+            >
+              <UInput
+                v-model.number="fn.res_fax"
+                type="number"
+                min="0"
+                class="w-full"
+                :disabled="off"
+              />
+            </UFormField>
+            <UFormField
+              label="Copier (units)"
+            >
+              <UInput
+                v-model.number="fn.res_copier"
+                type="number"
+                min="0"
+                class="w-full"
+                :disabled="off"
+              />
+            </UFormField>
+          </div>
+          <BiancaField
+            label="Other resources (please specify)"
+            note="res_others"
+          >
+            <UTextarea
+              v-model="fn.res_others"
+              class="w-full"
+              :rows="2"
+              autoresize
+              :maxlength="long"
+              :disabled="off"
+            />
+          </BiancaField>
+        </div>
+      </BiancaPartCard>
+
+      <BiancaPartCard
+        title="Vital records"
+        description="The records the function can't recover without, and where they are kept. Mandatory for a Business Critical function."
+      >
+        <div class="grid gap-5 @3xl:grid-cols-2">
+          <BiancaField
+            label="Vital records"
+            note="vital_record"
+          >
+            <UTextarea
+              v-model="fn.vital_record"
+              class="w-full"
+              :rows="3"
+              autoresize
+              :maxlength="long"
+              :disabled="off"
+            />
+          </BiancaField>
+          <UFormField
+            label="Vital records location"
+          >
+            <UTextarea
+              v-model="fn.vital_record_location"
+              class="w-full"
+              :rows="3"
+              autoresize
+              :maxlength="long"
+              :disabled="off"
+            />
+          </UFormField>
+        </div>
+      </BiancaPartCard>
     </section>
 
     <!-- Part 4 -->
     <section
       v-show="part === 'p4'"
-      class="space-y-4"
+      class="space-y-5"
     >
-      <BiancaField
-        label="Function description"
-        note="description"
+      <BiancaPartCard
+        title="About the function"
+        description="What the business function does, in a few sentences."
       >
-        <UTextarea
-          v-model="fn.description"
-          class="w-full"
-          :rows="3"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
-      <BiancaField
-        label="Frequency"
-        note="frequency"
-        class="max-w-xs"
+        <BiancaField
+          label="Function description"
+          note="description"
+        >
+          <UTextarea
+            v-model="fn.description"
+            class="w-full"
+            :rows="4"
+            autoresize
+            :maxlength="long"
+            :disabled="off"
+          />
+        </BiancaField>
+      </BiancaPartCard>
+
+      <BiancaPartCard
+        title="Critical timings"
+        description="How often the function runs, when it is most critical, and the activities that must be done at those times."
       >
-        <USelect
-          v-model="fn.frequency"
-          :items="listChoices('frequencies', lookups.frequencies, fn.frequency)"
-          class="w-full"
-          :disabled="off"
-        />
-      </BiancaField>
-      <BiancaField
-        label="Critical timings"
-        note="critical_timings"
-      >
-        <UTextarea
-          v-model="fn.critical_timings"
-          class="w-full"
-          :rows="2"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
-      <BiancaField
-        label="Critical activity"
-        note="critical_activity"
-      >
-        <UTextarea
-          v-model="fn.critical_activity"
-          class="w-full"
-          :rows="2"
-          :maxlength="long"
-          :disabled="off"
-        />
-      </BiancaField>
+        <div class="space-y-5">
+          <BiancaField
+            label="Frequency"
+            note="frequency"
+            class="@xl:max-w-xs"
+          >
+            <USelect
+              v-model="fn.frequency"
+              :items="listChoices('frequencies', lookups.frequencies, fn.frequency)"
+              class="w-full"
+              :disabled="off"
+            />
+          </BiancaField>
+          <div class="grid gap-5 @3xl:grid-cols-2">
+            <BiancaField
+              label="Critical timings"
+              note="critical_timings"
+            >
+              <UTextarea
+                v-model="fn.critical_timings"
+                class="w-full"
+                :rows="3"
+                autoresize
+                :maxlength="long"
+                :disabled="off"
+              />
+            </BiancaField>
+            <BiancaField
+              label="Activity Performed at Critical Timings"
+              note="critical_activity"
+            >
+              <UTextarea
+                v-model="fn.critical_activity"
+                class="w-full"
+                :rows="3"
+                autoresize
+                :maxlength="long"
+                :disabled="off"
+              />
+            </BiancaField>
+          </div>
+        </div>
+      </BiancaPartCard>
     </section>
 
     <slot

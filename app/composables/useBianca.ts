@@ -130,7 +130,29 @@ export interface BiancaSummary {
   functions: number
   updated_at: string | null
   created_by: string | null
+  created_by_id?: number | null
+  /** The final BIA this draft renews. */
+  renewal_of?: { id: number, ref_no: string | null } | null
+  /** Manage list: owner, or someone of the BIA's Group (read only). */
+  my_role?: 'owner' | 'group' | null
+  /** Manage list: when the BIA it renews is due for review. */
+  due_date?: string | null
+  next_step?: string
+  next_tone?: 'error' | 'warning' | 'neutral'
 }
+
+/** A review comment on one tab, written by an approver while the BIA is in approval. */
+export interface BiancaComment {
+  id: number
+  tab: BiancaCommentTab
+  role: string | null
+  role_title: string | null
+  author: string | null
+  author_id: number | null
+  body: string
+  created_at: string | null
+}
+export type BiancaCommentTab = 'sign' | 'ra' | 'functions' | 'appendix' | 'approval'
 
 export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, BiancaHeader {
   config_version_id: number | null
@@ -138,6 +160,13 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   approval_problems: string[]
   signoffs: BiancaSignoffRow[]
   events: BiancaEvent[]
+  comments?: BiancaComment[]
+  can_comment?: boolean
+  /** A final BIA: when it is due for review, whether the reader may start its renewal, and the
+   * renewal started from it. */
+  renewal_due?: string | null
+  can_renew?: boolean
+  renewal?: { id: number, ref_no: string | null, status: BiancaStatus } | null
   submitted_at: string | null
   finalised_at: string | null
   /** The signed-in user signs the step the BIA waits on now. */
@@ -221,6 +250,13 @@ export interface BiancaListQuery {
   q?: string
   status?: BiancaStatus
   mine?: '1'
+  /** Manage: your drafts and your Group's. */
+  scope?: 'manage'
+  role?: 'owner' | 'group'
+  state?: 'new' | 'renewal' | 'returned'
+  input_method?: 'web' | 'excel'
+  sort?: string
+  dir?: 'asc' | 'desc'
   page?: number
   per_page?: number
 }
@@ -337,6 +373,8 @@ export const biancaApi = {
   importCreate: (file: File) => $fetch<BiancaAssessment>('/api/bianca/imports', { method: 'POST', body: upload(file) }),
   importPreviewDraft: (id: number, file: File) => $fetch<BiancaImportResult>(`${BASE}/${id}/import/preview`, { method: 'POST', body: upload(file) }),
   importReplace: (id: number, file: File) => $fetch<BiancaAssessment>(`${BASE}/${id}/import`, { method: 'POST', body: upload(file) }),
+  renew: (id: number) => $fetch<BiancaAssessment>(`${BASE}/${id}/renew`, { method: 'POST' }),
+  addComment: (id: number, tab: BiancaCommentTab, body: string) => $fetch<{ items: BiancaComment[], can_comment: boolean }>(`${BASE}/${id}/comments`, { method: 'POST', body: { tab, body } }),
 }
 
 /** A refused upload answers 422 with the list of problems (import_failed), a bad file with `details`. */
@@ -403,37 +441,57 @@ export function nullToUndefined<T>(value: T): T {
  * Export a BIA to the BIA workbook (all its functions, or those numbered, 1-based) and save the
  * file the server names; a refusal is shown as a toast.
  */
-export function useBiancaExport() {
+/** Download a file from the API and save it under the name the server gives; a refusal is
+ * shown as a toast. */
+export function useBiancaDownload() {
   const toast = useToast()
   const busy = ref(false)
-  async function run(id: number, functions?: number[]) {
+  async function download(url: string, fallback: string, done: string) {
     busy.value = true
     try {
-      const response = await $fetch.raw<Blob>(biancaExportUrl(id, functions), { responseType: 'blob' })
+      const response = await $fetch.raw<Blob>(url, { responseType: 'blob' })
       const disposition = response.headers.get('content-disposition') ?? ''
       const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
-      const url = URL.createObjectURL(response._data!)
+      const href = URL.createObjectURL(response._data!)
       const link = document.createElement('a')
-      link.href = url
-      link.download = name ? decodeURIComponent(name) : `BIA-${id}.xlsx`
+      link.href = href
+      link.download = name ? decodeURIComponent(name) : fallback
       document.body.appendChild(link)
       link.click()
       link.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      toast.add({ title: 'Excel file downloaded', color: 'success', icon: 'i-lucide-file-spreadsheet' })
+      setTimeout(() => URL.revokeObjectURL(href), 10_000)
+      toast.add({ title: done, color: 'success', icon: 'i-lucide-download' })
     } catch (failure) {
       // The error comes back as a Blob: read its JSON for the message.
-      let message = 'Could not export the BIA.'
+      let message = 'Could not download the file.'
       const data = (failure as { data?: unknown }).data
       try {
         const body = data instanceof Blob ? JSON.parse(await data.text()) : data
         const details = (body as { details?: Record<string, string> })?.details
         message = (details && Object.values(details)[0]) || (body as { message?: string })?.message || message
       } catch { /* keep the general message */ }
-      toast.add({ title: 'Export failed', description: message, color: 'error', icon: 'i-lucide-circle-alert' })
+      toast.add({ title: 'Download failed', description: message, color: 'error', icon: 'i-lucide-circle-alert' })
     } finally {
       busy.value = false
     }
   }
-  return { busy, run }
+  return { busy, download }
+}
+
+/** Export a BIA to the BIA workbook (all its functions, or those numbered, 1-based). */
+export function useBiancaExport() {
+  const { busy, download } = useBiancaDownload()
+  return { busy, run: (id: number, functions?: number[]) => download(biancaExportUrl(id, functions), `BIA-${id}.xlsx`, 'Excel file downloaded') }
+}
+
+/** The whole BIA as a PDF report. */
+export function useBiancaPdf() {
+  const { busy, download } = useBiancaDownload()
+  return { busy, run: (id: number) => download(`/api/bianca/assessments/${id}/report.pdf`, `BIA-${id}.pdf`, 'PDF report downloaded') }
+}
+
+/** A part of the form shown in "Is this correct?" (BiancaReviewDialog). */
+export interface BiancaReviewSection {
+  title: string
+  rows: { label: string, value: string | null | undefined }[]
 }

@@ -9,7 +9,7 @@ export const BIANCA_NOTES = {
   group_description: 'Describe the main functions of the Group.',
   main_location: 'The building the Group works from: full address, building name and floor.',
   alt_location: 'Where the Group works when the main location can\'t be used: full address, building name and floor.',
-  recovery_strategy: 'Write the Group\'s high-level recovery strategy. The recovery level of each function (Part 3) should align with it.',
+  recovery_strategy: 'Write the Group\'s high-level recovery strategy.',
   bcm_person: 'The PIC appointed as BCM Coordinator / Alternate BCM Coordinator for the Group. They sign the BIA as its maker.',
   ra_considers_bc: 'Have you considered business continuity in your risk assessment process?',
   ra_controls_included: 'Have you included business continuity controls in the risk score cards / profiling?',

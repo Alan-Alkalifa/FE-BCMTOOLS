@@ -11,47 +11,9 @@ import { BIANCA_PARTS } from '~/utils/biancaParts'
 const props = defineProps<{
   part: 'p1' | 'p2a' | 'p2b' | 'p3'
   lookups: BiancaLookups
-  /** Whether the Business functions tab is the one shown (the form keeps the other tabs mounted). */
-  active?: boolean
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-// The hint at the hide button: shown 2 seconds after the page has loaded, each time the
-// Business functions tab is opened or another part is shown, until "Got it!" is clicked.
-const HINT_KEY = 'bianca:guidance-hint-seen'
-const hint = ref(false)
-let hintTimer: ReturnType<typeof setTimeout> | undefined
-function hintSeen() {
-  try {
-    return localStorage.getItem(HINT_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-function loaded() {
-  return new Promise<void>((resolve) => {
-    if (document.readyState === 'complete') resolve()
-    else window.addEventListener('load', () => resolve(), { once: true })
-  })
-}
-async function showHint() {
-  clearTimeout(hintTimer)
-  hint.value = false
-  if (!props.active || hintSeen()) return
-  await loaded()
-  hintTimer = setTimeout(() => {
-    if (props.active && !hintSeen()) hint.value = true
-  }, 2000)
-}
-function gotIt() {
-  hint.value = false
-  try {
-    localStorage.setItem(HINT_KEY, '1')
-  } catch { /* the hint shows again next time */ }
-}
-onMounted(showHint)
-watch(() => [props.part, props.active], showHint)
-onBeforeUnmount(() => clearTimeout(hintTimer))
 const partLabel = computed(() => BIANCA_PARTS.find((item) => item.value === props.part)?.label ?? '')
 
 const mtdByCategory = computed(() => {
@@ -126,10 +88,11 @@ const example = [
 <template>
   <section
     id="bianca-reference"
-    class="@container scroll-mt-4 overflow-hidden rounded-md border border-error/30 bg-default"
+    class="@container scroll-mt-4 overflow-clip rounded-md border border-error/30 bg-default"
     :aria-label="`Reference for ${partLabel}`"
   >
-    <div class="sticky top-0 z-10 flex items-center justify-between gap-2 bg-error/10 px-3 py-2 backdrop-blur">
+    <!-- Stays at the top while the guidance scrolls, so it can be closed from anywhere -->
+    <div class="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-error/20 bg-[color-mix(in_oklab,var(--ui-error)_10%,var(--ui-bg))] px-3 py-2 shadow-sm">
       <div class="min-w-0">
         <p class="flex items-center gap-2 text-sm font-semibold tracking-wide text-error uppercase">
           <UIcon
@@ -142,12 +105,7 @@ const example = [
           {{ partLabel }} · from the workbook (ver 2.4)
         </p>
       </div>
-      <!-- Says once it opens that it can be hidden -->
-      <UPopover
-        v-model:open="hint"
-        :content="{ side: 'left', sideOffset: 6, onOpenAutoFocus: (event: Event) => event.preventDefault() }"
-        arrow
-      >
+      <UTooltip text="Hide the guidance">
         <UButton
           color="neutral"
           variant="ghost"
@@ -156,25 +114,7 @@ const example = [
           aria-label="Hide the guidance"
           @click="emit('close')"
         />
-        <template #content>
-          <div class="max-w-60 space-y-2 p-3 text-xs">
-            <div class="flex items-start gap-2">
-              <UIcon
-                name="i-lucide-info"
-                class="mt-px size-4 shrink-0 text-primary"
-              />
-              <p>You can hide the guidance here, and show it again with <span class="font-medium">Show Guidance</span>.</p>
-            </div>
-            <div class="flex justify-end">
-              <UButton
-                size="xs"
-                label="Got it!"
-                @click="gotIt"
-              />
-            </div>
-          </div>
-        </template>
-      </UPopover>
+      </UTooltip>
     </div>
 
     <div class="space-y-6 p-3 text-sm">

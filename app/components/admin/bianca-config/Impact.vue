@@ -14,6 +14,7 @@ const items = [
   { value: 'expected-mtd', label: 'Expected MTD', description: 'Expected MTD must be equal to or shorter than Suggested MTD. Categories follow the workbook mapping.' },
   { value: 'conversion', label: 'Time conversion', description: 'Convert days and weeks to hours for duration comparisons.' },
   { value: 'limits', label: 'Workbook limits', description: 'Rows of the Excel template: business functions and dependency rows. The web form takes any number of functions.' },
+  { value: 'review', label: 'Review period', description: 'How long a final BIA stays valid before it is due for review (renewal). Manage and Monitoring show the renewal date from it.' },
 ]
 const selected = computed({
   get: () => route.query.impact === 'impact-matrix' ? 'customer-matrix' : items.find((item) => item.value === route.query.impact)?.value ?? 'thresholds',
@@ -28,6 +29,7 @@ const numeric = [
   { group: 'limits', key: 'max_functions', label: 'Function rows in the Excel template', min: 1, max: 30 },
   { group: 'limits', key: 'it_slots', label: 'IT rows per function', min: 1, max: 4 },
   { group: 'limits', key: 'dependency_slots', label: 'Non-IT rows per function', min: 1, max: 4 },
+  { group: 'review', key: 'review_period_months', label: 'Review period of a final BIA (months)', min: 1, max: 60 },
 ] as const
 const fields = computed(() => numeric.filter((field) => field.group === selected.value))
 const activePeriods = computed(() => props.listItems.periods.filter((row) => row.active && row.code).map((row) => row.code.trim()))

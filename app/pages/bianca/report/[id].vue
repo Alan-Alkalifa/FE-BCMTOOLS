@@ -11,9 +11,14 @@ const route = useRoute()
 const router = useRouter()
 const id = computed(() => Number(route.params.id))
 const { data, status, error, refresh } = useBiancaAssessment(id)
+// A tab kept open shows the BIA as saved now, not as it was when the tab first opened.
+onActivated(() => {
+  if (data.value) refresh()
+})
 const { data: lookups } = useBiancaLookups(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
 const exporter = useBiancaExport()
+const pdf = useBiancaPdf()
 
 useHead({ title: computed(() => `Report ${data.value?.ref_no ?? 'BIA'} · BCM Tools`) })
 
@@ -132,6 +137,14 @@ const editable = computed(() => !!data.value?.can_edit)
               icon="i-lucide-arrow-left"
               :label="editable ? 'Back to the form' : 'Back to the BIA'"
               :to="`${biancaPath(data.id)}?tab=appendix`"
+            />
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-down"
+              label="Download PDF"
+              :loading="pdf.busy.value"
+              @click="pdf.run(data.id)"
             />
             <UButton
               color="neutral"
