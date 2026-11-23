@@ -18,6 +18,7 @@ import type { RaAssessmentSummary, RaLocation, RaLocationDetail, RaUserRef } fro
 const ra = useRaModule()
 const { user } = useAuth()
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const form = useTemplateRef('form')
@@ -34,6 +35,13 @@ const phoneField = (message: string) => required(message).superRefine((value, co
   if (problem) context.addIssue({ code: 'custom', message: problem })
 })
 const initialLocation = Number(route.query.location_id) || undefined
+/** Import from Excel, as SCCA's Upload Excel on its New assessment (`?import=1` opens it). */
+const importOpen = computed<boolean>({
+  get: () => route.query.import !== undefined,
+  set: (value) => {
+    router.replace({ query: { ...route.query, import: value ? '1' : undefined } })
+  },
+})
 /** New building, not opened from a building page: the building is entered below, not picked. */
 const newBuilding = computed((): boolean => state.reason === 'new_building' && !initialLocation)
 
@@ -455,6 +463,15 @@ async function onSubmit() {
     :title="`New ${ra.title} assessment`"
     :crumbs="[{ label: ra.title, to: raPath(ra.kind, 'monitoring') }, { label: 'Manage', to: raPath(ra.kind, 'manage') }, { label: 'New assessment' }]"
   >
+    <template #actions>
+      <UButton
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-file-spreadsheet"
+        label="Import from Excel"
+        @click="importOpen = true"
+      />
+    </template>
     <UForm
       ref="form"
       :schema="schema"
@@ -628,12 +645,6 @@ async function onSubmit() {
           class="flex justify-end gap-2"
         >
           <UButton
-            :to="raPath(ra.kind, 'manage')"
-            color="neutral"
-            variant="outline"
-            label="Cancel"
-          />
-          <UButton
             type="submit"
             label="Create assessment"
             loading-auto
@@ -722,17 +733,15 @@ async function onSubmit() {
       </UTabs>
       <div class="flex justify-end gap-2">
         <UButton
-          :to="raPath(ra.kind, 'manage')"
-          color="neutral"
-          variant="outline"
-          label="Cancel"
-        />
-        <UButton
           label="Create assessment"
           :loading="submitting"
           @click="createWithBuilding"
         />
       </div>
     </section>
+    <RaImportModal
+      v-model:open="importOpen"
+      :kind="ra.kind"
+    />
   </AppPage>
 </template>

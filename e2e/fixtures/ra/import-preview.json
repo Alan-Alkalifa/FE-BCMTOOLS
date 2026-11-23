@@ -1566,107 +1566,130 @@
   {
    "cell": "F41",
    "message": "\"Floor Warden 6 dst\" says \"Detail Lengkap Sesuai Lampiran\": the wardens it refers to are not in the workbook.",
-   "sheet": "LRP (front)"
+   "sheet": "LRP (front)",
+   "level": "warning"
   },
   {
    "cell": "D53",
    "message": "DAMKAR has no name: imported as \"Pemadam Kebakaran\".",
-   "sheet": "LRP (front)"
+   "sheet": "LRP (front)",
+   "level": "warning"
   },
   {
    "cell": "C44",
    "message": "Floor Warden (lantai B1) – Sesuai Tab LRP (front) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Recovery Team Structure"
+   "sheet": "LCP-Recovery Team Structure",
+   "level": "warning"
   },
   {
    "cell": "C45",
    "message": "Floor Warden (lantai GF) – Sesuai Tab LRP (front) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Recovery Team Structure"
+   "sheet": "LCP-Recovery Team Structure",
+   "level": "warning"
   },
   {
    "cell": "C46",
    "message": "Floor Warden (lantai 1) – Sesuai Tab LRP (front) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Recovery Team Structure"
+   "sheet": "LCP-Recovery Team Structure",
+   "level": "warning"
   },
   {
    "cell": "C47",
    "message": "Floor Warden (lantai ..10) – Sesuai Tab LRP (front) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Recovery Team Structure"
+   "sheet": "LCP-Recovery Team Structure",
+   "level": "warning"
   },
   {
    "cell": "C49",
    "message": "Security – (Sesuai Shift) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Recovery Team Structure"
+   "sheet": "LCP-Recovery Team Structure",
+   "level": "warning"
   },
   {
    "cell": "C28",
    "message": "Level 1: D-1 Level MAGDALENA has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C29",
    "message": "Level 1: D-1 Level BANYON ANANTOSENO has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C30",
    "message": "Level 1: D-1 Level TRISNA LUCIA MAULIATY SIAHAAN has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C31",
    "message": "Level 1: D-1 Level DJOJO BOENTORO has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C42",
    "message": "Level 2: Core Support Team has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C50",
    "message": "Level 2: Sesuai BCP has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C51",
    "message": "Level 2: Rico Usthavia Frans has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C52",
    "message": "Level 2: Pihak Internal (diluar gedung) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C58",
    "message": "Level 3: Floor Warden has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C61",
    "message": "Level 3: Security has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C74",
    "message": "Level 3: (RTF Sesuai dokumen BC Plan masing-masing Critical Business Function) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C76",
    "message": "Level 3: (Sesuai struktur oraganiasai masing-masing) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "C78",
    "message": "Level 3: (Sesuai list masing-masing secretary) has no mobile: imported with \"-\".",
-   "sheet": "LCP-Call Tree"
+   "sheet": "LCP-Call Tree",
+   "level": "warning"
   },
   {
    "cell": "F13",
    "message": "The workbook's LIC is Legiran. In BCM Tools the person who imports is the LIC (the assessor).",
-   "sheet": "LRP (front)"
+   "sheet": "LRP (front)",
+   "level": "warning"
   }
- ]
+ ],
+ "errors": 0,
+ "can_import": true
 }

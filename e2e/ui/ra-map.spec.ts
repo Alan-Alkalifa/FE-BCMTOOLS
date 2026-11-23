@@ -630,6 +630,13 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   const colours = await badges.evaluateAll((items) => items.map((item) => getComputedStyle(item).color))
   expect(new Set(colours).size).toBe(1)
   await expect(first.getByRole('link', { name: 'Infographic' })).toHaveAttribute('href', /nowcasting\.bmkg\.go\.id/)
+  // The description shows two lines until Show details opens all of it.
+  const details = first.getByRole('button', { name: 'Show details' })
+  await expect(details).toHaveAttribute('aria-expanded', 'false')
+  await details.click()
+  await expect(first.getByRole('button', { name: 'Hide details' })).toHaveAttribute('aria-expanded', 'true')
+  await first.getByRole('button', { name: 'Hide details' }).click()
+  await expect(first.getByRole('button', { name: 'Show details' })).toBeVisible()
   await first.getByRole('button', { name: 'Show on map' }).click()
   await expect(page).toHaveURL(/warning=CBT20261118001/)
   await expect(page.locator('path.ra-area-active')).toHaveCount(1)

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { RaImportPreview } from '~/composables/useRa'
 
-/** What a workbook holds (counts, residual risk) and what to check after import. Read from the
- *  preview, before anything is saved. */
+/** What a workbook holds (counts, residual risk), what to fix before it can be imported (errors,
+ *  as SCCA's) and what to check after import. Read from the preview, before anything is saved. */
 const props = defineProps<{ preview: RaImportPreview }>()
 
 const employees = computed(() => props.preview.occupants.reduce((sum, unit) => sum + (unit.employee_count ?? 0), 0))
@@ -22,7 +22,9 @@ const values = computed(() => {
 })
 const levels: RaLevel[] = ['High', 'Medium', 'Low']
 const showAll = ref(false)
-const notes = computed(() => (showAll.value ? props.preview.warnings : props.preview.warnings.slice(0, 4)))
+const errors = computed(() => props.preview.warnings.filter((note) => note.level === 'error'))
+const checks = computed(() => props.preview.warnings.filter((note) => note.level !== 'error'))
+const notes = computed(() => (showAll.value ? checks.value : checks.value.slice(0, 4)))
 const ra = computed(() => RA_MODULES[props.preview.kind])
 </script>
 
@@ -70,7 +72,41 @@ const ra = computed(() => RA_MODULES[props.preview.kind])
     </section>
 
     <section
-      v-if="preview.warnings.length"
+      v-if="errors.length"
+      class="space-y-2"
+    >
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-x"
+        :title="`${errors.length} thing${errors.length === 1 ? '' : 's'} to fix in the workbook`"
+        description="Correct the cells listed below in Excel, save, and choose the file again. Nothing has been saved."
+      />
+      <ul
+        class="max-h-72 space-y-2 overflow-y-auto text-sm"
+        aria-label="To fix in the workbook"
+      >
+        <li
+          v-for="(note, index) in errors"
+          :key="index"
+          class="flex gap-2"
+        >
+          <UIcon
+            name="i-lucide-circle-x"
+            class="mt-0.5 size-4 shrink-0 text-error"
+          />
+          <div class="min-w-0">
+            <p class="text-xs text-muted">
+              {{ note.sheet }}{{ note.cell ? ` · ${note.cell}` : '' }}
+            </p>
+            <p>{{ note.message }}</p>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section
+      v-if="checks.length"
       class="space-y-2"
     >
       <div class="flex items-center gap-2">
@@ -80,7 +116,7 @@ const ra = computed(() => RA_MODULES[props.preview.kind])
         <UBadge
           color="warning"
           variant="subtle"
-          :label="String(preview.warnings.length)"
+          :label="String(checks.length)"
         />
       </div>
       <p class="text-sm text-muted">
@@ -108,11 +144,11 @@ const ra = computed(() => RA_MODULES[props.preview.kind])
         </li>
       </ul>
       <UButton
-        v-if="preview.warnings.length > 4"
+        v-if="checks.length > 4"
         color="neutral"
         variant="link"
         size="sm"
-        :label="showAll ? 'Show fewer' : `Show all ${preview.warnings.length}`"
+        :label="showAll ? 'Show fewer' : `Show all ${checks.length}`"
         @click="showAll = !showAll"
       />
     </section>
