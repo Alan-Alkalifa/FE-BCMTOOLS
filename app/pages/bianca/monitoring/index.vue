@@ -620,7 +620,7 @@ function col(id: string, label: string, width = 'min-w-28', right = false): Tabl
   return {
     id,
     accessorKey: id,
-    header: () => sortable(id, label, right),
+    header: sortable(id, label, right),
     meta: { class: { th: `${width}${right ? ' text-right' : ''}`, td: width } },
   }
 }
