@@ -620,7 +620,7 @@ function col(id: string, label: string, width = 'min-w-28', right = false): Tabl
   return {
     id,
     accessorKey: id,
-    header: sortable(id, label, right),
+    header: sortable(label, id, right),
     meta: { class: { th: `${width}${right ? ' text-right' : ''}`, td: width } },
   }
 }
@@ -632,7 +632,7 @@ const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   col('step_title', 'Current approval step', 'min-w-40'),
   { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
   { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  col('waiting_since', 'Waiting since', 'min-w-32'),
+  col('waiting_since', 'Assign date', 'min-w-32'),
   col('working_days_waiting', 'Working days', 'min-w-32', true),
   col('reminders_sent', 'Reminders sent', 'min-w-28', true),
   col('escalated_at', 'Escalated on', 'min-w-32'),
