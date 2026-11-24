@@ -33,6 +33,7 @@ defineProps<{ steps: BiancaSignoffRow[] }>()
         </div>
         <p class="text-sm text-muted">
           {{ step.name ?? 'No signer' }}<span v-if="step.designation"> · {{ step.designation }}</span>
+          <span v-if="step.on_behalf_by"> · approved on behalf by {{ step.on_behalf_by }}</span>
           <span v-if="step.decided_at"> · {{ formatDateTime(step.decided_at) }}</span>
           <span v-else-if="step.current && step.pending_since"> · waiting since {{ formatDateTime(step.pending_since) }}</span>
         </p>
