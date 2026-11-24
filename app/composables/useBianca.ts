@@ -405,9 +405,9 @@ export function emptyBiancaFunction(periods: number): BiancaFunction {
     suggested_mtd: undefined,
     expected_mtd: undefined,
     planned_capacity: undefined,
-    it_dependencies: [{}],
-    // One upstream and one downstream to fill in (NA when there's none).
-    dependencies: [{ up_name: '', down_name: '' }],
+    // IT systems, upstreams and downstreams are optional: added when there are any.
+    it_dependencies: [],
+    dependencies: [],
     total_staff: undefined,
     staff_required: undefined,
     recovery_level: undefined,

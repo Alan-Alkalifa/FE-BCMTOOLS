@@ -320,15 +320,15 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
   await page.getByRole('option', { name: 'Test Coordinator' }).click()
   await page.getByRole('button', { name: 'Alternate BCM Coordinator', exact: true }).click()
   await page.getByRole('option', { name: 'Test Alternate' }).click()
-  const riskQuestions = page.locator('#bianca-sign').getByRole('radiogroup')
-  await riskQuestions.nth(0).getByRole('radio', { name: 'No', exact: true }).check()
-  await riskQuestions.nth(1).getByRole('radio', { name: 'Yes', exact: true }).check()
+  // The risk assessment questions are on the RA questionnaire (MoM 23 Nov), not the Sign off page.
+  await expect(page.locator('#bianca-sign').getByText('Have you considered business continuity')).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'RA questionnaire', exact: true }).click()
   // Leaving the Sign off page asks to check what was filled in.
   const review = page.getByRole('dialog', { name: 'Is this correct?' })
   await expect(review).toBeVisible()
   await review.getByRole('button', { name: 'Yes, continue', exact: true }).click()
+  await expect(page.locator('#bianca-ra').getByText('4.1 Have you considered business continuity')).toBeVisible()
   const count = page.getByRole('spinbutton', { name: 'Number of personnel, Specialist Support', exact: true })
   await count.fill('7')
   await expect(page.locator('#bianca-ra tfoot').getByRole('cell', { name: '7', exact: true })).toBeVisible()
