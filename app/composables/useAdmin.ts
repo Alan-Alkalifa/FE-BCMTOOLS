@@ -249,6 +249,8 @@ function withSealedPassword<T>(url: string, method: 'POST' | 'PUT', purpose: Sea
 export interface HrImportResult {
   dry_run: boolean
   counts: Record<'create' | 'update' | 'unchanged' | 'skip' | 'error', number>
+  /** Organization changes the import seems to make, waiting in Master data › Organization structure. */
+  detected?: number
   rows: {
     line: number
     nip: string | null

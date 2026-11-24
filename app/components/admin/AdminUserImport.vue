@@ -59,6 +59,15 @@ async function run(dryRun: boolean) {
       color: error ? 'warning' : 'success',
       icon: 'i-lucide-users',
     })
+    if (result.detected) {
+      toast.add({
+        title: `${result.detected} organization change${result.detected === 1 ? '' : 's'} to check`,
+        description: 'The new HR data seems to move, rename, add or close units. Confirm or dismiss each in Master data › Organization structure.',
+        color: 'info',
+        icon: 'i-lucide-scan-search',
+        actions: [{ label: 'Open detected changes', color: 'neutral', variant: 'outline', onClick: () => { navigateTo('/masterdata/organization?tab=detected') } }],
+      })
+    }
     emit('close', true)
   } catch (failure) {
     const data = (failure as { data?: { details?: Record<string, string>, message?: string } }).data

@@ -1,61 +1,299 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import type { OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { parseDate, type CalendarDate } from '@internationalized/date'
+import type { OrganizationChange, OrganizationDetected, OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
 import BiancaOrganizationForm from '~/components/bianca/BiancaOrganizationForm.vue'
-import { organizationLevels, organizationEndpoint } from '~/utils/bianca-organization'
+import OrganizationChangeForm from '~/components/bianca/OrganizationChangeForm.vue'
+import OrganizationHistoryDialog from '~/components/bianca/OrganizationHistoryDialog.vue'
+import { organizationChangeKinds, organizationChangeSources, organizationEndpoint, organizationLevels, organizationPathLabel } from '~/utils/bianca-organization'
 
+/**
+ * Administration › Master data › Organization structure, laid out as SCCA Monitoring: one filter
+ * card, then Structure (a tree or a table of the units), Change history and Detected changes
+ * (what an HR import found, waiting to be confirmed). Every filter and tab is in the URL.
+ */
 definePageMeta({ permission: ['masterdata.access', 'masterdata.organization.manage'] })
 const { can } = useAuth()
-const form = useOverlay().create(BiancaOrganizationForm)
+const manage = computed(() => can('masterdata.organization.manage'))
+const unitForm = useOverlay().create(BiancaOrganizationForm)
+const changeForm = useOverlay().create(OrganizationChangeForm)
+const historyDialog = useOverlay().create(OrganizationHistoryDialog)
+const confirm = useConfirm()
+const toast = useToast()
 const orgRevision = useBiancaOrgRevision()
 const perPage = useRowsPerPage()
 const route = useRoute()
 const router = useRouter()
-const level = computed({
-  get: () => organizationLevels.find((item) => item.value === route.query.level)?.value ?? 'directorate',
-  set: (value: UnitLevel) => router.replace({ query: { ...route.query, level: value, page: undefined } }),
+
+type TreeRow = OrganizationRow & { children?: TreeRow[] }
+const TABS = ['structure', 'history', 'detected'] as const
+type Tab = (typeof TABS)[number]
+
+function text(name: string) {
+  const value = route.query[name]
+  return typeof value === 'string' && value ? value : undefined
+}
+function setQuery(patch: Record<string, string | undefined>) {
+  router.replace({ query: { ...route.query, ...patch, page: undefined } })
+}
+function queryRef(name: string, all = 'all') {
+  return computed<string>({
+    get: () => text(name) ?? all,
+    set: (value) => setQuery({ [name]: value === all ? undefined : value }),
+  })
+}
+
+const tab = computed<Tab>({
+  get: () => (TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'structure'),
+  set: (value) => router.replace({ query: { ...route.query, tab: value === 'structure' ? undefined : value, page: undefined } }),
 })
-const label = computed(() => organizationLevels.find((item) => item.value === level.value)!.label)
-const search = ref('')
-const active = ref('all')
+const view = computed<'tree' | 'table'>({
+  get: () => (route.query.view === 'table' ? 'table' : 'tree'),
+  set: (value) => setQuery({ view: value === 'table' ? 'table' : undefined }),
+})
+const level = computed<UnitLevel>({
+  get: () => organizationLevels.find((item) => item.value === route.query.level)?.value ?? 'directorate',
+  set: (value) => setQuery({ level: value === 'directorate' ? undefined : value }),
+})
+const levelLabel = computed(() => organizationLevels.find((item) => item.value === level.value)!.label)
+
+// --- filters ---------------------------------------------------------------------------------
+
+const directorate = queryRef('directorate')
+const subDirectorate = queryRef('sub_directorate')
+const source = queryRef('source')
+const status = queryRef('status')
+const owner = queryRef('owner')
+const kind = queryRef('kind')
+const changeSource = queryRef('change_source')
+watch(directorate, () => {
+  if (text('sub_directorate')) setQuery({ sub_directorate: undefined })
+})
+
+const search = ref(text('q') ?? '')
+watch(() => route.query.q, () => (search.value = text('q') ?? ''))
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    if (value.trim() !== (text('q') ?? '')) setQuery({ q: value.trim() || undefined })
+  }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+const fromDate = computed<CalendarDate | undefined>({
+  get: () => (text('from') ? parseDate(text('from')!) : undefined),
+  set: (value) => setQuery({ from: value?.toString() }),
+})
+const toDate = computed<CalendarDate | undefined>({
+  get: () => (text('to') ? parseDate(text('to')!) : undefined),
+  set: (value) => setQuery({ to: value?.toString() }),
+})
+
+const FILTERS = ['q', 'directorate', 'sub_directorate', 'source', 'status', 'owner', 'kind', 'change_source', 'from', 'to']
+const filtered = computed(() => FILTERS.some((name) => text(name)))
+function clearFilters() {
+  search.value = ''
+  const keep = Object.fromEntries(Object.entries(route.query).filter(([name]) => !FILTERS.includes(name) && name !== 'page'))
+  router.replace({ query: keep })
+}
+
+function options(all: string, values: string[]) {
+  return [{ label: all, value: 'all' }, ...[...new Set(values)].sort((a, b) => a.localeCompare(b)).map((value) => ({ label: value, value }))]
+}
+const sourceItems = [{ label: 'HR and BIA', value: 'all' }, { label: 'HR', value: 'hr' }, { label: 'BIA', value: 'bia' }]
 const statusItems = [
-  { label: 'Active and inactive', value: 'all' },
+  { label: 'Any status', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Inactive', value: 'inactive' },
+  { label: 'Waiting for HR', value: 'waiting' },
+  { label: 'No longer in HR', value: 'left' },
 ]
-const { data, error, status, refresh } = useFetch<{ items: OrganizationRow[] }>(organizationEndpoint, { query: { details: 1 } })
-const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
+const ownerItems = [{ label: 'Any assigned user', value: 'all' }, { label: 'No assigned user', value: 'none' }, { label: 'Has an assigned user', value: 'set' }]
+const kindItems = [{ label: 'All types', value: 'all' }, ...Object.entries(organizationChangeKinds).map(([value, item]) => ({ label: item.label, value }))]
+const changeSourceItems = [{ label: 'Manual and HR import', value: 'all' }, ...Object.entries(organizationChangeSources).map(([value, label]) => ({ label, value }))]
+
+// --- structure -------------------------------------------------------------------------------
+
+const { data, error, status: loadStatus, refresh } = useFetch<{ items: OrganizationRow[] }>(organizationEndpoint, { query: { details: 1 } })
+const showSkeleton = useDelayedLoading(() => loadStatus.value === 'pending' && !data.value)
 const units = computed(() => data.value?.items ?? [])
-const matching = computed(() => {
-  const term = search.value.trim().toLowerCase()
-  return units.value.filter((row) => row.level === level.value
-    && (active.value === 'all' || row.available === (active.value === 'active'))
-    && [row.directorate, row.sub_directorate, row.org_group, row.code, row.description, row.owner?.name, row.owner?.email]
+const directorateItems = computed(() => options('All directorates', units.value.map((row) => row.directorate)))
+const subDirectorateItems = computed(() => options('All sub directorates', units.value
+  .filter((row) => row.sub_directorate && (directorate.value === 'all' || row.directorate === directorate.value))
+  .map((row) => row.sub_directorate)))
+
+function matches(row: OrganizationRow) {
+  const term = (text('q') ?? '').toLowerCase()
+  return (directorate.value === 'all' || row.directorate === directorate.value)
+    && (subDirectorate.value === 'all' || row.sub_directorate === subDirectorate.value)
+    && (source.value === 'all' || row.source === source.value)
+    && (status.value === 'all' || (status.value === 'waiting' ? !!row.waiting_hr : status.value === 'left' ? !!row.left_hr : row.available === (status.value === 'active')))
+    && (owner.value === 'all' || !!row.owner === (owner.value === 'set'))
+    && (!term || [row[row.level], row.code, row.description, row.owner?.name, row.owner?.email]
       .some((value) => value?.toLowerCase().includes(term)))
+}
+
+/** Directorates with their sub directorates and groups; a unit shows when it or a unit under it
+ * matches the filters. */
+const tree = computed<TreeRow[]>(() => {
+  const children = (parent: OrganizationRow, childLevel: UnitLevel): TreeRow[] => units.value
+    .filter((row) => row.level === childLevel && row.directorate === parent.directorate
+      && (childLevel === 'sub_directorate' || row.sub_directorate === parent.sub_directorate))
+    .map((row) => node(row))
+    .filter((row): row is TreeRow => !!row)
+  function node(row: OrganizationRow): TreeRow | null {
+    const next = row.level === 'directorate' ? 'sub_directorate' : row.level === 'sub_directorate' ? 'org_group' : null
+    const kids = next ? children(row, next) : []
+    if (!kids.length && !matches(row)) return null
+    return kids.length ? { ...row, children: kids } : { ...row }
+  }
+  return units.value.filter((row) => row.level === 'directorate').map(node).filter((row): row is TreeRow => !!row)
 })
-const filtered = computed(() => !!search.value.trim() || active.value !== 'all')
-const page = computed(() => Math.min(Math.max(1, Math.floor(Number(route.query.page)) || 1), Math.max(1, Math.ceil(matching.value.length / perPage.value))))
-const rows = computed(() => matching.value.slice((page.value - 1) * perPage.value, page.value * perPage.value))
-watch([search, active, perPage], () => {
-  if (route.query.page) router.replace({ query: { ...route.query, page: undefined } })
+const flat = computed(() => units.value.filter((row) => row.level === level.value && matches(row)))
+const structureRows = computed<TreeRow[]>(() => (view.value === 'tree' ? tree.value : flat.value))
+const page = computed(() => Math.min(Math.max(1, Math.floor(Number(route.query.page)) || 1), Math.max(1, Math.ceil(structureRows.value.length / perPage.value))))
+const pageRows = computed(() => structureRows.value.slice((page.value - 1) * perPage.value, page.value * perPage.value))
+watch(perPage, () => setQuery({}))
+// A filtered tree opens fully so the matches show; otherwise every directorate starts closed.
+const expanded = ref<Record<string, boolean> | true>({})
+watch(filtered, (value) => (expanded.value = value ? true : {}), { immediate: true })
+
+const countLine = computed(() => {
+  if (view.value === 'table') return `${flat.value.length} ${levelLabel.value.toLowerCase()}${flat.value.length === 1 ? '' : 's'}`
+  const shown = (rows: TreeRow[]): number => rows.reduce((sum, row) => sum + 1 + shown(row.children ?? []), 0)
+  return `${shown(tree.value)} units in ${tree.value.length} directorate${tree.value.length === 1 ? '' : 's'}`
 })
-const columns = computed<TableColumn<OrganizationRow>[]>(() => [
-  ...organizationLevels.slice(0, organizationLevels.findIndex((item) => item.value === level.value)).map((item) => ({ accessorKey: item.value, header: item.label })),
-  { id: 'unit', header: label.value },
-  { id: 'owner', header: 'Assigned user' },
+
+const structureColumns = computed<TableColumn<TreeRow>[]>(() => [
+  ...(view.value === 'table'
+    ? organizationLevels.slice(0, organizationLevels.findIndex((item) => item.value === level.value)).map((item) => ({ accessorKey: item.value, header: item.label, meta: { class: { th: 'min-w-36', td: 'min-w-36' } } }))
+    : []),
+  { id: 'unit', header: view.value === 'table' ? levelLabel.value : 'Unit', meta: { class: { th: 'min-w-64', td: 'min-w-64' } } },
+  { id: 'employees', header: 'Employees', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
+  { id: 'owner', header: 'Assigned user', meta: { class: { th: 'min-w-44', td: 'min-w-44' } } },
   { accessorKey: 'description', header: 'Description' },
   { id: 'source', header: 'Source' },
   { id: 'status', header: 'Status' },
   { id: 'actions', header: '', meta: { class: { td: 'w-12 text-end' } } },
 ])
 
-async function openForm(unit?: OrganizationRow) {
-  if (!can('masterdata.organization.manage')) return
-  const saved = await form.open({ level: level.value, unit, units: units.value }).result
-  if (saved) {
-    orgRevision.value++
-    await refresh()
+// --- KPI cards -------------------------------------------------------------------------------
+
+const detected = useFetch<{ items: OrganizationDetected[] }>(`${organizationEndpoint}/detected`, { query: { status: 'pending' }, server: false })
+const pending = computed(() => detected.data.value?.items ?? [])
+const cards = computed(() => {
+  const active = units.value.filter((row) => row.available)
+  const count = (value: UnitLevel) => (data.value ? active.filter((row) => row.level === value).length : null)
+  return [
+    { key: 'directorate', label: 'Directorates', hint: 'Active', icon: 'i-lucide-building-2', value: count('directorate'), to: { tab: undefined, view: 'table', level: undefined, status: 'active' }, tone: 'neutral' as const, on: view.value === 'table' && level.value === 'directorate' },
+    { key: 'sub_directorate', label: 'Sub directorates', hint: 'Active', icon: 'i-lucide-network', value: count('sub_directorate'), to: { tab: undefined, view: 'table', level: 'sub_directorate', status: 'active' }, tone: 'neutral' as const, on: view.value === 'table' && level.value === 'sub_directorate' },
+    { key: 'org_group', label: 'Groups', hint: 'Active', icon: 'i-lucide-users', value: count('org_group'), to: { tab: undefined, view: 'table', level: 'org_group', status: 'active' }, tone: 'neutral' as const, on: view.value === 'table' && level.value === 'org_group' },
+    { key: 'owner', label: 'No assigned user', hint: 'Active units nobody is assigned to', icon: 'i-lucide-user-x', value: data.value ? active.filter((row) => !row.owner).length : null, to: { tab: undefined, owner: 'none', status: 'active' }, tone: 'warning' as const, on: owner.value === 'none' },
+    { key: 'detected', label: 'Waiting confirmation', hint: 'Changes found by an HR import', icon: 'i-lucide-scan-search', value: detected.data.value ? pending.value.length : null, to: { tab: 'detected' }, tone: 'info' as const, on: false },
+  ]
+})
+function cardLink(target: Record<string, string | undefined>) {
+  return { query: { ...route.query, ...target, page: undefined } }
+}
+
+// --- history ---------------------------------------------------------------------------------
+
+const historyQuery = computed(() => ({
+  q: text('q'),
+  directorate: text('directorate'),
+  kind: text('kind'),
+  source: text('change_source'),
+  from: text('from'),
+  to: text('to'),
+  page: tab.value === 'history' ? Math.max(1, Number(route.query.page) || 1) : 1,
+  per_page: perPage.value,
+}))
+const history = useFetch<{ items: OrganizationChange[], total: number }>(`${organizationEndpoint}/changes`, { query: historyQuery, server: false })
+const historyExport = computed(() => {
+  const params = new URLSearchParams(Object.entries(historyQuery.value).filter(([name, value]) => value && !['page', 'per_page'].includes(name)).map(([name, value]) => [name, String(value)]))
+  return `${organizationEndpoint}/changes/export.xlsx${params.size ? `?${params}` : ''}`
+})
+const historyColumns: TableColumn<OrganizationChange>[] = [
+  { accessorKey: 'effective_date', header: 'Effective date', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'kind', header: 'Type' },
+  { id: 'directorate', header: 'Directorate', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  { id: 'sub_directorate', header: 'Sub directorate', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  { id: 'org_group', header: 'Group', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  { accessorKey: 'reference', header: 'Reference' },
+  { accessorKey: 'source', header: 'Source' },
+  { id: 'recorded_by', header: 'Recorded by', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+]
+
+// --- detected changes ------------------------------------------------------------------------
+
+const detectedColumns: TableColumn<OrganizationDetected>[] = [
+  { accessorKey: 'detected_at', header: 'Detected', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'kind', header: 'Type' },
+  { id: 'previous', header: 'Previous', meta: { class: { th: 'min-w-56', td: 'min-w-56' } } },
+  { id: 'current', header: 'Current', meta: { class: { th: 'min-w-56', td: 'min-w-56' } } },
+  { id: 'people', header: 'People', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'import_file', header: 'HR file' },
+  { id: 'actions', header: '', meta: { class: { td: 'w-24 text-end' } } },
+]
+
+// --- actions ---------------------------------------------------------------------------------
+
+async function reload() {
+  orgRevision.value++
+  await Promise.all([refresh(), history.refresh(), detected.refresh()])
+}
+async function openUnit(unit?: OrganizationRow) {
+  if (!manage.value) return
+  const saved = await unitForm.open({ level: unit?.level ?? level.value, unit, units: units.value }).result
+  if (saved) await reload()
+}
+async function recordChange(unit?: OrganizationRow, found?: OrganizationDetected) {
+  const saved = await changeForm.open({ units: units.value, unit, detected: found }).result
+  if (saved) await reload()
+}
+async function dismiss(found: OrganizationDetected) {
+  const ok = await confirm({
+    title: 'Dismiss this change?',
+    description: `${organizationPathLabel(found.previous)} → ${organizationPathLabel(found.current)} will not be added to the history. The same change found again later stays dismissed.`,
+    confirmLabel: 'Dismiss',
+    destructive: true,
+  })
+  if (!ok) return
+  try {
+    await $fetch(`${organizationEndpoint}/detected/${found.id}/dismiss`, { method: 'POST' })
+    toast.add({ title: 'Change dismissed', color: 'success', icon: 'i-lucide-circle-check' })
+    await detected.refresh()
+  } catch (failure) {
+    toast.add({ title: 'Could not dismiss the change', description: biancaConfigError(failure), color: 'error', icon: 'i-lucide-circle-alert' })
   }
+}
+function unitActions(row: OrganizationRow): DropdownMenuItem[] {
+  return [
+    ...(manage.value ? [{ label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openUnit(row) }] : []),
+    { label: 'View history', icon: 'i-lucide-history', onSelect: () => historyDialog.open({ unit: row }) },
+    ...(manage.value ? [{ label: 'Record change', icon: 'i-lucide-git-compare-arrows', onSelect: () => recordChange(row) }] : []),
+  ]
+}
+function detectedActions(row: OrganizationDetected): DropdownMenuItem[] {
+  return [
+    { label: 'Confirm…', icon: 'i-lucide-check', onSelect: () => recordChange(undefined, row) },
+    { label: 'Dismiss', icon: 'i-lucide-x', color: 'error' as const, onSelect: () => dismiss(row) },
+  ]
+}
+
+const tabs = computed(() => [
+  { label: 'Structure', value: 'structure', icon: 'i-lucide-network', slot: 'structure' as const },
+  { label: 'Change history', value: 'history', icon: 'i-lucide-history', slot: 'history' as const },
+  { label: 'Detected changes', value: 'detected', icon: 'i-lucide-scan-search', slot: 'detected' as const, badge: pending.value.length || undefined },
+])
+function pageTo(next: number) {
+  return { query: { ...route.query, page: next > 1 ? next : undefined } }
+}
+function change(row: OrganizationChange, field: UnitLevel) {
+  const before = row.previous[field]
+  const after = row.current[field]
+  return { before, after, same: before === after }
 }
 </script>
 
@@ -63,162 +301,515 @@ async function openForm(unit?: OrganizationRow) {
   <AppPage
     title="Organization structure"
     icon="i-lucide-network"
-    description="Browse the HR hierarchy and manage unit mappings and BIA-specific units."
+    description="The HR hierarchy and the BIA's own units, every change to them, and the changes an HR import found."
     :crumbs="[{ label: 'Administration' }, { label: 'Master data', to: MASTER_DATA_PATH }, { label: 'Organization structure' }]"
   >
     <template #actions>
       <UButton
-        :to="`${organizationEndpoint}/export.xlsx`"
-        external
+        v-if="manage"
         color="neutral"
         variant="outline"
-        icon="i-lucide-download"
-        label="Export to Excel"
+        icon="i-lucide-git-compare-arrows"
+        label="Record change"
+        :disabled="!data || !!error"
+        @click="recordChange()"
       />
       <UButton
-        v-if="can('masterdata.organization.manage')"
+        v-if="manage"
         icon="i-lucide-plus"
-        :label="'New ' + label.toLowerCase()"
+        :label="'New ' + levelLabel.toLowerCase()"
         :disabled="!data || !!error"
-        @click="openForm()"
+        @click="openUnit()"
       />
     </template>
 
-    <UTabs
-      v-model="level"
-      :items="[...organizationLevels]"
-      variant="link"
-      :content="false"
-    />
-    <SkeletonTable
-      v-if="showSkeleton"
-      toolbar
-      :columns="columns.length"
-      label="Loading organization units"
-    />
-    <UAlert
-      v-else-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Could not load the organization structure"
-      :description="adminErrorText(error)"
-    >
-      <template #actions>
-        <UButton
-          color="neutral"
-          variant="outline"
-          label="Try again"
-          @click="refresh()"
-        />
-      </template>
-    </UAlert>
-    <UCard
-      v-else
-      :ui="{ body: 'p-0 sm:p-0' }"
-    >
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <ListFilterBar
         :filtered="filtered"
-        @clear="search = ''; active = 'all'"
+        :bordered="false"
+        @clear="clearFilters"
       >
         <template #search>
           <UInput
             v-model="search"
             icon="i-lucide-search"
-            placeholder="Search units"
-            aria-label="Search units"
+            :placeholder="tab === 'history' ? 'Unit or reference' : 'Unit, code, user or description'"
+            aria-label="Search"
             class="w-full"
           />
         </template>
         <USelectMenu
-          v-model="active"
-          :items="statusItems"
+          v-model="directorate"
           value-key="value"
-          :search-input="false"
-          aria-label="Filter by status"
-          class="w-48"
+          :items="directorateItems"
+          class="w-56"
+          aria-label="Directorate"
         />
+        <template v-if="tab === 'structure'">
+          <USelectMenu
+            v-model="subDirectorate"
+            value-key="value"
+            :items="subDirectorateItems"
+            class="w-56"
+            aria-label="Sub directorate"
+          />
+          <USelectMenu
+            v-model="source"
+            value-key="value"
+            :items="sourceItems"
+            :search-input="false"
+            class="w-36"
+            aria-label="Source"
+          />
+          <USelectMenu
+            v-model="status"
+            value-key="value"
+            :items="statusItems"
+            :search-input="false"
+            class="w-40"
+            aria-label="Status"
+          />
+          <USelectMenu
+            v-model="owner"
+            value-key="value"
+            :items="ownerItems"
+            :search-input="false"
+            class="w-52"
+            aria-label="Assigned user"
+          />
+        </template>
+        <template v-else-if="tab === 'history'">
+          <USelectMenu
+            v-model="kind"
+            value-key="value"
+            :items="kindItems"
+            :search-input="false"
+            class="w-36"
+            aria-label="Type"
+          />
+          <USelectMenu
+            v-model="changeSource"
+            value-key="value"
+            :items="changeSourceItems"
+            :search-input="false"
+            class="w-52"
+            aria-label="Source"
+          />
+          <DatePicker
+            v-model="fromDate"
+            class="w-40"
+            placeholder="From"
+            aria-label="Effective from"
+          />
+          <DatePicker
+            v-model="toDate"
+            class="w-40"
+            placeholder="To"
+            aria-label="Effective to"
+          />
+        </template>
       </ListFilterBar>
-      <UTable
-        :data="rows"
-        :columns="columns"
-        :loading="status === 'pending'"
-        :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
-      >
-        <template #unit-cell="{ row }">
-          <component
-            :is="can('masterdata.organization.manage') ? 'button' : 'span'"
-            class="block text-start font-medium text-highlighted"
-            :class="can('masterdata.organization.manage') ? 'hover:text-primary hover:underline' : ''"
-            @click="openForm(row.original)"
-          >
-            {{ row.original[level] }}
-          </component>
-          <span
-            v-if="row.original.code"
-            class="text-xs text-muted"
-          >{{ row.original.code }}</span>
-        </template>
-        <template #owner-cell="{ row }">
-          <template v-if="row.original.owner">
-            <p>{{ row.original.owner.name }} <span class="text-xs text-muted">#{{ row.original.owner.id }}</span></p>
-            <p class="text-xs text-muted">
-              {{ row.original.owner.email }}
-            </p>
-          </template>
-          <span
-            v-else
-            class="text-muted"
-          >—</span>
-        </template>
-        <template #description-cell="{ row }">
-          <p class="max-w-64 whitespace-normal wrap-break-word">
-            {{ row.original.description || '—' }}
-          </p>
-        </template>
-        <template #source-cell="{ row }">
-          <UBadge
-            variant="subtle"
-            color="neutral"
-            :label="row.original.source.toUpperCase()"
-          />
-        </template>
-        <template #status-cell="{ row }">
-          <UBadge
-            variant="subtle"
-            :color="row.original.available ? 'success' : 'neutral'"
-            :label="row.original.available ? 'Active' : 'Inactive'"
-            :icon="row.original.available ? 'i-lucide-circle-check' : 'i-lucide-circle-minus'"
-          />
-        </template>
-        <template #actions-cell="{ row }">
-          <UDropdownMenu
-            v-if="can('masterdata.organization.manage')"
-            :items="[{ label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openForm(row.original) }]"
-            :content="{ align: 'end' }"
-          >
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-ellipsis-vertical"
-              :aria-label="`Actions for ${row.original[level]}`"
-            />
-          </UDropdownMenu>
-        </template>
-        <template #empty>
-          <p class="py-6 text-center text-sm text-muted">
-            {{ filtered ? 'No units match these filters.' : 'No units yet.' }}
-          </p>
-        </template>
-      </UTable>
-      <TablePagination
-        v-model:per-page="perPage"
-        :page="page"
-        page-sizes
-        :total="matching.length"
-        :to="(next) => ({ query: { ...route.query, page: next } })"
-        label="Organization units"
-      />
     </UCard>
+
+    <UTabs
+      v-model="tab"
+      :items="tabs"
+      variant="link"
+      :unmount-on-hide="false"
+    >
+      <template #structure>
+        <div class="mt-4 space-y-4">
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard
+              v-for="card in cards"
+              :key="card.key"
+              :to="cardLink(card.to)"
+              :label="card.label"
+              :value="card.value"
+              :hint="card.hint"
+              :icon="card.icon"
+              :tone="card.tone"
+              :active="card.on"
+            />
+          </div>
+          <SkeletonTable
+            v-if="showSkeleton"
+            :columns="structureColumns.length"
+            label="Loading organization units"
+          />
+          <UAlert
+            v-else-if="error"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+            title="Could not load the organization structure"
+            :description="adminErrorText(error)"
+          >
+            <template #actions>
+              <UButton
+                color="neutral"
+                variant="outline"
+                label="Try again"
+                @click="refresh()"
+              />
+            </template>
+          </UAlert>
+          <UCard
+            v-else
+            :ui="{ body: 'p-0 sm:p-0' }"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+              <p class="text-sm text-muted">
+                {{ countLine }}
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <USelect
+                  v-if="view === 'table'"
+                  v-model="level"
+                  :items="[...organizationLevels]"
+                  class="w-44"
+                  aria-label="Level"
+                />
+                <UFieldGroup>
+                  <UButton
+                    color="neutral"
+                    :variant="view === 'tree' ? 'subtle' : 'outline'"
+                    icon="i-lucide-list-tree"
+                    label="Tree"
+                    :aria-pressed="view === 'tree'"
+                    @click="view = 'tree'"
+                  />
+                  <UButton
+                    color="neutral"
+                    :variant="view === 'table' ? 'subtle' : 'outline'"
+                    icon="i-lucide-table"
+                    label="Table"
+                    :aria-pressed="view === 'table'"
+                    @click="view = 'table'"
+                  />
+                </UFieldGroup>
+                <UButton
+                  :to="`${organizationEndpoint}/export.xlsx`"
+                  external
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                />
+              </div>
+            </div>
+            <UTable
+              v-model:expanded="expanded"
+              :data="pageRows"
+              :columns="structureColumns"
+              :get-sub-rows="(row: TreeRow) => row.children"
+              :get-row-id="(row: TreeRow) => `${row.directorate}\u0000${row.sub_directorate}\u0000${row.org_group}`"
+              :loading="loadStatus === 'pending'"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+            >
+              <template #unit-cell="{ row }">
+                <div
+                  class="flex items-start gap-1"
+                  :style="{ paddingInlineStart: `${row.depth * 1.5}rem` }"
+                >
+                  <UButton
+                    v-if="row.getCanExpand()"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    class="-ms-1.5"
+                    :icon="row.getIsExpanded() ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    :aria-label="`${row.getIsExpanded() ? 'Collapse' : 'Expand'} ${row.original[row.original.level]}`"
+                    :aria-expanded="row.getIsExpanded()"
+                    @click="row.toggleExpanded()"
+                  />
+                  <span
+                    v-else-if="view === 'tree'"
+                    class="inline-block w-5"
+                  />
+                  <div>
+                    <component
+                      :is="manage ? 'button' : 'span'"
+                      class="block text-start font-medium text-highlighted"
+                      :class="manage ? 'hover:text-primary hover:underline' : ''"
+                      @click="openUnit(row.original)"
+                    >
+                      {{ row.original[row.original.level] }}
+                    </component>
+                    <p class="text-xs text-muted">
+                      <span v-if="view === 'tree'">{{ organizationLevels.find((item) => item.value === row.original.level)?.label }}</span>
+                      <span v-if="view === 'tree' && row.original.code"> · </span>
+                      <span
+                        v-if="row.original.code"
+                        class="font-mono"
+                      >{{ row.original.code }}</span>
+                    </p>
+                  </div>
+                </div>
+              </template>
+              <template #employees-cell="{ row }">
+                {{ row.original.employees ?? 0 }}
+              </template>
+              <template #owner-cell="{ row }">
+                <template v-if="row.original.owner">
+                  <p>{{ row.original.owner.name }}</p>
+                  <p class="text-xs text-muted">
+                    {{ row.original.owner.email }}
+                  </p>
+                </template>
+                <span
+                  v-else-if="row.original.available"
+                  class="inline-flex items-center gap-1 text-warning"
+                >
+                  <UIcon
+                    name="i-lucide-triangle-alert"
+                    class="size-4"
+                  />
+                  Not assigned
+                </span>
+                <span
+                  v-else
+                  class="text-muted"
+                >—</span>
+              </template>
+              <template #description-cell="{ row }">
+                <p class="max-w-64 whitespace-normal wrap-break-word">
+                  {{ row.original.description || '—' }}
+                </p>
+              </template>
+              <template #source-cell="{ row }">
+                <UBadge
+                  variant="subtle"
+                  color="neutral"
+                  size="sm"
+                  :label="row.original.source.toUpperCase()"
+                />
+              </template>
+              <template #status-cell="{ row }">
+                <UBadge
+                  v-if="row.original.waiting_hr"
+                  variant="subtle"
+                  color="info"
+                  size="sm"
+                  icon="i-lucide-clock"
+                  label="Waiting for HR"
+                />
+                <UTooltip
+                  v-else-if="row.original.left_hr"
+                  text="HR's people left this unit. Confirm or record the change that moved them to carry its details along."
+                >
+                  <UBadge
+                    variant="subtle"
+                    color="warning"
+                    size="sm"
+                    icon="i-lucide-user-round-minus"
+                    label="No longer in HR"
+                  />
+                </UTooltip>
+                <UBadge
+                  v-else
+                  variant="subtle"
+                  size="sm"
+                  :color="row.original.available ? 'success' : 'neutral'"
+                  :label="row.original.available ? 'Active' : 'Inactive'"
+                  :icon="row.original.available ? 'i-lucide-circle-check' : 'i-lucide-circle-minus'"
+                />
+              </template>
+              <template #actions-cell="{ row }">
+                <UDropdownMenu
+                  :items="unitActions(row.original)"
+                  :content="{ align: 'end' }"
+                >
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-down"
+                    label="Act"
+                    :aria-label="`Act on ${row.original[row.original.level]}`"
+                  />
+                </UDropdownMenu>
+              </template>
+              <template #empty>
+                <p class="py-6 text-center text-sm text-muted">
+                  {{ filtered ? 'No units match these filters.' : 'No units yet.' }}
+                </p>
+              </template>
+            </UTable>
+            <TablePagination
+              v-model:per-page="perPage"
+              :page="page"
+              page-sizes
+              :total="structureRows.length"
+              :to="pageTo"
+              :label="view === 'tree' ? 'Directorates' : 'Organization units'"
+            />
+          </UCard>
+        </div>
+      </template>
+
+      <template #history>
+        <UCard
+          class="mt-4"
+          :ui="{ body: 'p-0 sm:p-0' }"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+            <p class="text-sm text-muted">
+              {{ history.data.value?.total ?? 0 }} change{{ history.data.value?.total === 1 ? '' : 's' }}, latest effective date first.
+            </p>
+            <UButton
+              :to="historyExport"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+            />
+          </div>
+          <UTable
+            :data="history.data.value?.items ?? []"
+            :columns="historyColumns"
+            :loading="history.status.value === 'pending'"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+          >
+            <template #effective_date-cell="{ row }">
+              {{ formatDate(row.original.effective_date) }}
+            </template>
+            <template #kind-cell="{ row }">
+              <UBadge
+                variant="subtle"
+                size="sm"
+                :color="organizationChangeKinds[row.original.kind].color"
+                :icon="organizationChangeKinds[row.original.kind].icon"
+                :label="organizationChangeKinds[row.original.kind].label"
+              />
+            </template>
+            <template
+              v-for="field in organizationLevels"
+              :key="field.value"
+              #[`${field.value}-cell`]="{ row }"
+            >
+              <span
+                v-if="change(row.original, field.value).same"
+                :class="change(row.original, field.value).after ? '' : 'text-muted'"
+              >{{ change(row.original, field.value).after || '—' }}</span>
+              <span
+                v-else
+                class="whitespace-normal"
+              >
+                <span class="text-muted line-through">{{ change(row.original, field.value).before || '—' }}</span>
+                <UIcon
+                  name="i-lucide-arrow-right"
+                  class="mx-1 size-3 align-middle text-dimmed"
+                />
+                <span class="font-medium text-highlighted">{{ change(row.original, field.value).after || '—' }}</span>
+              </span>
+            </template>
+            <template #reference-cell="{ row }">
+              <p>{{ row.original.reference || '—' }}</p>
+              <p
+                v-if="row.original.note"
+                class="max-w-64 whitespace-normal text-xs text-muted"
+              >
+                {{ row.original.note }}
+              </p>
+            </template>
+            <template #source-cell="{ row }">
+              {{ organizationChangeSources[row.original.source] }}
+            </template>
+            <template #recorded_by-cell="{ row }">
+              <p>{{ row.original.recorded_by?.name || '—' }}</p>
+              <p class="text-xs text-muted">
+                {{ formatDateTime(row.original.recorded_at) }}
+              </p>
+            </template>
+            <template #empty>
+              <p class="py-6 text-center text-sm text-muted">
+                {{ filtered ? 'No changes match these filters.' : 'No change is recorded yet. Record one, or confirm a change an HR import found.' }}
+              </p>
+            </template>
+          </UTable>
+          <TablePagination
+            v-model:per-page="perPage"
+            :page="historyQuery.page"
+            page-sizes
+            :total="history.data.value?.total ?? 0"
+            :to="pageTo"
+            label="Change history"
+          />
+        </UCard>
+      </template>
+
+      <template #detected>
+        <UCard
+          class="mt-4"
+          :ui="{ body: 'p-0 sm:p-0' }"
+        >
+          <div class="border-b border-default p-4">
+            <p class="text-sm text-muted">
+              {{ pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} found by HR imports, waiting for you to confirm or dismiss. HR data can be late or wrong, so nothing is history until confirmed.` : 'Nothing is waiting. Changes an HR import finds show here.' }}
+            </p>
+          </div>
+          <UTable
+            :data="pending"
+            :columns="detectedColumns"
+            :loading="detected.status.value === 'pending'"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+          >
+            <template #detected_at-cell="{ row }">
+              {{ formatDate(row.original.detected_at) }}
+            </template>
+            <template #kind-cell="{ row }">
+              <UBadge
+                variant="subtle"
+                size="sm"
+                :color="organizationChangeKinds[row.original.kind].color"
+                :icon="organizationChangeKinds[row.original.kind].icon"
+                :label="organizationChangeKinds[row.original.kind].label"
+              />
+            </template>
+            <template #previous-cell="{ row }">
+              <span class="whitespace-normal">{{ organizationPathLabel(row.original.previous) }}</span>
+            </template>
+            <template #current-cell="{ row }">
+              <span class="whitespace-normal">{{ organizationPathLabel(row.original.current) }}</span>
+            </template>
+            <template #people-cell="{ row }">
+              <template v-if="row.original.kind === 'move' || row.original.kind === 'rename'">
+                {{ row.original.people_moved }} of {{ row.original.people_total }} moved
+              </template>
+              <template v-else>
+                {{ row.original.people_total }} {{ row.original.people_total === 1 ? 'person' : 'people' }}
+              </template>
+            </template>
+            <template #import_file-cell="{ row }">
+              <span class="text-xs">{{ row.original.import_file || '—' }}</span>
+            </template>
+            <template #actions-cell="{ row }">
+              <UDropdownMenu
+                v-if="manage"
+                :items="detectedActions(row.original)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  label="Act"
+                  :aria-label="`Act on the change of ${organizationPathLabel(row.original.previous)}`"
+                />
+              </UDropdownMenu>
+            </template>
+            <template #empty>
+              <p class="py-6 text-center text-sm text-muted">
+                No detected change is waiting.
+              </p>
+            </template>
+          </UTable>
+        </UCard>
+      </template>
+    </UTabs>
   </AppPage>
 </template>
