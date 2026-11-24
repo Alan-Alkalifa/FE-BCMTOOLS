@@ -93,3 +93,9 @@ export function organizationChangeKind(previous: OrganizationPath, current: Orga
 export function emptyOrganizationPath(): OrganizationPath {
   return { directorate: '', sub_directorate: '', org_group: '' }
 }
+
+/** GET /masterdata/organization/impact: the running BIAs a rename, move or closing reaches. */
+export interface OrganizationImpact {
+  total: number
+  items: (OrganizationPath & { id: number, ref_no: string | null, status: 'draft' | 'in_approval', created_by: string | null })[]
+}

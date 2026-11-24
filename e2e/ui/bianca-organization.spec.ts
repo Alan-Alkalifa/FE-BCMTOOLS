@@ -12,6 +12,7 @@ test('BIA organization edit preserves HR identity and saves mapping details', as
   await page.route('**/api/masterdata/organization/people*', (route) => route.fulfill({ json: { items: [] } }))
   await page.route('**/api/masterdata/organization/changes*', (route) => route.fulfill({ json: { items: [], total: 0 } }))
   await page.route('**/api/masterdata/organization/detected*', (route) => route.fulfill({ json: { items: [] } }))
+  await page.route('**/api/masterdata/organization/impact*', (route) => route.fulfill({ json: { total: 0, items: [] } }))
   await page.route(/\/api\/masterdata\/organization(?:\?.*)?$/, async (route) => {
     if (route.request().method() === 'PUT') {
       const body = route.request().postDataJSON()
@@ -60,6 +61,13 @@ test('the structure reads as a tree, filters, and confirms a detected change int
   let confirmed: Record<string, unknown> | null = null
   await page.route(/\/api\/masterdata\/organization(?:\?.*)?$/, (route) => route.fulfill({ json: { items: units } }))
   await page.route('**/api/masterdata/organization/detected?*', (route) => route.fulfill({ json: { items: confirmed ? [] : [found] } }))
+  await page.route('**/api/masterdata/organization/impact?*', (route) => route.fulfill({ json: {
+    total: 2,
+    items: [
+      { id: 11, ref_no: 'BIA-2026-0011', status: 'draft', directorate: 'Bank', sub_directorate: 'Ops', org_group: 'Net', created_by: 'Sari' },
+      { id: 12, ref_no: 'BIA-2026-0012', status: 'in_approval', directorate: 'Bank', sub_directorate: 'Ops', org_group: 'Net', created_by: 'Budi' },
+    ],
+  } }))
   await page.route('**/api/masterdata/organization/detected/7/confirm', (route) => {
     confirmed = route.request().postDataJSON()
     return route.fulfill({ status: 201, json: {} })
@@ -94,6 +102,9 @@ test('the structure reads as a tree, filters, and confirms a detected change int
   const dialog = page.getByRole('dialog', { name: 'Confirm detected change' })
   await expect(dialog.getByRole('textbox', { name: 'Current sub directorate' })).toHaveValue('Infra')
   await expect(dialog.getByText('Moved', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('2 running BIAs of this unit and the units under it will be invalid')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Show the BIAs' }).click()
+  await expect(dialog.getByText('BIA-2026-0012')).toBeVisible()
   await dialog.getByRole('textbox', { name: 'Reference' }).fill('SK-9')
   await dialog.getByRole('button', { name: 'Confirm change' }).click()
   await expect(dialog).toBeHidden()

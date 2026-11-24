@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { parseDate, today, getLocalTimeZone, type CalendarDate } from '@internationalized/date'
-import type { OrganizationDetected, OrganizationPath, OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
+import type { OrganizationDetected, OrganizationImpact, OrganizationPath, OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
 import { emptyOrganizationPath, organizationChangeKind, organizationChangeKinds, organizationEndpoint, organizationLevels, organizationPathLabel } from '~/utils/bianca-organization'
 
 /**
@@ -53,6 +53,17 @@ const kind = computed(() => organizationChangeKind(previous.value, shown.value))
 watch(level, () => {
   if (!props.detected) previousKey.value = undefined
 })
+
+// The running BIAs (Draft, In approval) of the unit and the units under it that a rename, move
+// or closing reaches: the BIA module makes them Invalid (services/bianca/org_impact.py).
+const ending = computed(() => kind.value === 'rename' || kind.value === 'move' || kind.value === 'closed')
+const { data: impact } = useFetch<OrganizationImpact>(`${organizationEndpoint}/impact`, {
+  query: computed(() => (ending.value ? previous.value : { directorate: '' })),
+  server: false,
+  watch: [ending, previousKey],
+})
+const affected = computed(() => (ending.value ? impact.value?.total ?? 0 : 0))
+const affectedOpen = ref(false)
 watch(previousKey, (value) => {
   if (value) Object.assign(current, JSON.parse(value))
 })
@@ -228,6 +239,46 @@ async function save() {
             />
           </UFormField>
         </div>
+        <UAlert
+          v-if="affected"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          :title="`${affected} running BIA${affected === 1 ? '' : 's'} of this unit and the units under it will be invalid`"
+          description="Draft and In approval BIAs must be entered again for the new unit. Final BIAs stay valid."
+        >
+          <template #actions>
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              :trailing-icon="affectedOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              :label="affectedOpen ? 'Hide the BIAs' : 'Show the BIAs'"
+              @click="affectedOpen = !affectedOpen"
+            />
+          </template>
+        </UAlert>
+        <ul
+          v-if="affected && affectedOpen"
+          class="max-h-48 space-y-1 overflow-y-auto rounded-md border border-default p-3 text-sm"
+          aria-label="BIAs that will be invalid"
+        >
+          <li
+            v-for="bia in impact?.items ?? []"
+            :key="bia.id"
+            class="flex flex-wrap gap-x-2"
+          >
+            <span class="font-mono text-xs">{{ bia.ref_no || `#${bia.id}` }}</span>
+            <span>{{ organizationPathLabel(bia) }}</span>
+            <span class="text-muted">· {{ bia.status === 'in_approval' ? 'In approval' : 'Draft' }}{{ bia.created_by ? ` · ${bia.created_by}` : '' }}</span>
+          </li>
+          <li
+            v-if="(impact?.total ?? 0) > (impact?.items.length ?? 0)"
+            class="text-muted"
+          >
+            and {{ (impact?.total ?? 0) - (impact?.items.length ?? 0) }} more
+          </li>
+        </ul>
         <p class="flex flex-wrap items-center gap-2 text-sm text-muted">
           <span>Type:</span>
           <UBadge
