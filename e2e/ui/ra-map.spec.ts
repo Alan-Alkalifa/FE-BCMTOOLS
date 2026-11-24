@@ -297,6 +297,7 @@ test('the sidebar marks only the section of the page as current', async ({ page 
 test('disasters and incidents each have their own guidebook', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/incidents/guidebook')
+  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
   await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Sites\s*Incident\s*Guidebook/, { timeout: 30_000 })
   const hazards = page.getByRole('navigation', { name: 'Hazards' })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toBeVisible()
@@ -306,6 +307,8 @@ test('disasters and incidents each have their own guidebook', async ({ page }) =
   await expect(nav.locator('a[href="/incidents/guidebook"]')).toHaveAttribute('aria-current', 'page')
 
   await page.goto('/disasters/guidebook')
+  await expect(page.getByRole('tab', { name: 'Disaster guidebook' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toBeVisible()
   await expect(hazards.getByRole('button', { name: 'Natural disasters' })).toBeVisible({ timeout: 30_000 })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toHaveCount(0)
   // A link to an incident's hazard opens the incident guidebook.
@@ -577,9 +580,9 @@ test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', 
   await expect(page.getByTestId('mmi-scale')).toHaveCount(0)
   // Filtered by year.
   await who.getByRole('button', { name: 'WHO news from year' }).click()
-  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await page.getByRole('listbox', { name: 'WHO news from year' }).getByRole('option', { name: '2023', exact: true }).click()
   await who.getByRole('button', { name: 'WHO news to year' }).click()
-  await page.getByRole('option', { name: '2023', exact: true }).click()
+  await page.getByRole('listbox', { name: 'WHO news to year' }).getByRole('option', { name: '2023', exact: true }).click()
   await expect(who).toContainText('1 item.')
   await expect(who).toContainText('Measles - Indonesia')
   await expect(who).not.toContainText('Poliomyelitis - Indonesia')
@@ -630,6 +633,13 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   const colours = await badges.evaluateAll((items) => items.map((item) => getComputedStyle(item).color))
   expect(new Set(colours).size).toBe(1)
   await expect(first.getByRole('link', { name: 'Infographic' })).toHaveAttribute('href', /nowcasting\.bmkg\.go\.id/)
+  // The description shows two lines until Show details opens all of it.
+  const details = first.getByRole('button', { name: 'Show details' })
+  await expect(details).toHaveAttribute('aria-expanded', 'false')
+  await details.click()
+  await expect(first.getByRole('button', { name: 'Hide details' })).toHaveAttribute('aria-expanded', 'true')
+  await first.getByRole('button', { name: 'Hide details' }).click()
+  await expect(first.getByRole('button', { name: 'Show details' })).toBeVisible()
   await first.getByRole('button', { name: 'Show on map' }).click()
   await expect(page).toHaveURL(/warning=CBT20261118001/)
   await expect(page.locator('path.ra-area-active')).toHaveCount(1)

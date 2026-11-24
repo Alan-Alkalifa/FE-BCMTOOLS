@@ -2,7 +2,8 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { RaConfigVersion, RaConfigVersionMeta } from '~/composables/useRaConfigAdmin'
 
-/** The versions of one kind (active, draft, retired) and, for the draft, its code (e.g. V.05), name and notes. */
+/** The versions of one kind (active, draft, retired) and, for the draft, its name and notes. Its
+ *  code is given when the draft starts (V.4, then V.5), as SCCA's. */
 const props = defineProps<{ versions: RaConfigVersionMeta[], version: RaConfigVersion }>()
 const emit = defineEmits<{ open: [code: string], saved: [version: RaConfigVersion] }>()
 
@@ -16,8 +17,8 @@ const columns: TableColumn<RaConfigVersionMeta>[] = [
 
 const part = useRaConfigPart(
   computed(() => props.version),
-  (value) => ({ code: value.code, name: value.name, notes: value.notes ?? '' }),
-  (ref, value) => raConfigApi.update(ref, { ...value, code: value.code.trim(), notes: value.notes.trim() || null }),
+  (value) => ({ name: value.name, notes: value.notes ?? '' }),
+  (ref, value) => raConfigApi.update(ref, { ...value, notes: value.notes.trim() || null }),
   (saved) => emit('saved', saved),
   'Version saved',
 )
@@ -114,17 +115,6 @@ const { draft, error, busy, dirty, submit } = part
           :disabled="!version.can.edit"
           class="space-y-4"
         >
-          <UFormField
-            label="Version code"
-            name="code"
-            required
-            help="Its code, e.g. V.05: letters, digits, dot, dash or underscore. Unique within RA or RA Branch."
-          >
-            <UInput
-              v-model="draft.code"
-              class="w-full"
-            />
-          </UFormField>
           <UFormField
             label="Name"
             name="name"

@@ -54,7 +54,7 @@ async function griyaHasAFinalRa(page: Page) {
 }
 
 async function openImport(page: Page, module: 'ra' | 'ra-branch' = 'ra') {
-  await page.goto(`/${module}/manage`)
+  await page.goto(`/${module}/manage/new`)
   await page.getByRole('button', { name: 'Import from Excel' }).click({ timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'Import from Excel' })
   await expect(dialog).toBeVisible()
@@ -71,7 +71,7 @@ const importButton = (dialog: Locator) => dialog.getByRole('button', { name: 'Im
 test('Import from Excel takes one workbook: the reason first, then the template and the file', async ({ page }) => {
   await mockImport(page)
   const dialog = await openImport(page)
-  await expect(page).toHaveURL(/\/ra\/manage\?import=1$/)
+  await expect(page).toHaveURL(/\/ra\/manage\/new\?import=1$/)
   // RA HO takes the HO workbook only: no type to pick.
   await expect(dialog.getByRole('radio')).toHaveCount(0)
   await expect(dialog.getByText('Create an RA from the HO workbook filled in Excel, one building per file.')).toBeVisible()
@@ -115,11 +115,16 @@ test('Import from Excel takes one workbook: the reason first, then the template 
   await expect(importButton(dialog)).toBeEnabled()
   await expect(dialog.getByText(/SCCA/)).toHaveCount(0)
 
-  // RA Branch › Manage opens it on the Cabang workbook. Master building has no import.
+  // RA Branch › New assessment opens it on the Cabang workbook. Manage and Master building
+  // have no import, and New assessment no Cancel (as SCCA's).
   await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await page.goto('/ra-branch/manage')
+  await expect(page.getByRole('link', { name: 'Cancel' })).toHaveCount(0)
+  await page.goto('/ra-branch/manage/new')
   await page.getByRole('button', { name: 'Import from Excel' }).click({ timeout: 60_000 })
   await expect(page.getByRole('dialog', { name: 'Import from Excel' }).getByText('Create an RA from the Cabang workbook filled in Excel, one building per file.')).toBeVisible()
+  await page.goto('/ra-branch/manage')
+  await expect(page.getByRole('link', { name: 'New assessment' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Import from Excel' })).toHaveCount(0)
   await page.goto('/admin/buildings')
   await expect(page.getByRole('link', { name: 'Input building data' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Import from Excel' })).toHaveCount(0)
@@ -237,11 +242,12 @@ test('a structural change picks its renewal date, and the API\'s answer lands on
   await expect(dialog.getByText('Enter the renewal date. It can be sooner than one year.')).toBeVisible()
   expect(sent).toHaveLength(0)
   await dialog.getByRole('button', { name: /Renewal date|Pick a date/ }).last().click()
-  await page.getByRole('gridcell').filter({ hasText: /^20$/ }).first().click()
+  // The last day this month that can be picked (not before the assessment date, today).
+  await page.locator('[role="gridcell"]:not([data-disabled]):not([data-outside-view])').last().click()
   await importButton(dialog).click()
   await expect(dialog.getByText('Choose a user with RA access.').first()).toBeVisible()
   expect(sent[0]!.options).toMatchObject({ location_id: 1, replace_profile: false, assessment: { reason: 'structural_change' } })
-  expect((sent[0]!.options as { assessment: { due_date?: string } }).assessment.due_date).toMatch(/^\d{4}-\d{2}-20$/)
+  expect((sent[0]!.options as { assessment: { due_date?: string } }).assessment.due_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 })
 
 test('an HO workbook can\'t be imported in RA Branch', async ({ page }) => {
@@ -250,7 +256,7 @@ test('an HO workbook can\'t be imported in RA Branch', async ({ page }) => {
   await pickReason(page, dialog, 'New building')
   await dialog.getByLabel('Choose the RA workbook').setInputFiles(WORKBOOK)
   await expect(dialog.getByText('This is an RA HO workbook')).toBeVisible()
-  await expect(dialog.getByText('Import it from RA HO › Manage, or choose another file.')).toBeVisible()
+  await expect(dialog.getByText('Import it from RA HO › New assessment, or choose another file.')).toBeVisible()
   await expect(importButton(dialog)).toBeDisabled()
   expect(sent).toHaveLength(0)
 })
@@ -305,16 +311,40 @@ test('each module downloads its own empty template, and the old link opens the d
     })
   })
   await page.goto('/locations/import')
-  await expect(page).toHaveURL(/\/ra\/manage\?import=1$/, { timeout: 60_000 })
+  await expect(page).toHaveURL(/\/ra\/manage\/new\?import=1$/, { timeout: 60_000 })
   const dialog = page.getByRole('dialog', { name: 'Import from Excel' })
   const ho = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Download template' }).click()
   expect((await ho).suggestedFilename()).toBe('RA_Import-template_HO_V.04.xlsx')
-  // An old Master building link opens RA Branch › Manage for a branch.
+  // An old Master building link opens RA Branch › New assessment for a branch, and so does an
+  // old Manage link.
   await page.goto('/admin/buildings?import=branch')
-  await expect(page).toHaveURL(/\/ra-branch\/manage\?import=1$/, { timeout: 60_000 })
+  await expect(page).toHaveURL(/\/ra-branch\/manage\/new\?import=1$/, { timeout: 60_000 })
   const cabang = page.waitForEvent('download')
   await page.getByRole('dialog', { name: 'Import from Excel' }).getByRole('button', { name: 'Download template' }).click()
   expect((await cabang).suggestedFilename()).toBe('RAB_Import-template_Cabang_V.04.xlsx')
   expect(asked).toEqual(['head_office', 'branch'])
+  await page.goto('/ra/manage?import=1')
+  await expect(page).toHaveURL(/\/ra\/manage\/new\?import=1$/, { timeout: 60_000 })
+  await expect(page.getByRole('dialog', { name: 'Import from Excel' })).toBeVisible()
+})
+
+test('a workbook with a missing required input is listed to fix and not imported, as SCCA\'s', async ({ page }) => {
+  const errors = [
+    { sheet: 'LRP (front)', cell: 'F10', message: 'Building name: required.', level: 'error' },
+    { sheet: 'LRP (front)', cell: 'M13', message: 'LICOM phone: required.', level: 'error' },
+  ]
+  await mockImport(page, { ...PREVIEW, warnings: [...errors, ...PREVIEW.warnings], errors: 2, can_import: false })
+  const dialog = await openImport(page)
+  await pickReason(page, dialog, 'New building')
+  await dialog.getByLabel('Choose the RA workbook').setInputFiles(WORKBOOK)
+  await expect(dialog.getByText('2 things to fix in the workbook')).toBeVisible()
+  const fix = dialog.getByRole('list', { name: 'To fix in the workbook' })
+  await expect(fix.getByRole('listitem')).toHaveCount(2)
+  await expect(fix.getByText('Building name: required.')).toBeVisible()
+  await expect(fix.getByText('LRP (front) · M13')).toBeVisible()
+  // The warnings stay under Check after import.
+  await expect(dialog.getByRole('list', { name: 'Check after import' }).getByText('Building name: required.')).toHaveCount(0)
+  await expect(dialog.getByText('Fix the workbook and choose it again.')).toBeVisible()
+  await expect(importButton(dialog)).toBeDisabled()
 })

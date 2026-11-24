@@ -87,6 +87,7 @@ async function save() {
 <template>
   <AppPage
     title="Guidebook"
+    :tab-title="`${t.label} Guidebook`"
     :crumbs="[{ label: BUILDINGS_GROUP }, { label: t.label, to: `${t.path}/monitoring` }, { label: 'Guidebook' }]"
   >
     <SkeletonGroup

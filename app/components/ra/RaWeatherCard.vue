@@ -16,6 +16,13 @@ const props = defineProps<{
 const emit = defineEmits<{ show: [warning: RaWeatherWarning], place: [id: number] }>()
 
 const view = ref<'active' | 'history'>('active')
+/** The warnings whose whole description is open (Show details). */
+const expanded = ref(new Set<string>())
+function toggle(id: string) {
+  const next = new Set(expanded.value)
+  if (!next.delete(id)) next.add(id)
+  expanded.value = next
+}
 // A warning picked on the map is an active one: show the active list, where it is.
 watch(() => props.selectedId, (id) => {
   if (id) view.value = 'active'
@@ -127,7 +134,7 @@ function when(warning: RaWeatherWarning) {
 
       <ul
         v-if="report?.items.length"
-        class="divide-y divide-default rounded-md border border-default"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-default rounded-md border border-default"
       >
         <li
           v-for="warning in report.items"
@@ -153,12 +160,26 @@ function when(warning: RaWeatherWarning) {
                 · {{ warning.event }}
               </template>
             </p>
-            <p
-              v-if="warning.description"
-              class="line-clamp-2 text-muted"
-            >
-              {{ warning.description }}
-            </p>
+            <template v-if="warning.description">
+              <p
+                :id="`warning-detail-${warning.id}`"
+                class="text-muted"
+                :class="expanded.has(warning.id) ? 'whitespace-pre-line break-words' : 'line-clamp-2'"
+              >
+                {{ warning.description }}
+              </p>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="xs"
+                class="px-0"
+                :trailing-icon="expanded.has(warning.id) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                :label="expanded.has(warning.id) ? 'Hide details' : 'Show details'"
+                :aria-expanded="expanded.has(warning.id)"
+                :aria-controls="`warning-detail-${warning.id}`"
+                @click="toggle(warning.id)"
+              />
+            </template>
             <p
               v-if="warning.places.length"
               class="flex flex-wrap items-center gap-x-2 gap-y-1 text-highlighted"

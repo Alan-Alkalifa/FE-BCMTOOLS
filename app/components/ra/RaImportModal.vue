@@ -5,7 +5,8 @@ import type { RaImportOptions, RaImportPreview, RaImportResult, RaLocation, RaNe
 
 /**
  * Import from Excel: one building's RA from one filled-in workbook, in the module it is opened
- * from (RA HO › Manage takes the HO workbook, RA Branch › Manage the Cabang one).
+ * from (RA HO › New assessment takes the HO workbook, RA Branch › New assessment the Cabang
+ * one), as SCCA's Upload Excel.
  * 1. What is assessed. The reason, then
  *    - New building: the building's details, filled in from the workbook where it has them,
  *    - Annual review or Structural change: the registered building it renews (only those the
@@ -13,7 +14,9 @@ import type { RaImportOptions, RaImportPreview, RaImportResult, RaLocation, RaNe
  *    and the assessment date, the renewal date (Structural change), the LIC (the importer) and
  *    the LICOM.
  * 2. The empty template to fill in.
- * 3. The filled workbook. The preview shows what it holds and what to check, saving nothing.
+ * 3. The filled workbook. The preview shows what it holds, what to fix and what to check,
+ *    saving nothing. A workbook with errors (a required input missing or unreadable, as SCCA's)
+ *    can't be imported until it is fixed and chosen again.
  * Import creates the draft RA (and a new building, which waits for approval). The API checks
  * everything again. Several workbooks at once go through Administration › RA migration.
  */
@@ -355,6 +358,7 @@ const missing = computed(() => {
   if (pickedProblem.value) return pickedProblem.value
   if (blocked.value) return blocked.value
   if (!file.value) return 'Choose the filled workbook.'
+  if (preview.value && !preview.value.can_import) return 'Fix the workbook and choose it again.'
   return null
 })
 
@@ -877,7 +881,7 @@ async function downloadTemplate() {
             variant="subtle"
             icon="i-lucide-circle-alert"
             :title="`This is an ${otherType} workbook`"
-            :description="`Import it from ${otherType} › Manage, or choose another file.`"
+            :description="`Import it from ${otherType} › New assessment, or choose another file.`"
           />
           <RaImportReview
             v-else-if="preview"

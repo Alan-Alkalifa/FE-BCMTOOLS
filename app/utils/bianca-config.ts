@@ -2,7 +2,7 @@ import type { BiancaConfigVersion, BiancaListItems, BiancaListKey } from '~/comp
 
 export const BIANCA_LISTS: { key: BiancaListKey, label: string, help: string, maxCode: number, maxActive: number, locked?: boolean }[] = [
   { key: 'periods', label: 'Impact periods', help: 'Order periods from shortest to longest. Keep between 1 and 24 active periods.', maxCode: 255, maxActive: 24 },
-  { key: 'suggested_mtd', label: 'Suggested MTD', help: 'Use a positive duration as the code, such as 4 hours or 1 day.', maxCode: 16, maxActive: 64 },
+  { key: 'suggested_mtd', label: 'Suggested MTD', help: 'Part 1 choices, managed in Master data › Master MTD.', maxCode: 16, maxActive: 64 },
   { key: 'dependency_mtd', label: 'Dependency MTD', help: 'Use a duration, NA, or SLA as the code.', maxCode: 16, maxActive: 66 },
   { key: 'percentages', label: 'Function planned capacity', help: 'MST_Generic Value column I. Use a percentage between 0% and 100%.', maxCode: 8, maxActive: 101 },
   { key: 'upstream_capacity', label: 'Upstream capacity', help: 'MST_Generic Value column F. Use an active function capacity percentage, NA, or SLA.', maxCode: 8, maxActive: 103 },

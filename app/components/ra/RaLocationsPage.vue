@@ -94,10 +94,10 @@ const typeModel = computed<TypeFilter>({ get: () => type.value, set: (value) => 
 const provinceModel = computed<string>({ get: () => province.value ?? 'all', set: (value) => setQuery('province', value) })
 const statusModel = computed<StatusFilter>({ get: () => statusFilter.value, set: (value) => setQuery('status', value) })
 
-// Import from Excel is in RA HO and RA Branch › Manage: an old `?import=` link opens it there.
+// Import from Excel is in RA HO and RA Branch › New assessment: an old `?import=` link opens it there.
 if (route.query.import !== undefined) {
   const kind: RaKind = route.query.import === 'branch' ? 'branch' : 'head_office'
-  await navigateTo({ path: raPath(kind, 'manage'), query: { import: '1' } }, { replace: true })
+  await navigateTo({ path: raPath(kind, 'manage', 'new'), query: { import: '1' } }, { replace: true })
 }
 
 const { data, status, error, refresh } = useRaLocationRegister(() => ({
