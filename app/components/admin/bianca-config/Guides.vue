@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { BIANCA_TEXTS, type BiancaTextKey } from '~/utils/biancaTexts'
+
 const model = defineModel<Record<string, string>>({ required: true })
 const props = defineProps<{ disabled: boolean, referenceGuides: Record<string, string> }>()
 const route = useRoute()
@@ -16,13 +18,19 @@ const details: Record<string, [string, string]> = {
   risk_assessment: ['Personnel and risk assessment', 'Organization structure and location risk assessment.'],
   critical_timings: ['Critical timings', 'Frequency, deadlines and critical activities.'],
 }
+/** The form's guidance texts (what each part is for, the guides beside it, the help under fields),
+ * saved as `text_<key>`; empty shows the default. */
+const textDefaults = Object.fromEntries(Object.entries(BIANCA_TEXTS).map(([key, [, text]]) => [`text_${key}`, text]))
+const defaults = computed<Record<string, string>>(() => ({ ...props.referenceGuides, ...textDefaults }))
+const kindOf = (key: string) => key.startsWith('field_') ? 'fields' : key.startsWith('text_') ? 'texts' : 'topics'
 const group = computed({
-  get: () => route.query.notes === 'fields' ? 'fields' : 'topics',
+  get: () => route.query.notes === 'fields' || route.query.notes === 'texts' ? route.query.notes : 'topics',
   set: (value: string) => router.replace({ query: { ...route.query, notes: value, guide: undefined } }),
 })
-const keys = computed(() => [...new Set([...Object.keys(model.value), ...Object.keys(props.referenceGuides)])]
-  .filter((key) => key.startsWith('field_') === (group.value === 'fields')))
+const keys = computed(() => [...new Set([...Object.keys(model.value), ...Object.keys(defaults.value)])]
+  .filter((key) => kindOf(key) === group.value))
 function guideLabel(key: string) {
+  if (key.startsWith('text_') && key.slice(5) in BIANCA_TEXTS) return BIANCA_TEXTS[key.slice(5) as BiancaTextKey][0]
   const text = key.replace(/^field_/, '').replaceAll('_', ' ')
   return details[key]?.[0] ?? text.charAt(0).toUpperCase() + text.slice(1)
 }
@@ -32,14 +40,17 @@ const selected = computed({
   set: (value: string) => router.replace({ query: { ...route.query, guide: value } }),
 })
 const title = computed(() => selected.value ? guideLabel(selected.value) : '')
-const paragraphs = computed(() => (model.value[selected.value] ?? '').split(/\n\s*\n/).filter(Boolean))
+const paragraphs = computed(() => (model.value[selected.value] || (kindOf(selected.value) === 'texts' ? defaults.value[selected.value] : '') || '').split(/\n\s*\n/).filter(Boolean))
 </script>
 
 <template>
   <USelect
-    v-if="Object.keys(model).some(key => key.startsWith('field_'))"
     v-model="group"
-    :items="[{ label: 'Guides and statements', value: 'topics' }, { label: 'Form field notes', value: 'fields' }]"
+    :items="[
+      { label: 'Guides and statements', value: 'topics' },
+      { label: 'Form field notes', value: 'fields' },
+      { label: 'Form texts (parts, guides, help)', value: 'texts' },
+    ]"
     aria-label="Guidance section"
     class="mb-4 w-full sm:w-60"
   />
@@ -61,7 +72,7 @@ const paragraphs = computed(() => (model.value[selected.value] ?? '').split(/\n\
           <h2 class="font-semibold text-highlighted">
             {{ title }}
           </h2><p class="mt-1 text-sm text-muted">
-            {{ details[selected]?.[1] }}
+            {{ details[selected]?.[1] ?? (kindOf(selected) === 'texts' ? 'Shown in the BIA form. Left empty, the form shows the default text.' : '') }}
           </p>
         </div>
       </div>
@@ -108,14 +119,14 @@ const paragraphs = computed(() => (model.value[selected.value] ?? '').split(/\n\
         />
       </UFormField>
       <details
-        v-if="referenceGuides[selected]"
+        v-if="defaults[selected]"
         class="rounded-lg border border-default p-4"
       >
         <summary class="cursor-pointer text-sm font-medium">
-          Workbook reference
+          {{ kindOf(selected) === 'texts' ? 'Default text' : 'Workbook reference' }}
         </summary>
         <p class="mt-4 max-w-prose whitespace-pre-line text-sm leading-7 wrap-anywhere">
-          {{ referenceGuides[selected] }}
+          {{ defaults[selected] }}
         </p>
         <UButton
           v-if="!disabled"
@@ -123,8 +134,8 @@ const paragraphs = computed(() => (model.value[selected.value] ?? '').split(/\n\
           class="mt-4"
           color="neutral"
           variant="outline"
-          label="Use workbook text"
-          @click="model[selected] = referenceGuides[selected]!"
+          :label="kindOf(selected) === 'texts' ? 'Use the default' : 'Use workbook text'"
+          @click="model[selected] = defaults[selected]!"
         />
       </details>
     </div>

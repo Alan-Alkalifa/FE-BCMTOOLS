@@ -109,14 +109,11 @@ const columns: TableColumn<BiancaSummary>[] = [
 const ROLE_LABEL = { owner: 'Owner', group: 'Group (view)' } as const
 const TONE = { error: 'font-medium text-error', warning: 'font-medium text-warning', neutral: 'text-muted' } as const
 
-const exporter = useBiancaExport()
-const pdf = useBiancaPdf()
+// Manage lists drafts: a draft is printed from its report (no PDF or Excel export).
 function rowActions(row: BiancaSummary): DropdownMenuItem[] {
   return [
     { label: 'Open', icon: 'i-lucide-folder-open', to: biancaPath(row.id) },
-    { label: 'View report', icon: 'i-lucide-file-text', to: biancaReportPath(row.id) },
-    { label: 'Download PDF', icon: 'i-lucide-file-down', onSelect: () => pdf.run(row.id) },
-    { label: 'Export to Excel', icon: 'i-lucide-file-spreadsheet', onSelect: () => exporter.run(row.id) },
+    { label: 'View or print the report', icon: 'i-lucide-printer', to: biancaReportPath(row.id) },
   ]
 }
 
