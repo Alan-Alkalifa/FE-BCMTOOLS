@@ -331,6 +331,16 @@ export interface RaMapStation extends RaPin {
   active?: boolean
 }
 
+/** A place GDELT's disaster news mentions: a dot with its number of articles and, when
+ *  selected, the radius within which buildings are listed. */
+export interface RaMapNews extends RaPin {
+  id: string
+  label: string
+  count: number
+  radiusM: number
+  active?: boolean
+}
+
 /** A polygon area on the map: a BMKG weather warning. Each polygon as [[lat, lon], ...]. */
 export interface RaMapArea {
   id: string
@@ -622,6 +632,10 @@ export interface RaLocation extends RaLocationRef {
   zip_code?: string | null
   /** How many people the building can hold on site. */
   onsite_capacity?: number | null
+  /** The building has a Hyspace, then on which floor and for how many people. */
+  hyspace_available?: boolean
+  hyspace_floor?: string | null
+  hyspace_capacity?: number | null
   /** The occupants' employees (null without occupants). */
   onsite_employees?: number | null
   latitude: number | null
@@ -814,6 +828,11 @@ export interface RaLocationInput {
   city?: string | null
   district?: string | null
   zip_code?: string | null
+  onsite_capacity?: number | null
+  /** With true, the Hyspace floor and capacity are required; with false they are cleared. */
+  hyspace_available?: boolean
+  hyspace_floor?: string | null
+  hyspace_capacity?: number | null
   region?: string | null
   area?: string | null
   region_description?: string | null
@@ -1190,6 +1209,59 @@ export interface RaPastDisasters {
   air?: RaAirSuggestion
   /** BMKG's weather warnings over the building, for its hazard (H06). */
   weather?: RaWeatherHistory
+  /** GDELT's Indonesian news naming the building's city, per hazard with keywords. */
+  gdelt?: RaGdeltHistory
+}
+
+export interface RaGdeltHistory {
+  enabled: boolean
+  city: string | null
+  from_year: number
+  to_year: number
+  source: string
+  source_url: string
+  hazards: Record<string, {
+    keywords: string[]
+    read_at: string | null
+    /** The first day the kept counts cover. */
+    held_from: string | null
+    articles: number
+    /** Days (UTC) with an article. */
+    days: number
+    last: string | null
+    items: { url: string, title: string | null, domain: string | null, seen_at: string }[]
+  }>
+}
+
+/** GET /api/ra/gdelt: GDELT's disaster news places on the building map (the last 7 days). */
+export interface RaGdeltPlace {
+  key: string
+  name: string | null
+  lat: number
+  lon: number
+  hazards: string[]
+  articles_count: number
+  last: string
+  articles: { url: string, domain: string | null, language: string | null, hazard_code: string, tone: number | null, published_at: string }[]
+  places: { id: number, code: string, kind: RaKind, name: string, distance_km: number }[]
+}
+
+export interface RaGdeltReport {
+  enabled: boolean
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  source: string
+  source_url: string
+  hazard: string | null
+  days: number
+  radius_km: number
+  /** The hazards with GDELT themes. */
+  hazards: string[]
+  matching: number
+  /** Buildings and branches within the radius of a place. */
+  affected: number
+  items: RaGdeltPlace[]
 }
 
 export interface RaWeatherHistory {
@@ -1372,6 +1444,8 @@ export interface RaImportPreview {
   errors: number
   /** No error: the workbook can be imported. */
   can_import: boolean
+  /** Read for replacing this draft (Upload Excel on a draft). */
+  draft?: { id: number, ref_no: string | null } | null
 }
 export interface RaImportOptions {
   location_id?: number
@@ -1401,6 +1475,19 @@ export const raApi = {
     const body = new FormData()
     body.append('file', file)
     return $fetch<RaImportPreview>('/api/ra/imports/preview', { method: 'POST', body })
+  },
+  /** Upload Excel on a draft: what the workbook holds, for replacing that draft. */
+  importDraftPreview: (id: number, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<RaImportPreview>(`/api/ra/assessments/${id}/import/preview`, { method: 'POST', body })
+  },
+  /** Replace the draft's ratings (and the building's profile with `replaceProfile`). */
+  replaceDraft: (id: number, file: File, replaceProfile: boolean) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('replace_profile', replaceProfile ? 'true' : 'false')
+    return $fetch<RaAssessment>(`/api/ra/assessments/${id}/import`, { method: 'POST', body })
   },
   importWorkbook: (file: File, options: RaImportOptions) => {
     const body = new FormData()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The legend under a map, one row per kind of thing it draws: places, their status, events,
- * the pin colours (`residual`) and WAQI's air quality (`aqi`). The symbols are the map's own
+ * the pin colours (`residual`), WAQI's air quality (`aqi`) and GDELT's disaster news (`news`). The symbols are the map's own
  * (the same RaMapSymbol the pins use). Every map shows one (Location map, the disaster dialog
  * and the disaster page), listing only what that map can show.
  */
@@ -15,12 +15,15 @@ const props = withDefaults(defineProps<{
   weather?: boolean
   /** The map draws WAQI's air quality stations. */
   aqi?: boolean
+  /** The map draws GDELT's disaster news places. */
+  news?: boolean
 }>(), {
   items: () => ['building', 'branch', 'waiting', 'rejected', 'inactive', 'crisis', 'crisis_pending', 'quake'],
   labels: () => ({}),
   residual: 'Latest residual risk',
   weather: false,
   aqi: false,
+  news: false,
 })
 
 type Group = 'places' | 'status' | 'events'
@@ -47,7 +50,7 @@ const rows = computed(() => GROUPS
       .filter((key) => SYMBOLS[key].group === group.key)
       .map((key) => ({ key, ...SYMBOLS[key], label: props.labels[key] ?? SYMBOLS[key].label })),
   }))
-  .filter((group) => group.items.length || (group.key === 'events' && props.weather)))
+  .filter((group) => group.items.length || (group.key === 'events' && (props.weather || props.news))))
 /** Faded markers are explained wherever the map can show a place not in service. */
 const showsFaded = computed(() => props.items.includes('inactive') || props.items.includes('rejected'))
 </script>
@@ -88,6 +91,13 @@ const showsFaded = computed(() => props.items.includes('inactive') || props.item
           class="inline-block h-3 w-4 rounded-sm border border-dashed border-info bg-info/15"
           aria-hidden="true"
         /> Weather warning (BMKG) and its area</span>
+        <span
+          v-if="group.key === 'events' && news"
+          class="flex items-center gap-1"
+        ><span
+          class="inline-flex h-3 w-4 items-center justify-center rounded-[3px] bg-[#7c3aed] text-[8px] font-semibold leading-none text-white"
+          aria-hidden="true"
+        >3</span> Disaster news (GDELT), the number of articles, dashed ring for the selected place's radius</span>
       </dd>
     </template>
 

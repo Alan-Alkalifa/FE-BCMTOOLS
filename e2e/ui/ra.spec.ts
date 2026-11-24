@@ -75,13 +75,17 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
 
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
-  await expect(page.getByRole('table').filter({ visible: true }).getByText('Budi Hartono')).toBeVisible()
+  const approval = page.getByRole('table').filter({ visible: true })
+  await expect(approval.getByText('Budi Hartono')).toBeVisible()
+  for (const header of ['Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
+    await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
   await expect(page.getByText(/Slowest step: Unit Critical Business Function, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
-  // The step is named by its title, like SCCA.
-  await expect(page.getByRole('table').getByText('Reviewed by Alternate Location Incident Commander (LICOM)')).toBeVisible()
+  // The step is named by its configured short name.
+  await expect(page.getByRole('table').getByText('LICOM', { exact: true })).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
 })
 
@@ -154,7 +158,7 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.keyboard.press('Escape')
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   const approval = page.getByRole('table').filter({ visible: true })
-  for (const header of ['RA ref. no.', 'Current step', 'Signer', 'Escalated on', 'In approval']) {
+  for (const header of ['RA ref. no.', 'Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
     await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
   }
 })
@@ -485,6 +489,21 @@ test('WHO\'s outbreak news and OpenAQ\'s air quality show on their hazards over 
   await expect(page.getByTestId('outbreak-news')).toHaveCount(0)
 })
 
+test('GDELT\'s Indonesian news in the building\'s city shows on each hazard it has read', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const news = page.getByTestId('gdelt-news')
+  await expect(news).toContainText('Indonesian news reported it in Jakarta Selatan in 46 articles, on 9 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(news.getByRole('link', { name: 'Banjir rendam Kemang' })).toHaveAttribute('href', 'https://news.example.id/banjir-kemang')
+  await expect(news).toContainText('banjir, banjir bandang, flood · counted from 23 Nov 2025 · Source: GDELT')
+  // DIBI still speaks for floods.
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded it 12 times')
+  // A hazard GDELT hasn't read yet says nothing.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none', { timeout: 60_000 })
+  await expect(page.getByTestId('gdelt-news')).toHaveCount(0)
+})
+
 test('BMKG\'s weather warnings over the building show on the weather hazard', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
@@ -618,7 +637,7 @@ test('buildings have no Delete button: a building is made inactive instead', asy
 test('as SCCA, Save is in the top bar for the open tab, beside View report; no Delete', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('p', { hasText: 'Griya CIMB Niaga 2 · 2025' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', '/ra/manage/1/report')
   // One Save per tab, in the top bar: enabled once something changed.
@@ -940,6 +959,32 @@ test('the location page lists its assessments and edits its details', async ({ p
   await expect(page.getByLabel('Type of building', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Save building' }).click()
   expect((await request).postDataJSON()).toMatchObject({ address: 'Jl. Wahid Hasyim, Bintaro', is_active: true })
+})
+
+test('Building details asks whether a Hyspace is available, then its floor and capacity', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/admin/buildings/1')
+  const hyspace = page.getByRole('combobox', { name: 'Hyspace Available?' })
+  await expect(hyspace).toContainText('No', { timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: /Hyspace Floor/ })).toHaveCount(0)
+  await hyspace.click()
+  await page.getByRole('option', { name: 'Yes', exact: true }).click()
+  await page.getByRole('button', { name: 'Save building' }).click()
+  await expect(page.getByText('Enter the Hyspace floor.')).toBeVisible()
+  await expect(page.getByText('Enter the Hyspace capacity, 1 or more.')).toBeVisible()
+  await page.getByRole('textbox', { name: /Hyspace Floor/ }).fill('Lantai 12')
+  await page.getByRole('spinbutton', { name: /Hyspace Capacity/ }).fill('40')
+  await page.getByRole('spinbutton', { name: /Hyspace Capacity/ }).blur()
+  const saved = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
+  await page.getByRole('button', { name: 'Save building' }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ hyspace_available: true, hyspace_floor: 'Lantai 12', hyspace_capacity: 40 })
+  // No: the floor and capacity go, and are cleared.
+  await hyspace.click()
+  await page.getByRole('option', { name: 'No', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: /Hyspace Floor/ })).toHaveCount(0)
+  const cleared = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
+  await page.getByRole('button', { name: 'Save building' }).click()
+  expect((await cleared).postDataJSON()).toMatchObject({ hyspace_available: false, hyspace_floor: null, hyspace_capacity: null })
 })
 
 test('the Details tab shows the building and edits it, as on its page', async ({ page }) => {
@@ -1557,7 +1602,7 @@ test('downloads are offered only once the RA is approved, on its report', async 
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
   // As SCCA's: the record itself has no downloads.
   await page.goto('/ra/monitoring/1')
-  await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('p', { hasText: 'Griya CIMB Niaga 2 · 2025' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
 })
 

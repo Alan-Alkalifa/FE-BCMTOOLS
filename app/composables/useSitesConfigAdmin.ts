@@ -4,7 +4,7 @@ import type { RaBmkgStatus, RaCrisisType } from '~/composables/useRa'
  * Administration > Sites configuration: the live settings of the Sites menu, not versioned.
  * Whether each hazard is a disaster or an incident, BMKG's earthquakes, and the past disasters
  * (BNPB's DIBI, WHO's outbreak news, OpenAQ's air quality, BMKG's weather early warnings, WAQI's
- * air quality stations).
+ * air quality stations, GDELT's disaster news).
  * Read with sites.config.view, changed with sites.config.manage.
  */
 const BASE = '/api/admin/sites-config'
@@ -99,6 +99,45 @@ export interface RaWeatherInput {
   hazard_code: string
 }
 
+/** Sites configuration > Past disasters: GDELT's disaster news, the map's places every hour and
+ *  each city's history (Indonesian news) every few days. */
+export interface RaGdeltStatus {
+  enabled: boolean
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  radius_km: number
+  every_days: number
+  /** GDELT GKG themes per hazard, for the map. */
+  themes: Record<string, string[]>
+  /** Keywords per hazard, for the history. */
+  keywords: Record<string, string[]>
+  default_themes: Record<string, string[]>
+  default_keywords: Record<string, string[]>
+  themes_url: string
+  points: number
+  history: {
+    cities: number
+    pairs: number
+    read: number
+    due: number
+    failing: number
+    held_from: string | null
+    ran_at: string | null
+    error: string | null
+  }
+  source: string
+  source_url: string
+}
+
+export interface RaGdeltInput {
+  enabled: boolean
+  radius_km: number
+  every_days: number
+  themes: Record<string, string[]>
+  keywords: Record<string, string[]>
+}
+
 /** Sites configuration > Past disasters: WAQI's air quality stations, read live. */
 export interface RaWaqiSettings {
   /** The server has a WAQI token. */
@@ -136,6 +175,9 @@ export const sitesConfigApi = {
   weather: () => $fetch<RaWeatherStatus>(`${BASE}/weather`),
   saveWeather: (body: RaWeatherInput) => $fetch<RaWeatherStatus>(`${BASE}/weather`, { method: 'PUT', body }),
   readWeather: () => $fetch<RaWeatherStatus>(`${BASE}/weather/read`, { method: 'POST' }),
+  gdelt: () => $fetch<RaGdeltStatus>(`${BASE}/gdelt`),
+  saveGdelt: (body: RaGdeltInput) => $fetch<RaGdeltStatus>(`${BASE}/gdelt`, { method: 'PUT', body }),
+  readGdelt: () => $fetch<RaGdeltStatus>(`${BASE}/gdelt/read`, { method: 'POST' }),
   waqi: () => $fetch<RaWaqiSettings>(`${BASE}/waqi`),
   saveWaqi: (body: RaWaqiSettingsInput) => $fetch<RaWaqiSettings>(`${BASE}/waqi`, { method: 'PUT', body }),
   saveHazardTypes: (types: Record<string, RaCrisisType>) =>

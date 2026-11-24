@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { RaCrisisType, RaEarthquake, RaMapArea, RaMapMarker, RaMapPlace, RaPin, RaMapStation, RaWaqiReport, RaWaqiStation, RaWeatherReport, RaWeatherWarning } from '~/composables/useRa'
+import type { RaCrisisType, RaEarthquake, RaGdeltPlace, RaGdeltReport, RaMapArea, RaMapMarker, RaMapNews, RaMapPlace, RaPin, RaMapStation, RaWaqiReport, RaWaqiStation, RaWeatherReport, RaWeatherWarning } from '~/composables/useRa'
 import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
 
 /**
@@ -19,6 +19,11 @@ import RaCrisisModal from '~/components/ra/RaCrisisModal.vue'
  *
  * BMKG's active weather early warnings show as blue dashed areas (?warning= selects one) and
  * in their tab with the places inside and the history, read again every 5 minutes.
+ *
+ * GDELT's disaster news of the last 7 days shows as violet squares with their number of
+ * articles (?news= selects one and draws its radius) and in the "Disaster news (GDELT)" tab
+ * with the buildings within the radius, one hazard or all (?news_hazard=), read again every 15
+ * minutes.
  *
  * The reports under the map are tabs (?report=), each read when opened. Earthquakes (BMKG,
  * with the MMI scale above the list), Weather warnings (BMKG), Disease outbreaks (WHO's outbreak news about the country,
@@ -41,6 +46,7 @@ const showBranches = ref(true)
 const showInactive = ref(true)
 const showQuakes = ref(true)
 const showWeather = ref(true)
+const showNews = ref(true)
 
 // BMKG's recent earthquakes, read again every 2 minutes (the server polls BMKG as often).
 const { data: quakeList, error: quakeError, refresh: refreshQuakes } = useRaEarthquakes(7)
@@ -103,10 +109,59 @@ function onArea(id: string) {
   revealRow(`[data-warning="${CSS.escape(key)}"]`)
 }
 
+// GDELT's disaster news places, read again every 15 minutes (the server reads GDELT hourly).
+/** The hazard shown, in the URL (?news_hazard=H01), all without it. */
+const newsHazard = computed<string | null>({
+  get: () => (route.query.news_hazard ? String(route.query.news_hazard) : null),
+  set: (code) => router.replace({ query: { ...route.query, news_hazard: code ?? undefined, news: undefined } }),
+})
+const { data: newsReport, error: newsError, refresh: refreshNews } = useAsyncData(
+  'ra-gdelt',
+  () => $fetch<RaGdeltReport>('/api/ra/gdelt', { query: { hazard: newsHazard.value ?? undefined } }),
+  { server: false, watch: [newsHazard] },
+)
+const newsOn = computed(() => !!newsReport.value?.enabled)
+const newsPlaces = computed(() => newsReport.value?.items ?? [])
+let newsTimer: ReturnType<typeof setInterval> | undefined
+/** The selected place stays in the URL (?news=-6.2146,106.8456). */
+const selectedNewsKey = computed<string | null>({
+  get: () => (route.query.news ? String(route.query.news) : null),
+  set: (key) => router.replace({ query: { ...route.query, news: key ?? undefined } }),
+})
+const news = computed<RaMapNews[]>(() => (showNews.value && newsOn.value ? newsPlaces.value : []).map((place) => ({
+  id: place.key,
+  lat: place.lat,
+  lng: place.lon,
+  label: `${place.name ?? 'News place'}, ${place.articles_count} ${place.articles_count === 1 ? 'article' : 'articles'} (GDELT)`,
+  count: place.articles_count,
+  radiusM: (newsReport.value?.radius_km ?? 0) * 1000,
+  active: place.key === selectedNewsKey.value,
+})))
+/** A news place clicked on the map: select it and scroll to it in the GDELT tab. */
+function onNews(key: string) {
+  autoFit.value = false
+  router.replace({ query: { ...route.query, report: 'news', news: key } })
+  revealRow(`[data-news="${CSS.escape(key)}"]`)
+}
+/** From the GDELT tab: zoom the map to the place's radius and select it. */
+function showNewsPlace(place: RaGdeltPlace) {
+  autoFit.value = false
+  showNews.value = true
+  selectedNewsKey.value = place.key
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  document.getElementById('building-map')?.scrollIntoView({ behavior, block: 'center' })
+  const pad = (newsReport.value?.radius_km ?? 1) / 111.32
+  mapRef.value?.fit([
+    { lat: place.lat - pad, lng: place.lon - pad },
+    { lat: place.lat + pad, lng: place.lon + pad },
+  ])
+}
+
 function startTimers() {
   stopTimers()
   quakeTimer = setInterval(() => refreshQuakes(), 120_000)
   weatherTimer = setInterval(() => refreshWeather(), 300_000)
+  newsTimer = setInterval(() => refreshNews(), 900_000)
   waqiTimer = setInterval(() => {
     if (waqiOn.value) refreshWaqi()
   }, 900_000)
@@ -114,6 +169,7 @@ function startTimers() {
 function stopTimers() {
   clearInterval(quakeTimer)
   clearInterval(weatherTimer)
+  clearInterval(newsTimer)
   clearInterval(waqiTimer)
 }
 // In a background in-app tab (docs/tabs.md) the map stops asking; back in front, it catches up.
@@ -127,6 +183,7 @@ onActivated(() => {
   paused = false
   void refreshQuakes()
   void refreshWeather()
+  void refreshNews()
   if (waqiOn.value) void refreshWaqi()
   startTimers()
 })
@@ -139,11 +196,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearInterval(quakeTimer)
   clearInterval(weatherTimer)
+  clearInterval(newsTimer)
   clearInterval(waqiTimer)
 })
 
 /** The reports under the map, one tab each (?report=outbreaks). Earthquakes first. */
-const REPORTS = ['earthquakes', 'weather', 'outbreaks', 'air', 'waqi'] as const
+const REPORTS = ['earthquakes', 'weather', 'news', 'outbreaks', 'air', 'waqi'] as const
 type Report = typeof REPORTS[number]
 const report = computed<Report>({
   get: () => (REPORTS as readonly string[]).includes(String(route.query.report)) ? route.query.report as Report : 'earthquakes',
@@ -213,6 +271,7 @@ function showStation(station: RaWaqiStation) {
 const reportTabs = computed(() => [
   { label: 'Earthquakes (BMKG)', value: 'earthquakes', icon: 'i-lucide-activity', slot: 'earthquakes' as const },
   { label: 'Weather warnings (BMKG)', value: 'weather', icon: 'i-lucide-cloud-lightning', slot: 'weather' as const },
+  ...(newsOn.value ? [{ label: 'Disaster news (GDELT)', value: 'news', icon: 'i-lucide-newspaper', slot: 'news' as const }] : []),
   { label: 'Disease outbreaks (WHO)', value: 'outbreaks', icon: 'i-lucide-biohazard', slot: 'outbreaks' as const },
   { label: 'Air quality (OpenAQ)', value: 'air', icon: 'i-lucide-wind', slot: 'air' as const },
   ...(waqiOn.value ? [{ label: 'Air quality now (WAQI)', value: 'waqi', icon: 'i-lucide-gauge', slot: 'waqi' as const }] : []),
@@ -606,6 +665,11 @@ const canOpenRa = useCanOpenRa()
               :label="`Weather warnings, BMKG (${warnings.length})`"
             />
             <UCheckbox
+              v-if="newsOn"
+              v-model="showNews"
+              :label="`Disaster news, GDELT (${newsPlaces.length})`"
+            />
+            <UCheckbox
               v-if="waqiOn"
               v-model="showAir"
               :label="`Air quality, WAQI (${waqiStations.length})`"
@@ -641,19 +705,24 @@ const canOpenRa = useCanOpenRa()
             height-class="h-[32rem]"
             :scroll-zoom="scrollZoom"
             :stations="stations"
+            :news="news"
             @select="onMarker"
             @area="onArea"
             @station="onStation"
+            @news="onNews"
           />
 
           <RaMapLegend
             weather
             :aqi="waqiOn && showAir"
+            :news="newsOn && showNews"
           />
 
           <p class="text-xs text-muted">
             Source: Earthquakes and weather warnings, {{ quakeList?.source ?? 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)' }}.<template v-if="waqiOn && showAir">
               Air quality, World Air Quality Index Project and the stations' own sources.
+            </template><template v-if="newsOn && showNews">
+              Disaster news, {{ newsReport?.source ?? 'The GDELT Project' }}.
             </template>
           </p>
 
@@ -933,6 +1002,18 @@ const canOpenRa = useCanOpenRa()
             :error="weatherError"
             :selected-id="selectedWarningId"
             @show="showWarning"
+            @place="showPlace"
+          />
+        </template>
+        <template #news>
+          <RaGdeltCard
+            class="mt-4"
+            :report="newsReport"
+            :error="newsError"
+            :selected-key="selectedNewsKey"
+            :hazard="newsHazard"
+            @update:hazard="(code: string | null) => (newsHazard = code)"
+            @show="showNewsPlace"
             @place="showPlace"
           />
         </template>

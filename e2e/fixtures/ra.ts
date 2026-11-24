@@ -508,6 +508,16 @@ export async function mockRa(
           events: 3, days: 2, last: '2026-11-18T03:45:00Z',
           items: [{ event: 'Hujan Lebat dan Petir', headline: 'Hujan Lebat disertai Petir di DKI Jakarta', effective_at: '2026-11-18T03:45:00Z', expires_at: '2026-11-18T06:00:00Z' }],
         },
+        gdelt: {
+          enabled: true, city: 'Jakarta Selatan', from_year: from, to_year: to, source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+          hazards: {
+            H01: {
+              keywords: ['banjir', 'banjir bandang', 'flood'], read_at: '2026-11-23T03:00:00Z', held_from: '2025-11-23', articles: 46, days: 9, last: '2026-11-20',
+              items: [{ url: 'https://news.example.id/banjir-kemang', title: 'Banjir rendam Kemang', domain: 'news.example.id', seen_at: '2026-11-20T05:30:00Z' }],
+            },
+            H03: { keywords: ['gempa'], read_at: null, held_from: null, articles: 0, days: 0, last: null, items: [] },
+          },
+        },
         air: {
           hazard_code: 'H10', enabled: true, configured: true, has_coordinates: true, read_at: '2026-11-17T03:00:00Z', station: 'US Embassy Jakarta South',
           distance_km: 2.5, threshold: 55.4, ...range, days: 1001, unhealthy_days: 501, rating: 5, from: '2024-01-01', to: '2026-11-15', held_from: '2024-01-01',
@@ -1224,6 +1234,22 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
         warning('CBT20261118001', 'Hujan Lebat disertai Petir di Banten', '2026-11-18T03:45:00Z', '2026-11-18T06:00:00Z', true, [bintaro], square(-6.2853, 106.7272)),
         warning('CYG20261118001', 'Hujan Lebat disertai Petir di DI Yogyakarta', '2026-11-18T03:45:00Z', '2026-11-18T06:00:00Z', true, [], square(-7.93, 110.29)),
       ],
+    } })
+  })
+  // GDELT's disaster news: floods 1.2 km from the Bintaro branch, and an earthquake in Bandung
+  // with no place near (H03 asked: only Bandung).
+  const newsPlace = (key: string, name: string, lat: number, lon: number, hazard: string, count: number, places: { id: number, code: string, kind: string, name: string, distance_km: number }[]) => ({
+    key, name, lat, lon, hazards: [hazard], articles_count: count, last: '2026-11-23T02:15:00Z', places,
+    articles: [{ url: `https://news.example.id/${key}`, domain: 'news.example.id', language: 'ind', hazard_code: hazard, tone: -4.2, published_at: '2026-11-23T02:15:00Z' }],
+  })
+  const floods = newsPlace('-6.2800,106.7300', 'Bintaro, Banten, Indonesia', -6.28, 106.73, 'H01', 12, [{ ...bintaro, distance_km: 1.2 }])
+  const quake = newsPlace('-6.9000,107.6000', 'Bandung, Jawa Barat, Indonesia', -6.9, 107.6, 'H03', 3, [])
+  await page.route(/\/api\/ra\/gdelt/, (route) => {
+    const hazard = new URL(route.request().url()).searchParams.get('hazard')
+    const items = hazard === 'H03' ? [quake] : [floods, quake]
+    return route.fulfill({ json: {
+      enabled: true, polled_at: '2026-11-23T03:00:00Z', poll_error: null, stale: false, source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+      hazard, days: 7, radius_km: 10, hazards: ['H01', 'H03'], matching: items.length, affected: hazard === 'H03' ? 0 : 1, items,
     } })
   })
   // A place's daily PM2.5 for the trend chart: three days.

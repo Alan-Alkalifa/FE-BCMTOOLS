@@ -3,7 +3,7 @@
  * Administration > Sites configuration: the live settings of the Sites menu, not versioned.
  * Whether each hazard is a disaster or an incident, BMKG's earthquakes on the building map, and
  * the past disasters that help rate an RA's hazards (BNPB's DIBI, WHO's outbreak news, OpenAQ's
- * air quality, BMKG's weather early warnings). Read with sites.config.view, changed with
+ * air quality, BMKG's weather early warnings, GDELT's disaster news). Read with sites.config.view, changed with
  * sites.config.manage.
  */
 definePageMeta({ permission: 'sites.config.view' })
@@ -50,6 +50,7 @@ const tabItems = [
           <AdminSitesConfigWeather />
           <AdminSitesConfigWaqi />
         </div>
+        <AdminSitesConfigGdelt class="mt-6" />
       </template>
     </UTabs>
   </AppPage>

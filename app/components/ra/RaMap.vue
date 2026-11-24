@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Map as LeafletMap, Marker, LeafletMouseEvent } from 'leaflet'
-import type { RaMapArea, RaMapCircle, RaMapMarker, RaMapStation, RaPin } from '~/composables/useRa'
+import type { RaMapArea, RaMapCircle, RaMapMarker, RaMapNews, RaMapStation, RaPin } from '~/composables/useRa'
 import 'leaflet/dist/leaflet.css'
 
 /**
@@ -37,6 +37,9 @@ const props = withDefaults(defineProps<{
   /** WAQI's air quality stations, each a dot with its AQI and its area. Not part of the fitted
    *  view. */
   stations?: RaMapStation[]
+  /** Places GDELT's disaster news mentions, each a dot with its number of articles; the
+   *  selected one with its radius. Not part of the fitted view. */
+  news?: RaMapNews[]
 }>(), {
   markers: () => [],
   circles: () => [],
@@ -51,9 +54,10 @@ const props = withDefaults(defineProps<{
   pinLabel: 'Disaster point',
   scrollZoom: false,
   stations: () => [],
+  news: () => [],
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
-const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], area: [id: string], station: [id: number], ready: [] }>()
+const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], area: [id: string], station: [id: number], news: [id: string], ready: [] }>()
 
 const { data: settings, error: settingsError } = useRaMapSettings()
 const container = useTemplateRef<HTMLDivElement>('container')
@@ -130,6 +134,20 @@ function stationIcon(station: RaMapStation) {
   })
 }
 
+/** A GDELT news place: its number of articles in a violet square. */
+function newsIcon(place: RaMapNews) {
+  const element = document.createElement('span')
+  element.className = 'ra-news'
+  element.textContent = place.count > 99 ? '99+' : String(place.count)
+  return L!.divIcon({
+    html: element,
+    className: `ra-pin ra-pin-news${place.active ? ' ra-pin-active' : ''}`,
+    iconSize: [26, 20],
+    iconAnchor: [13, 10],
+    tooltipAnchor: [0, -10],
+  })
+}
+
 /** Tooltips take a DOM node, so names are never parsed as HTML. */
 function tooltip(text: string) {
   const element = document.createElement('span')
@@ -168,6 +186,22 @@ function drawMarkers(fit: boolean) {
     })
     marker.bindTooltip(tooltip(station.label), { direction: 'top' })
     marker.on('click', () => emit('station', station.id))
+    layer.addLayer(marker)
+  }
+  for (const place of props.news) {
+    if (place.active) {
+      layer.addLayer(L.circle([place.lat, place.lng], { radius: place.radiusM, className: 'ra-radius-news', interactive: false }))
+    }
+    const marker = L.marker([place.lat, place.lng], {
+      icon: newsIcon(place),
+      title: place.label,
+      alt: place.label,
+      keyboard: true,
+      riseOnHover: true,
+      zIndexOffset: -900,
+    })
+    marker.bindTooltip(tooltip(place.label), { direction: 'top' })
+    marker.on('click', () => emit('news', place.id))
     layer.addLayer(marker)
   }
   for (const ring of props.circles) {
@@ -328,6 +362,7 @@ watch(() => props.areas, () => drawMarkers(false), { deep: true })
 watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
 watch(() => props.stations, () => drawMarkers(false), { deep: true })
+watch(() => props.news, () => drawMarkers(false), { deep: true })
 watch(pin, (value, previous) => {
   // Typed or reset coordinates move the view; a click or drag already shows the spot.
   const moved = !previous || !value || Math.abs(value.lat - previous.lat) > 0.01 || Math.abs(value.lng - previous.lng) > 0.01
@@ -484,6 +519,38 @@ defineExpose({
 .ra-pin-air.ra-pin-active .ra-aqi {
   box-shadow: 0 0 0 2px var(--ui-primary);
   transform: scale(1.15);
+}
+
+/* A GDELT news place: its number of articles in a violet square, and the selected one's radius,
+   violet and dashed. */
+.ra-news {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+  background-color: #7c3aed;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ra-pin-news.ra-pin-active .ra-news {
+  box-shadow: 0 0 0 2px var(--ui-primary);
+  transform: scale(1.15);
+}
+
+.ra-radius-news {
+  stroke: #7c3aed;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: #7c3aed;
+  fill-opacity: 0.08;
 }
 
 /* A BMKG weather warning's area: blue and dashed; the selected one stronger. */

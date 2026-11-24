@@ -7,7 +7,9 @@ type Tab = (typeof TABS)[number]
  * Approval opens on the Sign-off tab for the signer. Locking and permissions still come from the
  * assessment itself (`can_edit`, `can_approve`, ...); Monitoring is read-only on top of that.
  *
- * As SCCA's record: Manage has the open tab's Save in the top bar, next to View report (the
+ * As SCCA's record: the status, completion, highest residual risk and hazards rated are in the
+ * top bar, and Manage has Upload Excel (the workbook
+ * replaces the draft's ratings) and the open tab's Save there, next to View report (the
  * printable report, where the PDF and Excel downloads are). An RA can't be deleted here.
  */
 const props = withDefaults(defineProps<{ section?: RaSection }>(), { section: 'manage' })
@@ -67,6 +69,17 @@ const SAVE_LABELS: Partial<Record<Tab, string>> = {
 const saveLabel = computed(() =>
   props.section === 'manage' && assessment.value?.can_edit ? SAVE_LABELS[tab.value] : undefined,
 )
+/** Manage, a draft the user may edit: Upload Excel replaces its ratings from the workbook. */
+const canUpload = computed(() => props.section === 'manage' && !!assessment.value?.can_edit)
+const uploading = ref(false)
+async function startUpload() {
+  if (dirty.value && !(await confirmLeave())) return
+  uploading.value = true
+}
+function onReplaced(saved: RaAssessment) {
+  onSaved(saved)
+  formKey.value += 1
+}
 const section = computed(() => RA_SECTIONS[props.section])
 const hazardParam = computed(() => typeof route.query.hazard === 'string' ? route.query.hazard : undefined)
 
@@ -177,6 +190,46 @@ async function moveVersion() {
     ]"
   >
     <template #actions>
+      <template v-if="assessment">
+        <StatusBadge
+          :scale="raStatus"
+          :value="raStatusKey(assessment)"
+        />
+        <!-- <StatusBadge
+          v-if="assessment.status === 'draft'"
+          :scale="raCompletion"
+          :value="assessment.is_complete ? 'complete' : 'draft'"
+        /> -->
+        <!-- Short in the top bar, so the page title keeps its room; the full words for screen
+             readers and on hover. -->
+        <span
+          v-if="assessment.summary.highest_residual_level"
+          class="inline-flex items-center gap-1.5 text-sm text-muted"
+          :title="`Highest residual risk: ${assessment.summary.highest_residual_level}`"
+        >
+          <span class="hidden 2xl:inline">Highest residual</span>
+          <span class="sr-only 2xl:hidden">Highest residual</span>
+          <StatusBadge
+            :scale="raRiskLevel"
+            :value="assessment.summary.highest_residual_level"
+          />
+        </span>
+        <span
+          class="whitespace-nowrap text-sm tabular-nums text-muted"
+          :title="`${assessment.summary.rated} of ${assessment.summary.total} hazards rated`"
+        >
+          <span aria-hidden="true">{{ formatNumber(assessment.summary.rated, 0) }}/{{ formatNumber(assessment.summary.total, 0) }} rated</span>
+          <span class="sr-only">{{ formatNumber(assessment.summary.rated, 0) }} of {{ formatNumber(assessment.summary.total, 0) }} hazards rated</span>
+        </span>
+      </template>
+      <UButton
+        v-if="canUpload"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-file-spreadsheet"
+        label="Upload Excel"
+        @click="startUpload"
+      />
       <UButton
         v-if="props.section === 'monitoring' && assessment?.status === 'draft' && assessment.can_edit"
         :to="raPath(ra.kind, 'manage', assessment.id)"
@@ -261,28 +314,6 @@ async function moveVersion() {
         <p class="text-2xl font-semibold text-highlighted">
           {{ title }}
         </p>
-        <StatusBadge
-          :scale="raStatus"
-          :value="raStatusKey(assessment)"
-        />
-        <StatusBadge
-          v-if="assessment.status === 'draft'"
-          :scale="raCompletion"
-          :value="assessment.is_complete ? 'complete' : 'draft'"
-        />
-        <span
-          v-if="assessment.summary.highest_residual_level"
-          class="inline-flex items-center gap-2 text-sm text-muted"
-        >
-          Highest residual
-          <StatusBadge
-            :scale="raRiskLevel"
-            :value="assessment.summary.highest_residual_level"
-          />
-        </span>
-        <span class="text-sm text-muted">
-          {{ formatNumber(assessment.summary.rated, 0) }} of {{ formatNumber(assessment.summary.total, 0) }} hazards rated
-        </span>
       </div>
 
       <UAlert
@@ -409,6 +440,12 @@ async function moveVersion() {
           />
         </template>
       </UTabs>
+      <RaDraftUploadDialog
+        v-if="canUpload"
+        v-model:open="uploading"
+        :assessment="assessment"
+        @saved="onReplaced"
+      />
     </template>
   </AppPage>
 </template>

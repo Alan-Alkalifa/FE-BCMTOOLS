@@ -34,6 +34,15 @@ async function mockSitesConfig(page: Page, permissions?: string[]) {
     rows: 840, over_places: 12, active: 31, source: 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)', source_url: 'https://www.bmkg.go.id/peringatan-dini',
   }
   let waqi = { configured: false, radius_km: 5, threshold: 101, source: 'World Air Quality Index Project', source_url: 'https://waqi.info' }
+  const GDELT_THEMES = { H01: ['NATURAL_DISASTER_FLOODS'] }
+  const GDELT_KEYWORDS = { H01: ['banjir', 'flood'], H09: ['kebakaran hutan'] }
+  let gdelt = {
+    enabled: true, polled_at: '2026-11-23T03:00:00Z' as string | null, poll_error: null as string | null, stale: false, radius_km: 10, every_days: 1,
+    themes: GDELT_THEMES as Record<string, string[]>, keywords: GDELT_KEYWORDS as Record<string, string[]>, default_themes: GDELT_THEMES, default_keywords: GDELT_KEYWORDS,
+    themes_url: 'http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT', points: 420,
+    history: { cities: 14, pairs: 28, read: 20, due: 8, failing: 0, held_from: '2025-11-23', ran_at: '2026-11-23T03:30:00Z', error: 'Medan, H01: GDELT: Please limit requests to one every 5 seconds.' as string | null },
+    source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+  }
   // Sites configuration > Earthquakes (BMKG).
   let bmkg = { enabled: true, min_magnitude: 5, polled_at: '2026-11-06T06:44:00Z', poll_error: null, stale: false }
   await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({ json: { items: [
@@ -68,6 +77,19 @@ async function mockSitesConfig(page: Page, permissions?: string[]) {
       return route.fulfill({ json: weatherStatus })
     }
     if (path.endsWith('/weather')) return route.fulfill({ json: weatherStatus })
+    if (path.endsWith('/gdelt/read')) {
+      gdelt = { ...gdelt, polled_at: null, history: { ...gdelt.history, read: 0, due: 28 } }
+      return route.fulfill({ json: gdelt })
+    }
+    if (path.endsWith('/gdelt') && request.method() === 'PUT') {
+      const sent = body as { themes: Record<string, string[]> }
+      if (sent.themes.H09?.includes('wildfire')) {
+        return route.fulfill({ status: 422, json: { error: 'validation_failed', details: { 'themes.H09': 'Use GDELT theme names: capital letters, digits and _ (e.g. NATURAL_DISASTER_FLOODS).' } } })
+      }
+      gdelt = { ...gdelt, ...(body as object) }
+      return route.fulfill({ json: gdelt })
+    }
+    if (path.endsWith('/gdelt')) return route.fulfill({ json: gdelt })
     if (path.endsWith('/waqi') && request.method() === 'PUT') {
       waqi = { ...waqi, ...(body as object) }
       return route.fulfill({ json: waqi })
@@ -116,7 +138,7 @@ test('Sites configuration is under Administration, apart from RA configuration',
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Sites configuration' })).toHaveAttribute('aria-current', 'page', { timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Sites configuration' })).toBeVisible()
-  await expect(page.getByRole('main').getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
+  await expect(page.getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
   // An old RA configuration link to one of its tabs opens it.
   await page.goto('/admin/ra-config?tab=earthquakes')
   await expect(page).toHaveURL(/\/admin\/sites-config\?tab=earthquakes$/, { timeout: 60_000 })
@@ -253,4 +275,38 @@ test('WAQI\'s station area and the AQI from which a building is affected are set
   await card.getByRole('button', { name: 'Save WAQI settings' }).click()
   await expect(page.getByText('WAQI settings saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/waqi'))!.body).toEqual({ radius_km: 2.5, threshold: 151 })
+})
+
+test('GDELT\'s disaster news: radius, interval, and themes and keywords per hazard', async ({ page }) => {
+  const calls = await mockSitesConfig(page)
+  await page.goto('/admin/sites-config?tab=past-disasters')
+  const card = page.getByTestId('gdelt-source')
+  await expect(card.getByRole('heading', { name: 'Disaster news from GDELT' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('gdelt-status')).toContainText('420 news places kept.')
+  await expect(page.getByTestId('gdelt-status')).toContainText('History of 14 cities: 20 of 28 city and hazard pairs read, 8 due, counted from 23 Nov 2025.')
+  await expect(card).toContainText('Medan, H01: GDELT: Please limit requests')
+  await expect(card.getByRole('textbox', { name: 'GDELT themes for H01' })).toHaveValue('NATURAL_DISASTER_FLOODS')
+  await expect(card.getByRole('textbox', { name: 'Keywords for H01' })).toHaveValue('banjir, flood')
+
+  // A theme that isn't GDELT's: the API's message lands on its field.
+  await card.getByRole('textbox', { name: 'GDELT themes for H09' }).fill('wildfire')
+  await card.getByRole('button', { name: 'Save GDELT settings' }).click()
+  await expect(card.getByText('Use GDELT theme names')).toBeVisible()
+
+  await card.getByRole('textbox', { name: 'GDELT themes for H09' }).fill('NATURAL_DISASTER_WILDFIRE')
+  await card.getByRole('textbox', { name: 'Keywords for H01' }).fill('banjir,  banjir rob , ')
+  await card.getByRole('spinbutton', { name: 'Radius around a news place (km)' }).fill('5')
+  await card.getByRole('spinbutton', { name: 'Radius around a news place (km)' }).blur()
+  await card.getByRole('button', { name: 'Save GDELT settings' }).click()
+  await expect(page.getByText('GDELT settings saved').first()).toBeVisible()
+  const saved = calls.filter((call) => call.method === 'PUT' && call.path.endsWith('/gdelt')).at(-1)!.body
+  expect(saved).toEqual({
+    enabled: true, radius_km: 5, every_days: 1,
+    themes: { H01: ['NATURAL_DISASTER_FLOODS'], H09: ['NATURAL_DISASTER_WILDFIRE'] },
+    keywords: { H01: ['banjir', 'banjir rob'], H09: ['kebakaran hutan'] },
+  })
+  await card.getByRole('button', { name: 'Use the defaults' }).click()
+  await expect(card.getByRole('textbox', { name: 'GDELT themes for H09' })).toHaveValue('')
+  await card.getByRole('button', { name: 'Read again' }).click()
+  await expect(page.getByTestId('gdelt-status')).toContainText('Map not read yet.')
 })

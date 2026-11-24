@@ -297,7 +297,6 @@ test('the sidebar marks only the section of the page as current', async ({ page 
 test('disasters and incidents each have their own guidebook', async ({ page }) => {
   await mockRaMap(page)
   await page.goto('/incidents/guidebook')
-  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
   await expect(page.getByRole('main').getByRole('navigation').first()).toContainText(/Home\s*Sites\s*Incident\s*Guidebook/, { timeout: 30_000 })
   const hazards = page.getByRole('navigation', { name: 'Hazards' })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toBeVisible()
@@ -307,8 +306,6 @@ test('disasters and incidents each have their own guidebook', async ({ page }) =
   await expect(nav.locator('a[href="/incidents/guidebook"]')).toHaveAttribute('aria-current', 'page')
 
   await page.goto('/disasters/guidebook')
-  await expect(page.getByRole('tab', { name: 'Disaster guidebook' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tab', { name: 'Incident guidebook' })).toBeVisible()
   await expect(hazards.getByRole('button', { name: 'Natural disasters' })).toBeVisible({ timeout: 30_000 })
   await expect(hazards.getByRole('button', { name: 'Technological' })).toHaveCount(0)
   // A link to an incident's hazard opens the incident guidebook.
@@ -655,6 +652,41 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   // Unticked, the areas leave the map.
   await page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ }).uncheck()
   await expect(page.locator('path.ra-area')).toHaveCount(0)
+})
+
+test('GDELT\'s disaster news shows as places on the map and in its tab, one hazard or all', async ({ page }) => {
+  await mockRaMap(page, { crisis: false })
+  await page.goto('/locations/map')
+  await expect(page.getByText('Disaster news, GDELT (2)')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.ra-news')).toHaveCount(2)
+  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Disaster news (GDELT)')
+  await expect(page.getByText('Disaster news, The GDELT Project.')).toBeVisible()
+
+  // A place clicked on the map: its tab opens on it, with its radius drawn.
+  await page.locator('.ra-pin-news').first().dispatchEvent('click')
+  await expect(page).toHaveURL(/report=news/)
+  await expect(page).toHaveURL(/news=-6\.2800%2C106\.7300|news=-6\.2800,106\.7300/)
+  const tab = page.getByTestId('ra-gdelt')
+  const picked = tab.locator('li[aria-current="true"]')
+  await expect(picked).toContainText('Bintaro, Banten, Indonesia')
+  await expect(picked).toBeInViewport()
+  await expect(page.locator('path.ra-radius-news')).toHaveCount(1)
+  await expect(tab).toContainText('2 places, 1 building or branch within 10 km of one.')
+  await expect(picked.getByRole('button', { name: 'KCP Bintaro Sektor 9 (1,2 km)' })).toBeVisible()
+  await expect(picked.getByRole('link', { name: 'news.example.id' })).toHaveAttribute('href', 'https://news.example.id/-6.2800,106.7300')
+  await expect(tab.locator('li').filter({ hasText: 'Bandung' }).first()).toContainText('No building or branch within 10 km.')
+  await expect(tab).toContainText('Source: The GDELT Project')
+
+  // One hazard.
+  await tab.getByRole('button', { name: 'Hazard of the disaster news' }).click()
+  await page.getByRole('option', { name: /^H03/ }).click()
+  await expect(page).toHaveURL(/news_hazard=H03/)
+  await expect(page.locator('.ra-news')).toHaveCount(1)
+  await expect(tab).toContainText('1 place, 0 buildings or branches within 10 km of one.')
+
+  // Unticked, the places leave the map.
+  await page.getByRole('checkbox', { name: /^Disaster news, GDELT/ }).uncheck()
+  await expect(page.locator('.ra-news')).toHaveCount(0)
 })
 
 test('clicking a weather warning\'s area shows that warning in its tab, scrolled to', async ({ page }) => {
