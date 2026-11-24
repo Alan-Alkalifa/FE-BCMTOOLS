@@ -56,6 +56,37 @@ export interface BiancaSignoffRow {
   decided_at: string | null
   decision_note: string | null
   pending_since: string | null
+  on_behalf_by?: string | null
+}
+
+export type BiancaWaitLevel = 'ok' | 'reminder' | 'escalated'
+
+export interface BiancaBoardRow {
+  id: number
+  ref_no: string | null
+  org_group: string | null
+  sub_directorate: string | null
+  directorate: string | null
+  functions: number
+  highest_category: string | null
+  step: string | null
+  step_title: string | null
+  approver: string | null
+  approver_id: number | null
+  waiting_since: string | null
+  working_days_waiting: number
+  reminders_sent: number
+  escalated_at: string | null
+  level: BiancaWaitLevel
+  can_act: boolean
+}
+
+export type BiancaBoardResult = BiancaAssessment & { email_sent: boolean }
+
+export interface BiancaBulkNudgeResult {
+  sent: Array<{ id: number, ref_no: string | null }>
+  skipped: Array<{ id: number, ref_no?: string | null, reason: string }>
+  failed: Array<{ id: number, ref_no: string | null }>
 }
 
 export interface BiancaEvent {
@@ -93,12 +124,59 @@ export function useBiancaApprovalHistory(query: MaybeRefOrGetter<PageQuery & { a
   })
 }
 
+export interface BiancaBoardQuery extends PageQuery {
+  step?: string
+  level?: BiancaWaitLevel
+  category?: string
+  approver_id?: number
+  q?: string
+  sort?: string
+  direction?: 'asc' | 'desc'
+}
+
+export function useBiancaBoard(query: MaybeRefOrGetter<BiancaBoardQuery>) {
+  return useFetch<BiancaPage<BiancaBoardRow>>('/api/bianca/approvals/board', {
+    key: 'bianca-approvals-board',
+    query: computed(() => toValue(query)),
+  })
+}
+
 export const biancaApprovalApi = {
   approve: (id: number, note?: string | null) =>
     $fetch<BiancaAssessment>(`/api/bianca/assessments/${id}/approve`, { method: 'POST', body: { note: note || null } }),
   reject: (id: number, note: string) =>
     $fetch<BiancaAssessment>(`/api/bianca/assessments/${id}/reject`, { method: 'POST', body: { note } }),
 }
+
+export const biancaBoardApi = {
+  nudge: (id: number) =>
+    $fetch<BiancaBoardResult>(`/api/bianca/assessments/${id}/nudge`, { method: 'POST' }),
+  nudgeMany: (assessmentIds: number[]) =>
+    $fetch<BiancaBulkNudgeResult>('/api/bianca/approvals/nudge', {
+      method: 'POST',
+      body: { assessment_ids: assessmentIds },
+    }),
+  reassign: (id: number, userId: number, reason: string) =>
+    $fetch<BiancaBoardResult>(`/api/bianca/assessments/${id}/reassign`, {
+      method: 'POST',
+      body: { user_id: userId, reason },
+    }),
+  approveOnBehalf: (id: number, reason: string, file: File) => {
+    const body = new FormData()
+    body.append('reason', reason)
+    body.append('file', file)
+    return $fetch<BiancaBoardResult>(`/api/bianca/assessments/${id}/approve-on-behalf`, {
+      method: 'POST',
+      body,
+    })
+  },
+}
+
+export const biancaWaitLevel = defineStatusScale<BiancaWaitLevel>({
+  ok: { label: 'On track', color: 'neutral', icon: 'i-lucide-clock' },
+  reminder: { label: 'Reminder due', color: 'warning', icon: 'i-lucide-bell' },
+  escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-triangle-alert' },
+})
 
 export function biancaApprovalPath(id?: number) {
   return id === undefined ? '/bianca/approval' : `/bianca/approval/${id}`

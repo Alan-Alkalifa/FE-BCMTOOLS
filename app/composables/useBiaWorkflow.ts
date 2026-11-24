@@ -102,6 +102,11 @@ export interface BiaRollupSummary {
   severity: BiaSeverity
   highest_category: BiaCategory | null
   critical_count: number
+  category_counts?: {
+    critical: number
+    important: number
+    others: number
+  }
   shortest_mtd: string | null
 }
 
@@ -244,6 +249,7 @@ export interface BiaFunctionItem {
   outstanding_strategy?: string
   alt_site_strategy: string
   alt_site_strategy_code?: string | null
+  is_wfh?: boolean
   bcp_seats_current: number
   bcp_seats_required: number
   equipment?: {
@@ -572,12 +578,15 @@ export function useBiaAssessmentDetail(id: MaybeRefOrGetter<number>) {
   )
 }
 
-export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[]) {
+export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[], tab?: 'register' | 'bottlenecks') {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
       query.set(key, String(value))
     }
+  }
+  if (tab && tab !== 'register') {
+    query.set('tab', tab)
   }
   if (groupIds?.length) {
     query.set('group_ids', groupIds.join(','))
