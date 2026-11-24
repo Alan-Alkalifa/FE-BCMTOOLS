@@ -24,6 +24,13 @@ const historyDialog = useOverlay().create(BiaHistoryDialog)
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
 const perPage = useRowsPerPage()
+const { query: sortQuery, header: sortable } = useTableSort([
+  'waiting_since',
+  'working_days_waiting',
+  'working_days_in_signoff',
+  'reminders_sent',
+  'escalated_at',
+])
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -229,6 +236,7 @@ const register = useBiaRegister(computed(() => ({
 })))
 const bottlenecks = useBiaBottlenecks(computed(() => ({
   ...filters.value,
+  ...(tab.value === 'bottlenecks' ? sortQuery.value : {}),
   page: page.value,
   per_page: perPage.value,
 })))
@@ -339,6 +347,7 @@ const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((r
 const stepBars = computed(() =>
   stepRows.value.map((row) => ({ label: row.step_title || biaStepTitle(row.step), value: row.average_working_days ?? 0 })),
 )
+const stepDigits = computed(() => (stepRows.value.some((row) => (row.average_working_days ?? 0) >= 1) ? 1 : 2))
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
@@ -607,17 +616,28 @@ const activeFilterChips = computed(() => {
   return chips
 })
 
+function col(id: string, label: string, width = 'min-w-28', right = false): TableColumn<BiaSignoffWaitingRow> {
+  return {
+    id,
+    accessorKey: id,
+    header: () => sortable(id, label, right),
+    meta: { class: { th: `${width}${right ? ' text-right' : ''}`, td: width } },
+  }
+}
+
 const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'assessment', header: 'Group' },
-  { accessorKey: 'ref_no', header: 'BIA ref. no.' },
-  { accessorKey: 'step', header: 'Current step' },
-  { id: 'coordinator', header: 'BCM Coordinator' },
-  { id: 'signer', header: 'Waiting signer' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated on' },
-  { accessorKey: 'working_days_in_signoff', header: 'In approval' },
+  col('group', 'Group', 'min-w-44'),
+  col('ref_no', 'BIA ref. no.', 'min-w-32'),
+  col('step_title', 'Current approval step', 'min-w-40'),
+  { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { id: 'coordinator', header: 'BCM Coordinator', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  col('waiting_since', 'Waiting since', 'min-w-32'),
+  col('working_days_waiting', 'Working days', 'min-w-32', true),
+  col('reminders_sent', 'Reminders sent', 'min-w-28', true),
+  col('escalated_at', 'Escalated on', 'min-w-32'),
+  col('working_days_in_signoff', 'Working days in approval', 'min-w-36', true),
   { id: 'actions', header: '' },
 ]
 
@@ -1584,7 +1604,7 @@ function record(id: number) {
           <SccaBarChart
             title="Average working days per sign-off step"
             measure="Working days"
-            :digits="1"
+            :digits="stepDigits"
             :items="stepBars"
             :summary="stepSummary"
             :loading="stepAverages.status.value === 'pending' && !stepAverages.data.value"
@@ -1594,7 +1614,18 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                BIAs waiting for sign-off, longest-waiting step first. Select rows and click Send reminder to notify the active Waiting signer.
+                <template v-if="bottlenecks.data.value?.total">
+                  {{ plural(bottlenecks.data.value.total, 'BIA') }} in approval, longest-waiting first.
+                </template>
+                <template v-else>
+                  No BIA is in approval.
+                </template>
+                <template v-if="can('bianca.approval.manage') && bottlenecks.data.value?.total">
+                  <NuxtLink
+                    to="/bianca/approval"
+                    class="text-primary hover:underline"
+                  >Act on them in BIANCA approval</NuxtLink>.
+                </template>
               </p>
               <div class="flex flex-wrap gap-2">
                 <UButton
@@ -1607,36 +1638,24 @@ function record(id: number) {
                   :disabled="!selectedBottleneckRows.length"
                   @click="remindApprovals(selectedBottleneckRows)"
                 />
+                <UButton
+                  v-if="can('bianca.report.download')"
+                  :to="biaExportUrl(filters, undefined, 'bottlenecks')"
+                  external
+                  download
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                />
               </div>
             </div>
             <UTable
               :data="bottlenecks.data.value?.items ?? []"
               :columns="bottleneckColumns"
               :loading="bottlenecks.status.value === 'pending'"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
-              <template #working_days_waiting-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>Waiting</span>
-                  <UTooltip text="Working days (Mon–Fri) waiting at the current sign-off step.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
-              <template #working_days_in_signoff-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>In approval</span>
-                  <UTooltip text="Total working days since this BIA was submitted for approval.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
               <template #select-header>
                 <UCheckbox
                   v-if="bottleneckRows.length"
@@ -1651,7 +1670,7 @@ function record(id: number) {
                   @update:model-value="toggleBottleneck(row.original, $event)"
                 />
               </template>
-              <template #assessment-cell="{ row }">
+              <template #group-cell="{ row }">
                 <NuxtLink
                   :to="record(row.original.id)"
                   class="font-medium text-primary hover:underline"
@@ -1662,13 +1681,8 @@ function record(id: number) {
               <template #ref_no-cell="{ row }">
                 <span class="font-mono text-xs">{{ refLabel(row.original) }}</span>
               </template>
-              <template #step-cell="{ row }">
+              <template #step_title-cell="{ row }">
                 {{ biaStepTitle(row.original.step, row.original.step_title) }}
-              </template>
-              <template #coordinator-cell="{ row }">
-                <span :class="row.original.coordinator ? '' : 'text-muted'">
-                  {{ row.original.coordinator || '—' }}
-                </span>
               </template>
               <template #signer-cell="{ row }">
                 <template v-if="row.original.signer?.name">
@@ -1685,27 +1699,39 @@ function record(id: number) {
                   class="text-xs text-muted"
                 >Unassigned (via Coordinator)</span>
               </template>
-              <template #working_days_waiting-cell="{ row }">
-                <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ biaWaiting(row.original.working_days_waiting) }}</span>
+              <template #coordinator-cell="{ row }">
+                <span :class="row.original.coordinator ? '' : 'text-muted'">
+                  {{ row.original.coordinator || '—' }}
+                </span>
               </template>
-              <template #reminders_sent-cell="{ row }">
-                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
-              </template>
-              <template #escalated_at-cell="{ row }">
-                <span v-if="row.original.escalated_at">{{ formatDate(row.original.escalated_at) }}</span>
+              <template #level-cell="{ row }">
                 <StatusBadge
-                  v-else-if="row.original.level !== 'ok'"
                   :scale="biaWaitLevel"
                   :value="row.original.level"
                   size="sm"
                 />
+              </template>
+              <template #waiting_since-cell="{ row }">
+                {{ formatDate(row.original.waiting_since) || '—' }}
+              </template>
+              <template #working_days_waiting-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ biaWaiting(row.original.working_days_waiting) }}</span>
+              </template>
+              <template #reminders_sent-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
+              </template>
+              <template #escalated_at-cell="{ row }">
+                <span
+                  v-if="row.original.escalated_at"
+                  class="text-error"
+                >{{ formatDate(row.original.escalated_at) }}</span>
                 <span
                   v-else
                   class="text-muted"
                 >—</span>
               </template>
               <template #working_days_in_signoff-cell="{ row }">
-                {{ biaWaiting(row.original.working_days_in_signoff) }}
+                <span class="block text-right tabular-nums">{{ biaWaiting(row.original.working_days_in_signoff) }}</span>
               </template>
               <template #actions-cell="{ row }">
                 <UButton
@@ -1722,7 +1748,7 @@ function record(id: number) {
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">
-                  No BIA is in approval.
+                  Nothing is in approval{{ filtered ? ' for these filters' : '' }}.
                 </p>
               </template>
             </UTable>

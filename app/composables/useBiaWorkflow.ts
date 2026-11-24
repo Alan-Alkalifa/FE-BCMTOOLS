@@ -578,12 +578,15 @@ export function useBiaAssessmentDetail(id: MaybeRefOrGetter<number>) {
   )
 }
 
-export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[]) {
+export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[], tab?: 'register' | 'bottlenecks') {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
       query.set(key, String(value))
     }
+  }
+  if (tab && tab !== 'register') {
+    query.set('tab', tab)
   }
   if (groupIds?.length) {
     query.set('group_ids', groupIds.join(','))
