@@ -21,7 +21,21 @@ import { BIANCA_PARTS, biancaPartDone, type BiancaPart } from '~/utils/biancaPar
  * incomplete; Submit needs every required value (the list under "Still to fill" says what).
  * Without `assessment` it is the New BIA form.
  */
-const props = defineProps<{ assessment?: BiancaAssessment | null }>()
+const props = defineProps<{
+  assessment?: BiancaAssessment | null
+  /** Where the page puts the BIA's buttons (its top bar, as on an SCCA): a CSS selector. */
+  actionsTo?: string
+}>()
+/** The top bar moves its buttons to a row under it on a phone (AppPage): follow them there. */
+const narrow = ref(false)
+let narrowQuery: MediaQueryList | undefined
+const onNarrow = () => (narrow.value = !!narrowQuery?.matches)
+onMounted(() => {
+  narrowQuery = window.matchMedia('(max-width: 639.98px)')
+  onNarrow()
+  narrowQuery.addEventListener('change', onNarrow)
+})
+onBeforeUnmount(() => narrowQuery?.removeEventListener('change', onNarrow))
 const emit = defineEmits<{ saved: [assessment: BiancaAssessment, tab: string] }>()
 
 const toast = useToast()
@@ -71,7 +85,9 @@ function onComments(rows: BiancaComment[]) {
 const failure = ref<string | null>(null)
 const dirty = ref(false)
 // Asks before leaving with unsaved edits; an in-app tab switch keeps them (docs/tabs.md).
-useUnsavedChanges(dirty)
+// Asks before leaving only a form that can be edited: a read-only BIA (in approval, final) has
+// nothing of its own to lose.
+useUnsavedChanges(computed(() => dirty.value && editable.value))
 
 const tabs = [
   { label: 'Sign off page', value: 'sign', icon: 'i-lucide-signature' },
@@ -616,7 +632,11 @@ onMounted(() => {
   window.addEventListener('pagehide', keepNow)
 })
 onBeforeUnmount(() => {
-  keepNow()
+  // The form closes only once its edits were let go: "Discard changes" on leaving, "Close
+  // without saving" on its tab. So they are dropped here, not kept to come back next time. (A
+  // refresh or a closed browser keeps them: pagehide.)
+  clearTimeout(keepTimer)
+  if (dirty.value) dropUnsaved()
   window.removeEventListener('pagehide', keepNow)
 })
 /** Back to what is saved (or a blank new BIA): the copy on this device is dropped. */
@@ -684,13 +704,20 @@ const raStatus = computed(() => {
   }
 })
 /** Sign Off Page: what each part asks for (the workbook's own notes, in short). */
-const SIGN_GUIDE = [
-  { title: 'Section A · the Group', text: 'Directorate, Sub Directorate and Group come from the organisation in the system. Describe what the Group does.' },
-  { title: 'Work locations', text: 'The building and floor the Group works from, and where it works when that one can\'t be used. The address comes from the building master.' },
-  { title: 'Recovery strategy', text: 'Write the Group\'s recovery strategy at a high level.' },
-  { title: 'BCM Coordinator and Alternate', text: 'Two different people, picked from the user directory: their NIK, phone and email are filled in and locked. Give an additional phone only when the one there is no longer active.' },
-  { title: 'Risk assessment', text: 'Yes to the first question: name the tools (e.g. ShARP, ORMS). No to both: justify it.' },
-]
+/** The guidance texts, as BIA configuration › Guides sets them (or their defaults). */
+const t = useBiancaText()
+const SIGN_GUIDE = computed(() => [
+  { title: 'Section A · the Group', text: t('sign_guide_group') },
+  { title: 'Work locations', text: t('sign_guide_locations') },
+  { title: 'Recovery strategy', text: t('sign_guide_recovery') },
+  { title: 'BCM Coordinator and Alternate', text: t('sign_guide_people') },
+])
+const RA_GUIDE = computed(() => [
+  { title: 'Number of personel', lines: t('ra_guide_personnel').split('\n').filter(Boolean) },
+  { title: 'Organisation structure', lines: t('ra_guide_org_structure').split('\n').filter(Boolean) },
+  { title: 'Risk assessment', lines: t('ra_guide_risk_assessment').split('\n').filter(Boolean) },
+  { title: 'Business continuity in your risk assessment', lines: t('ra_guide_bc_practice').split('\n').filter(Boolean) },
+])
 /** The titles the workbook's notes give for each grade at CIMB Niaga. */
 const GRADE_TITLES: Record<string, string> = {
   staff_senior: 'First VP, Senior VP, Executive VP',
@@ -762,6 +789,21 @@ function noteMissing(grade: { code: string, requires_note: boolean }) {
     && !header.personnel_notes[grade.code]?.trim()
 }
 const orgStructureMissing = computed(() => !saved.value?.org_structure && !pendingOrgStructure.value)
+/** Business continuity in the Group's risk assessment: asked on the RA questionnaire (the
+ * workbook keeps these cells on its Sign Off Page). */
+const raPracticeMissing = computed(() => {
+  const found: [string, string][] = []
+  const blank = (value: unknown) => value == null || (typeof value === 'string' && !value.trim())
+  if (header.ra_considers_bc == null) found.push(['ra_considers_bc', 'Risk assessment question 4.1'])
+  if (header.ra_considers_bc && blank(header.ra_tools)) found.push(['ra_tools', 'Risk assessment tools used'])
+  if (header.ra_controls_included == null) found.push(['ra_controls_included', 'Risk assessment question 4.2'])
+  if (raNeedsJustification.value && blank(header.ra_justification)) found.push(['ra_justification', 'Risk assessment justification'])
+  return found
+})
+/** The error under a required risk assessment field, once Next was tried. */
+function raError(key: string, text = 'Required.') {
+  return raTried.value && raPracticeMissing.value.some(([missing]) => missing === key) ? text : undefined
+}
 const raMissing = computed(() => {
   const found: string[] = []
   for (const grade of grades.value) {
@@ -773,6 +815,7 @@ const raMissing = computed(() => {
   }
   if (orgStructureMissing.value) found.push('Organisation structure')
   if (header.ra_completed == null) found.push('Risk assessment')
+  for (const [, label] of raPracticeMissing.value) found.push(label)
   return found
 })
 // --- "Is this correct?" before going on -----------------------------------------------------
@@ -807,10 +850,6 @@ function signReview(): BiancaReviewSection {
       { label: 'Group recovery strategy', value: header.recovery_strategy },
       { label: 'BCM Coordinator', value: personText('bcm_coordinator') },
       { label: 'Alternate BCM Coordinator', value: personText('bcm_alternate') },
-      { label: 'Business continuity in the risk assessment', value: answer(header.ra_considers_bc) },
-      ...(header.ra_considers_bc ? [{ label: 'Risk assessment tools', value: header.ra_tools }] : []),
-      { label: 'Business continuity controls in the risk score cards', value: answer(header.ra_controls_included) },
-      ...(raNeedsJustification.value ? [{ label: 'Justification', value: header.ra_justification }] : []),
     ],
   }
 }
@@ -825,6 +864,10 @@ function raReview(): BiancaReviewSection {
       { label: 'Total personnel', value: String(totalStaff.value) },
       { label: 'Organisation structure', value: saved.value?.org_structure?.filename ?? pendingOrgStructure.value?.name },
       { label: 'Risk assessment completed for the location', value: answer(header.ra_completed) },
+      { label: 'Business continuity in the risk assessment', value: answer(header.ra_considers_bc) },
+      ...(header.ra_considers_bc ? [{ label: 'Risk assessment tools', value: header.ra_tools }] : []),
+      { label: 'Business continuity controls in the risk score cards', value: answer(header.ra_controls_included) },
+      ...(raNeedsJustification.value ? [{ label: 'Justification', value: header.ra_justification }] : []),
     ],
   }
 }
@@ -859,10 +902,6 @@ const signMissing = computed(() => {
     }
   }
   if (samePerson.value) found.push({ key: 'bcm_alternate_id', label: 'Alternate BCM Coordinator: another person' })
-  need('ra_considers_bc', 'Risk assessment question 1', header.ra_considers_bc)
-  if (header.ra_considers_bc) need('ra_tools', 'Risk assessment tools used', header.ra_tools)
-  need('ra_controls_included', 'Risk assessment question 2', header.ra_controls_included)
-  if (raNeedsJustification.value) need('ra_justification', 'Risk assessment justification', header.ra_justification)
   return found
 })
 const signMissingKeys = computed(() => new Set(signMissing.value.map((item) => item.key)))
@@ -998,9 +1037,15 @@ async function remove() {
   }
 }
 
-function onImported(result: BiancaAssessment) {
+/** An uploaded workbook is saved as it is read: the form shows it, with nothing unsaved (or
+ * leaving would ask to discard it, and a copy kept on this device would come back over it). */
+async function onImported(result: BiancaAssessment) {
   saved.value = result
   hydrate(result)
+  await nextTick()
+  dirty.value = false
+  clearTimeout(keepTimer)
+  dropUnsaved('new', result.id)
   emit('saved', result, tab.value)
 }
 
@@ -1061,36 +1106,34 @@ const people = [
     v-if="lookups"
     class="space-y-6"
   >
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-2">
+    <!-- The BIA's buttons, in the page's top bar as on an SCCA (the page gives the place) -->
+    <Teleport
+      :key="String(narrow)"
+      :to="actionsTo || 'body'"
+      :disabled="!actionsTo"
+      defer
+    >
+      <div class="flex flex-wrap items-center gap-2">
         <StatusBadge
           v-if="saved"
           :scale="biancaStatus"
           :value="biancaStatusKey(saved)"
         />
-        <span
-          v-if="saved?.ref_no"
-          class="font-mono text-sm"
-        >{{ saved.ref_no }}</span>
         <UBadge
           v-if="dirty && editable"
           label="Unsaved changes"
           color="warning"
           variant="subtle"
-          size="sm"
+          icon="i-lucide-circle-dot"
         />
-        <span
-          v-if="dirty && editable && keptAt"
-          class="flex items-center gap-1 text-xs text-muted"
-        >
-          <UIcon
-            name="i-lucide-hard-drive-download"
-            class="size-3.5"
-          />
-          Kept on this device at {{ keptTime(keptAt) }}
-        </span>
-      </div>
-      <div class="flex flex-wrap gap-2">
+        <UButton
+          v-if="editable"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-file-spreadsheet"
+          label="Upload Excel"
+          @click="uploading = true"
+        />
         <template v-if="saved">
           <UButton
             color="neutral"
@@ -1101,14 +1144,16 @@ const people = [
           />
           <UButton
             color="neutral"
-            variant="ghost"
+            variant="outline"
             icon="i-lucide-file-text"
             label="View report"
             @click="viewReport"
           />
+          <!-- A draft is printed from its report; the PDF is for a BIA sent for approval -->
           <UButton
+            v-if="saved.status !== 'draft'"
             color="neutral"
-            variant="ghost"
+            variant="outline"
             icon="i-lucide-file-down"
             label="PDF"
             :loading="pdf.busy.value"
@@ -1124,44 +1169,48 @@ const people = [
             @click="startRenewal"
           />
         </template>
+        <template v-if="editable">
+          <UTooltip
+            v-if="saved?.can_delete"
+            text="Delete the draft"
+          >
+            <UButton
+              color="error"
+              variant="ghost"
+              icon="i-lucide-trash-2"
+              aria-label="Delete the draft"
+              @click="remove"
+            />
+          </UTooltip>
+          <UButton
+            icon="i-lucide-save"
+            :label="saved ? 'Save draft' : 'Create draft'"
+            :loading="saving"
+            :disabled="submitting"
+            @click="save()"
+          />
+          <UButton
+            v-if="saved"
+            color="success"
+            icon="i-lucide-send"
+            label="Submit"
+            :disabled="!canSubmit"
+            :loading="submitting"
+            @click="submit"
+          />
+        </template>
       </div>
-      <div
-        v-if="editable"
-        class="flex w-full flex-wrap justify-end gap-2 sm:w-auto"
-      >
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-file-spreadsheet"
-          label="Upload Excel"
-          @click="uploading = true"
-        />
-        <UButton
-          v-if="saved?.can_delete"
-          color="error"
-          variant="outline"
-          icon="i-lucide-trash-2"
-          label="Delete"
-          @click="remove"
-        />
-        <UButton
-          icon="i-lucide-save"
-          :label="saved ? 'Save draft' : 'Create draft'"
-          :loading="saving"
-          :disabled="submitting"
-          @click="save()"
-        />
-        <UButton
-          v-if="saved"
-          color="success"
-          icon="i-lucide-send"
-          label="Submit"
-          :disabled="!canSubmit"
-          :loading="submitting"
-          @click="submit"
-        />
-      </div>
-    </div>
+    </Teleport>
+    <p
+      v-if="dirty && editable && keptAt"
+      class="flex items-center gap-1 text-xs text-muted"
+    >
+      <UIcon
+        name="i-lucide-hard-drive-download"
+        class="size-3.5"
+      />
+      Unsaved changes kept on this device at {{ keptTime(keptAt) }}
+    </p>
 
     <UAlert
       v-if="restoredAt && editable"
@@ -1286,6 +1335,28 @@ const people = [
       @update:model-value="goTab"
     />
 
+    <!-- Whose the BIA is, read only, above every section after the Sign off page (where it is
+         picked), as each sheet of the workbook heads it -->
+    <dl
+      v-show="tab !== 'sign'"
+      class="grid gap-3 rounded-md border border-default bg-elevated/50 px-4 py-3 text-sm sm:grid-cols-3"
+    >
+      <div
+        v-for="item in [
+          { label: 'Directorate', value: org.directorate },
+          { label: 'Sub directorate', value: org.sub_directorate },
+          { label: 'Group', value: org.org_group },
+        ]"
+        :key="item.label"
+      >
+        <dt class="text-xs text-muted">
+          {{ item.label }}
+        </dt>
+        <dd class="font-medium">
+          {{ item.value || 'Pick it on the Sign off page' }}
+        </dd>
+      </div>
+    </dl>
     <BiancaTabComments
       v-show="tab === 'sign'"
       :assessment-id="saved?.id"
@@ -1320,7 +1391,7 @@ const people = [
               v-model="org"
               :disabled="!editable"
               :locked="editable && lookups.can_pick_group === false"
-              help="From the organisation in the system. Picking a Group fills the main location."
+              :help="t('sign_org_help')"
               :data-missing="!!signError('org')"
               @picked="onOrgPicked"
             />
@@ -1419,7 +1490,7 @@ const people = [
           </template>
           <BiancaField
             label="High-level recovery strategy"
-            help="Write the Group's high-level recovery strategy."
+            :help="t('sign_recovery_help')"
             required
             :error="signError('recovery_strategy')"
             :data-missing="!!signError('recovery_strategy')"
@@ -1537,119 +1608,6 @@ const people = [
                 />
               </BiancaField>
             </section>
-          </div>
-        </UCard>
-
-        <!-- Risk assessment -->
-        <UCard>
-          <template #header>
-            <h2 class="text-sm font-semibold">
-              Risk assessment
-            </h2>
-            <p class="text-xs text-muted">
-              Is business continuity part of your risk assessment?
-            </p>
-          </template>
-          <div class="space-y-6">
-            <section class="space-y-3">
-              <BiancaField
-                label="1. Have you considered business continuity in your risk assessment process?"
-                note="ra_considers_bc"
-                required
-                :error="signError('ra_considers_bc', 'Answer Yes or No.')"
-                :data-missing="!!signError('ra_considers_bc')"
-              >
-                <URadioGroup
-                  :model-value="yesNo('ra_considers_bc')"
-                  :items="YES_NO"
-                  variant="card"
-                  orientation="horizontal"
-                  :disabled="!editable"
-                  :ui="{ item: 'flex-1' }"
-                  @update:model-value="setYesNo('ra_considers_bc', $event)"
-                />
-              </BiancaField>
-              <BiancaField
-                v-if="header.ra_considers_bc"
-                label="Risk assessment tools used"
-                note="ra_tools"
-                help="Name the tools used to identify and assess risk."
-                class="border-s-2 border-primary/40 ps-3"
-                required
-                :error="signError('ra_tools')"
-                :data-missing="!!signError('ra_tools')"
-              >
-                <UTextarea
-                  v-model="header.ra_tools"
-                  class="w-full"
-                  :rows="2"
-                  :maxlength="long"
-                  :disabled="!editable"
-                  placeholder="E.g. ShARP, ORMS"
-                />
-              </BiancaField>
-            </section>
-            <section class="space-y-3">
-              <BiancaField
-                label="2. Have you included business continuity controls in the risk score cards / profiling?"
-                note="ra_controls_included"
-                required
-                :error="signError('ra_controls_included', 'Answer Yes or No.')"
-                :data-missing="!!signError('ra_controls_included')"
-              >
-                <URadioGroup
-                  :model-value="yesNo('ra_controls_included')"
-                  :items="YES_NO"
-                  variant="card"
-                  orientation="horizontal"
-                  :disabled="!editable"
-                  :ui="{ item: 'flex-1' }"
-                  @update:model-value="setYesNo('ra_controls_included', $event)"
-                />
-              </BiancaField>
-            </section>
-            <BiancaField
-              v-if="raNeedsJustification || header.ra_justification"
-              label="Justification"
-              note="ra_justification"
-              :help="raNeedsJustification ? 'Required: both answers are No.' : 'Only needed when both answers are No.'"
-              :required="raNeedsJustification"
-              :error="signError('ra_justification')"
-              :data-missing="!!signError('ra_justification')"
-            >
-              <UTextarea
-                v-model="header.ra_justification"
-                class="w-full"
-                :rows="3"
-                :maxlength="long"
-                :disabled="!editable"
-                placeholder="Why business continuity isn't considered or included yet, and what is planned"
-              />
-            </BiancaField>
-            <div
-              class="rounded-md border p-3"
-              :class="TONE[signRaStatus.tone as keyof typeof TONE].box"
-              role="status"
-            >
-              <p
-                class="flex items-center gap-2 text-sm font-medium"
-                :class="TONE[signRaStatus.tone as keyof typeof TONE].text"
-              >
-                <UIcon
-                  :name="signRaStatus.icon"
-                  class="size-4"
-                />
-                {{ signRaStatus.title }}
-              </p>
-              <ul class="mt-2 list-disc space-y-0.5 ps-5 text-sm text-muted">
-                <li
-                  v-for="line in signRaStatus.lines"
-                  :key="line"
-                >
-                  {{ line }}
-                </li>
-              </ul>
-            </div>
           </div>
         </UCard>
 
@@ -1774,7 +1732,7 @@ const people = [
         </ol>
         <template #footer>
           <p class="text-xs text-muted">
-            The BIA helps the Directorate / Sub Directorate / Group set the Maximum Tolerable Downtime (MTD) of its business functions, the recovery priorities and the resources recovery needs.
+            {{ t('sign_guide_footer') }}
           </p>
         </template>
       </UCard>
@@ -1803,26 +1761,6 @@ const people = [
         </template>
 
         <div class="max-w-2xl space-y-8">
-          <!-- Whose -->
-          <dl class="grid gap-3 rounded-md bg-elevated/50 p-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt class="text-xs text-muted">
-                Sub directorate
-              </dt>
-              <dd class="font-medium">
-                {{ org.sub_directorate || 'Pick it on the Sign off page' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted">
-                Group
-              </dt>
-              <dd class="font-medium">
-                {{ org.org_group || 'Pick it on the Sign off page' }}
-              </dd>
-            </div>
-          </dl>
-
           <!-- 1. Number of personnel -->
           <section class="space-y-3">
             <div>
@@ -1909,7 +1847,7 @@ const people = [
                           <UFormField
                             :label="`${grade.label}: please specify`"
                             required
-                            help="Who they are, e.g. contract or outsourced staff."
+                            :help="t('ra_specify_help')"
                             :error="raTried && noteMissing(grade) ? 'Say who they are.' : undefined"
                             :data-missing="raTried && noteMissing(grade)"
                           >
@@ -2035,6 +1973,120 @@ const people = [
               </p>
             </div>
           </section>
+
+          <!-- 4. Business continuity in the risk assessment (the workbook's Sign Off Page cells,
+               asked here with the rest of the risk assessment) -->
+          <section class="space-y-4">
+            <div>
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold">
+                <span class="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">4</span>
+                Business continuity in your risk assessment
+                <span class="text-error">*</span>
+              </h3>
+              <p class="text-xs text-muted">
+                Is business continuity part of your risk assessment?
+              </p>
+            </div>
+            <section class="space-y-3">
+              <BiancaField
+                label="4.1 Have you considered business continuity in your risk assessment process?"
+                note="ra_considers_bc"
+                required
+                :error="raError('ra_considers_bc', 'Answer Yes or No.')"
+                :data-missing="!!raError('ra_considers_bc')"
+              >
+                <URadioGroup
+                  :model-value="yesNo('ra_considers_bc')"
+                  :items="YES_NO"
+                  variant="card"
+                  orientation="horizontal"
+                  :disabled="!editable"
+                  :ui="{ item: 'flex-1' }"
+                  @update:model-value="setYesNo('ra_considers_bc', $event)"
+                />
+              </BiancaField>
+              <BiancaField
+                v-if="header.ra_considers_bc"
+                label="Risk assessment tools used"
+                note="ra_tools"
+                :help="t('ra_tools_help')"
+                class="border-s-2 border-primary/40 ps-3"
+                required
+                :error="raError('ra_tools')"
+                :data-missing="!!raError('ra_tools')"
+              >
+                <UTextarea
+                  v-model="header.ra_tools"
+                  class="w-full"
+                  :rows="2"
+                  :maxlength="long"
+                  :disabled="!editable"
+                  placeholder="E.g. ShARP, ORMS"
+                />
+              </BiancaField>
+            </section>
+            <section class="space-y-3">
+              <BiancaField
+                label="4.2 Have you included business continuity controls in the risk score cards / profiling?"
+                note="ra_controls_included"
+                required
+                :error="raError('ra_controls_included', 'Answer Yes or No.')"
+                :data-missing="!!raError('ra_controls_included')"
+              >
+                <URadioGroup
+                  :model-value="yesNo('ra_controls_included')"
+                  :items="YES_NO"
+                  variant="card"
+                  orientation="horizontal"
+                  :disabled="!editable"
+                  :ui="{ item: 'flex-1' }"
+                  @update:model-value="setYesNo('ra_controls_included', $event)"
+                />
+              </BiancaField>
+            </section>
+            <BiancaField
+              v-if="raNeedsJustification || header.ra_justification"
+              label="Justification"
+              note="ra_justification"
+              :help="raNeedsJustification ? 'Required: both answers are No.' : 'Only needed when both answers are No.'"
+              :required="raNeedsJustification"
+              :error="raError('ra_justification')"
+              :data-missing="!!raError('ra_justification')"
+            >
+              <UTextarea
+                v-model="header.ra_justification"
+                class="w-full"
+                :rows="3"
+                :maxlength="long"
+                :disabled="!editable"
+                placeholder="Why business continuity isn't considered or included yet, and what is planned"
+              />
+            </BiancaField>
+            <div
+              class="rounded-md border p-3"
+              :class="TONE[signRaStatus.tone as keyof typeof TONE].box"
+              role="status"
+            >
+              <p
+                class="flex items-center gap-2 text-sm font-medium"
+                :class="TONE[signRaStatus.tone as keyof typeof TONE].text"
+              >
+                <UIcon
+                  :name="signRaStatus.icon"
+                  class="size-4"
+                />
+                {{ signRaStatus.title }}
+              </p>
+              <ul class="mt-2 list-disc space-y-0.5 ps-5 text-sm text-muted">
+                <li
+                  v-for="line in signRaStatus.lines"
+                  :key="line"
+                >
+                  {{ line }}
+                </li>
+              </ul>
+            </div>
+          </section>
         </div>
 
         <template
@@ -2074,42 +2126,22 @@ const people = [
           </h2>
         </template>
         <ol class="space-y-4 text-sm">
-          <li class="flex gap-2">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">1</span>
+          <li
+            v-for="(item, i) in RA_GUIDE"
+            :key="item.title"
+            class="flex gap-2"
+          >
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">{{ i + 1 }}</span>
             <div class="space-y-1">
               <p class="font-medium">
-                Number of personel
+                {{ item.title }}
               </p>
-              <p class="text-muted">
-                How many people of the Group are in each grade / ranking. Not sure of a grade? The CIMB Niaga titles under each one tell which, and ⓘ has the workbook's note.
-              </p>
-              <p class="text-muted">
-                Others: contract (karyawan kontrak) or outsourced (karyawan outsource) staff, and say who they are.
-              </p>
-              <p class="text-muted">
-                The total should match the Group's current organisation chart.
-              </p>
-            </div>
-          </li>
-          <li class="flex gap-2">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">2</span>
-            <div class="space-y-1">
-              <p class="font-medium">
-                Organisation structure
-              </p>
-              <p class="text-muted">
-                Attach the Group's organisation chart in force now (PDF, image, PowerPoint, Word, Excel or Visio, up to 10 MB). Attaching another replaces it.
-              </p>
-            </div>
-          </li>
-          <li class="flex gap-2">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">3</span>
-            <div class="space-y-1">
-              <p class="font-medium">
-                Risk assessment
-              </p>
-              <p class="text-muted">
-                Yes when the Business Continuity Risk Assessment of your location is done. If No, the Head of Sub Directorate coordinates completing it, or check with BCM.
+              <p
+                v-for="line in item.lines"
+                :key="line"
+                class="text-muted"
+              >
+                {{ line }}
               </p>
             </div>
           </li>
@@ -2130,27 +2162,6 @@ const people = [
       :can-comment="saved?.can_comment"
       @changed="onComments"
     />
-    <!-- Business functions: whose they are, as each sheet of the workbook heads it (read only) -->
-    <dl
-      v-show="tab === 'functions'"
-      class="grid gap-3 rounded-md border border-default bg-elevated/50 px-4 py-3 text-sm sm:grid-cols-3"
-    >
-      <div
-        v-for="item in [
-          { label: 'Directorate', value: org.directorate },
-          { label: 'Sub directorate', value: org.sub_directorate },
-          { label: 'Group', value: org.org_group },
-        ]"
-        :key="item.label"
-      >
-        <dt class="text-xs text-muted">
-          {{ item.label }}
-        </dt>
-        <dd class="font-medium">
-          {{ item.value || 'Pick it on the Sign off page' }}
-        </dd>
-      </div>
-    </dl>
 
     <!-- Business functions -->
     <div
@@ -2293,15 +2304,68 @@ const people = [
           v-if="preview"
           #footer
         >
-          <p class="text-xs text-muted">
-            Cumulative loss, all functions (IDR):
-            <span
-              v-for="(total, i) in preview.loss_totals"
-              :key="i"
-              class="ms-2 tabular-nums"
-              :class="preview.loss_alerts[i] ? 'font-semibold text-error' : ''"
-            >{{ lookups.periods[i] }} {{ formatIdr(total) }}</span>
-          </p>
+          <!-- The cumulative financial loss of Part 1, by period: each function and all of them -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-semibold text-muted">
+              Potential cumulative financial loss (IDR)
+            </h4>
+            <div class="overflow-x-auto rounded-md border border-default">
+              <table class="w-full min-w-[48rem] text-xs">
+                <thead class="bg-elevated/60 text-muted">
+                  <tr>
+                    <th class="px-3 py-1.5 text-left font-medium">
+                      Business function
+                    </th>
+                    <th
+                      v-for="period in lookups.periods"
+                      :key="period"
+                      class="px-3 py-1.5 text-right font-medium whitespace-nowrap"
+                    >
+                      {{ period }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr
+                    v-for="(item, index) in functions"
+                    :key="index"
+                  >
+                    <td class="max-w-56 truncate px-3 py-1.5">
+                      {{ item.name?.trim() || `Function ${index + 1}` }}
+                    </td>
+                    <td
+                      v-for="(_, i) in lookups.periods"
+                      :key="i"
+                      class="px-3 py-1.5 text-right tabular-nums"
+                    >
+                      {{ formatIdr(item.loss?.[i]) }}
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="border-t-2 border-default bg-elevated/40 font-semibold">
+                    <td class="px-3 py-1.5">
+                      All functions
+                    </td>
+                    <td
+                      v-for="(total, i) in preview.loss_totals"
+                      :key="i"
+                      class="px-3 py-1.5 text-right tabular-nums"
+                      :class="preview.loss_alerts[i] ? 'text-error' : ''"
+                    >
+                      {{ formatIdr(total) }}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <p
+              v-if="preview.loss_alerts.some(Boolean)"
+              class="text-xs text-error"
+            >
+              Red: above IDR {{ formatIdr(lookups.loss_alert_idr) }}.
+            </p>
+          </div>
         </template>
       </UCard>
 

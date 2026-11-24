@@ -14,6 +14,8 @@ const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data
 function onSaved(result: BiancaAssessment) {
   data.value = result
 }
+/** Where BiancaForm puts its buttons: this page's top bar. */
+const actionsId = `bianca-actions-${useId()}`
 </script>
 
 <template>
@@ -26,6 +28,13 @@ function onSaved(result: BiancaAssessment) {
       { label: data?.ref_no ?? 'BIA' },
     ]"
   >
+    <template #actions>
+      <!-- The BIA's buttons (BiancaForm puts them here) -->
+      <div
+        :id="actionsId"
+        class="flex items-center"
+      />
+    </template>
     <SkeletonTable
       v-if="showSkeleton"
       :columns="3"
@@ -52,6 +61,7 @@ function onSaved(result: BiancaAssessment) {
       v-else-if="data"
       :key="data.id"
       :assessment="data"
+      :actions-to="`#${actionsId}`"
       @saved="onSaved"
     />
   </AppPage>
