@@ -660,11 +660,14 @@ function toggleBottleneck(row: BiaSignoffWaitingRow, value: boolean | 'indetermi
   selectedBottlenecks.value = next
 }
 
-const remindingBottlenecks = ref(false)
-async function remindApprovals(rows: BiaSignoffWaitingRow[]) {
+const remindingBulk = ref(false)
+const remindingBottleneckIds = ref<Set<number>>(new Set())
+const remindingBottlenecks = computed(() => remindingBulk.value || remindingBottleneckIds.value.size > 0)
+async function remindApprovals(rows: BiaSignoffWaitingRow[], bulk = false) {
   const ids = rows.map((row) => row.id)
   if (!ids.length) return
-  remindingBottlenecks.value = true
+  if (bulk) remindingBulk.value = true
+  else remindingBottleneckIds.value = new Set(ids)
   try {
     const res = await biaRemindBottlenecks(ids)
     const sent = res.reminded.length
@@ -684,7 +687,8 @@ async function remindApprovals(rows: BiaSignoffWaitingRow[]) {
       icon: 'i-lucide-circle-alert',
     })
   } finally {
-    remindingBottlenecks.value = false
+    remindingBulk.value = false
+    remindingBottleneckIds.value = new Set()
   }
 }
 
@@ -1633,9 +1637,9 @@ function record(id: number) {
                   variant="outline"
                   icon="i-lucide-bell-ring"
                   :label="`Send reminder (${selectedBottleneckRows.length})`"
-                  :loading="remindingBottlenecks"
-                  :disabled="!selectedBottleneckRows.length"
-                  @click="remindApprovals(selectedBottleneckRows)"
+                  :loading="remindingBulk"
+                  :disabled="!selectedBottleneckRows.length || remindingBottlenecks"
+                  @click="remindApprovals(selectedBottleneckRows, true)"
                 />
                 <UButton
                   v-if="can('bianca.report.download')"
@@ -1735,7 +1739,8 @@ function record(id: number) {
                   size="xs"
                   icon="i-lucide-bell-ring"
                   label="Remind"
-                  :loading="remindingBottlenecks"
+                  :loading="remindingBottleneckIds.has(row.original.id)"
+                  :disabled="remindingBottlenecks && !remindingBottleneckIds.has(row.original.id)"
                   :aria-label="`Send reminder for ${row.original.group.name}`"
                   @click="remindApprovals([row.original])"
                 />
