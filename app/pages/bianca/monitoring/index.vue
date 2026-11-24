@@ -24,6 +24,13 @@ const historyDialog = useOverlay().create(BiaHistoryDialog)
 const TABS = ['overview', 'renewals', 'register', 'bottlenecks'] as const
 type MonitorTab = (typeof TABS)[number]
 const perPage = useRowsPerPage()
+const { query: sortQuery, header: sortable } = useTableSort([
+  'waiting_since',
+  'working_days_waiting',
+  'working_days_in_signoff',
+  'reminders_sent',
+  'escalated_at',
+])
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
@@ -229,6 +236,7 @@ const register = useBiaRegister(computed(() => ({
 })))
 const bottlenecks = useBiaBottlenecks(computed(() => ({
   ...filters.value,
+  ...(tab.value === 'bottlenecks' ? sortQuery.value : {}),
   page: page.value,
   per_page: perPage.value,
 })))
@@ -339,6 +347,7 @@ const stepRows = computed(() => (stepAverages.data.value?.items ?? []).filter((r
 const stepBars = computed(() =>
   stepRows.value.map((row) => ({ label: row.step_title || biaStepTitle(row.step), value: row.average_working_days ?? 0 })),
 )
+const stepDigits = computed(() => (stepRows.value.some((row) => (row.average_working_days ?? 0) >= 1) ? 1 : 2))
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
@@ -545,15 +554,23 @@ function displayOrgName(value: string | null | undefined) {
 }
 
 function directorateSeverityBar(severity: BiaDirectorateRow['severity']) {
-  if (severity === 'error') return 'border-s-4 border-s-error'
-  if (severity === 'warning') return 'border-s-4 border-s-warning'
-  return 'border-s-4 border-s-transparent'
+  if (severity === 'error') return 'border-s-2 border-s-error'
+  return 'border-s-2 border-s-transparent'
 }
 
 function coverageBarColor(pct: number) {
-  if (pct >= 80) return 'bg-success'
-  if (pct >= 40) return 'bg-warning'
-  return 'bg-error'
+  if (pct >= 100) return 'bg-success'
+  return 'bg-neutral-700 dark:bg-neutral-300'
+}
+
+function directorateCategoryMix(row: BiaDirectorateRow) {
+  const cc = row.category_counts
+  if (!cc) return row.highest_category || 'Not rated'
+  const parts: string[] = []
+  if (cc.critical) parts.push(`${cc.critical} Critical`)
+  if (cc.important) parts.push(`${cc.important} Important`)
+  if (cc.others) parts.push(`${cc.others} Others`)
+  return parts.length ? parts.join(' · ') : 'Not rated'
 }
 
 function coverageTooltip(dir: BiaDirectorateRow) {
@@ -599,17 +616,27 @@ const activeFilterChips = computed(() => {
   return chips
 })
 
+function col(id: string, label: string, width = 'min-w-28', right = false): TableColumn<BiaSignoffWaitingRow> {
+  return {
+    id,
+    accessorKey: id,
+    header: sortable(label, id, right),
+    meta: { class: { th: `${width}${right ? ' text-right' : ''}`, td: width } },
+  }
+}
+
 const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'assessment', header: 'Group' },
-  { accessorKey: 'ref_no', header: 'BIA ref. no.' },
-  { accessorKey: 'step', header: 'Current step' },
-  { id: 'coordinator', header: 'BCM Coordinator' },
-  { id: 'signer', header: 'Waiting signer' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated on' },
-  { accessorKey: 'working_days_in_signoff', header: 'In approval' },
+  col('group', 'Group', 'min-w-44'),
+  col('ref_no', 'BIA ref. no.', 'min-w-32'),
+  col('step_title', 'Current approval step', 'min-w-40'),
+  { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  col('waiting_since', 'Assign date', 'min-w-32'),
+  col('working_days_waiting', 'Working days', 'min-w-32', true),
+  col('reminders_sent', 'Reminders sent', 'min-w-28', true),
+  col('escalated_at', 'Escalated on', 'min-w-32'),
+  col('working_days_in_signoff', 'Working days in approval', 'min-w-36', true),
   { id: 'actions', header: '' },
 ]
 
@@ -633,11 +660,14 @@ function toggleBottleneck(row: BiaSignoffWaitingRow, value: boolean | 'indetermi
   selectedBottlenecks.value = next
 }
 
-const remindingBottlenecks = ref(false)
-async function remindApprovals(rows: BiaSignoffWaitingRow[]) {
+const remindingBulk = ref(false)
+const remindingBottleneckIds = ref<Set<number>>(new Set())
+const remindingBottlenecks = computed(() => remindingBulk.value || remindingBottleneckIds.value.size > 0)
+async function remindApprovals(rows: BiaSignoffWaitingRow[], bulk = false) {
   const ids = rows.map((row) => row.id)
   if (!ids.length) return
-  remindingBottlenecks.value = true
+  if (bulk) remindingBulk.value = true
+  else remindingBottleneckIds.value = new Set(ids)
   try {
     const res = await biaRemindBottlenecks(ids)
     const sent = res.reminded.length
@@ -657,7 +687,8 @@ async function remindApprovals(rows: BiaSignoffWaitingRow[]) {
       icon: 'i-lucide-circle-alert',
     })
   } finally {
-    remindingBottlenecks.value = false
+    remindingBulk.value = false
+    remindingBottleneckIds.value = new Set()
   }
 }
 
@@ -1149,68 +1180,68 @@ function record(id: number) {
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
                 <template v-if="effectiveListMode === 'directorates' && directorates.data.value?.summary">
-                  <span class="font-medium text-highlighted">
+                  <span class="font-medium tabular-nums text-highlighted">
                     {{ plural(directorates.data.value.summary.total_groups, 'group') }}
                   </span>
-                  <span>·</span>
+                  <span class="text-dimmed">/</span>
                   <button
                     type="button"
-                    class="font-medium text-success hover:underline"
+                    class="tabular-nums text-highlighted hover:underline"
                     @click="setQuery({ state: filters.state === 'valid' ? undefined : 'valid' })"
                   >
                     {{ directorates.data.value.summary.valid_final }} valid
                   </button>
                   <template v-if="directorates.data.value.summary.overdue">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-error hover:underline"
                       @click="setQuery({ state: filters.state === 'overdue' ? undefined : 'overdue' })"
                     >
                       {{ directorates.data.value.summary.overdue }} overdue
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.returned">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-error hover:underline"
                       @click="setQuery({ state: filters.state === 'returned' ? undefined : 'returned' })"
                     >
                       {{ directorates.data.value.summary.returned }} returned
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.stuck">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <NuxtLink
                       :to="cardLink({ tab: 'bottlenecks' })"
-                      class="font-medium text-error hover:underline"
+                      class="font-medium tabular-nums text-warning hover:underline"
                     >
                       {{ directorates.data.value.summary.stuck }} stuck approval
                     </NuxtLink>
                   </template>
                   <template v-if="directorates.data.value.summary.due_soon">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-warning hover:underline"
+                      class="tabular-nums text-muted hover:text-highlighted hover:underline"
                       @click="setQuery({ state: filters.state === 'due_soon' ? undefined : 'due_soon' })"
                     >
                       {{ directorates.data.value.summary.due_soon }} due soon
                     </button>
                   </template>
                   <template v-if="directorates.data.value.summary.not_started">
-                    <span>·</span>
+                    <span class="text-dimmed">/</span>
                     <button
                       type="button"
-                      class="font-medium text-highlighted hover:underline"
+                      class="tabular-nums text-muted hover:text-highlighted hover:underline"
                       @click="setQuery({ state: filters.state === 'not_started' ? undefined : 'not_started' })"
                     >
                       {{ directorates.data.value.summary.not_started }} not started
                     </button>
                   </template>
-                  <span class="text-xs text-muted">
-                    — as of {{ formatDate(directorates.data.value.summary.as_of) }}
+                  <span class="text-xs text-dimmed">
+                    (as of {{ formatDate(directorates.data.value.summary.as_of) }})
                   </span>
                 </template>
                 <template v-else-if="effectiveListMode === 'directorates'">
@@ -1228,28 +1259,6 @@ function record(id: number) {
 
               <div class="flex flex-wrap items-center gap-2">
                 <template v-if="effectiveListMode === 'directorates'">
-                  <UPopover>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-help-circle"
-                      label="How to read"
-                    />
-                    <template #content>
-                      <div class="max-w-xs space-y-2 p-3 text-xs leading-relaxed text-muted">
-                        <p class="font-semibold text-highlighted">
-                          How to read this list
-                        </p>
-                        <ul class="list-disc space-y-1 ps-4">
-                          <li><strong class="text-error">Red</strong> means action is needed now (Overdue, Returned, or Stuck ≥ {{ directorates.data.value?.escalation_days ?? 5 }} working days).</li>
-                          <li><strong class="text-warning">Amber</strong> means renewal is due within 30 days.</li>
-                          <li><strong>Most urgent</strong> puts Directorates with the most urgent issues at the top.</li>
-                          <li>Click any Directorate row to inspect its Sub-Directorates and Groups.</li>
-                        </ul>
-                      </div>
-                    </template>
-                  </UPopover>
                   <UButton
                     size="xs"
                     :color="attentionOnly ? 'warning' : 'neutral'"
@@ -1400,12 +1409,9 @@ function record(id: number) {
                         {{ plural(dir.sub_directorate_count, 'sub-directorate') }} · {{ plural(dir.group_count, 'group') }}
                       </p>
                     </div>
-                    <StatusBadge
-                      v-if="dir.highest_category"
-                      :scale="biaCategory"
-                      :value="dir.highest_category"
-                      size="sm"
-                    />
+                    <span class="text-xs font-medium text-muted">
+                      {{ directorateCategoryMix(dir) }}
+                    </span>
                   </div>
                   <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div class="w-36 space-y-1">
@@ -1444,59 +1450,29 @@ function record(id: number) {
                   <thead class="border-b border-default bg-elevated/40 text-xs font-medium uppercase text-muted">
                     <tr>
                       <th class="py-2.5 ps-4 pe-3">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Directorate</span>
-                          <UTooltip text="Click a Directorate to open its Sub-Directorates and Groups.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Click a Directorate to open its Sub-Directorates and Groups.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Directorate</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Final coverage</span>
-                          <UTooltip text="Percentage of groups with an approved Final BIA that has not expired. Hover a bar for details.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Percentage of groups with an approved Final BIA that has not expired.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Final coverage</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Needs attention</span>
-                          <UTooltip :text="`Issues requiring follow-up: Overdue, Returned, Stuck approval (waiting ≥ ${directorates.data.value?.escalation_days ?? 5} working days), Due soon (≤ 30 days), or Not started. Hover a chip to see group names.`">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip :text="`Issues requiring follow-up: Overdue, Returned, Stuck approval (waiting ≥ ${directorates.data.value?.escalation_days ?? 5} working days), Due soon (≤ 30 days), or Not started. Hover any item for group names.`">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Needs attention</span>
+                        </UTooltip>
                       </th>
                       <th class="px-3 py-2.5">
-                        <span class="inline-flex items-center gap-1">
-                          <span>Open BIA</span>
-                          <UTooltip text="Active drafts, revisions, or submissions currently in approval.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Active drafts, revisions, or submissions currently in approval.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Open BIA</span>
+                        </UTooltip>
                       </th>
                       <th class="py-2.5 ps-3 pe-4 text-right">
-                        <span class="inline-flex items-center justify-end gap-1">
-                          <span>Highest category</span>
-                          <UTooltip text="Most critical Business Function Category among groups in this Directorate.">
-                            <UIcon
-                              name="i-lucide-info"
-                              class="size-3.5 text-muted"
-                            />
-                          </UTooltip>
-                        </span>
+                        <UTooltip text="Distribution of Business Function Categories across groups in this Directorate.">
+                          <span class="cursor-help underline decoration-dotted underline-offset-4">Criticality mix</span>
+                        </UTooltip>
                       </th>
                     </tr>
                   </thead>
@@ -1532,12 +1508,12 @@ function record(id: number) {
 
                       <td class="px-3 py-3.5 align-middle">
                         <div
-                          class="w-36 space-y-1"
+                          class="w-40 space-y-1.5"
                           :title="coverageTooltip(dir)"
                         >
-                          <div class="flex items-baseline justify-between gap-2 text-xs tabular-nums">
-                            <span class="font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
-                            <span class="text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
+                          <div class="flex items-baseline justify-between gap-2 tabular-nums">
+                            <span class="text-base font-semibold text-highlighted">{{ dir.coverage.pct }}%</span>
+                            <span class="text-xs text-muted">{{ dir.coverage.valid_final }} of {{ dir.coverage.total }} valid</span>
                           </div>
                           <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                             <div
@@ -1563,13 +1539,14 @@ function record(id: number) {
 
                       <td class="px-3 py-3.5 align-middle">
                         <span
-                          :class="dir.open_counts.total ? 'font-medium text-highlighted' : 'text-xs text-muted'"
+                          class="tabular-nums"
+                          :class="dir.open_counts.total ? 'text-sm font-semibold text-highlighted' : 'text-xs text-muted'"
                         >
                           {{ directorateOpenLabel(dir) }}
                         </span>
                         <p
                           v-if="dir.open_counts.longest_working_days != null"
-                          class="mt-0.5 text-xs text-muted"
+                          class="mt-0.5 text-xs text-muted tabular-nums"
                         >
                           waiting up to {{ plural(dir.open_counts.longest_working_days, 'working day') }}
                         </p>
@@ -1577,19 +1554,12 @@ function record(id: number) {
 
                       <td class="py-3.5 ps-3 pe-4 text-right align-middle">
                         <div class="inline-flex items-center justify-end gap-2">
-                          <StatusBadge
-                            v-if="dir.highest_category"
-                            :scale="biaCategory"
-                            :value="dir.highest_category"
-                            size="sm"
-                          />
-                          <span
-                            v-else
-                            class="text-xs text-muted"
-                          >Not rated</span>
+                          <span class="text-xs font-medium tabular-nums text-muted">
+                            {{ directorateCategoryMix(dir) }}
+                          </span>
                           <UIcon
                             name="i-lucide-chevron-right"
-                            class="size-4 text-muted"
+                            class="size-4 text-dimmed"
                           />
                         </div>
                       </td>
@@ -1637,7 +1607,7 @@ function record(id: number) {
           <SccaBarChart
             title="Average working days per sign-off step"
             measure="Working days"
-            :digits="1"
+            :digits="stepDigits"
             :items="stepBars"
             :summary="stepSummary"
             :loading="stepAverages.status.value === 'pending' && !stepAverages.data.value"
@@ -1647,7 +1617,18 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                BIAs waiting for sign-off, longest-waiting step first. Select rows and click Send reminder to notify the active Waiting signer.
+                <template v-if="bottlenecks.data.value?.total">
+                  {{ plural(bottlenecks.data.value.total, 'BIA') }} in approval, longest-waiting first.
+                </template>
+                <template v-else>
+                  No BIA is in approval.
+                </template>
+                <template v-if="can('bianca.approval.manage') && bottlenecks.data.value?.total">
+                  <NuxtLink
+                    to="/bianca/approval"
+                    class="text-primary hover:underline"
+                  >Act on them in BIANCA approval</NuxtLink>.
+                </template>
               </p>
               <div class="flex flex-wrap gap-2">
                 <UButton
@@ -1656,9 +1637,19 @@ function record(id: number) {
                   variant="outline"
                   icon="i-lucide-bell-ring"
                   :label="`Send reminder (${selectedBottleneckRows.length})`"
-                  :loading="remindingBottlenecks"
-                  :disabled="!selectedBottleneckRows.length"
-                  @click="remindApprovals(selectedBottleneckRows)"
+                  :loading="remindingBulk"
+                  :disabled="!selectedBottleneckRows.length || remindingBottlenecks"
+                  @click="remindApprovals(selectedBottleneckRows, true)"
+                />
+                <UButton
+                  v-if="can('bianca.report.download')"
+                  :to="biaExportUrl(filters, undefined, 'bottlenecks')"
+                  external
+                  download
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
                 />
               </div>
             </div>
@@ -1666,30 +1657,8 @@ function record(id: number) {
               :data="bottlenecks.data.value?.items ?? []"
               :columns="bottleneckColumns"
               :loading="bottlenecks.status.value === 'pending'"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
-              <template #working_days_waiting-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>Waiting</span>
-                  <UTooltip text="Working days (Mon–Fri) waiting at the current sign-off step.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
-              <template #working_days_in_signoff-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>In approval</span>
-                  <UTooltip text="Total working days since this BIA was submitted for approval.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
               <template #select-header>
                 <UCheckbox
                   v-if="bottleneckRows.length"
@@ -1704,7 +1673,7 @@ function record(id: number) {
                   @update:model-value="toggleBottleneck(row.original, $event)"
                 />
               </template>
-              <template #assessment-cell="{ row }">
+              <template #group-cell="{ row }">
                 <NuxtLink
                   :to="record(row.original.id)"
                   class="font-medium text-primary hover:underline"
@@ -1715,13 +1684,8 @@ function record(id: number) {
               <template #ref_no-cell="{ row }">
                 <span class="font-mono text-xs">{{ refLabel(row.original) }}</span>
               </template>
-              <template #step-cell="{ row }">
+              <template #step_title-cell="{ row }">
                 {{ biaStepTitle(row.original.step, row.original.step_title) }}
-              </template>
-              <template #coordinator-cell="{ row }">
-                <span :class="row.original.coordinator ? '' : 'text-muted'">
-                  {{ row.original.coordinator || '—' }}
-                </span>
               </template>
               <template #signer-cell="{ row }">
                 <template v-if="row.original.signer?.name">
@@ -1738,27 +1702,34 @@ function record(id: number) {
                   class="text-xs text-muted"
                 >Unassigned (via Coordinator)</span>
               </template>
-              <template #working_days_waiting-cell="{ row }">
-                <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ biaWaiting(row.original.working_days_waiting) }}</span>
-              </template>
-              <template #reminders_sent-cell="{ row }">
-                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
-              </template>
-              <template #escalated_at-cell="{ row }">
-                <span v-if="row.original.escalated_at">{{ formatDate(row.original.escalated_at) }}</span>
+              <template #level-cell="{ row }">
                 <StatusBadge
-                  v-else-if="row.original.level !== 'ok'"
                   :scale="biaWaitLevel"
                   :value="row.original.level"
                   size="sm"
                 />
+              </template>
+              <template #waiting_since-cell="{ row }">
+                {{ formatDate(row.original.waiting_since) || '—' }}
+              </template>
+              <template #working_days_waiting-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ biaWaiting(row.original.working_days_waiting) }}</span>
+              </template>
+              <template #reminders_sent-cell="{ row }">
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
+              </template>
+              <template #escalated_at-cell="{ row }">
+                <span
+                  v-if="row.original.escalated_at"
+                  class="text-error"
+                >{{ formatDate(row.original.escalated_at) }}</span>
                 <span
                   v-else
                   class="text-muted"
                 >—</span>
               </template>
               <template #working_days_in_signoff-cell="{ row }">
-                {{ biaWaiting(row.original.working_days_in_signoff) }}
+                <span class="block text-right tabular-nums">{{ biaWaiting(row.original.working_days_in_signoff) }}</span>
               </template>
               <template #actions-cell="{ row }">
                 <UButton
@@ -1768,14 +1739,15 @@ function record(id: number) {
                   size="xs"
                   icon="i-lucide-bell-ring"
                   label="Remind"
-                  :loading="remindingBottlenecks"
+                  :loading="remindingBottleneckIds.has(row.original.id)"
+                  :disabled="remindingBottlenecks && !remindingBottleneckIds.has(row.original.id)"
                   :aria-label="`Send reminder for ${row.original.group.name}`"
                   @click="remindApprovals([row.original])"
                 />
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">
-                  No BIA is in approval.
+                  Nothing is in approval{{ filtered ? ' for these filters' : '' }}.
                 </p>
               </template>
             </UTable>
