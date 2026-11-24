@@ -631,7 +631,6 @@ const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   col('ref_no', 'BIA ref. no.', 'min-w-32'),
   col('step_title', 'Current approval step', 'min-w-40'),
   { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
-  { id: 'coordinator', header: 'BCM Coordinator', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
   { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
   col('waiting_since', 'Waiting since', 'min-w-32'),
   col('working_days_waiting', 'Working days', 'min-w-32', true),
@@ -1698,11 +1697,6 @@ function record(id: number) {
                   v-else
                   class="text-xs text-muted"
                 >Unassigned (via Coordinator)</span>
-              </template>
-              <template #coordinator-cell="{ row }">
-                <span :class="row.original.coordinator ? '' : 'text-muted'">
-                  {{ row.original.coordinator || '—' }}
-                </span>
               </template>
               <template #level-cell="{ row }">
                 <StatusBadge
