@@ -91,11 +91,11 @@ const MENUS = [
   { code: 'admin.ra_config', label: 'RA configuration', icon: 'i-lucide-file-cog', route: '/admin/ra-config', parent: 'admin', permission: 'ra.config.view' },
   { code: 'tasks', label: 'Task Management', icon: 'i-lucide-list-todo', route: '/tasks', parent: null, permission: 'scca.access' },
   { code: 'masterdata.building', label: 'Master building', icon: 'i-lucide-building', route: '/masterdata/masterbuilding', parent: 'admin.masterdata', permission: 'sites.master' },
-  { code: 'masterdata.mtd', label: 'Master MTD', icon: 'i-lucide-timer', route: '/masterdata/mtd', parent: 'admin.masterdata', permission: 'masterdata.mtd.view' },
   { code: 'incident.guidebook', label: 'Guidebook', icon: 'i-lucide-book-marked', route: '/incidents/guidebook', parent: 'incident', permission: 'sites.access' },
   { code: 'admin.sites_config', label: 'Sites configuration', icon: 'i-lucide-map-pinned', route: '/admin/sites-config', parent: 'admin', permission: 'sites.config.view' },
   { code: 'admin.ra_migration', label: 'RA migration', icon: 'i-lucide-file-up', route: '/admin/ra-migration', parent: 'admin', permission: 'ra.migrate' },
   { code: 'admin.masterdata', label: 'Master data', icon: 'i-lucide-database', route: null, parent: 'admin', permission: null },
+  { code: 'masterdata.mtd', label: 'Master MTD', icon: 'i-lucide-timer', route: '/masterdata/mtd', parent: 'admin.masterdata', permission: 'masterdata.mtd.view' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
