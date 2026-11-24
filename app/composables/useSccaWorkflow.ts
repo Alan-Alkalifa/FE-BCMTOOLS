@@ -43,6 +43,7 @@ export interface SccaOverview {
     applications_assessed: number
     in_approval: number
     drafts: number
+    need_revision: number
     overdue_renewals: number
     due_in_90_days: number
     stuck_approvals: number

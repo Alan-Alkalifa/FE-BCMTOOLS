@@ -179,6 +179,7 @@ const cards = computed(() => {
     { key: 'applications_assessed', label: 'Applications assessed', hint: 'With a final SCCA', icon: 'i-lucide-shield-check', value: value?.applications_assessed, to: { tab: 'register', status: 'final' }, tone: 'neutral' },
     { key: 'in_approval', label: 'In approval', hint: 'SCCAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_approval, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'Applications with a draft open', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', status: 'draft' }, tone: 'neutral' },
+    { key: 'need_revision', label: 'Need revision', hint: 'Drafts rejected and awaiting revision', icon: 'i-lucide-file-x', value: value?.need_revision, to: { tab: 'register', status: 'draft' }, tone: 'warning' },
     { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'Past the 2-year renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
     { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals, to: { tab: 'bottlenecks' }, tone: 'error' },
@@ -252,14 +253,14 @@ const renewalColumns: TableColumn<SccaRenewalRow>[] = [
   column('sub_directorate', 'Owner sub-directorate', ORG),
   column('department', 'Owner department', ORG),
   column('category', 'Category', 'min-w-28'),
-  column('last_final', 'Latest final SCCA ref. no.', REF),
+  column('last_final', 'SCCA REF.NO.', REF),
   column('last_final_date', 'Latest final SCCA date', DATE),
   column('renewal_date', 'Renewal date', DATE),
   column('days_left', 'Due', 'min-w-36'),
   column('assessor', 'Assessor', PERSON),
   column('contributor', 'Contributor', PERSON),
   column('renewal_status', 'Renewal status', 'min-w-32'),
-  column('renewal_ref', 'Renewal SCCA ref. no.', REF),
+  column('renewal_ref', 'Renews From', REF),
   column('renewal_step', 'Current renewal step', ORG),
   { id: 'actions', header: '' },
 ]
@@ -270,10 +271,11 @@ const registerColumns: TableColumn<SccaRegisterRow>[] = [
   column('sub_directorate', 'Owner sub-directorate', ORG),
   column('department', 'Owner department', ORG),
   column('category', 'Category', 'min-w-28'),
-  column('latest_final', 'Latest final SCCA ref. no.', REF),
+  column('latest_final', 'SCCA REF.NO.', REF),
   column('latest_final_date', 'Latest final SCCA date', DATE),
   column('renewal_date', 'Renewal date', DATE),
-  column('status', 'Status', 'min-w-32'),
+  column('active_status', 'Active', 'min-w-28'),
+  column('inactive_status', 'Inactive', 'min-w-28'),
   column('current_step', 'Current approval step', ORG),
   column('assessor', 'Assessor', PERSON),
   column('contributor', 'Contributor', PERSON),
@@ -281,12 +283,12 @@ const registerColumns: TableColumn<SccaRegisterRow>[] = [
 ]
 const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
   column('application_name', 'Application name', NAME),
-  column('ref_no', 'SCCA ref. no.', REF),
+  column('ref_no', 'SCCA REF.NO.', REF),
   column('step_title', 'Current approval step', ORG),
   column('approver', 'Approver', PERSON),
   column('level', 'Status', 'min-w-36'),
-  column('waiting_since', 'Waiting since', DATE),
-  column('working_days_waiting', 'Working days', 'min-w-32', true),
+  column('waiting_since', 'Assess Since', DATE),
+  column('working_days_waiting', 'Assess Days', 'min-w-32', true),
   column('reminders_sent', 'Reminders sent', 'min-w-28', true),
   column('escalated_at', 'Escalated on', DATE),
   column('working_days_in_approval', 'Working days in approval', 'min-w-32', true),
@@ -487,7 +489,7 @@ function pageTo(next: number) {
     >
       <template #overview>
         <div class="mt-4 space-y-6">
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               v-for="card in cards"
               :key="card.key"
@@ -780,7 +782,7 @@ function pageTo(next: number) {
             <template #renewal_date-cell="{ row }">
               {{ formatDate(row.original.renewal_date) || '—' }}
             </template>
-            <template #status-cell="{ row }">
+            <template #active_status-cell="{ row }">
               <NuxtLink
                 v-if="row.original.open"
                 :to="sccaPath('monitoring', row.original.open.id)"
@@ -792,6 +794,20 @@ function pageTo(next: number) {
                   size="sm"
                 />
               </NuxtLink>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+            <template #inactive_status-cell="{ row }">
+              <span
+                v-if="!row.original.open && row.original.latest_final"
+                class="text-muted text-sm"
+              >No open SCCA</span>
+              <span
+                v-else-if="row.original.open"
+                class="text-muted text-sm"
+              >—</span>
               <span
                 v-else
                 class="text-muted"

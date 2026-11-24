@@ -126,7 +126,7 @@ const upcoming = useSccaUpcoming(computed(() => ({ page: comingPage.value, per_p
 
 const inboxColumns: TableColumn<SccaInboxRow>[] = [
   column('application_name', 'Application name', 'min-w-40'),
-  column('ref_no', 'SCCA ref. no.', 'min-w-32'),
+  column('ref_no', 'SCCA REF.NO.', 'min-w-32'),
   column('category', 'Category', 'min-w-24'),
   column('step_title', 'My step', 'min-w-32'),
   column('submitted_at', 'Submitted date', 'min-w-28'),
@@ -224,13 +224,13 @@ const board = bcm.value
 const boardColumns: TableColumn<SccaBottleneckRow>[] = [
   { id: 'select', header: '' },
   column('application_name', 'Application name', 'min-w-40'),
-  column('ref_no', 'SCCA ref. no.', 'min-w-32'),
+  column('ref_no', 'SCCA REF.NO.', 'min-w-32'),
   column('category', 'Category', 'min-w-24'),
   column('step_title', 'Current approval step', 'min-w-32'),
   column('approver', 'Approver', 'min-w-32'),
   column('level', 'Status', 'min-w-32'),
-  column('waiting_since', 'Waiting since', 'min-w-28'),
-  column('working_days_waiting', 'Working days', 'min-w-28', true),
+  column('waiting_since', 'Assess Since', 'min-w-28'),
+  column('working_days_waiting', 'Assess Days', 'min-w-28', true),
   column('reminders_sent', 'Reminders sent', 'min-w-24', true),
   column('escalated_at', 'Escalated on', 'min-w-28'),
   { id: 'actions', header: '' },
