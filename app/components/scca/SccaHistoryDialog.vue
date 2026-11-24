@@ -17,7 +17,7 @@ const { data, status } = useSccaApplicationHistory(computed(() => ({
 })))
 
 const columns: TableColumn<SccaHistoryItem>[] = [
-  { accessorKey: 'ref_no', header: 'Ref no' },
+  { accessorKey: 'ref_no', header: 'SCCA REF.NO.' },
   { accessorKey: 'reason', header: 'Reason' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'assessment_date', header: 'Assessment date' },
@@ -26,7 +26,7 @@ const columns: TableColumn<SccaHistoryItem>[] = [
   { accessorKey: 'due_date', header: 'Renewal date' },
   { accessorKey: 'assessor', header: 'Assessor' },
   { accessorKey: 'contributor', header: 'Contributor' },
-  { id: 'renews', header: 'Renews' },
+  { id: 'renews', header: 'Renews From' },
 ]
 </script>
 
@@ -65,11 +65,11 @@ const columns: TableColumn<SccaHistoryItem>[] = [
             </NuxtLink>
             <UBadge
               v-if="item.original.mark"
-              :color="item.original.mark === 'current' ? 'success' : 'neutral'"
+              :color="item.original.mark === 'active' ? 'success' : 'neutral'"
               variant="subtle"
               size="sm"
               class="ms-1"
-              :label="item.original.mark === 'current' ? 'Current' : 'Replaced'"
+              :label="item.original.mark === 'active' ? 'Active' : 'Inactive'"
             />
           </template>
           <template #reason-cell="{ row: item }">
