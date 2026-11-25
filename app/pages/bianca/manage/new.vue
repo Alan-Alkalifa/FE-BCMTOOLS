@@ -9,6 +9,8 @@ function onSaved(assessment: { id: number }, tab?: string) {
   // On the saved BIA, the tab that was open (e.g. Business functions, after the RA questionnaire).
   return navigateTo({ path: biancaPath(assessment.id), query: tab && tab !== 'sign' ? { tab } : undefined }, { replace: true })
 }
+/** Where BiancaForm puts its buttons: this page's top bar. */
+const actionsId = `bianca-actions-${useId()}`
 </script>
 
 <template>
@@ -24,6 +26,16 @@ function onSaved(assessment: { id: number }, tab?: string) {
       { label: 'New BIA' },
     ]"
   >
-    <BiancaForm @saved="onSaved" />
+    <template #actions>
+      <!-- The BIA's buttons (BiancaForm puts them here) -->
+      <div
+        :id="actionsId"
+        class="flex items-center"
+      />
+    </template>
+    <BiancaForm
+      :actions-to="`#${actionsId}`"
+      @saved="onSaved"
+    />
   </AppPage>
 </template>

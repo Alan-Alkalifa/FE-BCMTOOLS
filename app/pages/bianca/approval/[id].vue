@@ -16,6 +16,8 @@ function onDecided(updated: BiancaAssessment) {
   data.value = updated
   refreshNuxtData(['bianca-approvals-inbox', 'bianca-approvals-upcoming', 'bianca-approvals-history'])
 }
+/** Where BiancaForm puts its buttons: this page's top bar. */
+const actionsId = `bianca-actions-${useId()}`
 </script>
 
 <template>
@@ -29,6 +31,13 @@ function onDecided(updated: BiancaAssessment) {
       { label: data?.ref_no ?? 'BIA' },
     ]"
   >
+    <template #actions>
+      <!-- The BIA's buttons (BiancaForm puts them here) -->
+      <div
+        :id="actionsId"
+        class="flex items-center"
+      />
+    </template>
     <SkeletonTable
       v-if="showSkeleton"
       :columns="3"
@@ -62,6 +71,7 @@ function onDecided(updated: BiancaAssessment) {
       <BiancaForm
         :key="`${data.id}-${data.status}-${data.pending_role}`"
         :assessment="data"
+        :actions-to="`#${actionsId}`"
       />
     </div>
   </AppPage>

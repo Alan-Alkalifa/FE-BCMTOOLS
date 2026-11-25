@@ -25,6 +25,10 @@ type Mode = 'master' | 'other' | 'na'
 /** The part shown, picked in the function list of the form (BiancaForm). */
 const part = defineModel<BiancaPart>('part', { default: 'p1' })
 const info = computed(() => biancaPartInfo(part.value))
+/** The guidance texts, as BIA configuration › Guides sets them (or their defaults). */
+const t = useBiancaText()
+const partObjective = computed(() => t(`part_${part.value}_objective`))
+const partNotes = computed(() => t(`part_${part.value}_notes`).split('\n').map((line) => line.trim()).filter(Boolean))
 const partIndex = computed(() => BIANCA_PARTS.findIndex((item) => item.value === part.value))
 const previousPart = computed(() => BIANCA_PARTS[partIndex.value - 1] ?? null)
 const nextPart = computed(() => BIANCA_PARTS[partIndex.value + 1] ?? null)
@@ -87,11 +91,6 @@ async function goNext() {
 }
 
 const periods = computed(() => props.lookups.periods)
-const modes = [
-  { label: 'System from the list', value: 'master' },
-  { label: 'Others (not in the list)', value: 'other' },
-  { label: 'NA (no IT system)', value: 'na' },
-]
 
 function modeOf(row: BiancaItDependency): Mode {
   if (row.is_other) return 'other'
@@ -128,13 +127,13 @@ const sides = [
     key: 'up',
     title: 'Upstream',
     name: 'Upstream',
-    description: 'Who triggers the activity. Type NA as the name when there is none.',
+    text: 'upstream',
   },
   {
     key: 'down',
     title: 'Downstream',
     name: 'Downstream',
-    description: 'Who receives or processes your output / instruction. Type NA as the name when there is none.',
+    text: 'downstream',
   },
 ] as const
 type Side = typeof sides[number]['key']
@@ -177,6 +176,8 @@ const long = TEXT_LIMITS.long
 /** Part 1's rule for the Suggested MTD, worked out from the impact typed so far. */
 const ruleMtd = computed(() => props.preview?.recommended_suggested_mtd ?? null)
 
+/** Part 3's resources at the alternate site aren't asked of a function working from home. */
+const worksFromHome = computed(() => !!fn.value.alt_site_strategy?.toLowerCase().includes('work from home'))
 const recommendedSites = computed(() => props.lookups.alternate_site_by_category?.[props.preview?.category ?? ''] ?? [])
 
 /** The choices of the BIA configuration, plus the value already chosen when it is no longer offered. */
@@ -230,7 +231,6 @@ const groupListId = useId()
 <template>
   <div class="@container space-y-4">
     <datalist :id="groupListId">
-      <option value="NA" />
       <option
         v-for="group in lookups.org_groups ?? []"
         :key="group"
@@ -284,14 +284,14 @@ const groupListId = useId()
         </UPopover>
       </div>
       <p class="text-sm">
-        <span class="font-medium">Objective:</span> {{ info.objective }}
+        <span class="font-medium">Objective:</span> {{ partObjective }}
       </p>
       <ul
-        v-if="info.notes.length"
+        v-if="partNotes.length"
         class="list-disc space-y-0.5 ps-5 text-sm text-muted"
       >
         <li
-          v-for="line in info.notes"
+          v-for="line in partNotes"
           :key="line"
         >
           {{ line }}
@@ -305,7 +305,7 @@ const groupListId = useId()
       v-if="part === 'p1'"
       label="Name of business function"
       required
-      help="Type it here, in Part 1; the other parts show it."
+      :help="t('fn_name_help')"
       class="max-w-2xl"
     >
       <UInput
@@ -541,8 +541,9 @@ const groupListId = useId()
         <BiancaField
           label="Expected MTD (hours / days)"
           note="expected_mtd"
-          help="Should be equal to or shorter than the Suggested MTD."
+          :help="t('expected_mtd_help')"
           class="w-56"
+          required
         >
           <USelect
             v-model="fn.expected_mtd"
@@ -553,7 +554,7 @@ const groupListId = useId()
         </BiancaField>
         <UFormField
           label="Business function category"
-          help="Follows the Expected MTD (BIA Category)"
+          :help="t('category_help')"
           class="w-64"
         >
           <UInput
@@ -573,194 +574,288 @@ const groupListId = useId()
         title="The Expected MTD is longer than the Suggested MTD."
       />
 
-      <UCard
-        v-for="(row, index) in fn.it_dependencies"
-        :key="index"
-        :ui="{ body: 'space-y-3' }"
-      >
+      <!-- The IT systems: a table filled across, like the upstreams and downstreams of Part 2b.
+           Optional; a system that is added is filled in. -->
+      <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <template #header>
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-sm font-semibold">IT system {{ index + 1 }}</span>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 class="flex items-center gap-1.5 text-sm font-semibold">
+                IT application systems
+                <BiancaNote
+                  note="it_system"
+                  label="IT application systems"
+                />
+              </h4>
+              <p class="text-xs text-muted">
+                {{ t('it_systems') }}
+              </p>
+            </div>
             <UButton
-              v-if="!off && fn.it_dependencies.length > 1"
+              v-if="!off && fn.it_dependencies.length < lookups.it_slots"
               color="neutral"
-              variant="ghost"
-              size="xs"
-              icon="i-lucide-trash-2"
-              :aria-label="`Remove IT system ${index + 1}`"
-              @click="fn.it_dependencies.splice(index, 1)"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-plus"
+              label="Add IT system"
+              @click="addIt"
             />
           </div>
         </template>
-        <div class="grid gap-4 @xl:grid-cols-2">
-          <BiancaField
-            label="Kind of system"
-            note="it_system"
-          >
-            <USelect
-              :model-value="modeOf(row)"
-              :items="modes"
-              class="w-full"
-              :disabled="off"
-              @update:model-value="setMode(row, $event as Mode)"
-            />
-          </BiancaField>
-          <UFormField
-            v-if="modeOf(row) === 'master'"
-            label="IT application system"
-          >
-            <BiancaPicker
-              v-model="row.application_id"
-              kind="applications"
-              :selected="row.application_id && row.application_name ? { id: row.application_id, label: row.application_name } : null"
-              :disabled="off"
-              aria-label="IT application system"
-              @pick="pickApplication(row, $event)"
-            />
-          </UFormField>
-          <UFormField
-            v-else-if="modeOf(row) === 'other'"
-            label="System name"
-          >
-            <UInput
-              v-model="row.application_name"
-              class="w-full"
-              :maxlength="TEXT_LIMITS.name"
-              :disabled="off"
-            />
-          </UFormField>
-        </div>
 
-        <template v-if="modeOf(row) !== 'na'">
-          <div class="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
-            <BiancaField
-              label="IT committed RTO (hours / days)"
-              note="rto"
-              :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
-            >
-              <UInput
-                v-model="row.rto"
-                class="w-full"
-                :readonly="modeOf(row) === 'master'"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="off"
-                placeholder="e.g. 6 hrs"
-              />
-            </BiancaField>
-            <BiancaField
-              label="IT committed RPO (LDB / LST / LSB)"
-              note="rpo"
-              :help="modeOf(row) === 'master' ? 'From the application master' : undefined"
-            >
-              <UInput
-                v-model="row.rpo"
-                class="w-full"
-                :readonly="modeOf(row) === 'master'"
-                :maxlength="TEXT_LIMITS.medium"
-                :disabled="off"
-                placeholder="LDB, LST, LSB or NA"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Process workaround in place (Yes / No)"
-              note="workaround"
-            >
-              <USelect
-                v-model="row.workaround"
-                :items="listChoices('yes_no', lookups.yes_no, row.workaround)"
-                class="w-full"
-                :disabled="off"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Time to clear backlog (hours)"
-              note="backlog"
-            >
-              <UInput
-                v-model.number="row.backlog_hours"
-                type="number"
-                min="0"
-                class="w-full"
-                :disabled="off"
-              />
-            </BiancaField>
-          </div>
-          <div class="grid gap-4 @xl:grid-cols-2">
-            <BiancaField
-              label="System usage (inquiry / transaction)"
-              note="system_usage"
-            >
-              <USelect
-                v-model="row.system_usage"
-                :items="listChoices('system_usage', lookups.system_usage, row.system_usage)"
-                class="w-full"
-                :disabled="off"
-              />
-            </BiancaField>
-            <BiancaField
-              label="Workaround critical gaps"
-              note="gaps"
-              :required="!!daat(index)?.gaps_required"
-              :help="daat(index)?.gaps_required ? 'Required: RTO is longer than the MTD, there is no workaround and the system is a full dependency.' : 'Opens only if RTO > MTD, no workaround and full dependency.'"
-              :error="daat(index)?.gaps_required && !row.gaps ? 'Required' : undefined"
-            >
-              <UTextarea
-                v-model="row.gaps"
-                class="w-full"
-                :rows="2"
-                :maxlength="long"
-                :disabled="off || !daat(index)?.gaps_required"
-                :ui="{ base: 'disabled:bg-elevated' }"
-                :placeholder="daat(index)?.gaps_required ? 'The critical gaps, since there is no workaround' : 'Not needed for this system'"
-              />
-            </BiancaField>
-          </div>
-          <div
-            v-if="daat(index)"
-            class="rounded-md bg-elevated/50 p-3 text-sm"
-          >
-            <p class="flex flex-wrap items-center gap-x-1">
-              <span class="inline-flex items-center gap-1 font-medium">DAAT <BiancaNote
-                note="daat"
-                label="DAAT"
-              />:</span>
-              <span :class="[nonNumeric, (daat(index)?.daat_hours ?? 0) < 0 ? 'font-semibold text-error' : '']">
-                {{ daat(index)?.daat_hours == null ? '—' : `${daat(index)?.daat_hours} hours` }}
-              </span>
-              <span class="ms-1 text-muted">= Expected MTD − RTO − time to clear backlog, shown as worked out.</span>
-            </p>
-            <ul
-              v-if="daat(index)?.warnings.length"
-              class="mt-2 space-y-1 text-warning"
-            >
-              <li
-                v-for="warning in daat(index)?.warnings"
-                :key="warning"
-                class="flex gap-2"
+        <p
+          v-if="!fn.it_dependencies.length"
+          class="p-4 text-sm text-muted"
+        >
+          No IT system. Add one if the function uses an IT system.
+        </p>
+        <div
+          v-else
+          class="overflow-x-auto"
+        >
+          <table class="w-full min-w-[86rem] text-sm">
+            <thead>
+              <tr class="bg-elevated/50 text-left text-xs font-medium text-muted">
+                <th class="sticky left-0 z-10 w-10 bg-elevated px-3 py-2">
+                  No.
+                </th>
+                <th class="sticky left-10 z-10 min-w-64 bg-elevated px-3 py-2">
+                  IT application system <span class="text-error">*</span>
+                </th>
+                <th class="w-32 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">IT committed RTO <span class="text-error">*</span><BiancaNote
+                    note="rto"
+                    label="RTO"
+                  /></span>
+                </th>
+                <th class="w-36 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">IT committed RPO <span class="text-error">*</span><BiancaNote
+                    note="rpo"
+                    label="RPO"
+                  /></span>
+                </th>
+                <th class="w-32 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">Process workaround (Yes / No) <span class="text-error">*</span><BiancaNote
+                    note="workaround"
+                    label="Workaround"
+                  /></span>
+                </th>
+                <th class="w-32 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">Time to clear backlog (hours) <span class="text-error">*</span><BiancaNote
+                    note="backlog"
+                    label="Backlog"
+                  /></span>
+                </th>
+                <th class="w-28 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">DAAT (hours)<BiancaNote
+                    note="daat"
+                    label="DAAT"
+                  /></span>
+                </th>
+                <th class="w-44 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">System usage (inquiry / transaction) <span class="text-error">*</span><BiancaNote
+                    note="system_usage"
+                    label="System usage"
+                  /></span>
+                </th>
+                <th class="min-w-64 px-3 py-2">
+                  <span class="inline-flex items-center gap-1">Workaround critical gaps<BiancaNote
+                    note="gaps"
+                    label="Workaround critical gaps"
+                  /></span>
+                </th>
+                <th class="w-10 px-2 py-2">
+                  <span class="sr-only">Remove</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <template
+                v-for="(row, index) in fn.it_dependencies"
+                :key="index"
               >
-                <UIcon
-                  name="i-lucide-triangle-alert"
-                  class="mt-0.5 size-4 shrink-0"
-                />{{ warning }}
-              </li>
-            </ul>
-            <p
-              v-if="daat(index)?.rto_reaches_mtd"
-              class="mt-2 text-warning"
-            >
-              The RTO reaches the Expected MTD: explain it in the Part 2a note (Notes tab).
-            </p>
-          </div>
+                <tr class="align-top">
+                  <td class="sticky left-0 z-10 bg-default px-3 py-2 tabular-nums text-muted">
+                    {{ index + 1 }}
+                  </td>
+                  <td class="sticky left-10 z-10 bg-default px-3 py-2">
+                    <p
+                      v-if="modeOf(row) === 'na'"
+                      class="py-1.5"
+                    >
+                      NA
+                    </p>
+                    <BiancaPicker
+                      v-else-if="modeOf(row) === 'master'"
+                      v-model="row.application_id"
+                      kind="applications"
+                      :selected="row.application_id && row.application_name ? { id: row.application_id, label: row.application_name } : null"
+                      :disabled="off"
+                      :aria-label="`IT application system ${index + 1}`"
+                      @pick="pickApplication(row, $event)"
+                    />
+                    <UInput
+                      v-else
+                      v-model="row.application_name"
+                      class="w-full"
+                      :maxlength="TEXT_LIMITS.name"
+                      :disabled="off"
+                      placeholder="The system's name"
+                      :aria-label="`IT application system ${index + 1} (not in the list)`"
+                    />
+                    <UButton
+                      v-if="!off && modeOf(row) !== 'na'"
+                      variant="link"
+                      size="xs"
+                      class="px-0"
+                      :label="modeOf(row) === 'master' ? 'Not in the list? Type it' : 'Pick from the application master'"
+                      @click="setMode(row, modeOf(row) === 'master' ? 'other' : 'master')"
+                    />
+                  </td>
+                  <template v-if="modeOf(row) === 'na'">
+                    <td
+                      colspan="7"
+                      class="px-3 py-2 text-xs text-muted"
+                    >
+                      NA: no IT system, nothing more to fill in.
+                    </td>
+                  </template>
+                  <template v-else>
+                    <td class="px-3 py-2">
+                      <UInput
+                        v-model="row.rto"
+                        class="w-full"
+                        :readonly="modeOf(row) === 'master'"
+                        :maxlength="TEXT_LIMITS.medium"
+                        :disabled="off"
+                        :ui="modeOf(row) === 'master' ? { base: 'bg-elevated' } : undefined"
+                        :placeholder="modeOf(row) === 'master' ? 'From the master' : 'E.g. 6 hrs'"
+                        :aria-label="`RTO, IT system ${index + 1}`"
+                      />
+                    </td>
+                    <td class="px-3 py-2">
+                      <UInput
+                        v-model="row.rpo"
+                        class="w-full"
+                        :readonly="modeOf(row) === 'master'"
+                        :maxlength="TEXT_LIMITS.medium"
+                        :disabled="off"
+                        :ui="modeOf(row) === 'master' ? { base: 'bg-elevated' } : undefined"
+                        :placeholder="modeOf(row) === 'master' ? 'From the master' : 'LDB, LST or LSB'"
+                        :aria-label="`RPO, IT system ${index + 1}`"
+                      />
+                    </td>
+                    <td class="px-3 py-2">
+                      <USelect
+                        v-model="row.workaround"
+                        :items="listChoices('yes_no', lookups.yes_no, row.workaround)"
+                        class="w-full"
+                        :disabled="off"
+                        :aria-label="`Process workaround, IT system ${index + 1}`"
+                      />
+                    </td>
+                    <td class="px-3 py-2">
+                      <UInput
+                        v-model.number="row.backlog_hours"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                        :disabled="off"
+                        :aria-label="`Time to clear backlog, IT system ${index + 1}`"
+                      />
+                    </td>
+                    <td
+                      class="px-3 py-2.5 tabular-nums"
+                      :class="(daat(index)?.daat_hours ?? 0) < 0 ? 'font-semibold text-error' : ''"
+                    >
+                      {{ daat(index)?.daat_hours ?? '—' }}
+                    </td>
+                    <td class="px-3 py-2">
+                      <USelect
+                        v-model="row.system_usage"
+                        :items="listChoices('system_usage', lookups.system_usage, row.system_usage)"
+                        class="w-full"
+                        :disabled="off"
+                        :aria-label="`System usage, IT system ${index + 1}`"
+                      />
+                    </td>
+                    <td class="px-3 py-2">
+                      <UTextarea
+                        v-model="row.gaps"
+                        class="w-full"
+                        :rows="2"
+                        autoresize
+                        :maxlength="long"
+                        :disabled="off || !daat(index)?.gaps_required"
+                        :color="daat(index)?.gaps_required && !row.gaps?.trim() ? 'error' : undefined"
+                        :highlight="!!daat(index)?.gaps_required && !row.gaps?.trim()"
+                        :ui="{ base: 'disabled:bg-elevated' }"
+                        :placeholder="daat(index)?.gaps_required ? 'Required: the critical gaps' : 'Not needed'"
+                        :aria-label="`Workaround critical gaps, IT system ${index + 1}`"
+                      />
+                      <p
+                        v-if="daat(index)?.gaps_required"
+                        class="mt-1 text-xs text-muted"
+                      >
+                        RTO is longer than the MTD, there is no workaround and the system is a full dependency.
+                      </p>
+                    </td>
+                  </template>
+                  <td class="px-2 py-2">
+                    <UButton
+                      v-if="!off"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-trash-2"
+                      :aria-label="`Remove IT system ${index + 1}`"
+                      @click="fn.it_dependencies.splice(index, 1)"
+                    />
+                  </td>
+                </tr>
+                <!-- What the workbook's DAAT notes ask to look at, under the system -->
+                <tr v-if="modeOf(row) !== 'na' && (daat(index)?.warnings.length || daat(index)?.rto_reaches_mtd)">
+                  <td class="sticky left-0 bg-default" />
+                  <td
+                    colspan="9"
+                    class="px-3 pb-3"
+                  >
+                    <ul class="space-y-1 text-xs text-warning">
+                      <li
+                        v-for="warning in daat(index)?.warnings"
+                        :key="warning"
+                        class="flex gap-1.5"
+                      >
+                        <UIcon
+                          name="i-lucide-triangle-alert"
+                          class="mt-px size-3.5 shrink-0"
+                        />{{ warning }}
+                      </li>
+                      <li
+                        v-if="daat(index)?.rto_reaches_mtd"
+                        class="flex gap-1.5"
+                      >
+                        <UIcon
+                          name="i-lucide-triangle-alert"
+                          class="mt-px size-3.5 shrink-0"
+                        />The RTO reaches the Expected MTD: explain it in the Part 2a note below.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <template
+          v-if="fn.it_dependencies.length"
+          #footer
+        >
+          <p class="text-xs text-muted">
+            DAAT = Expected MTD − RTO − time to clear backlog. RTO and RPO of a system from the master come from Administration › IT application systems.
+          </p>
         </template>
       </UCard>
-      <UButton
-        v-if="!off && fn.it_dependencies.length < lookups.it_slots"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-plus"
-        label="Add IT system"
-        @click="addIt"
-      />
     </section>
 
     <!-- Part 2b: the workbook's columns D (the function's capacity), then the upstreams and the
@@ -773,7 +868,7 @@ const groupListId = useId()
         label="Planned capacity (%) for the business function"
         note="planned_capacity"
         required
-        help="Its upstreams and downstreams are compared with it."
+        :help="t('planned_capacity_help')"
         class="max-w-sm"
       >
         <USelect
@@ -793,14 +888,14 @@ const groupListId = useId()
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h4 class="flex items-center gap-1.5 text-sm font-semibold">
-                {{ side.title }} <span class="text-error">*</span>
+                {{ side.title }}
                 <BiancaNote
                   :note="side.key === 'up' ? 'upstream' : 'downstream'"
                   :label="side.title"
                 />
               </h4>
               <p class="text-xs text-muted">
-                {{ side.description }}
+                {{ t(side.text) }}
               </p>
             </div>
             <UButton
@@ -819,7 +914,7 @@ const groupListId = useId()
           v-if="!sideRows(side.key).length"
           class="p-4 text-sm text-muted"
         >
-          None yet. Add one, or type NA as the name when there is none.
+          None. Add one if the function depends on another Group or party.
         </p>
         <div
           v-else
@@ -994,11 +1089,12 @@ const groupListId = useId()
     >
       <BiancaPartCard
         title="Staff and recovery level"
-        description="How many people the function has, how many it needs to run at the planned capacity, and the level it recovers to."
+        :description="t('p3_staff')"
       >
         <div class="grid items-end gap-5 @xl:grid-cols-2 @3xl:grid-cols-3">
           <BiancaField
             label="Total staff strength (no. of staff)"
+            required
             note="total_staff"
           >
             <UInput
@@ -1011,6 +1107,7 @@ const groupListId = useId()
           </BiancaField>
           <BiancaField
             label="Staff required for the planned capacity (no. of staff)"
+            required
             note="staff_required"
           >
             <UInput
@@ -1023,6 +1120,7 @@ const groupListId = useId()
           </BiancaField>
           <BiancaField
             label="Expected recovery level (%)"
+            required
             note="recovery_level"
           >
             <USelect
@@ -1039,11 +1137,12 @@ const groupListId = useId()
 
       <BiancaPartCard
         title="Recovery strategies"
-        description="Which work comes first when the function recovers, and how the work left over is cleared."
+        :description="t('p3_strategies')"
       >
         <div class="grid gap-5 @3xl:grid-cols-2">
           <BiancaField
             label="Prioritization strategy"
+            required
             note="prioritization_strategy"
           >
             <UTextarea
@@ -1057,6 +1156,7 @@ const groupListId = useId()
           </BiancaField>
           <BiancaField
             label="Outstanding strategy"
+            required
             note="outstanding_strategy"
           >
             <UTextarea
@@ -1073,11 +1173,12 @@ const groupListId = useId()
 
       <BiancaPartCard
         title="Alternate site"
-        description="Where the function works from when its main location can't be used, and the BCP seats it has there."
+        :description="t('p3_alt_site')"
       >
         <div class="grid gap-5 @3xl:grid-cols-3">
           <BiancaField
             label="Recommended alternate site strategy"
+            required
             note="alt_site_strategy"
             class="@3xl:col-span-3 @3xl:max-w-xl"
           >
@@ -1099,6 +1200,7 @@ const groupListId = useId()
           </BiancaField>
           <BiancaField
             label="Current BCP seats in place (seats)"
+            required
             note="seats_current"
           >
             <UInput
@@ -1111,6 +1213,7 @@ const groupListId = useId()
           </BiancaField>
           <BiancaField
             label="BCP seats required after the BIA (seats)"
+            required
             note="seats_required"
           >
             <UInput
@@ -1126,13 +1229,14 @@ const groupListId = useId()
 
       <BiancaPartCard
         title="Resources at the alternate site"
-        description="What the function needs at the alternate site to meet the planned capacity (excluding work from home)."
+        :description="worksFromHome ? t('p3_resources_wfh') : t('p3_resources')"
         note="resources"
       >
         <div class="space-y-5">
           <div class="grid grid-cols-2 gap-5 @3xl:grid-cols-4">
             <UFormField
               label="PC (units)"
+              :required="!worksFromHome"
             >
               <UInput
                 v-model.number="fn.res_pc"
@@ -1144,6 +1248,7 @@ const groupListId = useId()
             </UFormField>
             <UFormField
               label="Phone, fixed line (units)"
+              :required="!worksFromHome"
             >
               <UInput
                 v-model.number="fn.res_phone"
@@ -1155,6 +1260,7 @@ const groupListId = useId()
             </UFormField>
             <UFormField
               label="Fax (units)"
+              :required="!worksFromHome"
             >
               <UInput
                 v-model.number="fn.res_fax"
@@ -1166,6 +1272,7 @@ const groupListId = useId()
             </UFormField>
             <UFormField
               label="Copier (units)"
+              :required="!worksFromHome"
             >
               <UInput
                 v-model.number="fn.res_copier"
@@ -1194,11 +1301,12 @@ const groupListId = useId()
 
       <BiancaPartCard
         title="Vital records"
-        description="The records the function can't recover without, and where they are kept. Mandatory for a Business Critical function."
+        :description="t('p3_vital')"
       >
         <div class="grid gap-5 @3xl:grid-cols-2">
           <BiancaField
             label="Vital records"
+            :required="preview?.category === 'Business Critical'"
             note="vital_record"
           >
             <UTextarea
@@ -1212,6 +1320,7 @@ const groupListId = useId()
           </BiancaField>
           <UFormField
             label="Vital records location"
+            :required="preview?.category === 'Business Critical'"
           >
             <UTextarea
               v-model="fn.vital_record_location"
@@ -1233,10 +1342,11 @@ const groupListId = useId()
     >
       <BiancaPartCard
         title="About the function"
-        description="What the business function does, in a few sentences."
+        :description="t('p4_about')"
       >
         <BiancaField
           label="Function description"
+          required
           note="description"
         >
           <UTextarea
@@ -1252,11 +1362,12 @@ const groupListId = useId()
 
       <BiancaPartCard
         title="Critical timings"
-        description="How often the function runs, when it is most critical, and the activities that must be done at those times."
+        :description="t('p4_timings')"
       >
         <div class="space-y-5">
           <BiancaField
             label="Frequency"
+            required
             note="frequency"
             class="@xl:max-w-xs"
           >
@@ -1270,6 +1381,8 @@ const groupListId = useId()
           <div class="grid gap-5 @3xl:grid-cols-2">
             <BiancaField
               label="Critical timings"
+              required
+              :help="t('na_help')"
               note="critical_timings"
             >
               <UTextarea
@@ -1283,6 +1396,8 @@ const groupListId = useId()
             </BiancaField>
             <BiancaField
               label="Activity Performed at Critical Timings"
+              required
+              :help="t('na_help')"
               note="critical_activity"
             >
               <UTextarea

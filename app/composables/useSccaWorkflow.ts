@@ -1,13 +1,15 @@
 /** SCCA Monitoring, the Approval menu (inbox, history, BCM board) and the SCCA reminder rules
  * (SCCA configuration > Reminders and escalation). */
-import type { SccaPage } from '~/composables/useScca'
+import type { SccaListQuery, SccaPage } from '~/composables/useScca'
+
+export type SccaMonitoringStatus = SccaStatus | 'need_revision' | 'in_revision'
 
 export interface SccaMonitoringFilters {
   from?: string
   to?: string
   /** Comma-separated categories. */
   category?: string
-  status?: SccaStatus
+  status?: SccaMonitoringStatus
   department?: string
   directorate?: string
   sub_directorate?: string
@@ -28,6 +30,8 @@ export interface SccaMonitorRef {
   status: SccaStatus
   /** A draft a signer rejected, not resubmitted yet: shown as In revision. */
   in_revision?: boolean
+  /** In revision, with no edit saved since the latest rejection. */
+  need_revision?: boolean
   /** Brought in by Administration > SCCA migration. */
   migrated?: boolean
   category: SccaCategory | null
@@ -43,6 +47,8 @@ export interface SccaOverview {
     applications_assessed: number
     in_approval: number
     drafts: number
+    need_revision: number
+    in_revision: number
     overdue_renewals: number
     due_in_90_days: number
     stuck_approvals: number
@@ -301,6 +307,24 @@ export function sccaExportUrl(view: 'register' | 'renewals' | 'bottlenecks', fil
   }
   const text = query.toString()
   return `${MONITOR}/${view}.xlsx${text ? `?${text}` : ''}`
+}
+
+export function sccaManageExportUrl(filters: SccaListQuery | Record<string, string | number | undefined>) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(clean({ ...filters, page: undefined, per_page: undefined }))) {
+    query.set(key, String(value))
+  }
+  const text = query.toString()
+  return `/api/scca/assessments/export.xlsx${text ? `?${text}` : ''}`
+}
+
+export function sccaApprovalExportUrl(view: 'inbox' | 'history' | 'board', filters: Record<string, string | number | undefined> = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(clean({ ...filters, page: undefined, per_page: undefined }))) {
+    query.set(key, String(value))
+  }
+  const text = query.toString()
+  return `/api/scca/approvals/${view}.xlsx${text ? `?${text}` : ''}`
 }
 
 /** Every approval list is server-paginated: `page` and `per_page` go to the API. */

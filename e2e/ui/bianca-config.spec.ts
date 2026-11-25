@@ -62,28 +62,20 @@ test('Sign Off accepts WFH and generic or specified Hyspace without requiring a 
   await expect(page.getByRole('spinbutton', { name: 'Alternate location floor', exact: true })).not.toHaveAttribute('required', '')
 })
 
-test('Expected MTD edits one master for IT and non-IT', async ({ page }) => {
-  await signIn(page, { permissions })
+test('Expected MTD is read here: Master data › Master MTD changes it, for IT and non-IT', async ({ page }) => {
+  await signIn(page, { permissions: [...permissions, 'masterdata.mtd.view', 'masterdata.mtd.manage'] })
   const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
-  let saved: BiancaConfigPayload | undefined
-  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, async (route) => {
-    if (route.request().method() === 'PUT') {
-      const body = route.request().postDataJSON()
-      saved = body.payload
-      expect(body.list_items.dependency_mtd).toBeUndefined()
-      Object.assign(draft, body, { revision: 2 })
-      return route.fulfill({ json: draft })
-    }
-    return route.fulfill({ json: { items: [draft] } })
-  })
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?version=2&tab=impact&impact=expected-mtd')
   const headings = page.getByRole('heading', { name: 'Expected MTD', exact: true })
   await expect(headings).toBeVisible({ timeout: 45000 })
-  await expect(page.getByRole('switch', { name: 'MTD IT', exact: true }).nth(1)).toBeDisabled()
-  await page.getByRole('textbox', { name: /^Name\*?$/ }).first().fill('Four hours')
-  await page.getByRole('switch', { name: 'MTD Non IT', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
-  await expect.poll(() => saved?.mtd_options?.[0]).toMatchObject({ value: '4 hours', label: 'Four hours', use_it: true, use_non_it: false })
+  // The choices are a copy of Master MTD, read only in a version (Master data › Master MTD).
+  await expect(page.getByText('Managed in Master data › Master MTD')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: /^Name\*?$/ }).first()).toBeDisabled()
+  await expect(page.getByRole('switch', { name: 'MTD IT', exact: true }).first()).toBeDisabled()
+  await expect(page.getByRole('switch', { name: 'MTD Non IT', exact: true }).first()).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Add MTD', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Edit in Master MTD' })).toHaveAttribute('href', /\/masterdata\/mtd\?part=options/)
 })
 
 test('an administrator adds a personnel category and saves the typed payload with CSRF', async ({ page }) => {
@@ -320,15 +312,15 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
   await page.getByRole('option', { name: 'Test Coordinator' }).click()
   await page.getByRole('button', { name: 'Alternate BCM Coordinator', exact: true }).click()
   await page.getByRole('option', { name: 'Test Alternate' }).click()
-  const riskQuestions = page.locator('#bianca-sign').getByRole('radiogroup')
-  await riskQuestions.nth(0).getByRole('radio', { name: 'No', exact: true }).check()
-  await riskQuestions.nth(1).getByRole('radio', { name: 'Yes', exact: true }).check()
+  // The risk assessment questions are on the RA questionnaire (MoM 23 Nov), not the Sign off page.
+  await expect(page.locator('#bianca-sign').getByText('Have you considered business continuity')).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'RA questionnaire', exact: true }).click()
   // Leaving the Sign off page asks to check what was filled in.
   const review = page.getByRole('dialog', { name: 'Is this correct?' })
   await expect(review).toBeVisible()
   await review.getByRole('button', { name: 'Yes, continue', exact: true }).click()
+  await expect(page.locator('#bianca-ra').getByText('4.1 Have you considered business continuity')).toBeVisible()
   const count = page.getByRole('spinbutton', { name: 'Number of personnel, Specialist Support', exact: true })
   await count.fill('7')
   await expect(page.locator('#bianca-ra tfoot').getByRole('cell', { name: '7', exact: true })).toBeVisible()
@@ -354,7 +346,7 @@ test('configuration sections keep draft edits across tabs and compare saved valu
     return route.fulfill({ json: { items: [draft, version()] } })
   })
 
-  await page.goto('/admin/bianca-config?version=2&tab=lists&list=suggested_mtd')
+  await page.goto('/admin/bianca-config?version=2&tab=lists&list=alt_site_strategies')
   const versionSelect = page.getByRole('combobox', { name: 'Configuration version' })
   const requestPublish = page.getByRole('button', { name: 'Request publish', exact: true })
   await expect(versionSelect).toHaveText(/V2/, { timeout: 45000 })
@@ -362,18 +354,17 @@ test('configuration sections keep draft edits across tabs and compare saved valu
   await expect(page.getByRole('button', { name: 'Discard draft', exact: true })).toBeEnabled()
 
   const lists = page.getByRole('navigation', { name: 'Lists', exact: true })
-  await expect(lists.getByRole('button', { name: /^Suggested MTD/ })).toHaveAttribute('aria-current', 'page')
-  const choices = page.getByRole('table', { name: 'Suggested MTD items' })
-  await expect(choices.getByRole('textbox', { name: 'Code 2' })).toHaveValue('1 day')
+  await expect(lists.getByRole('button', { name: /^Alternate site strategies/ })).toHaveAttribute('aria-current', 'page')
+  const choices = page.getByRole('table', { name: 'Alternate site strategies items' })
+  await expect(choices.getByRole('textbox', { name: 'Code 1' })).toHaveValue('Hyspace')
+  await page.getByRole('button', { name: 'Add item', exact: true }).click()
+  await choices.getByRole('textbox', { name: 'Code 2' }).fill('Dedicated BCP Site')
+  await choices.getByRole('textbox', { name: 'Label 2' }).fill('Dedicated site')
+  await choices.getByRole('textbox', { name: 'Text 2' }).fill('A BCP site of its own')
+  await choices.getByRole('button', { name: 'Move item 2 up' }).click()
   await choices.getByRole('switch', { name: 'Item 2 active' }).uncheck()
   await page.getByRole('button', { name: 'Add item', exact: true }).click()
-  await choices.getByRole('textbox', { name: 'Code 3' }).fill('2 days')
-  await choices.getByRole('textbox', { name: 'Label 3' }).fill('Two days')
-  await choices.getByRole('textbox', { name: 'Text 3' }).fill('Within two days')
-  await choices.getByRole('button', { name: 'Move item 3 up' }).click()
-  await choices.getByRole('button', { name: 'Move item 2 up' }).click()
-  await page.getByRole('button', { name: 'Add item', exact: true }).click()
-  await choices.getByRole('button', { name: 'Remove item 4' }).click()
+  await choices.getByRole('button', { name: 'Remove item 3' }).click()
   await expect(requestPublish).toBeDisabled()
   await lists.getByRole('button', { name: /^Yes \/ No codes/ }).click()
   const fixed = page.getByRole('table', { name: 'Yes / No codes items' })
@@ -386,10 +377,7 @@ test('configuration sections keep draft edits across tabs and compare saved valu
   await impact.getByRole('button', { name: 'Time conversion', exact: true }).click()
   await expect(page.getByRole('spinbutton', { name: 'Hours per day' })).toBeVisible()
   await impact.getByRole('button', { name: 'Expected MTD', exact: true }).click()
-  await page.getByRole('button', { name: 'Add MTD', exact: true }).click()
-  await page.getByRole('textbox', { name: /^Code\*?$/ }).last().fill('2days')
-  await page.getByRole('textbox', { name: /^Name\*?$/ }).last().fill('Two days')
-  await page.getByRole('textbox', { name: /^Workbook value\*?$/ }).last().fill('2 days')
+  await expect(page.getByText('Managed in Master data › Master MTD')).toBeVisible()
 
   await page.getByRole('tab', { name: 'Guides and statements', exact: true }).click()
   await page.getByRole('textbox', { name: 'Attestation statement' }).fill('I confirm the assessment.')
@@ -413,13 +401,11 @@ test('configuration sections keep draft edits across tabs and compare saved valu
 
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await expect(requestPublish).toBeEnabled()
-  expect(saved?.suggested_mtd).toEqual(['2 days', '4 hours'])
-  expect(listsSent?.suggested_mtd).toEqual([
-    { code: '2 days', label: 'Two days', text: 'Within two days', active: true },
-    { code: '4 hours', label: '4 hours', text: null, active: true },
-    { code: '1 day', label: '1 day', text: null, active: false },
+  expect(saved?.alt_site_strategies).toEqual(['Dedicated BCP Site'])
+  expect(listsSent?.alt_site_strategies).toEqual([
+    { code: 'Dedicated BCP Site', label: 'Dedicated site', text: 'A BCP site of its own', active: true },
+    { code: 'Hyspace', label: 'Hyspace', text: null, active: false },
   ])
-  expect(saved?.mtd_options?.at(-1)).toMatchObject({ value: '2 days', category: 'Others', use_it: true })
   expect(saved?.guides.attestation).toBe('I confirm the assessment.')
   expect(saved?.signoff_steps.at(-1)).toMatchObject({ code: 'head_of', required: true })
 })
@@ -435,8 +421,8 @@ test('the configuration tabs and section menu fit on a phone', async ({ page }) 
   const menu = page.getByRole('navigation', { name: 'Lists', exact: true })
   await expect(menu).toBeVisible({ timeout: 45000 })
   await expect(page.getByText('V1 is read-only', { exact: true })).toBeVisible()
-  await menu.getByRole('button', { name: /^Suggested MTD/ }).click()
-  await expect(page.getByRole('table', { name: 'Suggested MTD items' }).getByRole('textbox', { name: 'Code 1' })).toBeDisabled()
+  await menu.getByRole('button', { name: /^Alternate site strategies/ }).click()
+  await expect(page.getByRole('table', { name: 'Alternate site strategies items' }).getByRole('textbox', { name: 'Code 1' })).toBeDisabled()
   const tabs = page.getByRole('tablist')
   await expect.poll(() => tabs.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
   await expect.poll(() => main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
