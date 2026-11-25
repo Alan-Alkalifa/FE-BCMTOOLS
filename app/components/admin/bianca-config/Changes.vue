@@ -54,7 +54,8 @@ function labelOf(key: string) {
 }
 
 const fieldLabels: Record<string, string> = {
-  '@order': 'Order', 'label': 'Label', 'text': 'Text', 'active': 'Active',
+  '@order': 'Order', 'label': 'Name', 'text': 'Description', 'active': 'Active',
+  'min_idr': 'From (IDR)', 'max_idr': 'To (IDR)',
   'min_level': 'First U level', 'max_level': 'Last U level', 'requires_note': 'Note required',
   'signer_mode': 'Signer selection', 'user_id': 'Signer', 'required': 'Required', 'title': 'Title',
   'category': 'Category', 'regulatory': 'Regulatory impact', 'customer': 'Customer impact',

@@ -293,91 +293,94 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
           >
             <div
               v-if="item.value === 'versions'"
-              class="mt-4 grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]"
+              class="mt-4 min-w-0 space-y-6"
             >
-              <UCard
-                class="min-w-0"
-                :ui="{ body: 'p-0 sm:p-0' }"
-              >
-                <template #header>
-                  <h2 class="font-semibold text-highlighted">
-                    Versions
-                  </h2>
-                  <p class="mt-1 text-sm text-muted">
-                    New BIAs use the active version. Existing assessments keep their saved version.
-                  </p>
-                </template>
-                <UTable
-                  :data="data?.items ?? []"
-                  :columns="versionColumns"
-                  :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
+              <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+                <UCard
+                  class="min-w-0"
+                  :ui="{ body: 'p-0 sm:p-0' }"
                 >
-                  <template #code-cell="{ row }">
-                    <UButton
-                      type="button"
-                      variant="link"
-                      class="p-0 font-medium"
-                      :label="row.original.code"
-                      :aria-current="row.original.id === version.id ? 'true' : undefined"
-                      :disabled="!!busy"
-                      @click="chooseVersion(row.original.id)"
-                    />
-                    <p
-                      class="max-w-48 truncate text-xs text-muted"
-                      :title="row.original.name"
-                    >
-                      {{ row.original.name }}
+                  <template #header>
+                    <h2 class="font-semibold text-highlighted">
+                      Versions
+                    </h2>
+                    <p class="mt-1 text-sm text-muted">
+                      New BIAs use the active version. Existing assessments keep their saved version.
                     </p>
                   </template>
-                  <template #status-cell="{ row }">
-                    <StatusBadge
-                      :scale="versionStatus"
-                      :value="row.original.status"
-                      size="sm"
-                    />
-                  </template>
-                  <template #used_by-cell="{ row }">
-                    {{ formatNumber(row.original.used_by) }}
-                  </template>
-                  <template #published_at-cell="{ row }">
-                    {{ row.original.published_at ? formatDate(row.original.published_at) : '—' }}
-                  </template>
-                </UTable>
-              </UCard>
-              <UCard>
-                <template #header>
-                  <h2 class="font-semibold text-highlighted">
-                    {{ version.code }}
-                  </h2>
-                  <p class="mt-1 text-sm text-muted">
-                    Revision {{ version.revision }}
-                  </p>
-                </template>
-                <div class="space-y-4">
-                  <UFormField
-                    label="Version name"
-                    name="name"
-                    required
+                  <UTable
+                    :data="data?.items ?? []"
+                    :columns="versionColumns"
+                    :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
                   >
-                    <UInput
-                      v-model="form.name"
-                      :maxlength="255"
-                      :disabled="!editable || !!busy"
-                      class="w-full"
-                    />
-                  </UFormField>
-                  <UFormField label="Notes (optional)">
-                    <UTextarea
-                      :model-value="form.notes ?? ''"
-                      :rows="4"
-                      :maxlength="20000"
-                      :disabled="!editable || !!busy"
-                      class="w-full"
-                      @update:model-value="form.notes = $event || null"
-                    />
-                  </UFormField>
-                </div>
-              </UCard>
+                    <template #code-cell="{ row }">
+                      <UButton
+                        type="button"
+                        variant="link"
+                        class="p-0 font-medium"
+                        :label="row.original.code"
+                        :aria-current="row.original.id === version.id ? 'true' : undefined"
+                        :disabled="!!busy"
+                        @click="chooseVersion(row.original.id)"
+                      />
+                      <p
+                        class="max-w-48 truncate text-xs text-muted"
+                        :title="row.original.name"
+                      >
+                        {{ row.original.name }}
+                      </p>
+                    </template>
+                    <template #status-cell="{ row }">
+                      <StatusBadge
+                        :scale="versionStatus"
+                        :value="row.original.status"
+                        size="sm"
+                      />
+                    </template>
+                    <template #used_by-cell="{ row }">
+                      {{ formatNumber(row.original.used_by) }}
+                    </template>
+                    <template #published_at-cell="{ row }">
+                      {{ row.original.published_at ? formatDate(row.original.published_at) : '—' }}
+                    </template>
+                  </UTable>
+                </UCard>
+                <UCard>
+                  <template #header>
+                    <h2 class="font-semibold text-highlighted">
+                      {{ version.code }}
+                    </h2>
+                    <p class="mt-1 text-sm text-muted">
+                      Revision {{ version.revision }}
+                    </p>
+                  </template>
+                  <div class="space-y-4">
+                    <UFormField
+                      label="Version name"
+                      name="name"
+                      required
+                    >
+                      <UInput
+                        v-model="form.name"
+                        :maxlength="255"
+                        :disabled="!editable || !!busy"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Notes (optional)">
+                      <UTextarea
+                        :model-value="form.notes ?? ''"
+                        :rows="4"
+                        :maxlength="20000"
+                        :disabled="!editable || !!busy"
+                        class="w-full"
+                        @update:model-value="form.notes = $event || null"
+                      />
+                    </UFormField>
+                  </div>
+                </UCard>
+              </div>
+              <AdminBiancaConfigWorkbookMap />
             </div>
             <AdminBiancaConfigChanges
               v-else-if="item.value === 'changes'"
@@ -401,6 +404,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
               class="mt-4"
               :signers="version.signer_profiles ?? {}"
               :saved-step-codes="version.payload.signoff_steps.map(step => step.code)"
+              :saved-grade-codes="version.payload.staff_grades.map(grade => grade.code)"
               :version-id="version.id"
               :export-disabled="dirty || !!busy"
               :reference-guides="version.reference_guides ?? {}"

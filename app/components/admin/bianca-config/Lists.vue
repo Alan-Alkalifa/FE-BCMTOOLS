@@ -1,47 +1,47 @@
 <script setup lang="ts">
-import type { BiancaConfigPayload, BiancaListItems, BiancaReferenceItem } from '~/composables/useBiancaConfigAdmin'
-import { BIANCA_LISTS } from '~/utils/bianca-config'
+import type { BiancaConfigPayload, BiancaListItem, BiancaListItems, BiancaListKey, BiancaReferenceItem } from '~/composables/useBiancaConfigAdmin'
+import { BIANCA_CAPACITY_LISTS, BIANCA_LISTS } from '~/utils/bianca-config'
 
-const props = defineProps<{ disabled: boolean, payload: BiancaConfigPayload, referenceLists?: { expected_mtd: BiancaReferenceItem[], scores: BiancaReferenceItem[] } }>()
+/**
+ * BIA configuration > Lists: the workbook's choice lists, as BIANCA's masters showed them
+ * (Code | Name | Description | Active). D15 asked for each option's ID, value and data type:
+ * they stay visible, under the code. The five planned-capacity lists are one table with a
+ * column per use, as BIANCA's Master Planned Capacity; they are still saved as five lists.
+ * Expected MTD and the impact scores have one editable home each (Impact and MTD, Master MTD).
+ */
+defineProps<{ disabled: boolean, payload: BiancaConfigPayload, referenceLists?: { expected_mtd: BiancaReferenceItem[], scores: BiancaReferenceItem[] } }>()
 const model = defineModel<BiancaListItems>({ required: true })
 const recommendations = defineModel<Record<string, string[]>>('recommendations')
-const siteOptions = computed(() => model.value.alt_site_strategies.filter((site) => site.active && site.code).map((site) => site.code))
 const { can } = useAuth()
 const route = useRoute()
 const router = useRouter()
-const capacityKeys = ['percentages', 'upstream_capacity', 'downstream_capacity', 'expected_support_capacity', 'generic_values']
-const capacity = computed(() => route.query.list === 'capacity')
-const dependencyReference = computed(() => route.query.list === 'dependency_mtd')
-// Suggested MTD comes from Master data › Master MTD: shown here, changed there.
-const suggestedReference = computed(() => route.query.list === 'suggested_mtd')
 const mtdMaster = computed(() => can('masterdata.mtd.view', 'masterdata.mtd.manage'))
 
-const list = computed(() => BIANCA_LISTS.find(({ key }) => key === route.query.list) ?? BIANCA_LISTS[0]!)
-const selected = computed({
-  get: () => list.value.key,
+const CAPACITY = 'capacity'
+const capacityKeys = BIANCA_CAPACITY_LISTS.map((item) => item.key)
+const SHOWN: (BiancaListKey | typeof CAPACITY)[] = ['periods', 'suggested_mtd', CAPACITY, 'alt_site_strategies', 'frequencies', 'system_usage', 'yes_no']
+const selectedKey = computed(() => {
+  const asked = String(route.query.list ?? '')
+  if (capacityKeys.includes(asked as BiancaListKey)) return CAPACITY
+  return SHOWN.find((key) => key === asked) ?? SHOWN[0]!
+})
+const capacity = computed(() => selectedKey.value === CAPACITY)
+const list = computed(() => BIANCA_LISTS.find(({ key }) => key === selectedKey.value) ?? BIANCA_LISTS[0]!)
+// Suggested MTD comes from Master data › Master MTD: shown here, changed there.
+const suggestedReference = computed(() => selectedKey.value === 'suggested_mtd')
+const editableList = computed(() => !capacity.value && !suggestedReference.value)
+const sectionSelection = computed({
+  get: () => selectedKey.value,
   set: (value: string) => router.replace({ query: { ...route.query, list: value } }),
 })
 const rows = computed(() => model.value[list.value.key])
-const menu = computed<{ value: string, label: string, count?: number }[]>(() => [...BIANCA_LISTS.map(({ key, label }) => ({
-  value: key,
-  label,
-  count: model.value[key].filter((item) => item.active).length,
-})),
-{ value: 'expected_mtd', label: 'Expected MTD reference', count: props.payload.expected_mtd.length + 2 },
-{ value: 'scores', label: 'Impact scores', count: props.payload.scores.length },
-{ value: 'capacity', label: 'Planned capacity' },
-])
-const reference = computed(() => route.query.list === 'expected_mtd' || route.query.list === 'scores')
-const referenceId = (value: string) => props.referenceLists?.expected_mtd.find((item) => item.value === value)?.id ?? value.replaceAll(' ', '_')
-const referenceRows = computed(() => route.query.list === 'scores'
-  ? props.payload.scores.map((score) => ({ id: String(score), value: score, type: 'integer', detail: 'See Impact and MTD for score definitions.', active: true }))
-  : [...props.payload.expected_mtd.map((item) => ({ id: referenceId(item.value), value: item.value, type: 'string', detail: item.category, active: true })),
-      ...['NA', 'SLA'].map((value) => ({ id: referenceId(value), value, type: 'string', detail: 'Workbook reference only: no business function category is defined.', active: false }))])
-const sectionSelection = computed({
-  get: () => reference.value || capacity.value ? String(route.query.list) : selected.value,
-  set: (value: string) => router.replace({ query: { ...route.query, list: value } }),
-})
+const menu = computed(() => SHOWN.map((key) => key === CAPACITY
+  ? { value: CAPACITY, label: 'Planned capacity', count: capacityRows.value.length }
+  : { value: key, label: BIANCA_LISTS.find((item) => item.key === key)!.label, count: model.value[key].filter((item) => item.active).length }))
 
+function technical(item: Pick<BiancaListItem, 'id' | 'code'>) {
+  return `ID ${item.id ?? 'on save'} · value ${item.code || '—'} · string`
+}
 function setCode(index: number, value: string | number) {
   const item = rows.value[index]!
   item.code = String(value)
@@ -49,19 +49,87 @@ function setCode(index: number, value: string | number) {
   delete item.id
   delete item.value
 }
-
 function move(index: number, direction: -1 | 1) {
   const [item] = rows.value.splice(index, 1)
   rows.value.splice(index + direction, 0, item!)
 }
-
 function add() {
-  rows.value.push({
-    code: '',
-    label: '',
-    text: null,
-    active: rows.value.filter((item) => item.active).length < list.value.maxActive,
+  rows.value.push({ code: '', label: '', text: null, active: rows.value.filter((item) => item.active).length < list.value.maxActive })
+}
+
+// --- planned capacity: one row per value, a column per use -----------------------------------
+
+interface CapacityRow { code: string, label: string, text: string | null, id: string | null, original: string | null, uses: Record<string, boolean> }
+const capacityRows = ref<CapacityRow[]>([])
+let saved: Record<string, Map<string, BiancaListItem>> = {}
+let building = false
+const PERCENT = /^(?:100|[0-9]{1,2})%$/
+const SPECIAL = new Set(['NA', 'SLA'])
+
+function buildCapacity() {
+  saved = Object.fromEntries(capacityKeys.map((key) => [key, new Map(model.value[key].map((item) => [item.code, item]))]))
+  // Generic values hold every value; the other lists add theirs after, in their own order.
+  const order = [...new Set(['generic_values', ...capacityKeys].flatMap((key) => model.value[key as BiancaListKey].map((item) => item.code)))]
+  building = true
+  capacityRows.value = order.map((code) => {
+    const first = capacityKeys.map((key) => saved[key]!.get(code)).find(Boolean)!
+    return {
+      code,
+      label: first.label,
+      text: first.text ?? null,
+      id: first.id ?? null,
+      original: code,
+      uses: Object.fromEntries(capacityKeys.map((key) => [key, !!saved[key]!.get(code)?.active])),
+    }
   })
+  building = false
+}
+// A saved or reloaded draft is a new list object: rebuild then, never while editing.
+watch(() => model.value, buildCapacity, { immediate: true })
+watch(capacityRows, () => {
+  if (building) return
+  for (const key of capacityKeys) {
+    model.value[key] = capacityRows.value
+      // A value keeps its place in a list it was in (inactive); otherwise only where used.
+      .filter((row) => row.uses[key] || (row.original != null && saved[key]!.has(row.original)))
+      .map((row) => {
+        const before = row.original != null ? saved[key]!.get(row.original) : undefined
+        const item: BiancaListItem = { ...before, code: row.code, label: row.label, text: row.text, active: !!row.uses[key] }
+        if (!before || row.code !== row.original) {
+          delete item.id
+          delete item.value
+        }
+        return item
+      })
+  }
+}, { deep: true, flush: 'sync' })
+
+function capacityProblem(row: CapacityRow, index: number) {
+  const code = row.code.trim()
+  if (!code) return 'Enter a value.'
+  if (!PERCENT.test(code) && !SPECIAL.has(code)) return 'Use a percentage from 0% to 100%, NA or SLA.'
+  if (capacityRows.value.findIndex((other) => other.code.trim() === code) !== index) return 'This value is already listed.'
+  return null
+}
+// The server takes upstream, downstream, support and generic values only from the function's
+// percentages (or NA/SLA): a percentage not used for the function can't be used elsewhere.
+function canUse(row: CapacityRow, key: string) {
+  const code = row.code.trim()
+  if (key === 'percentages') return PERCENT.test(code)
+  return SPECIAL.has(code) || (PERCENT.test(code) && row.uses.percentages)
+}
+function setUse(row: CapacityRow, key: string, value: boolean) {
+  row.uses[key] = value
+  if (key === 'percentages' && !value && !SPECIAL.has(row.code.trim())) {
+    for (const other of capacityKeys) row.uses[other] = false
+  }
+}
+function moveCapacity(index: number, direction: -1 | 1) {
+  const [row] = capacityRows.value.splice(index, 1)
+  capacityRows.value.splice(index + direction, 0, row!)
+}
+function addCapacity() {
+  capacityRows.value.push({ code: '', label: '', text: null, id: null, original: null, uses: Object.fromEntries(capacityKeys.map((key) => [key, false])) })
 }
 </script>
 
@@ -78,31 +146,40 @@ function add() {
           <div class="min-w-0 flex-1 basis-60">
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="font-semibold text-highlighted">
-                {{ capacity ? 'Planned capacity' : reference ? (route.query.list === 'scores' ? 'Impact scores' : 'Expected MTD reference') : list.label }}
+                {{ capacity ? 'Planned capacity' : list.label }}
               </h2>
               <UBadge
-                v-if="list.locked && !reference && !capacity"
+                v-if="!capacity && list.locked"
                 color="neutral"
                 variant="subtle"
                 icon="i-lucide-lock"
-                label="Fixed codes"
+                label="Fixed: used by BIA rules"
               />
             </div>
-            <p
-              v-if="!capacity"
-              class="mt-1 text-sm text-muted"
-            >
-              {{ reference ? 'Complete workbook reference. Manage durations, categories and scoring guidance under Impact and MTD.' : list.help }}
+            <p class="mt-1 text-sm text-muted">
+              {{ capacity
+                ? 'One row per value. Tick where the value can be chosen. Business function is MST_Generic Value column I; the others follow columns F, G, H and E.'
+                : list.help }}
             </p>
             <p
-              v-if="!capacity && !dependencyReference"
-              class="mt-1 text-sm text-muted"
+              v-if="!capacity && list.usedIn"
+              class="mt-1 text-xs text-muted"
             >
-              ID identifies an option independently of its order. Value is the stored choice; data type describes it. Code is kept for existing BIA and Excel integrations.
+              Used in {{ list.usedIn }}.
             </p>
           </div>
           <UButton
-            v-if="!disabled && !list.locked && !reference && !capacity && !dependencyReference && !suggestedReference"
+            v-if="!disabled && capacity"
+            type="button"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-plus"
+            label="Add value"
+            :disabled="capacityRows.length >= 103"
+            @click="addCapacity"
+          />
+          <UButton
+            v-else-if="!disabled && editableList && !list.locked"
             type="button"
             color="neutral"
             variant="outline"
@@ -111,66 +188,8 @@ function add() {
             :disabled="rows.length >= 256"
             @click="add"
           />
-        </div>
-      </template>
-
-      <div
-        v-if="capacity"
-        class="grid gap-4 p-4 sm:grid-cols-2"
-      >
-        <UCard
-          v-for="item in BIANCA_LISTS.filter(option => capacityKeys.includes(option.key))"
-          :key="item.key"
-        >
-          <h3 class="font-semibold">
-            {{ item.label }}
-          </h3>
-          <p class="my-2 text-sm text-muted">
-            {{ item.help }}
-          </p>
           <UButton
-            :to="{ query: { ...route.query, list: item.key } }"
-            color="neutral"
-            variant="outline"
-            label="Open list"
-            :aria-label="`Open ${item.label.toLowerCase()}`"
-          />
-        </UCard>
-      </div>
-      <div
-        v-else-if="dependencyReference"
-        class="space-y-3 p-4"
-      >
-        <p class="text-sm text-muted">
-          Dependency choices are managed with Expected MTD in Master data › Master MTD. Enable MTD Non IT on the options that should appear in Part 2b.
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-if="mtdMaster"
-            :to="{ path: MASTER_MTD_PATH, query: { part: 'options' } }"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-timer"
-            label="Open Master MTD"
-          />
-          <UButton
-            :to="{ query: { ...route.query, tab: 'impact', impact: 'expected-mtd' } }"
-            color="neutral"
-            variant="ghost"
-            label="See this version's Expected MTD"
-          />
-        </div>
-      </div>
-      <div
-        v-else-if="suggestedReference"
-        class="space-y-3"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
-          <p class="min-w-0 flex-1 basis-60 text-sm text-muted">
-            Managed in Master data › Master MTD. This version keeps a copy, refreshed whenever the draft is saved, submitted and published.
-          </p>
-          <UButton
-            v-if="mtdMaster"
+            v-else-if="suggestedReference && mtdMaster"
             :to="{ path: MASTER_MTD_PATH, query: { part: 'suggested' } }"
             color="neutral"
             variant="outline"
@@ -178,159 +197,226 @@ function add() {
             :label="can('masterdata.mtd.manage') ? 'Edit in Master MTD' : 'Open Master MTD'"
           />
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[40rem] text-sm">
-            <caption class="sr-only">
-              Suggested MTD items
-            </caption>
-            <thead class="bg-muted text-left text-xs uppercase text-muted">
-              <tr>
-                <th class="w-16 px-3 py-2 ps-4">
-                  Order
-                </th><th class="px-3 py-2">
-                  ID
-                </th><th class="px-3 py-2">
-                  Value
-                </th><th class="px-3 py-2">
-                  Label
-                </th><th class="px-3 py-2">
-                  Text
-                </th><th class="px-3 py-2 pe-4">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr
-                v-for="(item, index) in rows"
-                :key="item.code"
-              >
-                <td class="px-3 py-2 ps-4 tabular-nums text-muted">
-                  {{ index + 1 }}
-                </td><td class="px-3 py-2 font-mono text-xs text-muted">
-                  {{ item.id ?? '—' }}
-                </td><td class="px-3 py-2 font-mono">
-                  {{ item.code }}
-                </td><td class="px-3 py-2">
-                  {{ item.label }}
-                </td><td class="px-3 py-2">
-                  {{ item.text || '—' }}
-                </td><td class="px-3 py-2 pe-4">
-                  {{ item.active ? 'Active' : 'Inactive' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </template>
+
+      <!-- Planned capacity -->
       <div
-        v-else-if="reference"
+        v-if="capacity"
         class="overflow-x-auto"
       >
-        <table class="w-full min-w-[40rem] text-sm">
+        <table class="w-full min-w-[52rem] text-sm">
           <caption class="sr-only">
-            {{ route.query.list === 'scores' ? 'Impact scores' : 'Expected MTD reference' }} items
+            Planned capacity values and where each is used
           </caption>
           <thead class="bg-muted text-left text-xs uppercase text-muted">
             <tr>
-              <th class="p-3">
-                ID
-              </th><th class="p-3">
+              <th class="w-24 px-3 py-2 ps-4">
+                Order
+              </th>
+              <th class="w-32 px-3 py-2">
                 Value
-              </th><th class="p-3">
-                Data type
-              </th><th class="p-3">
-                Category / meaning
-              </th><th class="p-3">
-                Status
+              </th>
+              <th class="px-3 py-2">
+                Name
+              </th>
+              <th
+                v-for="use in BIANCA_CAPACITY_LISTS"
+                :key="use.key"
+                class="w-24 px-1 py-2 text-center normal-case"
+                :title="use.help"
+              >
+                <span class="block text-xs font-semibold uppercase">{{ use.short }}</span>
+                <span class="block text-[11px] font-normal text-dimmed">{{ use.column }}</span>
+              </th>
+              <th class="w-12 px-3 py-2 pe-4">
+                <span class="sr-only">Remove</span>
               </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-default">
             <tr
-              v-for="item in referenceRows"
-              :key="item.id"
+              v-for="(row, index) in capacityRows"
+              :key="index"
             >
-              <td class="p-3 font-mono">
-                {{ item.id }}
-              </td><td class="p-3">
-                {{ item.value }}
-              </td><td class="p-3 font-mono">
-                {{ item.type }}
-              </td><td class="p-3">
-                {{ item.detail }}
-              </td><td class="p-3">
-                {{ item.active ? 'Active' : 'Reference only' }}
+              <td class="px-3 py-2 ps-4 align-top">
+                <div class="flex h-8 items-center gap-0.5 tabular-nums">
+                  <span class="me-1 min-w-4 text-xs text-muted">{{ index + 1 }}</span>
+                  <template v-if="!disabled">
+                    <UButton
+                      type="button"
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-arrow-up"
+                      :disabled="index === 0"
+                      :aria-label="'Move value ' + (index + 1) + ' up'"
+                      @click="moveCapacity(index, -1)"
+                    />
+                    <UButton
+                      type="button"
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-arrow-down"
+                      :disabled="index === capacityRows.length - 1"
+                      :aria-label="'Move value ' + (index + 1) + ' down'"
+                      @click="moveCapacity(index, 1)"
+                    />
+                  </template>
+                </div>
+              </td>
+              <td class="px-3 py-2 align-top">
+                <UInput
+                  v-model="row.code"
+                  class="w-full font-mono"
+                  :maxlength="8"
+                  :disabled="disabled"
+                  :color="capacityProblem(row, index) ? 'error' : undefined"
+                  :aria-label="'Value ' + (index + 1)"
+                />
+                <p
+                  v-if="capacityProblem(row, index)"
+                  class="mt-1 text-xs text-error"
+                >
+                  {{ capacityProblem(row, index) }}
+                </p>
+                <p
+                  v-else
+                  class="mt-1 font-mono text-[11px] text-dimmed"
+                >
+                  {{ technical({ id: row.code === row.original ? row.id : null, code: row.code }) }}
+                </p>
+              </td>
+              <td class="px-3 py-2 align-top">
+                <UInput
+                  v-model="row.label"
+                  class="w-full min-w-20"
+                  :maxlength="255"
+                  :disabled="disabled"
+                  :aria-label="'Name ' + (index + 1)"
+                />
+              </td>
+              <td
+                v-for="use in BIANCA_CAPACITY_LISTS"
+                :key="use.key"
+                class="px-2 py-2 text-center align-top"
+              >
+                <UCheckbox
+                  :model-value="row.uses[use.key]"
+                  class="inline-flex pt-1.5"
+                  :disabled="disabled || !canUse(row, use.key)"
+                  :aria-label="(row.code || 'Value ' + (index + 1)) + ' for ' + use.short"
+                  @update:model-value="setUse(row, use.key, !!$event)"
+                />
+              </td>
+              <td class="px-3 py-2 pe-4 text-right align-top">
+                <UButton
+                  v-if="!disabled"
+                  type="button"
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-x"
+                  :aria-label="'Remove value ' + (row.code || index + 1)"
+                  @click="capacityRows.splice(index, 1)"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="border-t border-default px-4 py-3 text-xs text-muted">
+          A percentage must be ticked for Business function before the other uses can take it. NA and SLA are never a business function's capacity.
+        </p>
+      </div>
+
+      <!-- Suggested MTD: a copy of Master MTD -->
+      <div
+        v-else-if="suggestedReference"
+        class="overflow-x-auto"
+      >
+        <table class="w-full min-w-[36rem] text-sm">
+          <caption class="sr-only">
+            Suggested MTD items
+          </caption>
+          <thead class="bg-muted text-left text-xs uppercase text-muted">
+            <tr>
+              <th class="w-16 px-3 py-2 ps-4">
+                Order
+              </th>
+              <th class="px-3 py-2">
+                Code
+              </th>
+              <th class="px-3 py-2">
+                Name
+              </th>
+              <th class="px-3 py-2">
+                Description
+              </th>
+              <th class="px-3 py-2 pe-4">
+                Active
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr
+              v-for="(item, index) in rows"
+              :key="item.code"
+            >
+              <td class="px-3 py-2 ps-4 tabular-nums text-muted">
+                {{ index + 1 }}
+              </td>
+              <td class="px-3 py-2">
+                <p class="font-mono">
+                  {{ item.code }}
+                </p>
+                <p class="font-mono text-[11px] text-dimmed">
+                  {{ technical(item) }}
+                </p>
+              </td>
+              <td class="px-3 py-2">
+                {{ item.label }}
+              </td>
+              <td class="px-3 py-2 text-muted">
+                {{ item.text || '—' }}
+              </td>
+              <td class="px-3 py-2 pe-4">
+                {{ item.active ? 'Yes' : 'No' }}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <!-- Any other list -->
       <div
         v-else
         class="overflow-x-auto"
       >
         <table
-          :key="selected"
-          class="w-full min-w-[64rem] text-sm"
+          :key="list.key"
+          class="w-full min-w-[48rem] text-sm"
         >
           <caption class="sr-only">
             {{ list.label }} items
           </caption>
           <thead class="bg-muted text-left text-xs uppercase text-muted">
             <tr>
-              <th
-                scope="col"
-                class="w-24 px-3 py-2 ps-4"
-              >
+              <th class="w-24 px-3 py-2 ps-4">
                 Order
               </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
-                ID
-              </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
+              <th class="w-56 px-3 py-2">
                 Code
               </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
-                Value
+              <th class="px-3 py-2">
+                Name
               </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
-                Data type
+              <th class="px-3 py-2">
+                Description (optional)
               </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
-                Label
-              </th>
-              <th
-                scope="col"
-                class="px-3 py-2"
-              >
-                Text
-              </th>
-              <th
-                scope="col"
-                class="w-16 px-3 py-2"
-              >
+              <th class="w-16 px-3 py-2">
                 Active
               </th>
-              <th
-                scope="col"
-                class="w-12 px-3 py-2 pe-4"
-              >
+              <th class="w-12 px-3 py-2 pe-4">
                 <span class="sr-only">Remove</span>
               </th>
             </tr>
@@ -367,32 +453,24 @@ function add() {
                   </template>
                 </div>
               </td>
-              <td class="max-w-36 px-3 py-2 align-top">
-                <span
-                  class="block truncate font-mono text-xs text-muted"
-                  :title="item.id ?? 'Assigned on save'"
-                >{{ item.id ?? 'Assigned on save' }}</span>
-              </td>
               <td class="px-3 py-2 align-top">
+                <span
+                  v-if="list.locked"
+                  class="inline-block py-1.5 font-mono"
+                >{{ item.code }}</span>
                 <UInput
+                  v-else
                   :model-value="item.code"
-                  class="w-full min-w-28 font-mono"
+                  class="w-full font-mono"
                   :maxlength="list.maxCode"
-                  :disabled="disabled || list.locked"
+                  :disabled="disabled"
                   :aria-label="'Code ' + (index + 1)"
                   required
                   @update:model-value="setCode(index, $event)"
                 />
-              </td>
-              <td class="px-3 py-2 align-top">
-                <span class="inline-block py-1.5 font-mono">{{ item.code || '—' }}</span>
-              </td>
-              <td class="px-3 py-2 align-top">
-                <UBadge
-                  color="neutral"
-                  variant="subtle"
-                  label="string"
-                />
+                <p class="mt-1 font-mono text-[11px] text-dimmed">
+                  {{ technical(item) }}
+                </p>
               </td>
               <td class="px-3 py-2 align-top">
                 <UInput
@@ -400,7 +478,7 @@ function add() {
                   class="w-full min-w-28"
                   :maxlength="255"
                   :disabled="disabled"
-                  :aria-label="'Label ' + (index + 1)"
+                  :aria-label="'Name ' + (index + 1)"
                   required
                 />
               </td>
@@ -411,7 +489,7 @@ function add() {
                   class="w-full min-w-28"
                   :maxlength="255"
                   :disabled="disabled"
-                  :aria-label="'Text ' + (index + 1)"
+                  :aria-label="'Description ' + (index + 1)"
                   @update:model-value="item.text = $event || null"
                 />
               </td>
@@ -438,7 +516,7 @@ function add() {
             </tr>
             <tr v-if="!rows.length">
               <td
-                colspan="9"
+                colspan="6"
                 class="px-4 py-6 text-center text-muted"
               >
                 Add an item before saving this list.
@@ -448,7 +526,7 @@ function add() {
         </table>
       </div>
       <div
-        v-if="list.key === 'alt_site_strategies' && recommendations"
+        v-if="list.key === 'alt_site_strategies' && !capacity && recommendations"
         class="grid gap-4 border-t border-default p-4"
       >
         <h3 class="font-semibold">
@@ -461,7 +539,7 @@ function add() {
         >
           <USelectMenu
             v-model="recommendations[category]"
-            :items="siteOptions"
+            :items="model.alt_site_strategies.filter((site) => site.active && site.code).map((site) => site.code)"
             :disabled="disabled"
             multiple
             class="w-full"
@@ -475,7 +553,7 @@ function add() {
         Shared master data
       </h3>
       <p class="mt-1 text-sm text-muted">
-        The workbook also contains application systems, office locations and organization groups. These follow the existing shared masters instead of being copied into a BIA version. The MTD choices are a master too (Master MTD); each version keeps a copy of it.
+        The workbook also contains application systems, office locations and organization groups. These follow the shared masters instead of being copied into a BIA version. Expected MTD and the dependency MTD choices are in Master MTD (each version keeps a copy, shown under Impact and MTD); the impact scores are under Impact and MTD › Impact thresholds.
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <UButton

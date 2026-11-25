@@ -71,9 +71,9 @@ test('Expected MTD is read here: Master data › Master MTD changes it, for IT a
   await expect(headings).toBeVisible({ timeout: 45000 })
   // The choices are a copy of Master MTD, read only in a version (Master data › Master MTD).
   await expect(page.getByText('Managed in Master data › Master MTD')).toBeVisible()
-  await expect(page.getByRole('textbox', { name: /^Name\*?$/ }).first()).toBeDisabled()
-  await expect(page.getByRole('switch', { name: 'MTD IT', exact: true }).first()).toBeDisabled()
-  await expect(page.getByRole('switch', { name: 'MTD Non IT', exact: true }).first()).toBeDisabled()
+  const choices = page.getByRole('table', { name: 'Expected MTD choices of this version' })
+  await expect(choices.getByRole('textbox')).toHaveCount(0)
+  await expect(choices.getByText('Part 2a (IT)', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add MTD', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Edit in Master MTD' })).toHaveAttribute('href', /\/masterdata\/mtd\?part=options/)
 })
@@ -101,8 +101,8 @@ test('an administrator adds a personnel category and saves the typed payload wit
   await page.getByRole('button', { name: 'Start draft version', exact: true }).click()
   await page.getByRole('button', { name: 'Add category', exact: true }).click()
   await page.getByRole('textbox', { name: /^Category name/ }).last().fill('Specialist Support')
-  await page.getByRole('spinbutton', { name: 'First U level (optional)', exact: true }).last().fill('12')
-  await page.getByRole('spinbutton', { name: 'Last U level (optional)', exact: true }).last().fill('13')
+  await page.getByRole('spinbutton', { name: 'First U level of Specialist Support', exact: true }).fill('12')
+  await page.getByRole('spinbutton', { name: 'Last U level of Specialist Support', exact: true }).fill('13')
   await expect(page.getByText('Specialist Support (U12–U13)', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await expect.poll(() => saved?.staff_grades.length).toBe(6)
@@ -241,13 +241,15 @@ for (const width of [1440, 390]) {
     const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft' }
     await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
     await page.goto('/admin/bianca-config?version=2&tab=personnel')
-    const category = page.getByRole('group', { name: 'Category 1: Senior Management', exact: true })
+    const category = page.locator('tr').filter({ has: page.getByRole('button', { name: 'Remove category Senior Management', exact: true }) })
     await expect(category).toBeVisible({ timeout: 45000 })
     const remove = category.getByRole('button', { name: 'Remove category Senior Management', exact: true })
-    const active = category.getByRole('switch', { name: 'Active', exact: true })
+    const active = category.getByRole('switch', { name: 'Senior Management active', exact: true })
     const arrow = category.getByRole('button', { name: 'Move Senior Management down', exact: true })
-    const code = category.getByRole('textbox', { name: /^Code/ })
-    const boxes = await Promise.all([remove.boundingBox(), active.boundingBox(), arrow.boundingBox(), code.boundingBox()])
+    const name = category.getByRole('textbox', { name: 'Category name 1' })
+    // A saved category keeps its code: it is shown, not typed.
+    await expect(category.getByText('Code staff_senior · fixed once saved')).toBeVisible()
+    const boxes = await Promise.all([remove.boundingBox(), active.boundingBox(), arrow.boundingBox(), name.boundingBox()])
     expect(boxes.every(Boolean)).toBe(true)
     if (width > 1000) {
       expect(boxes[0]!.x).toBeGreaterThan(boxes[1]!.x + boxes[1]!.width)
@@ -255,7 +257,7 @@ for (const width of [1440, 390]) {
     }
     await category.screenshot({ path: test.info().outputPath(`personnel-${width}.png`) })
     await arrow.click()
-    await expect(page.getByRole('group', { name: 'Category 2: Senior Management', exact: true })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Category name 2' })).toHaveValue('Senior Management')
     await page.getByRole('tab', { name: 'Approval template', exact: true }).click()
     const step = page.getByRole('group', { name: 'Step 2: group_head', exact: true })
     await step.screenshot({ path: test.info().outputPath(`approval-${width}.png`) })
@@ -359,18 +361,19 @@ test('configuration sections keep draft edits across tabs and compare saved valu
   await expect(choices.getByRole('textbox', { name: 'Code 1' })).toHaveValue('Hyspace')
   await page.getByRole('button', { name: 'Add item', exact: true }).click()
   await choices.getByRole('textbox', { name: 'Code 2' }).fill('Dedicated BCP Site')
-  await choices.getByRole('textbox', { name: 'Label 2' }).fill('Dedicated site')
-  await choices.getByRole('textbox', { name: 'Text 2' }).fill('A BCP site of its own')
+  await choices.getByRole('textbox', { name: 'Name 2' }).fill('Dedicated site')
+  await choices.getByRole('textbox', { name: 'Description 2' }).fill('A BCP site of its own')
   await choices.getByRole('button', { name: 'Move item 2 up' }).click()
   await choices.getByRole('switch', { name: 'Item 2 active' }).uncheck()
   await page.getByRole('button', { name: 'Add item', exact: true }).click()
   await choices.getByRole('button', { name: 'Remove item 3' }).click()
   await expect(requestPublish).toBeDisabled()
-  await lists.getByRole('button', { name: /^Yes \/ No codes/ }).click()
-  const fixed = page.getByRole('table', { name: 'Yes / No codes items' })
-  await expect(fixed.getByRole('textbox', { name: 'Code 1' })).toBeDisabled()
+  await lists.getByRole('button', { name: /^Yes \/ No answers/ }).click()
+  const fixed = page.getByRole('table', { name: 'Yes / No answers items' })
+  await expect(fixed.getByRole('textbox', { name: 'Code 1' })).toHaveCount(0)
+  await expect(page.getByText('Fixed: used by BIA rules', { exact: true })).toBeVisible()
   await expect(fixed.getByRole('switch', { name: 'Item 1 active' })).toBeDisabled()
-  await expect(fixed.getByRole('textbox', { name: 'Label 1' })).toBeEditable()
+  await expect(fixed.getByRole('textbox', { name: 'Name 1' })).toBeEditable()
 
   await page.getByRole('tab', { name: 'Impact and MTD', exact: true }).click()
   const impact = page.getByRole('navigation', { name: 'Impact and MTD', exact: true })
@@ -430,7 +433,7 @@ test('the configuration tabs and section menu fit on a phone', async ({ page }) 
   await expect(page.getByText('No saved parameter changes.')).toBeVisible()
 })
 
-test('workbook lists distinguish IDs, stored values, string choices and integer scores', async ({ page }) => {
+test('workbook lists show IDs, stored values and data types, and planned capacity as one table', async ({ page }) => {
   await signIn(page, { permissions })
   const draft: BiancaConfigVersion = { ...version(), id: 2, code: 'V2', status: 'draft', list_items: {
     yes_no: [{ id: '1', code: 'Yes', value: 'Yes', data_type: 'string', label: 'Yes', text: null, active: true },
@@ -438,21 +441,22 @@ test('workbook lists distinguish IDs, stored values, string choices and integer 
   } }
   await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?tab=lists&list=yes_no')
-  const table = page.getByRole('table', { name: 'Yes / No codes items' })
+  const table = page.getByRole('table', { name: 'Yes / No answers items' })
   await expect(table).toBeVisible({ timeout: 45000 })
-  for (const label of ['ID', 'Code', 'Value', 'Data type']) await expect(table.getByRole('columnheader', { name: label, exact: true })).toBeVisible()
-  await expect(table.getByRole('row').nth(1).getByRole('cell').nth(3)).toHaveText('Yes')
-  await expect(table.getByRole('cell', { name: '0', exact: true })).toBeVisible()
-  await expect(table.getByText('string', { exact: true })).toHaveCount(2)
+  for (const label of ['Code', 'Name', 'Description (optional)', 'Active']) await expect(table.getByRole('columnheader', { name: label, exact: true })).toBeVisible()
+  // D15: each option's ID, stored value and data type, under its code.
+  await expect(table.getByText('ID 1 · value Yes · string', { exact: true })).toBeVisible()
+  await expect(table.getByText('ID 0 · value No · string', { exact: true })).toBeVisible()
   const menu = page.getByRole('navigation', { name: 'Lists', exact: true })
-  for (const label of ['Downstream capacity', 'Expected business support capacity', 'Generic percentages']) {
-    await menu.getByRole('button', { name: new RegExp('^' + label) }).click()
-    await expect(page.getByRole('table').getByRole('textbox', { name: 'Code 3' })).toHaveValue('NA')
-  }
-  await menu.getByRole('button', { name: /^Expected MTD reference/ }).click()
-  await expect(page.getByRole('cell', { name: 'Reference only', exact: true })).toHaveCount(2)
-  await menu.getByRole('button', { name: /^Impact scores/ }).click()
-  await expect(page.getByRole('cell', { name: 'integer', exact: true })).toHaveCount(3)
+  for (const gone of [/^Downstream capacity/, /^Expected MTD reference/, /^Impact scores/]) await expect(menu.getByRole('button', { name: gone })).toHaveCount(0)
+  await menu.getByRole('button', { name: /^Planned capacity/ }).click()
+  const capacity = page.getByRole('table', { name: 'Planned capacity values and where each is used' })
+  await expect(capacity.getByRole('textbox', { name: 'Value 3' })).toHaveValue('NA')
+  // NA is never a function's capacity; it is an upstream choice.
+  await expect(capacity.getByRole('checkbox', { name: 'NA for Business function' })).toBeDisabled()
+  await expect(capacity.getByRole('checkbox', { name: 'NA for Upstream' })).toBeChecked()
+  await expect(capacity.getByRole('checkbox', { name: '100% for Business function' })).toBeChecked()
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
 })
 
 test('guide preview preserves paragraphs and personnel export requires saved edits', async ({ page }) => {
@@ -540,7 +544,7 @@ test('Changes separates fields in every nested configuration section', async ({ 
   await page.route('**/api/admin/bianca-config/versions', (route) => route.fulfill({ json: { items: [draft] } }))
   await page.goto('/admin/bianca-config?tab=changes')
   await expect(page.getByRole('rowheader')).toHaveCount(changes.length, { timeout: 45000 })
-  for (const name of ['Recovery', 'Attestation statement', 'Critical timing frequencies / Daily / Label', 'Personnel categories / staff_manager / Last U level', 'Expected MTD / 4 hours / Category', 'Regulatory and customer matrix / Score 3 / Regulatory impact', 'Financial loss matrix / high / Description', 'Sign-off steps / group_head / Order', 'Sign-off steps / head_of / Order']) {
+  for (const name of ['Recovery', 'Attestation statement', 'Critical timing frequencies / Daily / Name', 'Personnel categories / staff_manager / Last U level', 'Expected MTD / 4 hours / Category', 'Regulatory and customer matrix / Score 3 / Regulatory impact', 'Financial loss matrix / high / Description', 'Sign-off steps / group_head / Order', 'Sign-off steps / head_of / Order']) {
     await expect(page.getByRole('rowheader', { name, exact: true })).toBeVisible()
   }
   const assigned = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Sign-off steps / bcm_head / Signer', exact: true }) })

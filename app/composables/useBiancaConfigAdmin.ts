@@ -62,7 +62,8 @@ export type BiancaConfigPayload = Record<BiancaListKey, string[]> & {
   signoff_steps: BiancaStep[]
   guides: Record<string, string>
   alternate_site_by_category?: Record<string, string[]>
-  financial_bands: { code: string, label: string, description: string }[]
+  /** min_idr/max_idr: optional bounds; Very High has no maximum and its minimum is loss_alert_idr. */
+  financial_bands: { code: string, label: string, description: string, min_idr?: number | null, max_idr?: number | null }[]
   impact_matrix: { score: number, regulatory: string, customer: string }[]
 }
 

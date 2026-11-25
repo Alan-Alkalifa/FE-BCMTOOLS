@@ -3,7 +3,7 @@ import type { BiancaConfigPayload, BiancaGrade, BiancaListItems, BiancaSigner, B
 import type { BiancaLocationMode } from '~/composables/useBianca'
 
 const model = defineModel<BiancaConfigPayload>({ required: true })
-const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, savedStepCodes: string[], versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string>, listItems: BiancaListItems }>()
+const props = defineProps<{ section: string, disabled: boolean, signers: Record<string, BiancaSigner>, savedStepCodes: string[], savedGradeCodes?: string[], versionId: number, exportDisabled: boolean, referenceGuides: Record<string, string>, listItems: BiancaListItems }>()
 const confirm = useConfirm()
 const { can } = useAuth()
 const locationDefaults = { work_from_home: 'Work From Home', hyspace: 'Hyspace' }
@@ -128,112 +128,159 @@ function selectedSigner(id: number | null) {
         Save draft changes before exporting.
       </p>
       <div class="min-w-0 space-y-4">
-        <UCard
-          v-for="(grade, i) in model.staff_grades"
-          :key="i"
-        >
+        <UCard :ui="{ body: 'p-0 sm:p-0' }">
           <fieldset
             :disabled="disabled"
-            class="grid min-w-0 gap-4 lg:grid-cols-[auto_minmax(0,1fr)]"
+            class="min-w-0 overflow-x-auto"
           >
             <legend class="sr-only">
-              Category {{ i + 1 }}: {{ grade.label }}
+              Personnel categories
             </legend>
-            <div class="flex items-start gap-1 lg:flex-col">
-              <span
-                aria-hidden="true"
-                class="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold tabular-nums"
-              >{{ i + 1 }}</span>
-              <UButton
-                type="button"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-arrow-up"
-                :disabled="disabled || i === 0"
-                :aria-label="'Move ' + (grade.label || 'category') + ' up'"
-                @click="move(i, -1)"
-              />
-              <UButton
-                type="button"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-arrow-down"
-                :disabled="disabled || i === model.staff_grades.length - 1"
-                :aria-label="'Move ' + (grade.label || 'category') + ' down'"
-                @click="move(i, 1)"
-              />
-            </div>
-            <div class="min-w-0 space-y-4">
-              <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <UFormField
-                  label="Code"
-                  :name="`payload.staff_grades.${i}.code`"
-                  required
+            <table class="w-full min-w-[52rem] text-sm">
+              <thead class="bg-muted text-left text-xs uppercase text-muted">
+                <tr>
+                  <th class="w-24 px-3 py-2 ps-4">
+                    Order
+                  </th>
+                  <th class="px-3 py-2">
+                    Category name
+                  </th>
+                  <th class="w-64 px-3 py-2">
+                    U levels (optional)
+                  </th>
+                  <th class="w-20 px-3 py-2">
+                    Active
+                  </th>
+                  <th class="w-44 px-3 py-2">
+                    Note when headcount above 0
+                  </th>
+                  <th class="w-12 px-3 py-2 pe-4">
+                    <span class="sr-only">Remove</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-default">
+                <tr
+                  v-for="(grade, i) in model.staff_grades"
+                  :key="i"
+                  :class="grade.active ? '' : 'text-muted'"
                 >
-                  <UInput
-                    v-model="grade.code"
-                    :maxlength="64"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Category name"
-                  :name="`payload.staff_grades.${i}.label`"
-                  required
-                >
-                  <UInput
-                    v-model="grade.label"
-                    :maxlength="255"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="First U level (optional)">
-                  <UInput
-                    type="number"
-                    :model-value="grade.min_level == null ? '' : String(grade.min_level)"
-                    min="1"
-                    max="99"
-                    class="w-full"
-                    @update:model-value="range(grade, 'min_level', $event)"
-                  />
-                </UFormField>
-                <UFormField label="Last U level (optional)">
-                  <UInput
-                    type="number"
-                    :model-value="grade.max_level == null ? '' : String(grade.max_level)"
-                    min="1"
-                    max="99"
-                    class="w-full"
-                    @update:model-value="range(grade, 'max_level', $event)"
-                  />
-                </UFormField>
-              </div>
-              <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
-                <USwitch
-                  v-model="grade.active"
-                  label="Active"
-                />
-                <USwitch
-                  v-model="grade.requires_note"
-                  label="Require a note when headcount is above zero"
-                />
-                <span class="grow" />
-                <UButton
-                  v-if="!disabled"
-                  type="button"
-                  size="sm"
-                  color="error"
-                  variant="ghost"
-                  icon="i-lucide-trash-2"
-                  label="Remove category"
-                  :aria-label="'Remove category ' + (grade.label || grade.code)"
-                  :disabled="!canRemoveGrade(grade)"
-                  @click="removeGrade(grade)"
-                />
-              </div>
-            </div>
+                  <td class="px-3 py-2 ps-4 align-top">
+                    <div class="flex h-8 items-center gap-0.5 tabular-nums">
+                      <span class="me-1 min-w-4 text-xs text-muted">{{ i + 1 }}</span>
+                      <template v-if="!disabled">
+                        <UButton
+                          type="button"
+                          size="sm"
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-arrow-up"
+                          :disabled="i === 0"
+                          :aria-label="'Move ' + (grade.label || 'category') + ' up'"
+                          @click="move(i, -1)"
+                        />
+                        <UButton
+                          type="button"
+                          size="sm"
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-arrow-down"
+                          :disabled="i === model.staff_grades.length - 1"
+                          :aria-label="'Move ' + (grade.label || 'category') + ' down'"
+                          @click="move(i, 1)"
+                        />
+                      </template>
+                    </div>
+                  </td>
+                  <td class="px-3 py-2 align-top">
+                    <UFormField
+                      :name="`payload.staff_grades.${i}.label`"
+                      required
+                    >
+                      <UInput
+                        v-model="grade.label"
+                        :maxlength="255"
+                        class="w-full"
+                        :aria-label="'Category name ' + (i + 1)"
+                      />
+                    </UFormField>
+                    <p
+                      v-if="savedGradeCodes?.includes(grade.code)"
+                      class="mt-1 font-mono text-[11px] text-dimmed"
+                    >
+                      Code {{ grade.code }} · fixed once saved
+                    </p>
+                    <UFormField
+                      v-else
+                      :name="`payload.staff_grades.${i}.code`"
+                      class="mt-2"
+                      help="Code: lower case and _, fixed once saved."
+                    >
+                      <UInput
+                        v-model="grade.code"
+                        :maxlength="64"
+                        size="sm"
+                        class="w-full font-mono"
+                        :aria-label="'Code of ' + (grade.label || 'category ' + (i + 1))"
+                      />
+                    </UFormField>
+                  </td>
+                  <td class="px-3 py-2 align-top">
+                    <div class="flex items-center gap-2">
+                      <span class="text-muted">U</span>
+                      <UInput
+                        type="number"
+                        :model-value="grade.min_level == null ? '' : String(grade.min_level)"
+                        min="1"
+                        max="99"
+                        placeholder="From"
+                        class="w-20"
+                        :aria-label="'First U level of ' + (grade.label || 'category')"
+                        @update:model-value="range(grade, 'min_level', $event)"
+                      />
+                      <span class="text-muted">to U</span>
+                      <UInput
+                        type="number"
+                        :model-value="grade.max_level == null ? '' : String(grade.max_level)"
+                        min="1"
+                        max="99"
+                        placeholder="To"
+                        class="w-20"
+                        :aria-label="'Last U level of ' + (grade.label || 'category')"
+                        @update:model-value="range(grade, 'max_level', $event)"
+                      />
+                    </div>
+                  </td>
+                  <td class="px-3 py-2 align-top">
+                    <USwitch
+                      v-model="grade.active"
+                      class="pt-1.5"
+                      :aria-label="(grade.label || 'Category') + ' active'"
+                    />
+                  </td>
+                  <td class="px-3 py-2 align-top">
+                    <USwitch
+                      v-model="grade.requires_note"
+                      class="pt-1.5"
+                      :aria-label="'Require a note when ' + (grade.label || 'this category') + ' has a headcount'"
+                    />
+                  </td>
+                  <td class="px-3 py-2 pe-4 text-right align-top">
+                    <UButton
+                      v-if="!disabled"
+                      type="button"
+                      size="sm"
+                      color="error"
+                      variant="ghost"
+                      icon="i-lucide-trash-2"
+                      :aria-label="'Remove category ' + (grade.label || grade.code)"
+                      :disabled="!canRemoveGrade(grade)"
+                      @click="removeGrade(grade)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </fieldset>
         </UCard>
         <UCard>

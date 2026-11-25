@@ -7,7 +7,7 @@ const route = useRoute()
 const router = useRouter()
 const items = [
   { value: 'thresholds', label: 'Impact thresholds', description: 'Financial loss and score alerts used by the assessment.' },
-  { value: 'financial-bands', label: 'Financial loss matrix', description: 'Five risk bands transcribed from Part 1 of the completed workbook.' },
+  { value: 'financial-bands', label: 'Financial loss matrix', description: 'Five risk bands of potential cumulative financial loss (Part 1), with their bounds in IDR.' },
   { value: 'customer-matrix', label: 'Customer impact matrix', description: 'Workbook guidance for customer service impact scores 1–3.' },
   { value: 'regulator-matrix', label: 'Regulatory impact matrix', description: 'Workbook guidance for regulatory impact scores 1–3.' },
   { value: 'mtd-guide', label: 'Suggested MTD rule', description: 'First qualifying impact period, with the workbook fallback.' },
@@ -45,6 +45,34 @@ const mtdRows = computed(() => model.value.mtd_options ?? [...new Set([
     use_it: !!expected, use_non_it: !!dependency, active: !!expected || !!dependency?.active,
   }
 }))
+// Very High starts where the financial loss alert is: its minimum sets the alert (and the
+// server refuses the two apart), so the alert is only typed directly when the band has no bound.
+const veryHigh = computed(() => model.value.financial_bands.find((band) => band.code === 'very_high'))
+watch(() => veryHigh.value?.min_idr, (value) => {
+  if (value != null && !props.disabled) model.value.loss_alert_idr = value
+})
+function setBound(band: BiancaConfigPayload['financial_bands'][number], key: 'min_idr' | 'max_idr', value: number | null | undefined) {
+  band[key] = value ?? null
+}
+// The completed workbook's bands (BIA_TERISI, Part 1), offered while no band has bounds yet.
+const WORKBOOK_BOUNDS: Record<string, [number | null, number | null]> = {
+  very_high: [4e9, null], high: [2e9, 4e9], medium: [3e8, 2e9], low: [2e8, 3e8], very_low: [0, 2e8],
+}
+const noBounds = computed(() => model.value.financial_bands.every((band) => band.min_idr == null && band.max_idr == null))
+function useWorkbookBounds() {
+  for (const band of model.value.financial_bands) {
+    const [min, max] = WORKBOOK_BOUNDS[band.code] ?? [null, null]
+    band.min_idr = min
+    band.max_idr = max
+  }
+}
+function boundsText(band: BiancaConfigPayload['financial_bands'][number]) {
+  const idr = (value: number) => `IDR ${formatNumber(value)}`
+  if (band.min_idr != null && band.max_idr != null) return `${idr(band.min_idr)} – ${idr(band.max_idr)}`
+  if (band.min_idr != null) return `Above ${idr(band.min_idr)}`
+  if (band.max_idr != null) return `Up to ${idr(band.max_idr)}`
+  return 'No bounds set'
+}
 // The MTD choices are read-only here: they come from Master data › Master MTD (the server
 // copies it into the draft on every save).
 const { can } = useAuth()
@@ -100,30 +128,109 @@ function mappingChoices(current?: string | null) {
         <UAlert
           color="neutral"
           variant="subtle"
-          title="Reference matrix"
-          description="These are workbook descriptions. The workbook does not fully define equal-to boundaries between bands; only the financial loss alert drives highlighting. Editing this matrix changes guidance."
-        />
-        <div
-          v-for="band in model.financial_bands"
-          :key="band.code"
-          class="grid gap-3 border-b border-default pb-4 sm:grid-cols-[10rem_minmax(0,1fr)]"
+          icon="i-lucide-info"
+          title="Bounds as in BIANCA's risk matrix"
+          description="Very High's minimum is the financial loss alert: it highlights Part 1 losses and drives the Suggested MTD rule. The workbook doesn't say which band a loss of exactly a bound belongs to; confirm with BCM before relying on it."
         >
-          <UFormField label="Risk impact">
-            <UInput
-              v-model="band.label"
-              :maxlength="255"
-              class="w-full"
-              :aria-label="band.code + ' label'"
+          <template
+            v-if="noBounds && !disabled"
+            #actions
+          >
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-wand-sparkles"
+              label="Use workbook bounds"
+              @click="useWorkbookBounds"
             />
-          </UFormField>
-          <UFormField label="Potential cumulative financial loss">
-            <UInput
-              v-model="band.description"
-              :maxlength="2000"
-              class="w-full"
-              :aria-label="band.code + ' description'"
-            />
-          </UFormField>
+          </template>
+        </UAlert>
+        <div class="overflow-x-auto rounded-lg border border-default">
+          <table class="w-full min-w-[48rem] text-sm">
+            <caption class="sr-only">
+              Financial loss bands
+            </caption>
+            <thead class="bg-muted text-left text-xs uppercase text-muted">
+              <tr>
+                <th class="w-40 px-3 py-2 ps-4">
+                  Risk impact
+                </th>
+                <th class="w-48 px-3 py-2">
+                  From (IDR)
+                </th>
+                <th class="w-48 px-3 py-2">
+                  To (IDR)
+                </th>
+                <th class="px-3 py-2 pe-4">
+                  Description shown to assessors
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr
+                v-for="band in model.financial_bands"
+                :key="band.code"
+              >
+                <td class="px-3 py-2 ps-4 align-top">
+                  <UInput
+                    v-model="band.label"
+                    :maxlength="255"
+                    class="w-full"
+                    :aria-label="band.code + ' label'"
+                  />
+                </td>
+                <td class="px-3 py-2 align-top">
+                  <UInputNumber
+                    :model-value="band.min_idr ?? undefined"
+                    :min="0"
+                    :max="1e15"
+                    placeholder="No minimum"
+                    :increment="false"
+                    :decrement="false"
+                    class="w-full"
+                    :aria-label="band.label + ' from (IDR)'"
+                    @update:model-value="setBound(band, 'min_idr', $event)"
+                  />
+                  <p
+                    v-if="band.code === 'very_high'"
+                    class="mt-1 text-xs text-muted"
+                  >
+                    Also the financial loss alert.
+                  </p>
+                </td>
+                <td class="px-3 py-2 align-top">
+                  <span
+                    v-if="band.code === 'very_high'"
+                    class="inline-block py-1.5 text-muted"
+                  >No limit</span>
+                  <UInputNumber
+                    v-else
+                    :model-value="band.max_idr ?? undefined"
+                    :min="0"
+                    :max="1e15"
+                    placeholder="No maximum"
+                    :increment="false"
+                    :decrement="false"
+                    class="w-full"
+                    :aria-label="band.label + ' to (IDR)'"
+                    @update:model-value="setBound(band, 'max_idr', $event)"
+                  />
+                </td>
+                <td class="px-3 py-2 pe-4 align-top">
+                  <UInput
+                    v-model="band.description"
+                    :maxlength="2000"
+                    class="w-full"
+                    :aria-label="band.code + ' description'"
+                  />
+                  <p class="mt-1 text-xs text-muted">
+                    {{ boundsText(band) }}
+                  </p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </template>
       <template v-else-if="selected === 'customer-matrix' || selected === 'regulator-matrix'">
@@ -233,82 +340,81 @@ function mappingChoices(current?: string | null) {
           title="Managed in Master data › Master MTD"
           description="This version keeps a copy of Master MTD, refreshed whenever the draft is saved, submitted and published. Change the choices in Master MTD; the IT and non-IT choices below are read-only. Converted hours follow Time conversion."
         />
-        <fieldset
-          disabled
-          class="min-w-0 space-y-5"
-        >
-          <UCard
-            v-for="(row, index) in mtdRows"
-            :key="index"
-          >
-            <div class="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
-              <div class="flex items-start gap-1 lg:flex-col">
-                <span class="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold tabular-nums">{{ index + 1 }}</span>
-              </div>
-              <div class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <UFormField label="Code">
-                  <UInput
-                    :model-value="row.code"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Name">
-                  <UInput
-                    :model-value="row.label"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Workbook value">
-                  <UInput
-                    :model-value="row.value"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Business function category">
-                  <UInput
-                    :model-value="row.category ?? 'No category'"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Converted hours">
-                  <UInput
-                    :model-value="durationHours(row.value) ?? '—'"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Description">
-                  <UInput
-                    :model-value="row.description ?? ''"
-                    disabled
-                    class="w-full"
-                  />
-                </UFormField>
-                <div class="flex flex-wrap gap-4 sm:col-span-2 xl:col-span-3">
-                  <USwitch
-                    :model-value="row.use_it"
-                    disabled
-                    label="MTD IT"
-                  />
-                  <USwitch
-                    :model-value="row.use_non_it"
-                    disabled
-                    label="MTD Non IT"
-                  />
-                  <USwitch
-                    :model-value="row.active"
-                    disabled
-                    label="Active"
-                  />
-                </div>
-              </div>
-            </div>
-          </UCard>
-        </fieldset>
+        <div class="overflow-x-auto rounded-lg border border-default">
+          <table class="w-full min-w-[48rem] text-sm">
+            <caption class="sr-only">
+              Expected MTD choices of this version
+            </caption>
+            <thead class="bg-muted text-left text-xs uppercase text-muted">
+              <tr>
+                <th class="w-12 px-3 py-2 ps-4">
+                  #
+                </th>
+                <th class="px-3 py-2">
+                  Name
+                </th>
+                <th class="px-3 py-2">
+                  Business function category
+                </th>
+                <th class="px-3 py-2 text-right">
+                  Hours
+                </th>
+                <th class="px-3 py-2">
+                  Used in
+                </th>
+                <th class="px-3 py-2 pe-4">
+                  Description
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr
+                v-for="(row, index) in mtdRows"
+                :key="row.value"
+                :class="row.active ? '' : 'text-muted'"
+              >
+                <td class="px-3 py-2 ps-4 tabular-nums text-muted">
+                  {{ index + 1 }}
+                </td>
+                <td class="px-3 py-2">
+                  <p class="font-medium">
+                    {{ row.label }}
+                  </p>
+                  <p class="font-mono text-xs text-muted">
+                    {{ row.code }}{{ row.active ? '' : ' · inactive' }}
+                  </p>
+                </td>
+                <td class="px-3 py-2">
+                  {{ row.category ?? '—' }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {{ durationHours(row.value) }}
+                </td>
+                <td class="px-3 py-2">
+                  <div class="flex flex-wrap gap-1">
+                    <UBadge
+                      v-if="row.use_it"
+                      color="neutral"
+                      variant="subtle"
+                      size="sm"
+                      label="Part 2a (IT)"
+                    />
+                    <UBadge
+                      v-if="row.use_non_it"
+                      color="neutral"
+                      variant="subtle"
+                      size="sm"
+                      label="Part 2b (non-IT)"
+                    />
+                  </div>
+                </td>
+                <td class="px-3 py-2 pe-4 text-muted">
+                  {{ row.description || '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </template>
       <div
         v-else
@@ -319,6 +425,7 @@ function mappingChoices(current?: string | null) {
           :key="field.key"
           :label="field.label"
           :name="'payload.' + field.key"
+          :help="field.key === 'loss_alert_idr' && veryHigh?.min_idr != null ? 'Set by the minimum of the Very High band in Financial loss matrix.' : undefined"
           required
         >
           <UInputNumber
@@ -326,6 +433,7 @@ function mappingChoices(current?: string | null) {
             :min="field.min"
             :max="field.max"
             :step="'step' in field ? field.step : 1"
+            :disabled="field.key === 'loss_alert_idr' && veryHigh?.min_idr != null"
             class="w-full"
           />
         </UFormField>
