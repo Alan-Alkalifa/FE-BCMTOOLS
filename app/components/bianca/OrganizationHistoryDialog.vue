@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { OrganizationChange, OrganizationRow } from '~/utils/bianca-organization'
-import { organizationChangeKinds, organizationChangeSources, organizationEndpoint, organizationLevels, organizationPathLabel } from '~/utils/bianca-organization'
+import OrganizationPathCell from '~/components/bianca/OrganizationPathCell.vue'
+import { organizationChangeKinds, organizationChangeSources, organizationEndpoint, organizationLevels, organizationPathColumns, organizationPathLabel } from '~/utils/bianca-organization'
 
 /** Structure > Act > View history: the changes of one unit, of the units above it, and of the
  * names it had before (followed through recorded renames and moves), newest first. */
@@ -24,8 +25,7 @@ const { data, status } = useFetch<{ items: OrganizationChange[], total: number }
 const columns: TableColumn<OrganizationChange>[] = [
   { accessorKey: 'effective_date', header: 'Effective date' },
   { accessorKey: 'kind', header: 'Type' },
-  { id: 'previous', header: 'Previous' },
-  { id: 'current', header: 'Current' },
+  ...organizationPathColumns,
   { accessorKey: 'reference', header: 'Reference' },
   { accessorKey: 'source', header: 'Source' },
   { id: 'recorded_by', header: 'Recorded by' },
@@ -37,7 +37,7 @@ const levelLabel = organizationLevels.find((item) => item.value === props.unit.l
   <UModal
     :title="`History of ${unit[unit.level]}`"
     :description="`${levelLabel} · ${organizationPathLabel(unit)}`"
-    :ui="{ content: 'sm:max-w-5xl' }"
+    :ui="{ content: 'sm:max-w-7xl' }"
   >
     <template #body>
       <div class="-m-4 sm:-m-6">
@@ -51,18 +51,22 @@ const levelLabel = organizationLevels.find((item) => item.value === props.unit.l
             {{ formatDate(row.original.effective_date) }}
           </template>
           <template #kind-cell="{ row }">
-            <UBadge
-              variant="subtle"
+            <StatusBadge
+              :scale="organizationChangeKinds"
+              :value="row.original.kind"
               size="sm"
-              :color="organizationChangeKinds[row.original.kind].color"
-              :label="organizationChangeKinds[row.original.kind].label"
             />
           </template>
-          <template #previous-cell="{ row }">
-            <span class="whitespace-normal">{{ organizationPathLabel(row.original.previous) }}</span>
-          </template>
-          <template #current-cell="{ row }">
-            <span class="whitespace-normal">{{ organizationPathLabel(row.original.current) }}</span>
+          <template
+            v-for="column in organizationPathColumns"
+            :key="column.id"
+            #[`${column.id}-cell`]="{ row }"
+          >
+            <OrganizationPathCell
+              :change="row.original"
+              :field="column.field"
+              :side="column.side"
+            />
           </template>
           <template #reference-cell="{ row }">
             {{ row.original.reference || '—' }}

@@ -3,9 +3,10 @@ import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import type { OrganizationChange, OrganizationDetected, OrganizationRow, UnitLevel } from '~/utils/bianca-organization'
 import BiancaOrganizationForm from '~/components/bianca/BiancaOrganizationForm.vue'
+import OrganizationPathCell from '~/components/bianca/OrganizationPathCell.vue'
 import OrganizationChangeForm from '~/components/bianca/OrganizationChangeForm.vue'
 import OrganizationHistoryDialog from '~/components/bianca/OrganizationHistoryDialog.vue'
-import { organizationChangeKinds, organizationChangeSources, organizationEndpoint, organizationLevels, organizationPathLabel } from '~/utils/bianca-organization'
+import { organizationChangeKinds, organizationChangeSources, organizationEndpoint, organizationLevels, organizationPathColumns, organizationPathLabel } from '~/utils/bianca-organization'
 
 /**
  * Administration › Master data › Organization structure, laid out as SCCA Monitoring: one filter
@@ -66,6 +67,7 @@ const status = queryRef('status')
 const owner = queryRef('owner')
 const kind = queryRef('kind')
 const changeSource = queryRef('change_source')
+const changeLevel = queryRef('change_level')
 watch(directorate, () => {
   if (text('sub_directorate')) setQuery({ sub_directorate: undefined })
 })
@@ -90,7 +92,7 @@ const toDate = computed<CalendarDate | undefined>({
   set: (value) => setQuery({ to: value?.toString() }),
 })
 
-const FILTERS = ['q', 'directorate', 'sub_directorate', 'source', 'status', 'owner', 'kind', 'change_source', 'from', 'to']
+const FILTERS = ['q', 'directorate', 'sub_directorate', 'source', 'status', 'owner', 'kind', 'change_source', 'change_level', 'from', 'to']
 const filtered = computed(() => FILTERS.some((name) => text(name)))
 function clearFilters() {
   search.value = ''
@@ -111,6 +113,8 @@ const statusItems = [
 ]
 const ownerItems = [{ label: 'Any assigned user', value: 'all' }, { label: 'No assigned user', value: 'none' }, { label: 'Has an assigned user', value: 'set' }]
 const kindItems = [{ label: 'All types', value: 'all' }, ...Object.entries(organizationChangeKinds).map(([value, item]) => ({ label: item.label, value }))]
+// Changes > Changed level: the level of the unit that changed, not every unit under it.
+const changeLevelItems = [{ label: 'All levels', value: 'all' }, ...organizationLevels.map((item) => ({ label: item.label, value: item.value }))]
 const changeSourceItems = [{ label: 'Manual and HR import', value: 'all' }, ...Object.entries(organizationChangeSources).map(([value, label]) => ({ label, value }))]
 
 // --- structure -------------------------------------------------------------------------------
@@ -182,6 +186,16 @@ const structureColumns = computed<TableColumn<TreeRow>[]>(() => [
 
 const detected = useFetch<{ items: OrganizationDetected[] }>(`${organizationEndpoint}/detected`, { query: { status: 'pending' }, server: false })
 const pending = computed(() => detected.data.value?.items ?? [])
+// The tab's list, with the filter bar applied (its badge counts every pending change).
+const pendingShown = computed(() => {
+  const term = text('q')?.toLowerCase()
+  const dir = text('directorate')
+  const lvl = text('change_level')
+  return pending.value.filter((row) => (!lvl || row.level === lvl)
+    && (!dir || row.previous.directorate === dir || row.current.directorate === dir)
+    && (!term || [...Object.values(row.previous), ...Object.values(row.current), row.import_file ?? '']
+      .some((value) => value.toLowerCase().includes(term))))
+})
 const cards = computed(() => {
   const active = units.value.filter((row) => row.available)
   const count = (value: UnitLevel) => (data.value ? active.filter((row) => row.level === value).length : null)
@@ -203,6 +217,7 @@ const historyQuery = computed(() => ({
   q: text('q'),
   directorate: text('directorate'),
   kind: text('kind'),
+  level: text('change_level'),
   source: text('change_source'),
   from: text('from'),
   to: text('to'),
@@ -217,9 +232,7 @@ const historyExport = computed(() => {
 const historyColumns: TableColumn<OrganizationChange>[] = [
   { accessorKey: 'effective_date', header: 'Effective date', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
   { accessorKey: 'kind', header: 'Type' },
-  { id: 'directorate', header: 'Directorate', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
-  { id: 'sub_directorate', header: 'Sub directorate', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
-  { id: 'org_group', header: 'Group', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  ...organizationPathColumns,
   { accessorKey: 'reference', header: 'Reference' },
   { accessorKey: 'source', header: 'Source' },
   { id: 'recorded_by', header: 'Recorded by', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
@@ -230,9 +243,9 @@ const historyColumns: TableColumn<OrganizationChange>[] = [
 const detectedColumns: TableColumn<OrganizationDetected>[] = [
   { accessorKey: 'detected_at', header: 'Detected', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
   { accessorKey: 'kind', header: 'Type' },
-  { id: 'previous', header: 'Previous', meta: { class: { th: 'min-w-56', td: 'min-w-56' } } },
-  { id: 'current', header: 'Current', meta: { class: { th: 'min-w-56', td: 'min-w-56' } } },
-  { id: 'people', header: 'People', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  ...organizationPathColumns,
+  { id: 'evidence', header: 'Evidence', meta: { class: { th: 'min-w-64', td: 'min-w-64' } } },
+  { id: 'bia_impact', header: 'BIA impact', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
   { accessorKey: 'import_file', header: 'HR file' },
   { id: 'actions', header: '', meta: { class: { td: 'w-24 text-end' } } },
 ]
@@ -290,10 +303,26 @@ const tabs = computed(() => [
 function pageTo(next: number) {
   return { query: { ...route.query, page: next > 1 ? next : undefined } }
 }
-function change(row: OrganizationChange, field: UnitLevel) {
-  const before = row.previous[field]
-  const after = row.current[field]
-  return { before, after, same: before === after }
+/** Detected changes > Evidence: what the HR import saw, in a sentence. */
+function evidence(row: OrganizationDetected) {
+  const from = row.previous[row.level]
+  const to = row.current[row.level]
+  const people = (count: number) => `${count} ${count === 1 ? 'person' : 'people'}`
+  if (row.kind === 'new') return `${people(row.people_total)} in ${to}, a unit that is not in the structure yet.`
+  if (row.kind === 'closed') return `None of the ${people(row.people_total)} of ${from} are in it any more.`
+  const moved = row.people_moved === row.people_total
+    ? `All ${people(row.people_total)} of ${from}`
+    : `${row.people_moved} of the ${people(row.people_total)} of ${from}`
+  if (row.kind === 'rename') return `${moved} are now in ${to}.`
+  // A move changes the parent; the name may stay.
+  const index = organizationLevels.findIndex((item) => item.value === row.level)
+  const parent = organizationLevels[index - 1]
+  const under = parent ? `under ${row.current[parent.value]}` : ''
+  if (from.trim().toLowerCase() === to.trim().toLowerCase()) return `${moved} are now ${under}.`
+  return `${moved} are now in ${to} ${under}.`.replace(' .', '.')
+}
+function levelName(value: UnitLevel) {
+  return organizationLevels.find((item) => item.value === value)?.label
 }
 </script>
 
@@ -333,7 +362,7 @@ function change(row: OrganizationChange, field: UnitLevel) {
           <UInput
             v-model="search"
             icon="i-lucide-search"
-            :placeholder="tab === 'history' ? 'Unit or reference' : 'Unit, code, user or description'"
+            :placeholder="tab === 'history' ? 'Unit or reference' : tab === 'detected' ? 'Unit or HR file' : 'Unit, code, user or description'"
             aria-label="Search"
             class="w-full"
           />
@@ -380,6 +409,14 @@ function change(row: OrganizationChange, field: UnitLevel) {
         </template>
         <template v-else-if="tab === 'history'">
           <USelectMenu
+            v-model="changeLevel"
+            value-key="value"
+            :items="changeLevelItems"
+            :search-input="false"
+            class="w-44"
+            aria-label="Changed level"
+          />
+          <USelectMenu
             v-model="kind"
             value-key="value"
             :items="kindItems"
@@ -406,6 +443,16 @@ function change(row: OrganizationChange, field: UnitLevel) {
             class="w-40"
             placeholder="To"
             aria-label="Effective to"
+          />
+        </template>
+        <template v-else-if="tab === 'detected'">
+          <USelectMenu
+            v-model="changeLevel"
+            value-key="value"
+            :items="changeLevelItems"
+            :search-input="false"
+            class="w-44"
+            aria-label="Changed level"
           />
         </template>
       </ListFilterBar>
@@ -677,34 +724,25 @@ function change(row: OrganizationChange, field: UnitLevel) {
               {{ formatDate(row.original.effective_date) }}
             </template>
             <template #kind-cell="{ row }">
-              <UBadge
-                variant="subtle"
+              <StatusBadge
+                :scale="organizationChangeKinds"
+                :value="row.original.kind"
                 size="sm"
-                :color="organizationChangeKinds[row.original.kind].color"
-                :icon="organizationChangeKinds[row.original.kind].icon"
-                :label="organizationChangeKinds[row.original.kind].label"
               />
+              <p class="mt-1 text-xs text-muted">
+                {{ levelName(row.original.level) }}
+              </p>
             </template>
             <template
-              v-for="field in organizationLevels"
-              :key="field.value"
-              #[`${field.value}-cell`]="{ row }"
+              v-for="column in organizationPathColumns"
+              :key="column.id"
+              #[`${column.id}-cell`]="{ row }"
             >
-              <span
-                v-if="change(row.original, field.value).same"
-                :class="change(row.original, field.value).after ? '' : 'text-muted'"
-              >{{ change(row.original, field.value).after || '—' }}</span>
-              <span
-                v-else
-                class="whitespace-normal"
-              >
-                <span class="text-muted line-through">{{ change(row.original, field.value).before || '—' }}</span>
-                <UIcon
-                  name="i-lucide-arrow-right"
-                  class="mx-1 size-3 align-middle text-dimmed"
-                />
-                <span class="font-medium text-highlighted">{{ change(row.original, field.value).after || '—' }}</span>
-              </span>
+              <OrganizationPathCell
+                :change="row.original"
+                :field="column.field"
+                :side="column.side"
+              />
             </template>
             <template #reference-cell="{ row }">
               <p>{{ row.original.reference || '—' }}</p>
@@ -748,11 +786,11 @@ function change(row: OrganizationChange, field: UnitLevel) {
         >
           <div class="border-b border-default p-4">
             <p class="text-sm text-muted">
-              {{ pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} found by HR imports, waiting for you to confirm or dismiss. HR data can be late or wrong, so nothing is history until confirmed.` : 'Nothing is waiting. Changes an HR import finds show here.' }}
+              {{ pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} found by HR imports, waiting for you to confirm or dismiss${pendingShown.length < pending.length ? ` (${pendingShown.length} shown with these filters)` : ''}. HR data can be late or wrong, so nothing is history until confirmed.` : 'Nothing is waiting. Changes an HR import finds show here.' }}
             </p>
           </div>
           <UTable
-            :data="pending"
+            :data="pendingShown"
             :columns="detectedColumns"
             :loading="detected.status.value === 'pending'"
             :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
@@ -761,27 +799,50 @@ function change(row: OrganizationChange, field: UnitLevel) {
               {{ formatDate(row.original.detected_at) }}
             </template>
             <template #kind-cell="{ row }">
-              <UBadge
-                variant="subtle"
+              <StatusBadge
+                :scale="organizationChangeKinds"
+                :value="row.original.kind"
                 size="sm"
-                :color="organizationChangeKinds[row.original.kind].color"
-                :icon="organizationChangeKinds[row.original.kind].icon"
-                :label="organizationChangeKinds[row.original.kind].label"
+              />
+              <p class="mt-1 text-xs text-muted">
+                {{ levelName(row.original.level) }}
+              </p>
+            </template>
+            <template
+              v-for="column in organizationPathColumns"
+              :key="column.id"
+              #[`${column.id}-cell`]="{ row }"
+            >
+              <OrganizationPathCell
+                :change="row.original"
+                :field="column.field"
+                :side="column.side"
               />
             </template>
-            <template #previous-cell="{ row }">
-              <span class="whitespace-normal">{{ organizationPathLabel(row.original.previous) }}</span>
+            <template #evidence-cell="{ row }">
+              <p class="max-w-72 whitespace-normal text-sm">
+                {{ evidence(row.original) }}
+              </p>
             </template>
-            <template #current-cell="{ row }">
-              <span class="whitespace-normal">{{ organizationPathLabel(row.original.current) }}</span>
-            </template>
-            <template #people-cell="{ row }">
-              <template v-if="row.original.kind === 'move' || row.original.kind === 'rename'">
-                {{ row.original.people_moved }} of {{ row.original.people_total }} moved
-              </template>
-              <template v-else>
-                {{ row.original.people_total }} {{ row.original.people_total === 1 ? 'person' : 'people' }}
-              </template>
+            <template #bia_impact-cell="{ row }">
+              <span
+                v-if="row.original.bia_impact === null"
+                class="text-dimmed"
+              >—</span>
+              <span
+                v-else-if="row.original.bia_impact"
+                class="inline-flex items-center gap-1 text-warning"
+              >
+                <UIcon
+                  name="i-lucide-triangle-alert"
+                  class="size-4"
+                />
+                {{ row.original.bia_impact }} running BIA{{ row.original.bia_impact === 1 ? '' : 's' }}
+              </span>
+              <span
+                v-else
+                class="text-muted"
+              >None</span>
             </template>
             <template #import_file-cell="{ row }">
               <span class="text-xs">{{ row.original.import_file || '—' }}</span>
@@ -804,7 +865,7 @@ function change(row: OrganizationChange, field: UnitLevel) {
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
-                No detected change is waiting.
+                {{ pending.length ? 'No detected change matches these filters.' : 'No detected change is waiting.' }}
               </p>
             </template>
           </UTable>

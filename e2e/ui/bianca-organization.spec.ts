@@ -56,7 +56,7 @@ test('the structure reads as a tree, filters, and confirms a detected change int
     id: 7, kind: 'move', level: 'org_group',
     previous: { directorate: 'Bank', sub_directorate: 'Ops', org_group: 'Net' },
     current: { directorate: 'Bank', sub_directorate: 'Infra', org_group: 'Net' },
-    people_moved: 8, people_total: 10, import_file: 'hr.csv', detected_at: '2026-11-20T08:00:00', status: 'pending',
+    people_moved: 8, people_total: 10, bia_impact: 2, import_file: 'hr.csv', detected_at: '2026-11-20T08:00:00', status: 'pending',
   }
   let confirmed: Record<string, unknown> | null = null
   await page.route(/\/api\/masterdata\/organization(?:\?.*)?$/, (route) => route.fulfill({ json: { items: units } }))
@@ -96,7 +96,9 @@ test('the structure reads as a tree, filters, and confirms a detected change int
 
   await page.getByRole('tab', { name: /Detected changes/ }).click()
   await expect(page).toHaveURL(/tab=detected/)
-  await expect(page.getByText('8 of 10 moved')).toBeVisible()
+  await expect(page.getByText('8 of the 10 people of Net are now under Infra.')).toBeVisible()
+  await expect(page.getByText('2 running BIAs')).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Previous sub directorate' })).toBeVisible()
   await page.getByRole('button', { name: 'Act on the change of Bank › Ops › Net' }).click()
   await page.getByRole('menuitem', { name: 'Confirm…' }).click()
   const dialog = page.getByRole('dialog', { name: 'Confirm detected change' })
@@ -112,6 +114,7 @@ test('the structure reads as a tree, filters, and confirms a detected change int
 
   await page.getByRole('tab', { name: 'Change history' }).click()
   await expect(page.getByText('1 change, latest effective date first.')).toBeVisible()
-  await expect(page.getByRole('cell', { name: /Ops.*Infra/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Current sub directorate' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Infra', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', /changes\/export\.xlsx/)
 })

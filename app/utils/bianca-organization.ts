@@ -53,22 +53,37 @@ export interface OrganizationChange extends OrganizationChangePaths {
 export interface OrganizationDetected extends OrganizationChangePaths {
   people_moved: number
   people_total: number
+  /** Running BIAs (Draft, In approval) a confirmation would reach; null for a new unit. */
+  bia_impact: number | null
   import_file: string | null
   detected_at: string | null
   status: 'pending' | 'confirmed' | 'dismissed'
 }
 
-export const organizationChangeKinds: Record<OrganizationChangeKind, { label: string, color: 'info' | 'warning' | 'success' | 'neutral', icon: string }> = {
+export const organizationChangeKinds = defineStatusScale<OrganizationChangeKind>({
   rename: { label: 'Renamed', color: 'info', icon: 'i-lucide-pencil-line' },
   move: { label: 'Moved', color: 'warning', icon: 'i-lucide-move-right' },
   new: { label: 'New', color: 'success', icon: 'i-lucide-plus' },
   closed: { label: 'Closed', color: 'neutral', icon: 'i-lucide-circle-minus' },
-}
+})
 
 export const organizationChangeSources: Record<OrganizationChangeSource, string> = {
   manual: 'Manual',
   hr_import: 'HR import',
 }
+
+/** A change's previous and current path as six columns, level by level: Previous directorate,
+ * Current directorate, Previous sub directorate, … The same in Change history, Detected changes
+ * and View history; each cell is an <OrganizationPathCell>. */
+export const organizationPathColumns = organizationLevels.flatMap((level) =>
+  (['previous', 'current'] as const).map((side) => ({
+    id: `${side}_${level.value}`,
+    header: `${side === 'previous' ? 'Previous' : 'Current'} ${level.label.toLowerCase()}`,
+    field: level.value,
+    side,
+    meta: { class: { th: 'min-w-40', td: 'min-w-40' } },
+  })),
+)
 
 /** "Bank › Ops › Net", or an em dash for no unit. */
 export function organizationPathLabel(path: Partial<OrganizationPath> | null | undefined) {
