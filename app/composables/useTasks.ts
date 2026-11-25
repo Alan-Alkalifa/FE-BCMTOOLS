@@ -1,13 +1,16 @@
 /**
- * Task Management: one tab per module the user's roles open (SCCA, RA HO, RA Branch, Location).
- * The module's BCM sees every task of it (`oversees`), everyone else what waits for them. The
- * Home overview shows each module at a glance (`useTaskSummary`). It sends no reminders.
+ * Task Management: one tab per module the user's roles open (SCCA, RA HO, RA Branch, BIA,
+ * Sites). The module's BCM sees every task of it (`oversees`), everyone else what waits for them
+ * and what they started. Home shows the same cards per module (`useTaskSummary`, `taskCards`).
+ * It sends no reminders.
  */
-export type TaskModule = 'scca' | 'ra' | 'ra_branch' | 'sites'
+export type TaskModule = 'scca' | 'ra' | 'ra_branch' | 'bia' | 'sites'
 export type TaskType = 'signoff' | 'renewal' | 'building' | 'disaster' | 'incident'
 export type TaskLevel = 'ok' | 'reminder' | 'escalated' | 'overdue' | 'due_30' | 'due_90'
 /** The quick filters: stuck sign-offs, overdue or due renewals. */
 export type TaskLevelFilter = 'stuck' | 'overdue' | 'due'
+/** The cards' lists: Waiting for me (`mine`) and In approval (`approval`). */
+export type TaskView = 'mine' | 'approval'
 
 export interface Task {
   key: string
@@ -31,8 +34,11 @@ export interface Task {
   reminders_sent: number
   escalated: boolean
   level: TaskLevel
-  /** It waits for the user. */
+  /** It waits for the user (Waiting for me). */
   mine: boolean
+  /** The user started it or is responsible for it (an SCCA or BIA they created, an RA where
+   *  they are the LIC, the LICOM or its creator). */
+  involved?: boolean
   /** A building or disaster the user asked for: someone else decides. */
   own?: boolean
   url: string
@@ -40,6 +46,7 @@ export interface Task {
 
 export interface TaskQuery {
   module?: TaskModule
+  view?: TaskView
   type?: TaskType
   level?: TaskLevelFilter
   q?: string
@@ -59,23 +66,26 @@ export interface TaskPage {
   tabs: { module: TaskModule, total: number }[]
   /** The user sees every task of this module (its BCM). */
   oversees: boolean
-  counts: Record<'total' | TaskType, number>
+  /** Per type, and the cards (`TaskCounts`), the same as on Home. */
+  counts: Record<'total' | TaskType, number> & TaskCounts
 }
 
-/** One module at a glance on Home. Sign-off modules count `mine` … `due_renewals` (every one
- *  for its BCM, `oversees`; otherwise the user's own), RA HO and RA Branch also `building`;
- *  Sites counts `disaster` and `incident`. */
-export interface TaskGlance {
-  module: TaskModule
-  oversees: boolean
+/** The cards of a module: Waiting for me and In approval for everyone; for its BCM the admin
+ *  tasks (stuck sign-offs, overdue and due renewals, and in RA HO and RA Branch the buildings
+ *  waiting, only for who opens Master building). */
+export interface TaskCounts {
   mine?: number
   in_approval?: number
   stuck?: number
   overdue_renewals?: number
   due_renewals?: number
   building?: number
-  disaster?: number
-  incident?: number
+}
+
+/** One module on Home: the same cards as its Task Management tab. */
+export interface TaskGlance extends TaskCounts {
+  module: TaskModule
+  oversees: boolean
 }
 
 export interface TaskSummary {
@@ -97,6 +107,7 @@ export const TASK_MODULES: Record<TaskModule, string> = {
   scca: 'SCCA',
   ra: 'RA HO',
   ra_branch: 'RA Branch',
+  bia: 'BIA',
   sites: 'Sites',
 }
 
@@ -104,6 +115,7 @@ export const TASK_MODULE_ICONS: Record<TaskModule, string> = {
   scca: 'i-lucide-shield-check',
   ra: 'i-lucide-building-2',
   ra_branch: 'i-lucide-landmark',
+  bia: 'i-lucide-file-spreadsheet',
   sites: 'i-lucide-map-pinned',
 }
 
@@ -112,7 +124,89 @@ export const TASK_MODULE_TYPES: Record<TaskModule, TaskType[]> = {
   scca: ['signoff', 'renewal'],
   ra: ['signoff', 'renewal', 'building'],
   ra_branch: ['signoff', 'renewal', 'building'],
+  bia: ['signoff', 'renewal'],
   sites: ['disaster', 'incident'],
+}
+
+/** What a card opens in Task Management. */
+export interface TaskCardFilter { view?: TaskView, type?: TaskType, level?: TaskLevelFilter }
+
+export interface TaskCard {
+  key: 'mine' | 'in_approval' | 'stuck' | 'overdue' | 'building'
+  label: string
+  value: number | null
+  hint: string
+  icon: string
+  tone: 'neutral' | 'warning' | 'error' | 'info'
+  filter: TaskCardFilter
+}
+
+const RECORD: Record<TaskModule, string> = { scca: 'SCCA', ra: 'RA', ra_branch: 'RA', bia: 'BIA', sites: 'disaster and incident' }
+
+/**
+ * A module's cards, the same on Home and in Task Management. `basic` for everyone (Waiting for
+ * me, In approval); `admin` for its BCM (`oversees`): stuck sign-offs, overdue renewals and, in
+ * RA HO and RA Branch, the buildings waiting (the API sends `building` only for who opens
+ * Master building). Shown as Overview Administrator on Home and Admin tasks in Task Management.
+ */
+export function taskCards(module: TaskModule, counts: TaskCounts | null | undefined, oversees: boolean) {
+  const what = RECORD[module]
+  const sites = module === 'sites'
+  const basic: TaskCard[] = [
+    {
+      key: 'mine',
+      label: 'Waiting for me',
+      value: counts?.mine ?? null,
+      hint: sites ? 'Disasters and incidents for you to decide.' : module === 'ra' || module === 'ra_branch' ? 'RA sign-off steps for you.' : `${what} approvals for you.`,
+      icon: 'i-lucide-user-check',
+      tone: 'warning',
+      filter: { view: 'mine' },
+    },
+    {
+      key: 'in_approval',
+      label: 'In approval',
+      value: counts?.in_approval ?? null,
+      hint: sites
+        ? 'Every disaster and incident waiting for approval.'
+        : oversees ? `Every ${what} waiting for a signer.` : `What you sign or started, waiting for a signer.`,
+      icon: 'i-lucide-hourglass',
+      tone: 'info',
+      filter: { view: 'approval' },
+    },
+  ]
+  if (!oversees) return { basic, admin: [] as TaskCard[] }
+  const admin: TaskCard[] = [{
+    key: 'stuck',
+    label: sites ? 'Escalated approvals' : 'Stuck sign-offs',
+    value: counts?.stuck ?? null,
+    hint: sites ? 'Waiting past the escalation to BCM.' : 'Waiting past the escalation.',
+    icon: 'i-lucide-siren',
+    tone: 'error',
+    filter: { level: 'stuck' },
+  }]
+  if (!sites) {
+    admin.push({
+      key: 'overdue',
+      label: 'Overdue renewals',
+      value: counts?.overdue_renewals ?? null,
+      hint: `${counts?.due_renewals ?? 0} more due within 90 days.`,
+      icon: 'i-lucide-circle-alert',
+      tone: 'error',
+      filter: { type: 'renewal', level: 'overdue' },
+    })
+  }
+  if ((module === 'ra' || module === 'ra_branch') && counts?.building !== undefined) {
+    admin.push({
+      key: 'building',
+      label: 'Buildings waiting',
+      value: counts.building,
+      hint: 'New, or to make inactive, waiting for approval.',
+      icon: 'i-lucide-building',
+      tone: 'warning',
+      filter: { type: 'building' },
+    })
+  }
+  return { basic, admin }
 }
 
 /** Each kind of task, as a badge (`StatusBadge`). */
