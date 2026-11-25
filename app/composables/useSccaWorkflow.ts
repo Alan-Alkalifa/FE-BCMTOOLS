@@ -1,6 +1,6 @@
 /** SCCA Monitoring, the Approval menu (inbox, history, BCM board) and the SCCA reminder rules
  * (SCCA configuration > Reminders and escalation). */
-import type { SccaPage } from '~/composables/useScca'
+import type { SccaListQuery, SccaPage } from '~/composables/useScca'
 
 export type SccaMonitoringStatus = SccaStatus | 'need_revision' | 'in_revision'
 
@@ -309,7 +309,7 @@ export function sccaExportUrl(view: 'register' | 'renewals' | 'bottlenecks', fil
   return `${MONITOR}/${view}.xlsx${text ? `?${text}` : ''}`
 }
 
-export function sccaManageExportUrl(filters: Record<string, string | number | undefined>) {
+export function sccaManageExportUrl(filters: SccaListQuery | Record<string, string | number | undefined>) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(clean({ ...filters, page: undefined, per_page: undefined }))) {
     query.set(key, String(value))
