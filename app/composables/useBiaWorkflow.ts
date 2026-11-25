@@ -537,6 +537,7 @@ export interface BiaOverviewResponse {
   by_status_group?: { group: BiaStatusGroup, label: string, count: number }[]
   by_category: { category: BiaCategory | 'none', groups: number }[]
   approved_per_month: { month: string, assessments: number }[]
+  available_years?: number[]
 }
 
 export interface BiaPaginatedResponse<T> {

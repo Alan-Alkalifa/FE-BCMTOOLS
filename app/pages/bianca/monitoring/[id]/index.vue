@@ -722,7 +722,14 @@ const pageCrumbs = computed(() => [
       v-model="tab"
       :items="tabs"
       variant="link"
+      size="xs"
       :unmount-on-hide="false"
+      :ui="{
+        list: 'overflow-x-auto gap-0.5',
+        trigger: 'shrink-0 px-2.5 py-1.5 text-xs gap-1.5 whitespace-nowrap',
+        leadingIcon: 'size-3.5',
+        label: 'overflow-visible text-clip whitespace-nowrap',
+      }"
     >
       <template #details>
         <div class="mt-4 grid gap-6 lg:grid-cols-2">
