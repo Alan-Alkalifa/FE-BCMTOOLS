@@ -66,11 +66,26 @@ const columns: TableColumn<BiaGroupHistoryRow>[] = [
             {{ biaReasonLabel(item.original.reason) || '—' }}
           </template>
           <template #status-cell="{ row: item }">
-            <StatusBadge
-              :scale="biaStatus"
-              :value="biaStatusKey(item.original)"
-              size="sm"
-            />
+            <div class="inline-flex flex-col items-center gap-0.5">
+              <StatusBadge
+                v-if="item.original.status_group"
+                :scale="biaStatusGroup"
+                :value="item.original.status_group"
+                size="sm"
+              />
+              <StatusBadge
+                v-else
+                :scale="biaStatus"
+                :value="biaStatusKey(item.original)"
+                size="sm"
+              />
+              <span
+                v-if="item.original.status_detail_label"
+                class="text-xs text-muted"
+              >
+                {{ item.original.status_detail_label }}
+              </span>
+            </div>
           </template>
           <template #assessment_date-cell="{ row: item }">
             {{ formatDate(item.original.assessment_date) || '—' }}

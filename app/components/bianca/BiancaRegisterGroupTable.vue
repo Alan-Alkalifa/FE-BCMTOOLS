@@ -22,19 +22,26 @@ const emit = defineEmits<{
   'open-history': [row: BiaMonitorGroupRow]
 }>()
 
+const { header: sortable } = useTableSort(['functions', 'approved_at', 'renewal_date', 'assessment_count'])
+
 const columns = computed<TableColumn<BiaMonitorGroupRow>[]>(() => [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'group', header: 'Group' },
-  { id: 'group_status', header: 'Status' },
-  { id: 'open', header: 'Open BIA' },
-  { id: 'bia_users', header: 'BIA users & PIC' },
-  { id: 'category', header: 'Highest category' },
-  { id: 'shortest_mtd', header: 'Shortest MTD' },
-  { id: 'functions', header: 'Functions' },
-  { id: 'approved', header: 'Last final BIA' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  ...(props.showDirectorateColumn ? [{ id: 'directorate', header: 'Directorate' }] : []),
-  { accessorKey: 'assessment_count', header: 'BIA(s)' },
+  { id: 'group', header: sortable('Group', 'group'), meta: { class: { th: 'min-w-44', td: 'min-w-44' } } },
+  { id: 'group_status', header: sortable('BIA status', 'group_status'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { id: 'open', header: sortable('Open BIA', 'open_status'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  ...(props.showDirectorateColumn
+    ? [
+        { id: 'directorate', header: sortable('Directorate', 'directorate'), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+        { id: 'sub_directorate', header: sortable('Sub directorate', 'sub_directorate'), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+      ]
+    : []),
+  { id: 'category', header: sortable('Highest category', 'category'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { id: 'shortest_mtd', header: sortable('Shortest MTD', 'shortest_mtd'), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { id: 'functions', header: sortable('Functions', 'functions', true), meta: { class: { th: 'min-w-24 text-right', td: 'min-w-24 text-right' } } },
+  { id: 'approved', header: sortable('Last final BIA', 'approved_at'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'renewal_date', header: sortable('Renewal date', 'renewal_date'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { id: 'bia_users', header: sortable('BIA users & PIC', 'assessor'), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'assessment_count', header: sortable('BIA(s)', 'assessment_count', true), meta: { class: { th: 'min-w-24 text-right', td: 'min-w-24 text-right' } } },
 ])
 
 const allState = computed<boolean | 'indeterminate'>(() => {
@@ -44,26 +51,16 @@ const allState = computed<boolean | 'indeterminate'>(() => {
   return ticked === props.rows.length ? true : 'indeterminate'
 })
 
-function rowSeverity(row: BiaMonitorGroupRow): 'error' | 'warning' | 'none' {
-  const isReturned = Boolean(row.open?.is_returned || row.open?.revision_state === 'in_revision' || row.open?.revision_state === 'need_revision')
-  if ((row.approved && row.bucket === 'overdue') || isReturned || row.stuck_approval) return 'error'
-  if (row.approved && row.bucket === 'due_30') return 'warning'
-  return 'none'
-}
-
-function severityStripClass(row: BiaMonitorGroupRow) {
-  const sev = rowSeverity(row)
-  if (sev === 'error') return 'border-s-3 border-s-error'
-  if (sev === 'warning') return 'border-s-3 border-s-warning'
-  return 'border-s-3 border-s-transparent'
-}
-
 function record(id: number) {
   return biaPath('monitoring', id)
 }
 
 function registerRecord(row: BiaMonitorGroupRow) {
   return row.approved ?? row.open ?? row.history?.[0] ?? null
+}
+
+function latestBiaRef(row: BiaMonitorGroupRow) {
+  return row.history?.[0] ?? row.open ?? row.approved ?? null
 }
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -84,7 +81,7 @@ function daysLeft(row: BiaMonitorGroupRow) {
     :columns="columns"
     :get-row-id="(row: BiaMonitorGroupRow) => String(row.group.id)"
     :loading="loading"
-    :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-0 last:pe-4 align-top' }"
+    :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
   >
     <template #select-header>
       <UCheckbox
@@ -94,16 +91,11 @@ function daysLeft(row: BiaMonitorGroupRow) {
       />
     </template>
     <template #select-cell="{ row }">
-      <div
-        class="flex h-full items-start ps-3.5 pe-1"
-        :class="severityStripClass(row.original)"
-      >
-        <UCheckbox
-          :model-value="pickedIds.has(row.original.group.id)"
-          :aria-label="`Select ${row.original.group.name}`"
-          @update:model-value="(value: boolean | 'indeterminate') => emit('pick', row.original, value)"
-        />
-      </div>
+      <UCheckbox
+        :model-value="pickedIds.has(row.original.group.id)"
+        :aria-label="`Select ${row.original.group.name}`"
+        @update:model-value="(value: boolean | 'indeterminate') => emit('pick', row.original, value)"
+      />
     </template>
     <template #group-cell="{ row }">
       <p
@@ -128,73 +120,56 @@ function daysLeft(row: BiaMonitorGroupRow) {
       >{{ row.original.group.name }}</span>
       <p class="text-xs text-muted">
         <span class="font-mono">{{ row.original.group.code || '—' }}</span>
-        <template v-if="row.original.group.main_building && row.original.group.main_building !== '—'">
-          · {{ row.original.group.main_building }}
+        <template v-if="latestBiaRef(row.original)">
+          · <span class="font-mono">{{ refLabel(latestBiaRef(row.original)) }}</span>
         </template>
       </p>
-    </template>
-    <template #group_status-header>
-      <span class="inline-flex items-center gap-1">
-        <span>Status</span>
-        <UTooltip text="Compliance status of the group's latest Final (approved) BIA.">
-          <UIcon
-            name="i-lucide-info"
-            class="size-3.5 text-muted"
-          />
-        </UTooltip>
-      </span>
-    </template>
-    <template #open-header>
-      <span class="inline-flex items-center gap-1">
-        <span>Open BIA</span>
-        <UTooltip text="Active new submission or renewal currently in Draft, Revision, or Approval.">
-          <UIcon
-            name="i-lucide-info"
-            class="size-3.5 text-muted"
-          />
-        </UTooltip>
-      </span>
     </template>
     <template #group_status-cell="{ row }">
-      <NuxtLink
-        v-if="row.original.approved"
-        :to="record(row.original.approved.id)"
-        class="inline-block hover:underline"
-      >
+      <template v-if="row.original.approved">
+        <NuxtLink
+          :to="record(row.original.approved.id)"
+          class="inline-block hover:underline"
+        >
+          <StatusBadge
+            v-if="row.original.approved.status_group"
+            :scale="biaStatusGroup"
+            :value="row.original.approved.status_group"
+            size="sm"
+          />
+          <StatusBadge
+            v-else
+            :scale="biaGroupStatus"
+            :value="biaGroupStatusKey(row.original)"
+            size="sm"
+          />
+        </NuxtLink>
+        <p
+          class="mt-1 text-xs"
+          :class="row.original.bucket === 'overdue'
+            ? 'font-medium text-error'
+            : row.original.bucket === 'due_30'
+              ? 'font-medium text-warning'
+              : row.original.bucket === 'due_60' || row.original.bucket === 'due_90'
+                ? 'text-info'
+                : 'text-muted'"
+        >
+          {{ row.original.approved.status_detail_label || biaGroupStatus[biaGroupStatusKey(row.original)].label }}
+          <template v-if="row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_60' || row.original.bucket === 'due_90'">
+            · {{ daysLeft(row.original) }}
+          </template>
+        </p>
+      </template>
+      <template v-else>
         <StatusBadge
           :scale="biaGroupStatus"
-          :value="biaGroupStatusKey(row.original)"
+          value="no_final"
           size="sm"
         />
-      </NuxtLink>
-      <StatusBadge
-        v-else
-        :scale="biaGroupStatus"
-        :value="biaGroupStatusKey(row.original)"
-        size="sm"
-      />
-      <p
-        v-if="row.original.approved && (row.original.bucket === 'overdue' || row.original.bucket === 'due_30' || row.original.bucket === 'due_90')"
-        class="mt-1 text-xs"
-        :class="row.original.bucket === 'overdue'
-          ? 'font-medium text-error'
-          : row.original.bucket === 'due_30'
-            ? 'font-medium text-warning'
-            : 'text-muted'"
-      >
-        <template v-if="row.original.bucket === 'overdue'">
-          Final BIA expired · {{ daysLeft(row.original).replace('overdue', 'ago') }}
-        </template>
-        <template v-else>
-          Final BIA expires · {{ daysLeft(row.original) }}
-        </template>
-      </p>
-      <p
-        v-else-if="!row.original.approved"
-        class="mt-1 text-xs text-muted"
-      >
-        {{ row.original.open ? 'Initial BIA in progress' : 'No BIA submitted yet' }}
-      </p>
+        <p class="mt-1 text-xs text-muted">
+          {{ row.original.open ? 'Initial BIA in progress' : 'No BIA submitted yet' }}
+        </p>
+      </template>
     </template>
     <template #open-cell="{ row }">
       <template v-if="row.original.open">
@@ -204,30 +179,53 @@ function daysLeft(row: BiaMonitorGroupRow) {
             class="inline-block hover:underline"
           >
             <StatusBadge
+              v-if="row.original.open.status_group"
+              :scale="biaStatusGroup"
+              :value="row.original.open.status_group"
+              size="sm"
+            />
+            <StatusBadge
+              v-else
               :scale="biaStatus"
               :value="biaStatusKey(row.original.open)"
               size="sm"
             />
           </NuxtLink>
           <UBadge
-            v-if="row.original.stuck_approval"
+            v-if="row.original.open.status_detail === 'escalated' || row.original.stuck_approval"
             color="error"
             variant="subtle"
             size="xs"
-            icon="i-lucide-flame"
-            label="Stuck"
+            icon="i-lucide-siren"
+            label="Escalated"
           />
         </div>
-        <p class="mt-1 text-xs text-muted">
+        <p
+          class="mt-1 text-xs"
+          :class="row.original.open.status_detail === 'need_revision' || row.original.open.status_detail === 'escalated'
+            ? 'font-medium text-error'
+            : row.original.open.status_detail === 'in_revision'
+              ? 'font-medium text-warning'
+              : 'text-muted'"
+        >
+          <span>{{ row.original.open.status_detail_label || biaStatus[biaStatusKey(row.original.open)].label }}</span>
+          <span class="text-muted"> · </span>
           <NuxtLink
             :to="record(row.original.open.id)"
-            class="font-mono hover:underline"
+            class="font-mono text-muted hover:underline"
           >
             {{ refLabel(row.original.open) }}
           </NuxtLink>
-          <template v-if="row.original.open.status === 'in_signoff' && row.original.open.current_signoff_role">
-            · Waiting: {{ biaStepTitle(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
-          </template>
+        </p>
+      </template>
+      <template v-else-if="!row.original.approved">
+        <StatusBadge
+          :scale="biaStatusGroup"
+          value="draft"
+          size="sm"
+        />
+        <p class="mt-1 text-xs text-muted">
+          Waiting for Submission Task
         </p>
       </template>
       <span
@@ -316,15 +314,14 @@ function daysLeft(row: BiaMonitorGroupRow) {
       {{ formatDate(row.original.renewal_date) || '—' }}
     </template>
     <template #directorate-cell="{ row }">
-      <p class="max-w-52 truncate">
+      <span class="block max-w-48 truncate">
         {{ row.original.group.directorate || '—' }}
-      </p>
-      <p
-        v-if="row.original.group.sub_directorate && row.original.group.sub_directorate !== '—'"
-        class="max-w-52 truncate text-xs text-muted"
-      >
-        {{ row.original.group.sub_directorate }}
-      </p>
+      </span>
+    </template>
+    <template #sub_directorate-cell="{ row }">
+      <span class="block max-w-48 truncate text-muted">
+        {{ row.original.group.sub_directorate || '—' }}
+      </span>
     </template>
     <template #assessment_count-cell="{ row }">
       <UButton

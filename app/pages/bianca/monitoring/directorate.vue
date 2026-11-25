@@ -32,7 +32,29 @@ const sort = computed<BiaDirectorateSort>(() => {
 const attentionOnly = computed(() => text('attention_only') === '1')
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
-const STATES = ['approved', 'valid', 'overdue', 'due_soon', 'open', 'in_signoff', 'draft', 'returned', 'in_revision', 'need_revision', 'none', 'not_started'] as const
+const STATES = [
+  'approved',
+  'full_approved',
+  'in_renewal',
+  'valid',
+  'overdue',
+  'due_soon',
+  'due_30',
+  'due_60',
+  'due_90',
+  'open',
+  'in_signoff',
+  'waiting_approval',
+  'escalated',
+  'draft_group',
+  'draft',
+  'waiting_submission',
+  'returned',
+  'in_revision',
+  'need_revision',
+  'none',
+  'not_started',
+] as const
 
 const filters = computed<BiaMonitoringFilters>(() => ({
   q: text('q'),
@@ -92,13 +114,17 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
 
 const stateItems = [
   { label: 'Any state', value: '__all__' },
-  { label: 'Overdue', value: 'overdue' },
-  { label: 'Due soon (≤ 30 days)', value: 'due_soon' },
-  { label: 'Final BIA', value: 'approved' },
-  { label: 'Has open BIA', value: 'open' },
-  { label: 'In approval', value: 'in_signoff' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Returned / Revision', value: 'returned' },
+  { label: 'Final: Full Approved', value: 'full_approved' },
+  { label: 'In Renewal: All', value: 'in_renewal' },
+  { label: 'In Renewal: Due in 90 days', value: 'due_90' },
+  { label: 'In Renewal: Due in 60 days', value: 'due_60' },
+  { label: 'In Renewal: Due in 30 days', value: 'due_30' },
+  { label: 'In Renewal: Overdue', value: 'overdue' },
+  { label: 'Draft: Waiting for Submission Task', value: 'waiting_submission' },
+  { label: 'Draft: Need Revision', value: 'need_revision' },
+  { label: 'Draft: In Revision', value: 'in_revision' },
+  { label: 'In Approval: Waiting for Approval', value: 'waiting_approval' },
+  { label: 'In Approval: Escalated', value: 'escalated' },
   { label: 'No final BIA yet', value: 'none' },
 ]
 const stateModel = computed({

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { SpotlightTourStep } from '~/components/UiSpotlightTour.vue'
 import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
 
 definePageMeta({ permission: 'bianca.access' })
@@ -288,254 +287,17 @@ const detailSummary = computed(() => {
   }
 })
 
-interface AttentionItem {
-  key: string
-  text: string
-  title: string
-  targetTab: DetailTab
-  tabLabel: string
-  severity: 'error' | 'warning'
-  depsIssuesOnly?: boolean
-  steps: string[]
-}
-
-const attentionItems = computed<AttentionItem[]>(() => {
-  const s = detailSummary.value
-  const items: AttentionItem[] = []
-  if (s.missingRaJustification) {
-    items.push({
-      key: 'ra_justification',
-      title: 'Missing Risk Assessment justification',
-      text: 'Risk assessment justification is required (BC not considered and no BC controls included)',
-      targetTab: 'details',
-      tabLabel: 'Details',
-      severity: 'error',
-      steps: [
-        'Open the "RA Questionnaire" card in this Details tab.',
-        'Check whether BC was considered or controls were included.',
-        'If both are No, fill in the mandatory RA justification in BIANCA > Manage before resubmitting.',
-      ],
-    })
-  }
-  if (s.mtdExceedCount > 0) {
-    items.push({
-      key: 'mtd_exceed',
-      title: 'Expected MTD exceeds Suggested MTD',
-      text: `${plural(s.mtdExceedCount, 'business function')} has Expected MTD longer than Suggested MTD`,
-      targetTab: 'impact',
-      tabLabel: 'Impact',
-      severity: 'error',
-      steps: [
-        'Check the "Impact assessment" table below for functions highlighted with Expected MTD > Suggested MTD.',
-        'Verify whether the business function can truly tolerate the longer Expected MTD.',
-        'Either shorten Expected MTD to match/be stricter than Suggested MTD, or document a strong justification.',
-      ],
-    })
-  }
-  if (s.suggestedMismatchCount > 0) {
-    items.push({
-      key: 'suggested_mismatch',
-      title: 'Suggested MTD differs from impact rule',
-      text: `${plural(s.suggestedMismatchCount, 'business function')} has Suggested MTD differing from the impact rule`,
-      targetTab: 'impact',
-      tabLabel: 'Impact',
-      severity: 'warning',
-      steps: [
-        'Review the Part 1 loss & regulatory/customer scores in the Impact assessment table.',
-        'Compare the calculated rule MTD against the Suggested MTD column.',
-        'Align Suggested MTD with the impact rule in BIANCA > Manage if no exception is intended.',
-      ],
-    })
-  }
-  if (s.itGapCount > 0) {
-    items.push({
-      key: 'negative_daat',
-      title: 'Negative DAAT on IT application',
-      text: `${plural(s.itGapCount, 'IT application')} has a negative DAAT (RTO + backlog exceeds Expected MTD)`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'We switched the filter below to "Issues only" so only functions with dependency gaps are shown.',
-        'Find the Part 2a IT application row marked with a negative DAAT (red badge).',
-        'Verify the application RTO + backlog hours vs Expected MTD, and make sure a Workaround Critical Gap note & Part 2a RTO justification are provided.',
-      ],
-    })
-  }
-  if (s.missingCriticalGapNote > 0) {
-    items.push({
-      key: 'missing_critical_gap_note',
-      title: 'Missing Workaround Critical Gap note',
-      text: `${plural(s.missingCriticalGapNote, 'IT application')} requires a mandatory Workaround Critical Gap note`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Look at the filtered functions below under Part 2a (IT application systems).',
-        'Locate the application row where Workaround = No or DAAT is negative.',
-        'Add the Workaround Critical Gap explanation in BIANCA > Manage so reviewers understand the mitigation.',
-      ],
-    })
-  }
-  if (s.missingRtoJustification) {
-    items.push({
-      key: 'missing_rto_justification',
-      title: 'Missing Part 2a RTO justification',
-      text: 'Part 2a RTO justification is missing (at least one IT RTO reaches or exceeds Expected MTD)',
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Review the Part 2a IT rows flagged with RTO >= Expected MTD below.',
-        'Scroll to the "Part 2a RTO justification" note card at the bottom of the Dependencies tab.',
-        'Fill in why the business function can operate despite the IT RTO reaching or exceeding Expected MTD.',
-      ],
-    })
-  }
-  if (s.missingDepJustification) {
-    items.push({
-      key: 'missing_dep_justification',
-      title: 'Missing Part 2b dependency justification',
-      text: 'Part 2b dependency justification is missing for misaligned upstream/downstream rows',
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Check the Part 2b (Upstream / Downstream) rows marked with alignment warnings below.',
-        'Review each row where planned capacity is lower or MTD is longer than the business function.',
-        'Provide the per-row justification in BIANCA > Manage explaining how the dependency gap is handled.',
-      ],
-    })
-  } else if (s.unalignedNonItCount > 0) {
-    items.push({
-      key: 'unaligned_non_it',
-      title: 'Misaligned upstream/downstream dependency',
-      text: `${plural(s.unalignedNonItCount, 'upstream/downstream dependency row')} has lower capacity or longer MTD than the function`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'warning',
-      depsIssuesOnly: true,
-      steps: [
-        'Look at the Part 2b (Upstream / Downstream) rows highlighted below.',
-        'Compare the dependency capacity & MTD against the business function target.',
-        'Verify the accompanying justification explains how operations remain within MTD.',
-      ],
-    })
-  }
-  if (s.seatGap > 0) {
-    items.push({
-      key: 'seat_shortage',
-      title: 'BCP seat shortage at alternate site',
-      text: `BCP seat shortage of ${plural(s.seatGap, 'seat')} at alternate site (excluding WFH)`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Scroll horizontally in the Part 3 Recovery table below to the "Resources & BCP seats" columns.',
-        'Compare "BCP seats required" vs "Current BCP seats" for non-WFH functions.',
-        'Confirm whether additional alternate-site seats need to be allocated or if WFH/split-shift covers the shortfall.',
-      ],
-    })
-  }
-  if (s.missingVitalCritical > 0) {
-    items.push({
-      key: 'missing_vital_critical',
-      title: 'Missing vital record for Business Critical function',
-      text: `${plural(s.missingVitalCritical, 'Business Critical function')} missing vital record or storage location`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'error',
-      steps: [
-        'Scroll to the right end of the Part 3 Recovery table below ("Vital records").',
-        'Identify any Business Critical function with an empty vital record or storage location.',
-        'Complete both fields in BIANCA > Manage.',
-      ],
-    })
-  }
-  if (s.altSiteMismatchCount > 0) {
-    items.push({
-      key: 'alt_site_mismatch',
-      title: 'Alternate site strategy outside category guidance',
-      text: `${plural(s.altSiteMismatchCount, 'function')} uses an alternate site strategy outside category guidance`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Scroll horizontally in the Part 3 Recovery table below to the "Alternate site strategy" column.',
-        'Look for rows badged "Outside category guidance" — compare with the "Alternate site guide" text at the top of the card.',
-        'Either adjust the strategy to match category guidance or confirm the exception is intentional.',
-      ],
-    })
-  }
-  if (s.staffAnomalyCount > 0) {
-    items.push({
-      key: 'staff_anomaly',
-      title: 'Required recovery staff exceeds total staff',
-      text: `${plural(s.staffAnomalyCount, 'function')} has required recovery staff exceeding total staff`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Check the "Staffing & recovery level" columns in the Part 3 Recovery table below.',
-        'Find rows where "Required recovery staff" is greater than "Total staff".',
-        'Correct the headcount numbers in BIANCA > Manage.',
-      ],
-    })
-  }
-  return items
-})
-
-const TOUR_TARGET_BY_KEY: Record<string, string> = {
-  negative_daat: '[data-tour="deps-daat-gap"]',
-  missing_critical_gap_note: '[data-tour="deps-filter-issues"]',
-  missing_rto_justification: '[data-tour="deps-filter-issues"]',
-  missing_dep_justification: '[data-tour="deps-filter-issues"]',
-  unaligned_non_it: '[data-tour="deps-filter-issues"]',
-  seat_shortage: '[data-tour="recovery-seat-gap"]',
-  alt_site_mismatch: '[data-tour="recovery-altsite-gap"]',
-  missing_vital_critical: '[data-tour="recovery-vital-gap"]',
-}
-
-const tourStep = ref<number | null>(null)
-const tourSteps = computed<SpotlightTourStep[]>(() =>
-  attentionItems.value.map((item) => ({
-    target: TOUR_TARGET_BY_KEY[item.key] ?? '[data-tour="bia-tabs-panel"]',
-    title: item.title,
-    description: item.steps.join(' '),
-    badge: item.tabLabel,
-    color: item.severity,
-    beforeEnter: () => {
-      tab.value = item.targetTab
-      if (item.targetTab === 'dependencies') {
-        depsFilter.value = item.depsIssuesOnly ? 'issues' : 'all'
-      }
-    },
-  })),
-)
-
-function openGuide(index: number) {
-  if (!attentionItems.value[index]) return
-  tourStep.value = index
-}
-
 const tabAlertCounts = computed<Record<DetailTab, number>>(() => {
-  const counts: Record<DetailTab, number> = {
-    details: 0,
-    impact: 0,
-    dependencies: 0,
-    recovery: 0,
+  const g = detail.value?.gaps
+  return {
+    details: g?.details?.length ?? 0,
+    impact: g?.impact?.length ?? 0,
+    dependencies: g?.dependencies?.length ?? 0,
+    recovery: g?.recovery?.length ?? 0,
     timings: 0,
     signoff: 0,
     appendix: 0,
   }
-  for (const item of attentionItems.value) {
-    counts[item.targetTab] += 1
-  }
-  return counts
 })
 
 const tabs = computed(() => [
@@ -619,8 +381,26 @@ const lossPeriodTotals = computed(() =>
         :label="`Renewing ${detail.renewal_of.ref_no}`"
       />
       <StatusBadge
+        v-if="detail.status_group"
+        :scale="biaStatusGroup"
+        :value="detail.status_group"
+      />
+      <StatusBadge
+        v-else
         :scale="biaStatus"
         :value="biaStatusKey(detail)"
+      />
+      <UBadge
+        v-if="detail.status_detail_label"
+        :color="detail.status_detail === 'overdue' || detail.status_detail === 'need_revision' || detail.status_detail === 'escalated'
+          ? 'error'
+          : detail.status_detail === 'full_approved'
+            ? 'success'
+            : detail.status_detail === 'due_30' || detail.status_detail === 'in_revision' || detail.status_detail === 'waiting_approval'
+              ? 'warning'
+              : 'neutral'"
+        variant="subtle"
+        :label="detail.status_detail_label"
       />
       <StatusBadge
         v-if="detail.highest_category"
@@ -721,50 +501,14 @@ const lossPeriodTotals = computed(() =>
         </button>
       </div>
 
-      <UAlert
-        v-if="attentionItems.length"
-        :color="attentionItems.some((i) => i.severity === 'error') ? 'error' : 'warning'"
-        variant="subtle"
-        icon="i-lucide-triangle-alert"
-        :title="`Needs attention (${attentionItems.length})`"
-      >
-        <template #description>
-          <ul class="mt-1.5 space-y-1.5 text-xs">
-            <li
-              v-for="(item, idx) in attentionItems"
-              :key="item.key"
-              class="flex flex-wrap items-center justify-between gap-2"
-            >
-              <span class="inline-flex items-center gap-1.5">
-                <span
-                  class="size-1.5 shrink-0 rounded-full"
-                  :class="item.severity === 'error' ? 'bg-error' : 'bg-warning'"
-                />
-                <span>{{ item.text }}</span>
-              </span>
-              <UButton
-                size="xs"
-                :color="item.severity === 'error' ? 'error' : 'warning'"
-                variant="link"
-                class="p-0"
-                :label="`Review in ${item.tabLabel}`"
-                trailing-icon="i-lucide-arrow-right"
-                @click="openGuide(idx)"
-              />
-            </li>
-          </ul>
-        </template>
-      </UAlert>
+      <BiancaGapSummary
+        :gaps="detail.gaps"
+        :status="detail.status"
+      />
     </div>
-
-    <UiSpotlightTour
-      v-model="tourStep"
-      :steps="tourSteps"
-    />
 
     <UTabs
       v-model="tab"
-      data-tour="bia-tabs-panel"
       :items="tabs"
       variant="link"
       :unmount-on-hide="false"
@@ -1515,7 +1259,6 @@ const lossPeriodTotals = computed(() =>
             >
               <button
                 type="button"
-                data-tour="deps-filter-issues"
                 class="rounded px-2.5 py-1 font-medium transition"
                 :class="depsFilter === 'all' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
                 @click="depsFilter = 'all'"
@@ -1524,7 +1267,6 @@ const lossPeriodTotals = computed(() =>
               </button>
               <button
                 type="button"
-                data-tour="deps-filter-issues"
                 class="rounded px-2.5 py-1 font-medium transition"
                 :class="depsFilter === 'issues' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
                 @click="depsFilter = 'issues'"
@@ -1685,10 +1427,7 @@ const lossPeriodTotals = computed(() =>
                           {{ dep.backlog_time }}
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
-                          <div
-                            :data-tour="dep.daat_negative || dep.daat.startsWith('-') ? 'deps-daat-gap' : undefined"
-                            class="inline-flex items-center gap-1.5"
-                          >
+                          <div class="inline-flex items-center gap-1.5">
                             <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
                               {{ dep.daat }}
                             </span>
@@ -2099,7 +1838,6 @@ const lossPeriodTotals = computed(() =>
                           :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
                         >
                           <UBadge
-                            data-tour="recovery-altsite-gap"
                             color="warning"
                             variant="subtle"
                             size="xs"
@@ -2129,7 +1867,6 @@ const lossPeriodTotals = computed(() =>
                       >—</span>
                       <span
                         v-else
-                        :data-tour="fn.bcp_seats_current < fn.bcp_seats_required ? 'recovery-seat-gap' : undefined"
                         :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
                       >
                         {{ formatNumber(fn.bcp_seats_required, 0) }}

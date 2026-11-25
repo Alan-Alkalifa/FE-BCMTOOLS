@@ -19,7 +19,8 @@ onActivated(() => {
 })
 const { data: lookups } = useBiancaLookups(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-const exporter = useBiancaExport()
+const exportAll = useBiancaExport()
+const exportFunction = useBiancaExport()
 const pdf = useBiancaPdf()
 
 useHead({ title: computed(() => `Report ${data.value?.ref_no ?? 'BIA'} · BCM Tools`) })
@@ -163,8 +164,8 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
                 variant="outline"
                 icon="i-lucide-file-spreadsheet"
                 label="Export all to Excel"
-                :loading="exporter.busy.value"
-                @click="exporter.run(data.id)"
+                :loading="exportAll.busy.value"
+                @click="exportAll.run(data.id)"
               />
             </template>
           </div>
@@ -207,8 +208,8 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
               variant="outline"
               icon="i-lucide-file-spreadsheet"
               label="Export this function to Excel"
-              :loading="exporter.busy.value"
-              @click="exporter.run(data.id, [number])"
+              :loading="exportFunction.busy.value"
+              @click="exportFunction.run(data.id, [number])"
             />
           </div>
         </div>

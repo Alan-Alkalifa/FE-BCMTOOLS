@@ -34,26 +34,72 @@ export function biaStatusKey(item: { status: BiaStatus, is_returned?: boolean, r
   return item.revision_state ?? (item.is_returned ? 'in_revision' : 'draft')
 }
 
-export type BiaGroupStatusKey = 'approved' | 'overdue' | 'due_soon' | 'renewal_due' | 'no_final' | 'not_started'
-export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
-  approved: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
+export type BiaStatusGroup = 'draft' | 'in_approval' | 'final' | 'in_renewal'
+export const biaStatusGroup = defineStatusScale<BiaStatusGroup>({
+  draft: { label: 'Draft', color: 'neutral', icon: 'i-lucide-file-pen' },
+  in_approval: { label: 'In Approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  final: { label: 'Final', color: 'success', icon: 'i-lucide-badge-check' },
+  in_renewal: { label: 'In Renewal', color: 'warning', icon: 'i-lucide-calendar-clock' },
+})
+
+export type BiaStatusDetailKey
+  = | 'waiting_submission'
+    | 'need_revision'
+    | 'in_revision'
+    | 'waiting_approval'
+    | 'escalated'
+    | 'full_approved'
+    | 'expired'
+    | 'cancelled'
+    | 'due_90'
+    | 'due_60'
+    | 'due_30'
+    | 'overdue'
+    | 'no_final'
+    | 'not_started'
+
+export const biaStatusDetail = defineStatusScale<BiaStatusDetailKey>({
+  waiting_submission: { label: 'Waiting for Submission Task', color: 'neutral', icon: 'i-lucide-file-pen' },
+  need_revision: { label: 'Need Revision', color: 'error', icon: 'i-lucide-undo-2' },
+  in_revision: { label: 'In Revision', color: 'warning', icon: 'i-lucide-pencil-line' },
+  waiting_approval: { label: 'Waiting for Approval', color: 'warning', icon: 'i-lucide-hourglass' },
+  escalated: { label: 'Escalated', color: 'error', icon: 'i-lucide-siren' },
+  full_approved: { label: 'Full Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  expired: { label: 'Expired', color: 'neutral', icon: 'i-lucide-archive' },
+  cancelled: { label: 'Cancelled', color: 'neutral', icon: 'i-lucide-ban' },
+  due_90: { label: 'Due in 90 days', color: 'info', icon: 'i-lucide-calendar' },
+  due_60: { label: 'Due in 60 days', color: 'info', icon: 'i-lucide-calendar' },
+  due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
   overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
-  due_soon: { label: 'Due soon', color: 'warning', icon: 'i-lucide-calendar-clock' },
-  renewal_due: { label: 'Renewal due', color: 'info', icon: 'i-lucide-calendar' },
   no_final: { label: 'No final BIA', color: 'neutral', icon: 'i-lucide-clock' },
-  not_started: { label: 'Not started', color: 'neutral', icon: 'i-lucide-circle-dashed' },
+  not_started: { label: 'Waiting for Submission Task', color: 'neutral', icon: 'i-lucide-circle-dashed' },
+})
+
+export type BiaGroupStatusKey = 'approved' | 'full_approved' | 'overdue' | 'due_soon' | 'due_30' | 'due_60' | 'due_90' | 'renewal_due' | 'no_final' | 'not_started'
+export const biaGroupStatus = defineStatusScale<BiaGroupStatusKey>({
+  approved: { label: 'Full Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  full_approved: { label: 'Full Approved', color: 'success', icon: 'i-lucide-badge-check' },
+  overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
+  due_soon: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
+  due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
+  due_60: { label: 'Due in 60 days', color: 'info', icon: 'i-lucide-calendar' },
+  due_90: { label: 'Due in 90 days', color: 'info', icon: 'i-lucide-calendar' },
+  renewal_due: { label: 'Due in 90 days', color: 'info', icon: 'i-lucide-calendar' },
+  no_final: { label: 'No final BIA', color: 'neutral', icon: 'i-lucide-clock' },
+  not_started: { label: 'Waiting for Submission Task', color: 'neutral', icon: 'i-lucide-circle-dashed' },
 })
 
 export function biaGroupStatusKey(row: {
   approved: { status: BiaStatus } | null
   open: { status: BiaStatus, is_returned?: boolean, revision_state?: BiaRevisionState | null } | null
-  bucket?: 'overdue' | 'due_30' | 'due_90' | 'later' | null
+  bucket?: 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'later' | null
 }): BiaGroupStatusKey {
   if (row.approved) {
     if (row.bucket === 'overdue') return 'overdue'
-    if (row.bucket === 'due_30') return 'due_soon'
-    if (row.bucket === 'due_90') return 'renewal_due'
-    return 'approved'
+    if (row.bucket === 'due_30') return 'due_30'
+    if (row.bucket === 'due_60') return 'due_60'
+    if (row.bucket === 'due_90') return 'due_90'
+    return 'full_approved'
   }
   if (row.open) return 'no_final'
   return 'not_started'
@@ -96,11 +142,12 @@ export function biaWaiting(days: number) {
   return `${days} working ${days === 1 ? 'day' : 'days'}`
 }
 
-export const biaRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_90' | 'later'>({
+export const biaRenewalBucket = defineStatusScale<'overdue' | 'due_30' | 'due_60' | 'due_90' | 'later'>({
   overdue: { label: 'Overdue', color: 'error', icon: 'i-lucide-circle-alert' },
   due_30: { label: 'Due in 30 days', color: 'warning', icon: 'i-lucide-calendar-clock' },
-  due_90: { label: 'Due in 31–90 days', color: 'info', icon: 'i-lucide-calendar' },
-  later: { label: 'Not due yet', color: 'neutral', icon: 'i-lucide-calendar-check' },
+  due_60: { label: 'Due in 60 days', color: 'info', icon: 'i-lucide-calendar' },
+  due_90: { label: 'Due in 90 days', color: 'info', icon: 'i-lucide-calendar' },
+  later: { label: 'Full Approved', color: 'success', icon: 'i-lucide-badge-check' },
 })
 
 export type BiaWaitLevel = 'ok' | 'reminder' | 'escalated'

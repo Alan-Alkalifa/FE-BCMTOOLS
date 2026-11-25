@@ -5,6 +5,7 @@ import type {
   BiaDirectorateRow,
   BiaDirectorateSort,
   BiaGenerateResult,
+  BiaMonitorAssessmentRow,
   BiaMonitoringFilters,
   BiaMonitorGroupRow,
   BiaRenewalBucket,
@@ -47,7 +48,31 @@ function text(name: string) {
 type Period = 'all' | 'year' | '12m' | 'custom'
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
-const STATES = ['approved', 'valid', 'overdue', 'due_soon', 'open', 'draft', 'need_revision', 'in_revision', 'returned', 'in_signoff', 'none', 'not_started'] as const
+const STATES = [
+  'approved',
+  'full_approved',
+  'in_renewal',
+  'valid',
+  'overdue',
+  'due_soon',
+  'due_30',
+  'due_60',
+  'due_90',
+  'open',
+  'draft_group',
+  'draft',
+  'waiting_submission',
+  'need_revision',
+  'in_revision',
+  'returned',
+  'in_signoff',
+  'waiting_approval',
+  'escalated',
+  'expired',
+  'cancelled',
+  'none',
+  'not_started',
+] as const
 
 const filters = computed<BiaMonitoringFilters>(() => ({
   q: text('q'),
@@ -115,17 +140,22 @@ const state = computed<string>({
 })
 const stateItems = [
   { label: 'Any state', value: 'any' },
-  { label: 'Existing: Valid final BIA', value: 'valid' },
-  { label: 'Existing: Has a final BIA', value: 'approved' },
-  { label: 'Existing: Overdue', value: 'overdue' },
-  { label: 'Existing: Due soon (≤ 30 days)', value: 'due_soon' },
-  { label: 'Existing: No final BIA yet', value: 'none' },
-  { label: 'Existing: Not started', value: 'not_started' },
-  { label: 'Open BIA: Any open', value: 'open' },
-  { label: 'Open BIA: Draft', value: 'draft' },
-  { label: 'Open BIA: Need revision', value: 'need_revision' },
-  { label: 'Open BIA: In revision', value: 'in_revision' },
-  { label: 'Open BIA: In approval', value: 'in_signoff' },
+  { label: 'Final: Full Approved', value: 'full_approved' },
+  { label: 'In Renewal: All', value: 'in_renewal' },
+  { label: 'In Renewal: Due in 90 days', value: 'due_90' },
+  { label: 'In Renewal: Due in 60 days', value: 'due_60' },
+  { label: 'In Renewal: Due in 30 days', value: 'due_30' },
+  { label: 'In Renewal: Overdue', value: 'overdue' },
+  { label: 'Draft: All', value: 'draft_group' },
+  { label: 'Draft: Waiting for Submission Task', value: 'waiting_submission' },
+  { label: 'Draft: Need Revision', value: 'need_revision' },
+  { label: 'Draft: In Revision', value: 'in_revision' },
+  { label: 'In Approval: All', value: 'in_signoff' },
+  { label: 'In Approval: Waiting for Approval', value: 'waiting_approval' },
+  { label: 'In Approval: Escalated', value: 'escalated' },
+  { label: 'Final: Expired', value: 'expired' },
+  { label: 'Final: Cancelled', value: 'cancelled' },
+  { label: 'No final BIA yet', value: 'none' },
 ]
 
 const reasonFilter = computed<string>({
@@ -182,7 +212,7 @@ function clearFilters() {
 const overview = useBiaOverview(filters)
 const bucket = computed<Exclude<BiaRenewalBucket, 'later'> | undefined>(() => {
   const value = text('bucket')
-  return value === 'overdue' || value === 'due_30' || value === 'due_90' ? value : undefined
+  return value === 'overdue' || value === 'due_30' || value === 'due_60' || value === 'due_90' ? value : undefined
 })
 const renewals = useBiaRenewals(computed(() => ({
   ...filters.value,
@@ -193,11 +223,17 @@ const renewals = useBiaRenewals(computed(() => ({
 const renewalCards = [
   { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
   { bucket: 'due_30' as const, label: 'Due in 30 days', hint: 'Renewal date within 30 days', icon: 'i-lucide-calendar-clock', tone: 'warning' as const },
-  { bucket: 'due_90' as const, label: 'Due in 31–90 days', hint: 'Renewal date in 31 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
+  { bucket: 'due_60' as const, label: 'Due in 60 days', hint: 'Renewal date in 31 to 60 days', icon: 'i-lucide-calendar', tone: 'info' as const },
+  { bucket: 'due_90' as const, label: 'Due in 90 days', hint: 'Renewal date in 61 to 90 days', icon: 'i-lucide-calendar', tone: 'info' as const },
 ]
-const listView = computed<'directorates' | 'flat'>({
-  get: () => (text('view') === 'flat' ? 'flat' : 'directorates'),
-  set: (value) => setQuery({ view: value === 'directorates' ? undefined : 'flat' }),
+const listView = computed<'directorates' | 'flat' | 'assessments'>({
+  get: () => {
+    const v = text('view')
+    if (v === 'directorates') return 'directorates'
+    if (v === 'assessments') return 'assessments'
+    return 'flat'
+  },
+  set: (value) => setQuery({ view: value === 'flat' ? undefined : value }),
 })
 const dirSort = computed<BiaDirectorateSort>({
   get: () => {
@@ -218,9 +254,10 @@ const dirSortItems = [
 const smartFlat = computed(() =>
   listView.value === 'directorates' && Boolean(filters.value.q || filters.value.org_group),
 )
-const effectiveListMode = computed<'directorates' | 'flat'>(() =>
-  listView.value === 'flat' || smartFlat.value ? 'flat' : 'directorates',
-)
+const effectiveListMode = computed<'directorates' | 'flat' | 'assessments'>(() => {
+  if (listView.value === 'assessments') return 'assessments'
+  return listView.value === 'flat' || smartFlat.value ? 'flat' : 'directorates'
+})
 
 const directorates = useBiaDirectorates(computed(() => ({
   ...filters.value,
@@ -231,6 +268,13 @@ const directorates = useBiaDirectorates(computed(() => ({
 })))
 const register = useBiaRegister(computed(() => ({
   ...filters.value,
+  ...(tab.value === 'register' && effectiveListMode.value === 'flat' ? sortQuery.value : {}),
+  page: page.value,
+  per_page: perPage.value,
+})))
+const assessmentsList = useBiaAssessments(computed(() => ({
+  ...filters.value,
+  ...(tab.value === 'register' && effectiveListMode.value === 'assessments' ? sortQuery.value : {}),
   page: page.value,
   per_page: perPage.value,
 })))
@@ -246,27 +290,43 @@ const cardSections = computed(() => {
   const value = overview.data.value?.cards
   return [
     {
-      title: 'Action needed',
+      groupKey: 'draft',
+      title: 'Draft',
+      cols: 'sm:grid-cols-3',
       cards: [
-        { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks' }, tone: 'error' as const },
-        { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'Final BIA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' as const },
-        { key: 'need_revision', label: 'Need revision', hint: 'Returned by approver; waiting for PIC to accept', icon: 'i-lucide-undo-2', value: value?.need_revision, to: { tab: 'register', state: 'need_revision' }, tone: 'error' as const },
+        { key: 'need_revision', label: 'Need Revision', hint: 'Rejected by approver; no action yet', icon: 'i-lucide-undo-2', value: value?.need_revision ?? 0, to: { tab: 'register', state: 'need_revision', bucket: undefined }, tone: 'error' as const },
+        { key: 'in_revision', label: 'In Revision', hint: 'Rejected by approver; revision in progress', icon: 'i-lucide-pencil-line', value: value?.in_revision ?? 0, to: { tab: 'register', state: 'in_revision', bucket: undefined }, tone: 'warning' as const },
+        { key: 'waiting_submission', label: 'Waiting for Submission Task', hint: 'Unsubmitted drafts & pending initial tasks', icon: 'i-lucide-file-pen', value: value?.waiting_submission ?? value?.drafts ?? 0, to: { tab: 'register', state: 'waiting_submission', bucket: undefined }, tone: 'neutral' as const },
       ],
     },
     {
-      title: 'Compliance (Existing BIA)',
+      groupKey: 'in_approval',
+      title: 'In Approval',
+      cols: 'sm:grid-cols-2',
       cards: [
-        { key: 'assessed', label: 'Groups assessed', hint: 'With a final BIA', icon: 'i-lucide-shield-check', value: value?.assessed, to: { tab: 'register', state: 'approved' }, tone: 'neutral' as const },
-        { key: 'not_assessed', label: 'No final BIA yet', hint: 'Active groups without a final BIA', icon: 'i-lucide-circle-dashed', value: value?.not_assessed, to: { tab: 'register', state: 'none' }, tone: 'warning' as const },
-        { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Final BIAs expiring soon', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' as const },
+        { key: 'in_approval', label: 'In Approval', hint: 'All BIAs waiting for sign-off (incl. escalated)', icon: 'i-lucide-hourglass', value: value?.in_signoff ?? 0, to: { tab: 'bottlenecks', state: undefined, bucket: undefined }, tone: 'warning' as const },
+        { key: 'escalated', label: 'Escalated', hint: 'In approval ≥ 7 working days without approval', icon: 'i-lucide-siren', value: value?.stuck_approvals ?? 0, to: { tab: 'bottlenecks', state: undefined, bucket: undefined }, tone: 'error' as const },
       ],
     },
     {
-      title: 'In progress (Open BIA)',
+      groupKey: 'final',
+      title: 'Final',
+      cols: 'sm:grid-cols-3',
       cards: [
-        { key: 'drafts', label: 'Drafts', hint: 'New or renewal BIAs in draft', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', state: 'draft' }, tone: 'neutral' as const },
-        { key: 'in_revision', label: 'In revision', hint: 'Accepted by PIC; revision in progress', icon: 'i-lucide-pencil-line', value: value?.in_revision, to: { tab: 'register', state: 'in_revision' }, tone: 'warning' as const },
-        { key: 'in_signoff', label: 'In approval', hint: 'Waiting for sign-off approval', icon: 'i-lucide-hourglass', value: value?.in_signoff, to: { tab: 'bottlenecks' }, tone: 'neutral' as const },
+        { key: 'full_approved', label: 'Full Approved', hint: 'Active final BIA (> 90 days before renewal)', icon: 'i-lucide-badge-check', value: value?.full_approved ?? 0, to: { tab: 'register', view: undefined, state: 'full_approved', bucket: undefined }, tone: 'neutral' as const },
+        { key: 'expired', label: 'Expired', hint: 'Prior final BIAs superseded by a newer final', icon: 'i-lucide-archive', value: value?.expired ?? 0, to: { tab: 'register', view: 'assessments', state: 'expired', bucket: undefined }, tone: 'neutral' as const },
+        { key: 'cancelled', label: 'Cancelled', hint: 'Cancelled BIA assessments', icon: 'i-lucide-ban', value: value?.cancelled ?? 0, to: { tab: 'register', view: 'assessments', state: 'cancelled', bucket: undefined }, tone: 'neutral' as const },
+      ],
+    },
+    {
+      groupKey: 'in_renewal',
+      title: 'In Renewal',
+      cols: 'sm:grid-cols-2 xl:grid-cols-4',
+      cards: [
+        { key: 'overdue_renewals', label: 'Overdue', hint: 'Final BIA past its renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals ?? 0, to: { tab: 'renewals', bucket: 'overdue', state: undefined }, tone: 'error' as const },
+        { key: 'due_30', label: 'Due in 30 days', hint: 'Renewal date within 0–30 days', icon: 'i-lucide-calendar-clock', value: value?.due_30 ?? 0, to: { tab: 'renewals', bucket: 'due_30', state: undefined }, tone: 'warning' as const },
+        { key: 'due_60', label: 'Due in 60 days', hint: 'Renewal date in 31–60 days', icon: 'i-lucide-calendar', value: value?.due_60 ?? 0, to: { tab: 'renewals', bucket: 'due_60', state: undefined }, tone: 'neutral' as const },
+        { key: 'due_90', label: 'Due in 90 days', hint: 'Renewal date in 61–90 days', icon: 'i-lucide-calendar', value: value?.due_90 ?? 0, to: { tab: 'renewals', bucket: 'due_90', state: undefined }, tone: 'neutral' as const },
       ],
     },
   ]
@@ -276,62 +336,44 @@ function cardLink(target: Record<string, string | undefined>) {
   return { query: { ...route.query, ...target, page: undefined } }
 }
 
-const existingStatusBarTone: Record<string, string> = {
-  overdue: 'bg-error',
-  due_soon: 'bg-warning',
-  renewal_due: 'bg-info',
-  approved: 'bg-success',
-  no_final: 'bg-neutral-400 dark:bg-neutral-500',
-  not_started: 'bg-neutral-300 dark:bg-neutral-600',
+const statusGroupColors: Record<string, string> = {
+  draft: '#94a3b8',
+  in_approval: '#f59e0b',
+  final: '#16a34a',
+  in_renewal: '#dc2626',
 }
 
-const existingStatusTarget: Record<string, Record<string, string | undefined>> = {
-  overdue: { tab: 'renewals', bucket: 'overdue', state: undefined },
-  due_soon: { tab: 'renewals', bucket: 'due_30', state: undefined },
-  renewal_due: { tab: 'renewals', bucket: 'due_90', state: undefined },
-  approved: { tab: 'register', state: 'approved', bucket: undefined },
-  no_final: { tab: 'register', state: 'none', bucket: undefined },
-  not_started: { tab: 'register', state: 'none', bucket: undefined },
+const statusGroupTarget: Record<string, Record<string, string | undefined>> = {
+  draft: { tab: 'register', state: 'draft_group', bucket: undefined },
+  in_approval: { tab: 'bottlenecks', state: undefined, bucket: undefined },
+  final: { tab: 'register', state: 'full_approved', bucket: undefined },
+  in_renewal: { tab: 'renewals', state: undefined, bucket: undefined },
 }
 
-const openStatusBarTone: Record<string, string> = {
-  in_signoff: 'bg-warning',
-  need_revision: 'bg-error',
-  in_revision: 'bg-warning',
-  draft: 'bg-neutral-400 dark:bg-neutral-500',
-}
-
-const openStatusTarget: Record<string, Record<string, string | undefined>> = {
-  in_signoff: { tab: 'bottlenecks', state: undefined, bucket: undefined },
-  draft: { tab: 'register', state: 'draft', bucket: undefined },
-  in_revision: { tab: 'register', state: 'in_revision', bucket: undefined },
-  need_revision: { tab: 'register', state: 'need_revision', bucket: undefined },
-}
-
-const existingStatusRows = computed(() => {
-  const rows = overview.data.value?.by_existing_status ?? []
-  const total = rows.reduce((sum, r) => sum + r.groups, 0)
-  return rows.map((row) => ({
-    ...row,
-    pct: total ? Math.round((row.groups / total) * 100) : 0,
-    tone: existingStatusBarTone[row.status] ?? 'bg-neutral-400',
-    to: existingStatusTarget[row.status] ?? { tab: 'register' },
-  }))
+const statusGroupPieItems = computed(() => {
+  const rows = overview.data.value?.by_status_group ?? []
+  const total = rows.reduce((sum, r) => sum + r.count, 0)
+  return rows.map((row) => {
+    const section = cardSections.value.find((s) => s.groupKey === row.group)
+    return {
+      key: row.group,
+      label: row.label,
+      value: row.count,
+      pct: total ? Math.round((row.count / total) * 100) : 0,
+      color: statusGroupColors[row.group] ?? '#94a3b8',
+      details: section?.cards.map((c) => ({ label: c.label, value: c.value })),
+    }
+  })
 })
 
-const openStatusRows = computed(() => {
-  const rows = overview.data.value?.by_open_status ?? []
-  const total = rows.reduce((sum, r) => sum + r.groups, 0)
-  return rows.map((row) => ({
-    ...row,
-    pct: total ? Math.round((row.groups / total) * 100) : 0,
-    tone: openStatusBarTone[row.status] ?? 'bg-neutral-400',
-    to: openStatusTarget[row.status] ?? { tab: 'register' },
-  }))
-})
+const totalStatusGroups = computed(() =>
+  (overview.data.value?.by_status_group ?? []).reduce((sum, r) => sum + r.count, 0),
+)
 
-const totalExistingGroups = computed(() => existingStatusRows.value.reduce((sum, r) => sum + r.groups, 0))
-const totalOpenBiaCount = computed(() => openStatusRows.value.reduce((sum, r) => sum + r.groups, 0))
+function inspectStatusGroup(groupKey: string) {
+  const target = statusGroupTarget[groupKey] ?? { tab: 'register' }
+  navigateTo(cardLink(target))
+}
 
 const categoryBars = computed(() =>
   (overview.data.value?.by_category ?? []).map((row) => ({
@@ -525,6 +567,26 @@ function clearPicked() {
   picked.value = new Map()
 }
 
+const pickedBias = ref<Set<number>>(new Set())
+const pickedBiaIds = computed(() => [...pickedBias.value])
+function pickBia(row: BiaMonitorAssessmentRow, value: boolean | 'indeterminate') {
+  const next = new Set(pickedBias.value)
+  if (value === true) next.add(row.id)
+  else next.delete(row.id)
+  pickedBias.value = next
+}
+function pickManyBias(rows: BiaMonitorAssessmentRow[], value: boolean | 'indeterminate') {
+  const next = new Set(pickedBias.value)
+  for (const row of rows) {
+    if (value === true) next.add(row.id)
+    else next.delete(row.id)
+  }
+  pickedBias.value = next
+}
+function clearPickedBias() {
+  pickedBias.value = new Set()
+}
+
 function openHistory(row: BiaMonitorGroupRow) {
   historyDialog.open({ row })
 }
@@ -632,8 +694,8 @@ const bottleneckColumns: TableColumn<BiaSignoffWaitingRow>[] = [
   col('step_title', 'Current approval step', 'min-w-40'),
   { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
   { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  col('waiting_since', 'Assign date', 'min-w-32'),
-  col('working_days_waiting', 'Working days', 'min-w-32', true),
+  col('waiting_since', 'Assess since', 'min-w-32'),
+  col('working_days_waiting', 'Assess days', 'min-w-32', true),
   col('reminders_sent', 'Reminders sent', 'min-w-28', true),
   col('escalated_at', 'Escalated on', 'min-w-32'),
   col('working_days_in_signoff', 'Working days in approval', 'min-w-36', true),
@@ -808,6 +870,17 @@ function record(id: number) {
     >
       <template #overview>
         <div class="mt-4 space-y-6">
+          <BiancaPieChart
+            title="BIA status by group"
+            :summary="`4 standardized status groups across ${plural(totalStatusGroups, 'group')}. Click a slice to inspect.`"
+            measure="Groups"
+            :height="260"
+            :items="statusGroupPieItems"
+            :loading="overview.status.value === 'pending' && !overview.data.value"
+            empty="No groups match these filters."
+            @select="inspectStatusGroup"
+          />
+
           <div
             v-for="section in cardSections"
             :key="section.title"
@@ -816,140 +889,23 @@ function record(id: number) {
             <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
               {{ section.title }}
             </h3>
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <ULink
+            <div
+              class="grid gap-4"
+              :class="section.cols"
+            >
+              <KpiCard
                 v-for="card in section.cards"
                 :key="card.key"
                 :to="cardLink(card.to)"
-                class="group rounded-lg border border-default bg-default p-4 transition hover:border-accented hover:bg-elevated/40"
-                :aria-label="`${card.label}: ${card.value ?? 'loading'}`"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm text-muted">
-                      {{ card.label }}
-                    </p>
-                    <p
-                      class="mt-1 text-3xl font-semibold tabular-nums"
-                      :class="card.tone === 'error' && card.value ? 'text-error' : card.tone === 'warning' && card.value ? 'text-warning' : 'text-highlighted'"
-                    >
-                      {{ card.value ?? '—' }}
-                    </p>
-                    <p class="mt-1 text-xs text-muted">
-                      {{ card.hint }}
-                    </p>
-                  </div>
-                  <UIcon
-                    :name="card.icon"
-                    class="size-5 text-dimmed group-hover:text-muted"
-                  />
-                </div>
-              </ULink>
+                :label="card.label"
+                :value="card.value"
+                :hint="card.hint"
+                :icon="card.icon"
+                :tone="card.tone"
+              />
             </div>
           </div>
-          <div class="grid gap-4 lg:grid-cols-2">
-            <UCard>
-              <template #header>
-                <div class="flex items-center justify-between gap-2">
-                  <div>
-                    <h3 class="text-sm font-semibold text-highlighted">
-                      Existing BIA status (most first)
-                    </h3>
-                    <p class="mt-0.5 text-xs text-muted">
-                      Sorted from highest to lowest across {{ plural(totalExistingGroups, 'group') }}. Click a status to inspect.
-                    </p>
-                  </div>
-                </div>
-              </template>
-              <div
-                v-if="existingStatusRows.length"
-                class="space-y-2.5"
-              >
-                <ULink
-                  v-for="item in existingStatusRows"
-                  :key="`ex-${item.status}`"
-                  :to="cardLink(item.to)"
-                  class="block rounded-md px-2 py-1.5 transition hover:bg-elevated/60"
-                >
-                  <div class="flex items-center justify-between gap-3">
-                    <StatusBadge
-                      :scale="biaGroupStatus"
-                      :value="item.status"
-                      size="sm"
-                    />
-                    <span class="text-xs font-medium tabular-nums text-highlighted">
-                      {{ plural(item.groups, 'group') }}
-                      <span class="font-normal text-muted">({{ item.pct }}%)</span>
-                    </span>
-                  </div>
-                  <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      class="h-full rounded-full transition-all"
-                      :class="item.tone"
-                      :style="{ width: `${item.groups ? Math.max(item.pct, 3) : 0}%` }"
-                    />
-                  </div>
-                </ULink>
-              </div>
-              <p
-                v-else
-                class="py-4 text-center text-xs text-muted"
-              >
-                No groups match these filters.
-              </p>
-            </UCard>
 
-            <UCard>
-              <template #header>
-                <div class="flex items-center justify-between gap-2">
-                  <div>
-                    <h3 class="text-sm font-semibold text-highlighted">
-                      Open BIA status (most first)
-                    </h3>
-                    <p class="mt-0.5 text-xs text-muted">
-                      Active submissions &amp; renewals sorted from highest to lowest ({{ plural(totalOpenBiaCount, 'open BIA') }}).
-                    </p>
-                  </div>
-                </div>
-              </template>
-              <div
-                v-if="openStatusRows.length"
-                class="space-y-2.5"
-              >
-                <ULink
-                  v-for="item in openStatusRows"
-                  :key="`op-${item.status}`"
-                  :to="cardLink(item.to)"
-                  class="block rounded-md px-2 py-1.5 transition hover:bg-elevated/60"
-                >
-                  <div class="flex items-center justify-between gap-3">
-                    <StatusBadge
-                      :scale="biaStatus"
-                      :value="item.status"
-                      size="sm"
-                    />
-                    <span class="text-xs font-medium tabular-nums text-highlighted">
-                      {{ plural(item.groups, 'BIA') }}
-                      <span class="font-normal text-muted">({{ item.pct }}%)</span>
-                    </span>
-                  </div>
-                  <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      class="h-full rounded-full transition-all"
-                      :class="item.tone"
-                      :style="{ width: `${item.groups ? Math.max(item.pct, 3) : 0}%` }"
-                    />
-                  </div>
-                </ULink>
-              </div>
-              <p
-                v-else
-                class="py-4 text-center text-xs text-muted"
-              >
-                No open BIA submissions.
-              </p>
-            </UCard>
-          </div>
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart
               title="Groups by highest category"
@@ -973,7 +929,7 @@ function record(id: number) {
       </template>
 
       <template #renewals>
-        <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             v-for="card in renewalCards"
             :key="card.bucket"
@@ -1014,7 +970,7 @@ function record(id: number) {
               />
               <UButton
                 v-if="can('bianca.report.download')"
-                :to="biaExportUrl(filters, selectedRows.map((row) => row.group.id))"
+                :to="biaExportUrl({ ...filters, bucket }, selectedRows.map((row) => row.group.id), 'renewals')"
                 external
                 download
                 color="neutral"
@@ -1127,11 +1083,20 @@ function record(id: number) {
                 class="inline-flex flex-col items-start gap-1 hover:underline"
               >
                 <StatusBadge
+                  v-if="row.original.open.status_group"
+                  :scale="biaStatusGroup"
+                  :value="row.original.open.status_group"
+                  size="sm"
+                />
+                <StatusBadge
+                  v-else
                   :scale="biaStatus"
                   :value="biaStatusKey(row.original.open)"
                   size="sm"
                 />
-                <span class="font-mono text-xs text-muted">{{ refLabel(row.original.open) }}</span>
+                <span class="text-xs text-muted">
+                  {{ row.original.open.status_detail_label || biaStatus[biaStatusKey(row.original.open)].label }} · <span class="font-mono">{{ refLabel(row.original.open) }}</span>
+                </span>
               </NuxtLink>
               <span
                 v-else
@@ -1249,6 +1214,12 @@ function record(id: number) {
                     {{ plural(directorates.data.value?.total ?? 0, 'directorate') }} · {{ plural(directorates.data.value?.total_groups ?? 0, 'group') }}
                   </span>
                 </template>
+                <template v-else-if="effectiveListMode === 'assessments'">
+                  <span>{{ plural(assessmentsList.data.value?.total ?? 0, 'BIA') }}</span>
+                  <template v-if="pickedBiaIds.length">
+                    · <span class="font-medium text-highlighted">{{ pickedBiaIds.length }} selected</span>
+                  </template>
+                </template>
                 <template v-else>
                   <span>{{ plural(register.data.value?.total ?? 0, 'group') }}</span>
                   <template v-if="pickedIds.length">
@@ -1301,27 +1272,41 @@ function record(id: number) {
                   >
                     All groups
                   </button>
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 font-medium transition"
+                    :class="listView === 'assessments' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="listView = 'assessments'"
+                  >
+                    All BIA
+                  </button>
                 </div>
 
                 <UButton
-                  v-if="effectiveListMode === 'flat' && pickedIds.length"
+                  v-if="(effectiveListMode === 'flat' && pickedIds.length) || (effectiveListMode === 'assessments' && pickedBiaIds.length)"
                   color="neutral"
                   variant="ghost"
                   size="xs"
                   icon="i-lucide-x"
                   label="Clear selection"
-                  @click="clearPicked"
+                  @click="effectiveListMode === 'assessments' ? clearPickedBias() : clearPicked()"
                 />
                 <UButton
                   v-if="can('bianca.report.download')"
-                  :to="biaExportUrl(filters, effectiveListMode === 'flat' ? pickedIds : undefined)"
+                  :to="effectiveListMode === 'assessments'
+                    ? biaExportUrl(filters, pickedBiaIds, 'assessments')
+                    : biaExportUrl(filters, effectiveListMode === 'flat' ? pickedIds : undefined)"
                   external
                   download
                   color="neutral"
                   variant="outline"
                   size="xs"
                   icon="i-lucide-file-spreadsheet"
-                  :label="effectiveListMode === 'flat' && pickedIds.length ? `Export selected (${pickedIds.length})` : 'Export to Excel'"
+                  :label="effectiveListMode === 'assessments' && pickedBiaIds.length
+                    ? `Export selected (${pickedBiaIds.length})`
+                    : effectiveListMode === 'flat' && pickedIds.length
+                      ? `Export selected (${pickedIds.length})`
+                      : 'Export to Excel'"
                 />
               </div>
             </div>
@@ -1579,13 +1564,32 @@ function record(id: number) {
             />
           </template>
 
+          <!-- All BIA Assessments View -->
+          <template v-else-if="effectiveListMode === 'assessments'">
+            <BiancaAssessmentsTable
+              :rows="assessmentsList.data.value?.items ?? []"
+              :picked-ids="pickedBias"
+              :loading="assessmentsList.status.value === 'pending'"
+              @pick="pickBia"
+              @pick-all="pickManyBias"
+            />
+            <TablePagination
+              v-model:per-page="perPage"
+              page-sizes
+              :page="page"
+              :total="assessmentsList.data.value?.total ?? 0"
+              :to="pageTo"
+              label="All BIA"
+            />
+          </template>
+
           <!-- Flat / Smart Search View -->
           <template v-else>
             <BiancaRegisterGroupTable
               :rows="register.data.value?.items ?? []"
               :picked-ids="pickedIdSet"
               :loading="register.status.value === 'pending'"
-              :show-org-path="smartFlat"
+              :show-org-path="false"
               @pick="pick"
               @pick-all="pickManyRows"
               @open-history="openHistory"
@@ -1708,6 +1712,12 @@ function record(id: number) {
                   :value="row.original.level"
                   size="sm"
                 />
+                <p
+                  v-if="row.original.status_detail_label"
+                  class="mt-1 text-xs text-muted"
+                >
+                  {{ row.original.status_detail_label }}
+                </p>
               </template>
               <template #waiting_since-cell="{ row }">
                 {{ formatDate(row.original.waiting_since) || '—' }}
