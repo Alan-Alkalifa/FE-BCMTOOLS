@@ -86,7 +86,7 @@ function daysHint(row: BiaMonitorAssessmentRow): string | null {
 
     <template #ref_no-cell="{ row }">
       <NuxtLink
-        :to="`/bianca/monitoring/${row.original.id}`"
+        :to="{ path: `/bianca/monitoring/${row.original.id}`, query: { from: 'assessments' } }"
         class="font-mono text-xs font-medium text-primary hover:underline"
       >
         {{ row.original.ref_no ?? `#${row.original.id}` }}

@@ -8,11 +8,13 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   showDirectorateColumn?: boolean
   showOrgPath?: boolean
+  origin?: 'flat' | 'directorate'
   emptyText?: string
 }>(), {
   loading: false,
   showDirectorateColumn: true,
   showOrgPath: false,
+  origin: 'flat',
   emptyText: 'No group matches these filters.',
 })
 
@@ -52,7 +54,7 @@ const allState = computed<boolean | 'indeterminate'>(() => {
 })
 
 function record(id: number) {
-  return biaPath('monitoring', id)
+  return { path: biaPath('monitoring', id), query: { from: props.origin } }
 }
 
 function registerRecord(row: BiaMonitorGroupRow) {

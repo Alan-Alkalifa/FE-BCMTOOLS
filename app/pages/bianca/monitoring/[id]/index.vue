@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
+import type { BiancaGapTab } from '~/components/bianca/BiancaGapSummary.vue'
 
 definePageMeta({ permission: 'bianca.access' })
 
@@ -11,6 +12,131 @@ const { data: detail, status, error, refresh } = useBiaAssessmentDetail(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !detail.value)
 
 const depsFilter = ref<'all' | 'issues'>('all')
+const activeGapRow = ref<string | null>(null)
+const activeGapCell = ref<string | null>(null)
+let activeGapTimer: ReturnType<typeof setTimeout> | null = null
+
+function gapKey(...parts: Array<string | number | null | undefined>) {
+  return parts
+    .map((part) => String(part ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+    .filter(Boolean)
+    .join('-')
+}
+
+function isGapTargetActive(key: string) {
+  return activeGapRow.value === key || activeGapCell.value === key
+}
+
+function resolveGapTargets(gapTab: BiancaGapTab, message: string): { rowTarget: string | null, cellTarget: string | null, fallbackTarget: string | null } {
+  if (gapTab === 'details') {
+    return { rowTarget: 'details-ra', cellTarget: null, fallbackTarget: 'details-ra' }
+  }
+
+  const fnMatch = message.match(/^Function\s+(\d+)\s*\(/)
+  const seq = fnMatch ? Number(fnMatch[1]) : null
+
+  if (gapTab === 'impact' && seq !== null) {
+    return {
+      rowTarget: gapKey('impact-fn', seq),
+      cellTarget: null,
+      fallbackTarget: gapKey('impact-fn', seq),
+    }
+  }
+
+  if (gapTab === 'dependencies') {
+    if (/Part 2a RTO justification is missing/i.test(message)) {
+      return { rowTarget: 'dep-rto-note', cellTarget: null, fallbackTarget: 'dep-rto-note' }
+    }
+    if (seq !== null) {
+      const fn = detail.value?.functions.find((item) => item.seq_no === seq)
+      const fallbackTarget = gapKey('dep-fn', seq)
+      const prefix = fn ? `Function ${seq} (${fn.name}) > ` : null
+      const rest = prefix && message.startsWith(prefix)
+        ? message.slice(prefix.length)
+        : (message.match(/\)\s*>\s*(.+)$/)?.[1] ?? '')
+      const colonIdx = rest.indexOf(': ')
+      const targetLabel = (colonIdx >= 0 ? rest.slice(0, colonIdx) : rest).trim()
+      const nonItMatch = targetLabel.match(/^(Upstream|Downstream)\s*\((.+)\)$/i)
+      if (nonItMatch) {
+        const direction = nonItMatch[1]!.toLowerCase()
+        const partyName = nonItMatch[2]!
+        const rowTarget = gapKey('dep-nonit', seq, direction, partyName)
+        return { rowTarget, cellTarget: null, fallbackTarget }
+      }
+      if (targetLabel) {
+        return {
+          rowTarget: gapKey('dep-it', seq, targetLabel),
+          cellTarget: null,
+          fallbackTarget,
+        }
+      }
+      return { rowTarget: fallbackTarget, cellTarget: null, fallbackTarget }
+    }
+  }
+
+  if (gapTab === 'recovery' && seq !== null) {
+    const rowTarget = gapKey('recovery-fn', seq)
+    let cellTarget: string | null = null
+    if (/seat shortage/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'seats')
+    else if (/Alternate site strategy/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'altsite')
+    else if (/vital record/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'vital')
+    else if (/recovery staff/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'staff')
+    return { rowTarget, cellTarget, fallbackTarget: rowTarget }
+  }
+
+  return { rowTarget: null, cellTarget: null, fallbackTarget: null }
+}
+
+async function jumpToGap(payload: { tab: BiancaGapTab, message: string }) {
+  if (payload.tab === 'dependencies') {
+    depsFilter.value = 'all'
+  }
+  if (tab.value !== payload.tab) {
+    await router.replace({
+      query: { ...route.query, tab: payload.tab === 'details' ? undefined : payload.tab },
+    })
+  }
+
+  activeGapRow.value = null
+  activeGapCell.value = null
+  if (activeGapTimer) {
+    clearTimeout(activeGapTimer)
+    activeGapTimer = null
+  }
+
+  await nextTick()
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+
+  const resolved = resolveGapTargets(payload.tab, payload.message)
+  const candidates = [resolved.cellTarget, resolved.rowTarget, resolved.fallbackTarget].filter(Boolean) as string[]
+  let matchedKey: string | null = null
+  for (const key of candidates) {
+    const el = document.querySelector(`[data-gap-target="${key}"], .gap-target-${key}`) as HTMLElement | null
+    if (el && el.getClientRects().length > 0) {
+      matchedKey = key
+      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      break
+    }
+  }
+
+  activeGapRow.value = resolved.rowTarget && (matchedKey === resolved.rowTarget || matchedKey === resolved.cellTarget)
+    ? resolved.rowTarget
+    : resolved.fallbackTarget
+  activeGapCell.value = resolved.cellTarget
+
+  activeGapTimer = setTimeout(() => {
+    activeGapRow.value = null
+    activeGapCell.value = null
+    activeGapTimer = null
+  }, 3100)
+}
+
+onBeforeUnmount(() => {
+  if (activeGapTimer) {
+    clearTimeout(activeGapTimer)
+    activeGapTimer = null
+  }
+})
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
@@ -116,11 +242,50 @@ const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => [
   { id: 'scores', header: 'Max Reg (A) / Cust (B)' },
 ])
 
+const impactTableMeta = computed(() => ({
+  class: {
+    tr: (row: { original: BiaFunctionItem }) => {
+      const target = gapKey('impact-fn', row.original.seq_no)
+      return [
+        `gap-target-${target}`,
+        activeGapRow.value === target ? 'gap-flash-row' : '',
+      ].filter(Boolean).join(' ')
+    },
+  },
+}))
+
+const exporter = useBiancaExport()
+const appendixPicked = ref<number[]>([])
+const allAppendixPicked = computed(() =>
+  (detail.value?.functions.length ?? 0) > 0 && appendixPicked.value.length === detail.value?.functions.length,
+)
+
+watch(id, () => {
+  appendixPicked.value = []
+})
+
+function toggleAppendixPick(seqNo: number, on: boolean) {
+  appendixPicked.value = on
+    ? [...new Set([...appendixPicked.value, seqNo])].sort((a, b) => a - b)
+    : appendixPicked.value.filter((item) => item !== seqNo)
+}
+
+function toggleAllAppendix(on: boolean) {
+  appendixPicked.value = on ? (detail.value?.functions.map((fn) => fn.seq_no) ?? []) : []
+}
+
+async function exportAppendixFunctions(seqNos?: number[]) {
+  if (!detail.value) return
+  await exporter.run(detail.value.id, seqNos)
+}
+
 const appendixColumns: TableColumn<BiaFunctionItem>[] = [
-  { accessorKey: 'seq_no', header: 'No' },
+  { id: 'select', header: '', meta: { class: { th: 'w-10', td: 'w-10' } } },
+  { accessorKey: 'seq_no', header: 'No', meta: { class: { th: 'w-12', td: 'w-12 tabular-nums text-muted' } } },
   { accessorKey: 'name', header: 'Business function' },
   { accessorKey: 'category', header: 'Business function category' },
   { accessorKey: 'expected_mtd', header: 'Expected MTD' },
+  { id: 'actions', header: '', meta: { class: { th: 'w-28 text-right', td: 'w-28 text-right' } } },
 ]
 
 function formatFileSize(bytes: number) {
@@ -315,6 +480,58 @@ const lossPeriodTotals = computed(() =>
     (detail.value?.functions ?? []).reduce((sum, fn) => sum + (fn.losses?.[idx] ?? 0), 0),
   ),
 )
+
+const origin = computed(() => (typeof route.query.from === 'string' ? route.query.from : undefined))
+
+const backNavigation = computed(() => {
+  const dir = detail.value?.group.directorate
+  const hasDir = Boolean(dir && dir !== '—')
+  switch (origin.value) {
+    case 'assessments':
+      return {
+        label: 'Back to All BIA',
+        to: '/bianca/monitoring?tab=register&view=assessments',
+        middleCrumb: { label: 'All BIA', to: '/bianca/monitoring?tab=register&view=assessments' },
+      }
+    case 'flat':
+      return {
+        label: 'Back to All groups',
+        to: '/bianca/monitoring?tab=register&view=flat',
+        middleCrumb: { label: 'All groups', to: '/bianca/monitoring?tab=register&view=flat' },
+      }
+    case 'renewals':
+      return {
+        label: 'Back to Renewals',
+        to: '/bianca/monitoring?tab=renewals',
+        middleCrumb: { label: 'Renewals', to: '/bianca/monitoring?tab=renewals' },
+      }
+    case 'bottlenecks':
+      return {
+        label: 'Back to Approval',
+        to: '/bianca/monitoring?tab=bottlenecks',
+        middleCrumb: { label: 'Approval', to: '/bianca/monitoring?tab=bottlenecks' },
+      }
+    case 'directorate':
+      return {
+        label: hasDir ? 'Back to directorate' : 'Back to monitoring',
+        to: hasDir ? `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` : '/bianca/monitoring',
+        middleCrumb: hasDir ? { label: dir!, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` } : null,
+      }
+    default:
+      return {
+        label: 'Back to monitoring',
+        to: '/bianca/monitoring',
+        middleCrumb: hasDir ? { label: dir!, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` } : null,
+      }
+  }
+})
+
+const pageCrumbs = computed(() => [
+  { label: 'BIANCA' },
+  { label: 'Monitoring', to: '/bianca/monitoring' },
+  ...(backNavigation.value.middleCrumb ? [backNavigation.value.middleCrumb] : []),
+  ...(detail.value ? [{ label: detail.value.ref_no }] : []),
+])
 </script>
 
 <template>
@@ -354,14 +571,7 @@ const lossPeriodTotals = computed(() =>
     :title="`${detail.group.name} (${detail.ref_no})`"
     icon="i-lucide-chart-column"
     :description="`${detail.group.directorate} › ${detail.group.sub_directorate} · Assessment date ${formatDate(detail.assessment_date)}`"
-    :crumbs="[
-      { label: 'BIANCA' },
-      { label: 'Monitoring', to: '/bianca/monitoring' },
-      ...(detail.group.directorate && detail.group.directorate !== '—'
-        ? [{ label: detail.group.directorate, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(detail.group.directorate)}` }]
-        : []),
-      { label: detail.ref_no },
-    ]"
+    :crumbs="pageCrumbs"
   >
     <template #actions>
       <UBadge
@@ -423,11 +633,11 @@ const lossPeriodTotals = computed(() =>
         label="Edit draft in Manage"
       />
       <UButton
-        to="/bianca/monitoring"
+        :to="backNavigation.to"
         color="neutral"
         variant="outline"
         icon="i-lucide-arrow-left"
-        label="Back to monitoring"
+        :label="backNavigation.label"
       />
     </template>
 
@@ -504,6 +714,7 @@ const lossPeriodTotals = computed(() =>
       <BiancaGapSummary
         :gaps="detail.gaps"
         :status="detail.status"
+        @check="jumpToGap"
       />
     </div>
 
@@ -792,7 +1003,9 @@ const lossPeriodTotals = computed(() =>
                 </div>
                 <div
                   v-if="detail.notes?.ra_justification || detail.ra_questionnaire.ra_justification_required"
-                  class="grid grid-cols-3 gap-4 py-2.5"
+                  data-gap-target="details-ra"
+                  class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+                  :class="isGapTargetActive('details-ra') ? 'gap-flash-box' : ''"
                 >
                   <dt class="text-muted">
                     RA justification
@@ -832,6 +1045,7 @@ const lossPeriodTotals = computed(() =>
             <UTable
               :data="detail.functions"
               :columns="impactColumns"
+              :meta="impactTableMeta"
               :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #suggested_mtd-header>
@@ -1285,6 +1499,8 @@ const lossPeriodTotals = computed(() =>
           <UCard
             v-for="fn in displayedDepFunctions"
             :key="fn.seq_no"
+            :data-gap-target="gapKey('dep-fn', fn.seq_no)"
+            :class="activeGapRow === gapKey('dep-fn', fn.seq_no) ? 'gap-flash-box' : ''"
           >
             <template #header>
               <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1392,6 +1608,8 @@ const lossPeriodTotals = computed(() =>
                       <tr
                         v-for="dep in itSection.rows"
                         :key="`${itSection.key}-${dep.app_code}-${dep.app_name}`"
+                        :data-gap-target="gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)"
+                        :class="isGapTargetActive(gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)) ? 'gap-flash-row' : ''"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
                           <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
@@ -1519,6 +1737,8 @@ const lossPeriodTotals = computed(() =>
                       <tr
                         v-for="(ndep, idx) in section.rows"
                         :key="idx"
+                        :data-gap-target="gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)"
+                        :class="isGapTargetActive(gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)) ? 'gap-flash-row' : ''"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
                           {{ ndep.party_name }}
@@ -1591,7 +1811,9 @@ const lossPeriodTotals = computed(() =>
             <dl class="divide-y divide-default text-sm">
               <div
                 v-if="detail.notes?.justification_rto || detailSummary.missingRtoJustification"
-                class="grid grid-cols-3 gap-4 py-2.5"
+                data-gap-target="dep-rto-note"
+                class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+                :class="isGapTargetActive('dep-rto-note') ? 'gap-flash-box' : ''"
               >
                 <dt class="text-muted">
                   IT RTO justification (Part 2a)
@@ -1781,7 +2003,9 @@ const lossPeriodTotals = computed(() =>
                   <tr
                     v-for="fn in detail.functions"
                     :key="`rec-${fn.seq_no}`"
+                    :data-gap-target="gapKey('recovery-fn', fn.seq_no)"
                     class="group hover:bg-elevated/40"
+                    :class="activeGapRow === gapKey('recovery-fn', fn.seq_no) ? 'gap-flash-row' : ''"
                   >
                     <td class="sticky left-0 z-10 w-12 border-b border-default bg-default py-3 ps-4 pe-2 align-top tabular-nums text-muted group-hover:bg-elevated/40">
                       {{ fn.seq_no }}
@@ -1805,7 +2029,11 @@ const lossPeriodTotals = computed(() =>
                     <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
                       {{ formatNumber(fn.total_staff, 0) }}
                     </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'staff')"
+                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'staff')) ? 'gap-flash-cell' : ''"
+                    >
                       <div class="inline-flex items-center justify-end gap-1">
                         <span :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''">
                           {{ formatNumber(fn.required_staff, 0) }}
@@ -1830,7 +2058,11 @@ const lossPeriodTotals = computed(() =>
                     <td class="min-w-56 max-w-72 border-b border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
                       {{ fn.outstanding_strategy || '—' }}
                     </td>
-                    <td class="min-w-44 border-b border-default px-3 py-3 align-top">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'altsite')"
+                      class="min-w-44 border-b border-default px-3 py-3 align-top"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'altsite')) ? 'gap-flash-cell' : ''"
+                    >
                       <div class="space-y-1">
                         <span class="block text-sm">{{ fn.alt_site_strategy }}</span>
                         <UTooltip
@@ -1860,7 +2092,11 @@ const lossPeriodTotals = computed(() =>
                       </UTooltip>
                       <span v-else>{{ formatNumber(fn.bcp_seats_current, 0) }}</span>
                     </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'seats')"
+                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'seats')) ? 'gap-flash-cell' : ''"
+                    >
                       <span
                         v-if="isWfhStrategy(fn)"
                         class="text-muted"
@@ -1907,7 +2143,11 @@ const lossPeriodTotals = computed(() =>
                       <span v-if="isWfhStrategy(fn)">Excluded (WFH)</span>
                       <span v-else>{{ fn.equipment?.others || '—' }}</span>
                     </td>
-                    <td class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'vital')"
+                      class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'vital')) ? 'gap-flash-cell' : ''"
+                    >
                       <UBadge
                         v-if="fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')"
                         color="error"
@@ -2134,12 +2374,32 @@ const lossPeriodTotals = computed(() =>
                     For BCM use only: overview of Business Functions&apos; Criticality and Expected MTD (automatically propagated from Part 1 &amp; Part 2a).
                   </p>
                 </div>
-                <UBadge
-                  color="neutral"
-                  variant="subtle"
-                  size="sm"
-                  label="For BCM Use Only"
-                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                    label="For BCM Use Only"
+                  />
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-file-spreadsheet"
+                    :label="appendixPicked.length ? `Export ${appendixPicked.length} selected to Excel` : 'Export selected to Excel'"
+                    :disabled="!appendixPicked.length"
+                    :loading="exporter.busy.value"
+                    @click="exportAppendixFunctions(appendixPicked)"
+                  />
+                  <UButton
+                    size="sm"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export all to Excel"
+                    :disabled="!detail.functions.length"
+                    :loading="exporter.busy.value"
+                    @click="exportAppendixFunctions()"
+                  />
+                </div>
               </div>
               <div class="grid gap-3 rounded-lg border border-default bg-elevated/40 p-3 text-xs sm:grid-cols-4">
                 <div>
@@ -2182,8 +2442,28 @@ const lossPeriodTotals = computed(() =>
               :columns="appendixColumns"
               :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
+              <template #select-header>
+                <UCheckbox
+                  :model-value="allAppendixPicked ? true : appendixPicked.length ? 'indeterminate' : false"
+                  aria-label="Select every function"
+                  :disabled="!detail.functions.length"
+                  @update:model-value="toggleAllAppendix($event === true)"
+                />
+              </template>
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="appendixPicked.includes(row.original.seq_no)"
+                  :aria-label="`Select ${row.original.name}`"
+                  @update:model-value="toggleAppendixPick(row.original.seq_no, $event === true)"
+                />
+              </template>
               <template #name-cell="{ row }">
-                <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+                <NuxtLink
+                  :to="biancaReportPath(detail.id, row.original.seq_no)"
+                  class="font-medium text-primary hover:underline"
+                >
+                  {{ row.original.name }}
+                </NuxtLink>
               </template>
               <template #category-cell="{ row }">
                 <StatusBadge
@@ -2191,6 +2471,20 @@ const lossPeriodTotals = computed(() =>
                   :value="row.original.category"
                   size="sm"
                 />
+              </template>
+              <template #actions-cell="{ row }">
+                <div class="flex justify-end">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Excel"
+                    :aria-label="`Export ${row.original.name} to Excel`"
+                    :disabled="exporter.busy.value"
+                    @click="exportAppendixFunctions([row.original.seq_no])"
+                  />
+                </div>
               </template>
             </UTable>
           </UCard>
@@ -2248,3 +2542,66 @@ const lossPeriodTotals = computed(() =>
     </UTabs>
   </AppPage>
 </template>
+
+<style scoped>
+@keyframes gap-flash-fade {
+  0% {
+    background-color: rgba(239, 68, 68, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.85), 0 0 0 3px rgba(239, 68, 68, 0.2);
+  }
+  25% {
+    background-color: rgba(245, 158, 11, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.7), 0 0 0 3px rgba(245, 158, 11, 0.16);
+  }
+  65% {
+    background-color: rgba(245, 158, 11, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35), 0 0 0 0 transparent;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent, 0 0 0 0 transparent;
+  }
+}
+
+@keyframes gap-flash-row-fade {
+  0% {
+    box-shadow: inset 0 0 0 9999px rgba(239, 68, 68, 0.16), inset 0 1px 0 rgba(245, 158, 11, 0.85), inset 0 -1px 0 rgba(245, 158, 11, 0.85);
+  }
+  25% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.16), inset 0 1px 0 rgba(239, 68, 68, 0.65), inset 0 -1px 0 rgba(239, 68, 68, 0.65);
+  }
+  65% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.08), inset 0 1px 0 rgba(245, 158, 11, 0.25), inset 0 -1px 0 rgba(245, 158, 11, 0.25);
+  }
+  100% {
+    box-shadow: inset 0 0 0 9999px transparent, inset 0 1px 0 transparent, inset 0 -1px 0 transparent;
+  }
+}
+
+@keyframes gap-flash-cell-fade {
+  0% {
+    box-shadow: inset 0 0 0 9999px rgba(239, 68, 68, 0.24), inset 0 0 0 2px rgba(245, 158, 11, 0.9);
+  }
+  25% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.24), inset 0 0 0 2px rgba(239, 68, 68, 0.75);
+  }
+  65% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.12), inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+  }
+  100% {
+    box-shadow: inset 0 0 0 9999px transparent, inset 0 0 0 0 transparent;
+  }
+}
+
+:deep(.gap-flash-box) {
+  animation: gap-flash-fade 3s ease-out forwards;
+}
+
+:deep(tr.gap-flash-row > td) {
+  animation: gap-flash-row-fade 3s ease-out forwards;
+}
+
+:deep(td.gap-flash-cell) {
+  animation: gap-flash-cell-fade 3s ease-out forwards;
+}
+</style>

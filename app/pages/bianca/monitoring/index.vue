@@ -766,7 +766,7 @@ function pageTo(next: number) {
 }
 
 function record(id: number) {
-  return biaPath('monitoring', id)
+  return { path: biaPath('monitoring', id), query: { from: tab.value } }
 }
 </script>
 

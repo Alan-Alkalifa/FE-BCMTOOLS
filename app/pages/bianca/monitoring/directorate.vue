@@ -733,7 +733,7 @@ const summary = computed(() => detail.data.value?.summary)
                   />
                   <UButton
                     v-if="item.bia_id"
-                    :to="biaPath('monitoring', item.bia_id)"
+                    :to="{ path: biaPath('monitoring', item.bia_id), query: { from: 'directorate' } }"
                     size="xs"
                     color="neutral"
                     variant="ghost"
@@ -913,6 +913,7 @@ const summary = computed(() => detail.data.value?.summary)
                   :rows="sub.groups"
                   :picked-ids="pickedIdSet"
                   :show-directorate-column="false"
+                  origin="directorate"
                   @pick="pickRow"
                   @pick-all="pickMany"
                   @open-history="openHistory"

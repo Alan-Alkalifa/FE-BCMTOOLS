@@ -771,11 +771,60 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
           notes: {},
           gaps: {
             details: ['Missing alternate phone.'],
-            impact: [],
-            dependencies: ['DAAT is negative on Function 1.'],
-            recovery: [],
+            impact: ['Function 1 (OCTO Mobile Onboarding): Expected MTD (1 day) is longer than Suggested MTD (4 hours).'],
+            dependencies: ['Function 1 (OCTO Mobile Onboarding) > Core Banking: Negative DAAT (-1 day).'],
+            recovery: ['Function 1 (OCTO Mobile Onboarding): BCP seat shortage of 2 seats at alternate site (current 4, required 6).'],
           },
-          functions: [],
+          functions: [
+            {
+              seq_no: 1,
+              name: 'OCTO Mobile Onboarding',
+              category: 'Business Critical',
+              planned_capacity: '100%',
+              suggested_mtd: '4 hours',
+              expected_mtd: '1 day',
+              expected_within_suggested: false,
+              suggested_mtd_matches: true,
+              total_staff: 10,
+              required_staff: 5,
+              recovery_level: '50%',
+              prioritization_strategy: 'Prioritize critical onboarding',
+              outstanding_strategy: 'Queue requests',
+              alt_site_strategy: 'Hyspace',
+              alt_site_strategy_code: 'Hyspace',
+              is_wfh: false,
+              bcp_seats_current: 4,
+              bcp_seats_required: 6,
+              equipment: { pc: 4, phone: 2, fax: 0, copier: 0, others: '' },
+              vital_record: 'Onboarding logs',
+              vital_record_location: 'Cloud Archive',
+              losses: [1_500_000_000, 4_500_000_000],
+              reg_scores: [3, 3],
+              cust_scores: [2, 3],
+              reg_score_max: 3,
+              cust_score_max: 3,
+              peak_loss: 4_500_000_000,
+              it_dependencies: [
+                {
+                  app_code: 'CORE',
+                  app_name: 'Core Banking',
+                  rto: '2 days',
+                  rpo: 'LST',
+                  workaround: 'No',
+                  backlog_time: '4 hours',
+                  daat: '-1 day',
+                  daat_negative: true,
+                  daat_warnings: ['Negative DAAT (-1 day).'],
+                  system_usage: 'Full Dependency',
+                  rto_reaches_mtd: true,
+                  workaround_gap_required: true,
+                  critical_gap: '',
+                  is_other: false,
+                },
+              ],
+              non_it_dependencies: [],
+            },
+          ],
           signoffs: [],
           events: [],
           comments: [],
@@ -920,6 +969,16 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await listPanel.getByRole('checkbox', { name: 'Select BIA-2026-0002' }).click()
   await expect(listPanel.getByRole('link', { name: 'Export selected (1)' })).toHaveAttribute('href', '/api/bianca/monitoring/export.xlsx?tab=assessments&bia_ids=4')
 
+  // Open BIA from All BIA -> breadcrumb & back button return to All BIA (not directorate drilldown)
+  await listPanel.getByRole('link', { name: 'BIA-2026-0002' }).click()
+  await expect(page).toHaveURL(/\/bianca\/monitoring\/4\?from=assessments/)
+  await expect(page.getByRole('link', { name: 'Back to All BIA' })).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'All BIA' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Retail Banking' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Back to All BIA' }).click()
+  await expect(page).toHaveURL(/\/bianca\/monitoring\?tab=register&view=assessments/)
+  await expect(listPanel.getByRole('columnheader', { name: 'BIA ref. no.' })).toBeVisible()
+
   // Approval bottlenecks tab
   await page.getByRole('tab', { name: 'Approval' }).click()
   const approvalPanel = page.getByRole('tabpanel', { name: 'Approval' })
@@ -927,10 +986,56 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await expect(approvalPanel.getByRole('columnheader', { name: 'Assess days' })).toBeVisible()
   await expect(approvalPanel.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/monitoring/export.xlsx?tab=bottlenecks')
 
-  // Detail Gap check
+  // Detail Gap check + Check button jump & fade highlight
   await page.goto('/bianca/monitoring/4')
   await expect(page.getByText('Missing alternate phone.')).toBeVisible({ timeout: 45_000 })
-  await expect(page.getByText('DAAT is negative on Function 1.')).toBeVisible()
+  await expect(page.getByText('Function 1 (OCTO Mobile Onboarding) > Core Banking: Negative DAAT (-1 day).')).toBeVisible()
+
+  const checkButtons = page.getByRole('button', { name: 'Check', exact: true })
+  await expect(checkButtons).toHaveCount(4)
+
+  // Click Check on Impact gap -> switches to impact tab and flashes the row
+  await checkButtons.nth(1).click()
+  await expect(page).toHaveURL(/tab=impact/)
+  await expect(page.locator('.gap-target-impact-fn-1.gap-flash-row')).toBeVisible()
+
+  // Click Check on Dependencies gap -> switches to dependencies tab and flashes Core Banking row
+  await checkButtons.nth(2).click()
+  await expect(page).toHaveURL(/tab=dependencies/)
+  await expect(page.locator('[data-gap-target="dep-it-1-core-banking"].gap-flash-row')).toBeVisible()
+
+  // Click Check on Recovery gap -> switches to recovery tab and flashes row + BCP seats cell
+  await checkButtons.nth(3).click()
+  await expect(page).toHaveURL(/tab=recovery/)
+  await expect(page.locator('[data-gap-target="recovery-fn-1"].gap-flash-row')).toBeVisible()
+  await expect(page.locator('[data-gap-target="recovery-cell-1-seats"].gap-flash-cell')).toBeVisible()
+
+  expect(pageErrors).toEqual([])
+})
+
+test('Monitoring detail Appendix supports Export all and Export selected to Excel', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (err) => pageErrors.push(err.message))
+  await signIn(page, { permissions: BIANCA_PERMISSIONS })
+  await setupBiancaMocks(page)
+
+  await page.goto('/bianca/monitoring/4?tab=appendix')
+  const appendixPanel = page.getByRole('tabpanel', { name: 'Appendix' })
+  const exportSelectedBtn = appendixPanel.getByRole('button', { name: /Export .*selected to Excel/ })
+  const exportAllBtn = appendixPanel.getByRole('button', { name: 'Export all to Excel' })
+  await expect(exportAllBtn).toBeVisible({ timeout: 45_000 })
+  await expect(exportSelectedBtn).toBeDisabled()
+
+  await appendixPanel.getByRole('checkbox', { name: 'Select OCTO Mobile Onboarding' }).click()
+  await expect(appendixPanel.getByRole('button', { name: 'Export 1 selected to Excel' })).toBeEnabled()
+
+  const selectedReq = page.waitForRequest((req) => req.url().includes('/api/bianca/assessments/4/export?functions=1'))
+  await appendixPanel.getByRole('button', { name: 'Export 1 selected to Excel' }).click()
+  await selectedReq
+
+  const allReq = page.waitForRequest((req) => req.url().endsWith('/api/bianca/assessments/4/export'))
+  await exportAllBtn.click()
+  await allReq
 
   expect(pageErrors).toEqual([])
 })

@@ -10,6 +10,10 @@ const props = withDefaults(defineProps<{
   status: undefined,
 })
 
+const emit = defineEmits<{
+  check: [payload: { tab: BiancaGapTab, message: string }]
+}>()
+
 const route = useRoute()
 
 const TABS: Array<{ value: BiancaGapTab, label: string }> = [
@@ -35,7 +39,7 @@ function tabLink(tab: BiancaGapTab) {
 }
 </script>
 
-<template>
+<!-- <template>
   <div
     class="rounded-md border p-3"
     :class="gapCount ? 'border-warning/40 bg-warning/5' : 'border-default'"
@@ -68,12 +72,29 @@ function tabLink(tab: BiancaGapTab) {
             </NuxtLink>
           </dt>
           <dd>
-            <ul class="list-disc space-y-0.5 pl-5 text-muted">
+            <ul class="space-y-1.5 text-muted">
               <li
                 v-for="item in normalized[tab.value]"
                 :key="item"
+                class="flex items-start justify-between gap-3 rounded-md py-0.5"
               >
-                {{ item }}
+                <span class="flex items-start gap-2">
+                  <span
+                    aria-hidden="true"
+                    class="mt-1.5 size-1.5 shrink-0 rounded-full bg-current opacity-60"
+                  />
+                  <span>{{ item }}</span>
+                </span>
+                <UButton
+                  type="button"
+                  color="warning"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-locate-fixed"
+                  label="Check"
+                  class="shrink-0"
+                  @click="emit('check', { tab: tab.value, message: item })"
+                />
               </li>
             </ul>
           </dd>
@@ -87,4 +108,4 @@ function tabLink(tab: BiancaGapTab) {
       Gaps don't block Submit. Explain them in the justification notes on Part 2a, Part 2b or the RA Questionnaire.
     </p>
   </div>
-</template>
+</template> -->
