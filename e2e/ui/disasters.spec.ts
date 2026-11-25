@@ -8,7 +8,7 @@ test('Disaster and Incident each have Monitoring, Manage and Approval', async ({
   await page.goto('/disasters/monitoring')
   await expect(page.getByRole('heading', { name: 'Disaster monitoring' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('link', { name: 'Open now: 1' })).toHaveAttribute('href', '/disasters?status=open')
-  await expect(page.getByRole('link', { name: 'Places affected now: 2' })).toHaveAttribute('href', '/locations/map')
+  await expect(page.getByRole('link', { name: 'Places affected now: 2' })).toHaveAttribute('href', '/sites/map')
   await expect(page.getByRole('row', { name: /DS-2026-0001/ })).toContainText('Banjir/ Banjir Bandang')
 
   const nav = page.getByRole('navigation', { name: 'Main' })
@@ -75,7 +75,7 @@ test('Approval lists what waits for someone else; it is decided on its page', as
 
 test('the map offers only the types the user may declare', async ({ page }) => {
   await mockRaMap(page, { declareTypes: ['disaster'] })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByRole('button', { name: 'Declare Disaster', exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Declare Incident', exact: true })).toHaveCount(0)
 })

@@ -5,7 +5,7 @@ test.setTimeout(90_000)
 
 test('the building map shows every place, the open disaster, and measures a distance', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Banjir/ Banjir Bandang at Griya CIMB Niaga 2')).toBeVisible()
   await expect(page.getByText('DS-2026-0001 · since 21 Oct 2026, 11:52 WIB · 5 km radius · 2 places affected')).toBeVisible()
@@ -48,7 +48,7 @@ test('the building map shows every place, the open disaster, and measures a dist
 
 test('declaring a disaster at a building sends the hazard, place, radius and WIB time', async ({ page }) => {
   const log = await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map?place=1')
+  await page.goto('/sites/map?place=1')
   await page.getByRole('button', { name: 'Declare Disaster here' }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
   // Declaring from a place puts the pin on it; the text says what the ring covers.
@@ -80,7 +80,7 @@ test('declaring a disaster at a building sends the hazard, place, radius and WIB
 
 test('the disaster point is a pin dropped on the map or put on a place', async ({ page }) => {
   const log = await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await page.getByRole('button', { name: 'Declare Disaster', exact: true }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
   await expect(dialog.getByRole('group', { name: 'Map legend' })).toContainText('Disaster point and its affected area', { timeout: 30_000 })
@@ -210,7 +210,7 @@ test('the disaster has a print view with every place and its contacts', async ({
 
 test('without the declare permission the map and disaster are read-only', async ({ page }) => {
   const log = await mockRaMap(page, { declare: false })
-  await page.goto('/locations/map?place=1')
+  await page.goto('/sites/map?place=1')
   await expect(page.getByRole('heading', { name: 'Building map' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Measure from here' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Declare crisis/ })).toHaveCount(0)
@@ -271,7 +271,7 @@ test('the guidebook is edited per hazard, one step per line', async ({ page }) =
 
 test('the sidebar marks only the section of the page as current', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   const nav = page.getByRole('navigation', { name: 'Main' })
   const map = nav.getByRole('link', { name: 'Building map' })
   const guidebook = nav.locator('a[href="/disasters/guidebook"]')
@@ -338,7 +338,7 @@ test('a declared disaster waits for someone else\'s approval', async ({ page }) 
 
 test('a rejected disaster leaves the building map at once', async ({ page }) => {
   await mockRaMap(page, { pending: true })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.locator('path.ra-radius-pending')).toHaveCount(1, { timeout: 30_000 })
   // Opened from the map and rejected there, then back to the map without reloading the app.
   await page.getByRole('link', { name: 'View instructions' }).click()
@@ -349,7 +349,7 @@ test('a rejected disaster leaves the building map at once', async ({ page }) => 
   await dialog.getByRole('button', { name: 'Reject' }).click()
   await expect(dialog).toBeHidden()
   await page.getByRole('navigation').getByRole('link', { name: 'Building map' }).click()
-  await expect(page).toHaveURL(/\/locations\/map/)
+  await expect(page).toHaveURL(/\/sites\/map/)
   await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible()
   await expect(page.locator('path.ra-radius-pending')).toHaveCount(0)
   await expect(page.locator('.ra-pin-crisis')).toHaveCount(0)
@@ -376,7 +376,7 @@ test('updating a disaster opens its map on the disaster, not zoomed out', async 
 
 test('the map flags a disaster waiting for approval, with an orange area', async ({ page }) => {
   await mockRaMap(page, { pending: true })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByText(/^Pending approval: Banjir/)).toBeVisible({ timeout: 30_000 })
   // Orange (and dashed) while it waits; red once approved.
   await expect(page.locator('path.ra-radius-pending')).toHaveCount(1)
@@ -386,7 +386,7 @@ test('the map flags a disaster waiting for approval, with an orange area', async
 
 test('the map legend shows the symbols the map draws', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByText('Disaster or incident and its affected area')).toBeVisible({ timeout: 30_000 })
   // The eight kinds, and a faded building for places not in service.
   const symbols = page.getByTestId('ra-map-symbol')
@@ -399,7 +399,7 @@ test('the map legend shows the symbols the map draws', async ({ page }) => {
 
 test('a place not approved yet, rejected or inactive is marked on the map, in the legend and in the list', async ({ page }) => {
   await mockRaMap(page, { unapproved: true })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   const legend = page.getByRole('group', { name: 'Map legend' })
   await expect(legend.getByText('Waiting for approval (new, or to deactivate)')).toBeVisible({ timeout: 30_000 })
   await expect(legend.getByText('Rejected', { exact: true })).toBeVisible()
@@ -443,7 +443,7 @@ test('a place not approved yet, rejected or inactive is marked on the map, in th
 
 test('a disaster offers and counts only the places in service', async ({ page }) => {
   await mockRaMap(page, { unapproved: true })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.locator('.leaflet-marker-icon .ra-pin-out')).toHaveCount(3, { timeout: 30_000 })
   await page.getByRole('button', { name: 'Declare Disaster' }).click()
   const dialog = page.getByRole('dialog')
@@ -458,7 +458,7 @@ test('a disaster offers and counts only the places in service', async ({ page })
 
 test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ page }) => {
   await mockRaMap(page)
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   const map = page.locator('.leaflet-container')
   await expect(page.locator('.leaflet-marker-icon').first()).toBeVisible({ timeout: 30_000 })
   const toggle = page.getByRole('switch', { name: 'Scroll to zoom' })
@@ -489,7 +489,7 @@ test('the map zooms with the scroll wheel while Scroll to zoom is on', async ({ 
 
 test('BMKG earthquakes show on the map and in a list, credited to BMKG', async ({ page }) => {
   await mockRaMap(page, { quakes: true, crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   const list = page.getByTestId('ra-earthquakes')
   await expect(list.getByRole('heading', { name: 'Recent earthquakes (BMKG)' })).toBeVisible({ timeout: 30_000 })
   await expect(list).toContainText('The last 7 days, magnitude 5,0 or more, or felt by people. BCM is emailed when a building or branch is within the earthquake\'s alert radius, e(M ÷ 1,01 − 0,13) km (124 km at M5,0).')
@@ -559,7 +559,7 @@ test('BMKG earthquakes show on the map and in a list, credited to BMKG', async (
 
 test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', async ({ page }) => {
   await mockRaMap(page, { quakes: true, crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByTestId('ra-earthquakes')).toBeVisible({ timeout: 30_000 })
 
   // The MMI scale sits above the earthquake list.
@@ -602,13 +602,13 @@ test('the reports under the map switch between BMKG, WHO and OpenAQ with tabs', 
   await expect(page).toHaveURL(/place=/)
 
   // Opened with the tab in the link.
-  await page.goto('/locations/map?report=outbreaks')
+  await page.goto('/sites/map?report=outbreaks')
   await expect(page.getByTestId('ra-outbreaks')).toBeVisible({ timeout: 30_000 })
 })
 
 test('BMKG\'s weather warnings show as areas on the map, in their tab and as history', async ({ page }) => {
   await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByText('Weather warnings, BMKG (2)')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ })).toBeChecked()
   await expect(page.locator('path.ra-area')).toHaveCount(2)
@@ -654,44 +654,57 @@ test('BMKG\'s weather warnings show as areas on the map, in their tab and as his
   await expect(page.locator('path.ra-area')).toHaveCount(0)
 })
 
-test('GDELT\'s disaster news shows as places on the map and in its tab, one hazard or all', async ({ page }) => {
+test('GDELT\'s incident news shows as places on the map and in its tab, one hazard or all, and declares the incident', async ({ page }) => {
   await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map')
-  await expect(page.getByText('Disaster news, GDELT (2)')).toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('.ra-news')).toHaveCount(2)
-  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Disaster news (GDELT)')
-  await expect(page.getByText('Disaster news, The GDELT Project.')).toBeVisible()
+  await page.goto('/sites/map')
+  await expect(page.getByText('Incident news, GDELT (2)')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.ra-news-incident')).toHaveCount(2)
+  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText('Incident news (GDELT)')
+  await expect(page.getByRole('group', { name: 'Map legend' })).not.toContainText('Disaster news')
+  await expect(page.getByText('Incident news, The GDELT Project.')).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Incident news (GDELT)' })).toBeVisible()
 
   // A place clicked on the map: its tab opens on it, with its radius drawn.
   await page.locator('.ra-pin-news').first().dispatchEvent('click')
   await expect(page).toHaveURL(/report=news/)
   await expect(page).toHaveURL(/news=-6\.2800%2C106\.7300|news=-6\.2800,106\.7300/)
   const tab = page.getByTestId('ra-gdelt')
+  await expect(tab.getByRole('heading', { name: 'Incident news (GDELT)' })).toBeVisible()
   const picked = tab.locator('li[aria-current="true"]')
   await expect(picked).toContainText('Bintaro, Banten, Indonesia')
   await expect(picked).toBeInViewport()
   await expect(page.locator('path.ra-radius-news')).toHaveCount(1)
-  await expect(tab).toContainText('2 places, 1 building or branch within 10 km of one.')
+  await expect(tab).toContainText('2 places, 1 building or branch within 2 km of one.')
   await expect(picked.getByRole('button', { name: 'KCP Bintaro Sektor 9 (1,2 km)' })).toBeVisible()
-  await expect(picked.getByRole('link', { name: 'news.example.id' })).toHaveAttribute('href', 'https://news.example.id/-6.2800,106.7300')
-  await expect(tab.locator('li').filter({ hasText: 'Bandung' }).first()).toContainText('No building or branch within 10 km.')
+  await expect(picked.getByRole('link', { name: 'Perampokan minimarket di Bintaro' })).toHaveAttribute('href', 'https://news.example.id/perampokan-minimarket-bintaro')
+  const bandung = tab.locator('li').filter({ hasText: 'Bandung' }).first()
+  await expect(bandung).toContainText('No building or branch within 2 km.')
+  await expect(bandung.getByRole('button', { name: 'Declare incident' })).toHaveCount(0)
   await expect(tab).toContainText('Source: The GDELT Project')
 
+  // Declare incident: the dialog is filled in from the news.
+  await picked.getByRole('button', { name: 'Declare incident' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByTestId('crisis-from-news')).toContainText('From the news near Bintaro, Banten, Indonesia')
+  await expect(dialog.getByRole('textbox', { name: /What is happening/ })).toHaveValue(/Perampokan minimarket di Bintaro \(news\.example\.id\): https:\/\/news\.example\.id\/perampokan-minimarket-bintaro/)
+  await expect(dialog.getByRole('spinbutton', { name: /Affected radius/ })).toHaveValue('2')
+  await page.keyboard.press('Escape')
+
   // One hazard.
-  await tab.getByRole('button', { name: 'Hazard of the disaster news' }).click()
-  await page.getByRole('option', { name: /^H03/ }).click()
-  await expect(page).toHaveURL(/news_hazard=H03/)
+  await tab.getByRole('button', { name: 'Hazard of the incident news' }).click()
+  await page.getByRole('option', { name: /^H14/ }).click()
+  await expect(page).toHaveURL(/news_hazard=H14/)
   await expect(page.locator('.ra-news')).toHaveCount(1)
-  await expect(tab).toContainText('1 place, 0 buildings or branches within 10 km of one.')
+  await expect(tab).toContainText('1 place, 0 buildings or branches within 2 km of one.')
 
   // Unticked, the places leave the map.
-  await page.getByRole('checkbox', { name: /^Disaster news, GDELT/ }).uncheck()
+  await page.getByRole('checkbox', { name: /^Incident news, GDELT/ }).uncheck()
   await expect(page.locator('.ra-news')).toHaveCount(0)
 })
 
 test('clicking a weather warning\'s area shows that warning in its tab, scrolled to', async ({ page }) => {
   await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map?report=weather')
+  await page.goto('/sites/map?report=weather')
   const tab = page.getByTestId('ra-weather')
   await expect(page.locator('path.ra-area')).toHaveCount(2, { timeout: 30_000 })
   // Even from the history, the list goes back to the active warnings.
@@ -767,7 +780,7 @@ test('WAQI\'s stations are drawn with their areas, and the WAQI tab lists the bu
     body: 'var f = window._aqiFeed, c = f.c[f.n]; document.getElementById(c.container).textContent = "WAQI widget " + c.city + " " + c.lang',
   }))
 
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByText('Air quality, WAQI (3)')).toBeVisible({ timeout: 30_000 })
   const toggle = page.getByRole('checkbox', { name: /^Air quality, WAQI/ })
   await expect(toggle).toBeChecked()
@@ -844,7 +857,7 @@ test('every WAQI station over Indonesia is drawn, and the full list shows the wo
     aqi: 200 - index, band: { code: 'unhealthy', label: 'Unhealthy' }, measured_at: null, affected: false, places: [],
   }))
   await page.route(/\/api\/ra\/waqi(\?|$)/, (route) => route.fulfill({ json: { ...WAQI_REPORT, stations: [...WAQI_REPORT.stations, ...many] } }))
-  await page.goto('/locations/map?report=waqi')
+  await page.goto('/sites/map?report=waqi')
   await expect(page.getByText('Air quality, WAQI (58)')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('.ra-aqi')).toHaveCount(58)
   const card = page.getByTestId('ra-waqi')
@@ -856,7 +869,7 @@ test('every WAQI station over Indonesia is drawn, and the full list shows the wo
 
 test('without a WAQI token there is no WAQI layer or tab', async ({ page }) => {
   await mockRaMap(page, { crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   await expect(page.getByRole('checkbox', { name: /^Weather warnings, BMKG/ })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('checkbox', { name: /^Air quality, WAQI/ })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: 'Air quality now (WAQI)' })).toHaveCount(0)
@@ -865,7 +878,7 @@ test('without a WAQI token there is no WAQI layer or tab', async ({ page }) => {
 
 test('a disaster is declared from an earthquake, filled in from BMKG', async ({ page }) => {
   const log = await mockRaMap(page, { quakes: true, crisis: false })
-  await page.goto('/locations/map?quake=3')
+  await page.goto('/sites/map?quake=3')
   const list = page.getByTestId('ra-earthquakes')
   await list.locator('[data-quake="3"]').getByRole('button', { name: 'Declare Disaster' }).click({ timeout: 30_000 })
   const dialog = page.getByRole('dialog', { name: 'Declare Disaster' })
@@ -898,7 +911,7 @@ test('a disaster is declared from an earthquake, filled in from BMKG', async ({ 
 
 test('the earthquake list says when BMKG is old news or switched off', async ({ page }) => {
   await mockRaMap(page, { quakes: 'stale', crisis: false })
-  await page.goto('/locations/map')
+  await page.goto('/sites/map')
   const list = page.getByTestId('ra-earthquakes')
   await expect(list.getByText('BMKG hasn\'t been read since 6 Nov 2026, 08:00 WIB')).toBeVisible({ timeout: 30_000 })
   await expect(list).toContainText('The last try: gempaterkini: timed out')

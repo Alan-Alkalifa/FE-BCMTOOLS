@@ -2,11 +2,14 @@
 import type { RaGdeltPlace, RaGdeltReport } from '~/composables/useRa'
 
 /**
- * The building map's "Disaster news (GDELT)" tab. The places in Indonesia that news articles of
- * the last 7 days mentioned for a hazard's GDELT themes, the ones with a building or branch
- * within the radius first, each with its hazards, how many articles, the buildings near it and
- * the latest articles ("Show articles"), and "Show on map". A hazard picker keeps one hazard. It
- * says when GDELT was last read and credits GDELT as the source.
+ * The building map's "Incident news (GDELT)" tab. The places in Indonesia that news articles of
+ * the last 7 days mentioned for an incident hazard's GDELT themes (the hazards set as Incident;
+ * disasters come from BMKG, GDACS and NASA FIRMS), whose headline names both the hazard (one of
+ * its keywords) and the place, the ones with a building or branch within the incident radius
+ * first, each with its hazards, how many articles, the buildings near it, the latest articles
+ * ("Show articles"), "Show on map" and, with a building near it, "Declare incident" for whoever
+ * may declare one. A hazard picker keeps one hazard. It says when GDELT was last read and
+ * credits GDELT as the source.
  */
 const props = defineProps<{
   report: RaGdeltReport | null | undefined
@@ -14,8 +17,10 @@ const props = defineProps<{
   selectedKey?: string | null
   /** The hazard shown, or null for all. */
   hazard: string | null
+  /** The user may declare an incident (Declare incident on incident news near a building). */
+  canDeclareIncident?: boolean
 }>()
-const emit = defineEmits<{ 'show': [place: RaGdeltPlace], 'place': [id: number], 'update:hazard': [code: string | null] }>()
+const emit = defineEmits<{ 'show': [place: RaGdeltPlace], 'place': [id: number], 'update:hazard': [code: string | null], 'declare': [place: RaGdeltPlace, hazardCode: string] }>()
 
 const { data: hazardTypes } = useRaHazardTypes()
 const names = computed(() => Object.fromEntries((hazardTypes.value?.items ?? []).map((item) => [item.code, item.short_name])))
@@ -50,7 +55,7 @@ watch(() => props.selectedKey, (key) => {
       <div class="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 class="text-lg font-semibold">
-            Disaster news (GDELT)
+            Incident news (GDELT)
           </h2>
           <p
             v-if="report?.polled_at"
@@ -65,7 +70,7 @@ watch(() => props.selectedKey, (key) => {
           :items="hazardItems"
           :search-input="false"
           class="w-64"
-          aria-label="Hazard of the disaster news"
+          aria-label="Hazard of the incident news"
         />
       </div>
     </template>
@@ -76,7 +81,7 @@ watch(() => props.selectedKey, (key) => {
         color="error"
         variant="subtle"
         icon="i-lucide-circle-alert"
-        title="Could not load GDELT's disaster news"
+        title="Could not load GDELT's incident news"
         :description="apiErrorMessage(error)"
       />
       <UAlert
@@ -84,7 +89,7 @@ watch(() => props.selectedKey, (key) => {
         color="neutral"
         variant="subtle"
         icon="i-lucide-power-off"
-        title="Disaster news from GDELT is switched off"
+        title="Incident news from GDELT is switched off"
         description="BCM switches it on in Administration › Sites configuration › Past disasters."
       />
       <UAlert
@@ -116,7 +121,8 @@ watch(() => props.selectedKey, (key) => {
           :aria-current="place.key === selectedKey ? 'true' : undefined"
         >
           <span
-            class="inline-flex h-6 min-w-9 shrink-0 items-center justify-center self-start rounded bg-[#7c3aed] px-1.5 text-xs font-semibold tabular-nums text-white"
+            class="inline-flex h-6 min-w-9 shrink-0 items-center justify-center self-start rounded bg-[#b45309] px-1.5 text-xs font-semibold tabular-nums text-white"
+
             :aria-label="`${place.articles_count} ${place.articles_count === 1 ? 'article' : 'articles'}`"
           >{{ place.articles_count }}</span>
           <div class="min-w-0 flex-1 space-y-1 text-sm">
@@ -156,7 +162,7 @@ watch(() => props.selectedKey, (key) => {
               v-else
               class="text-muted"
             >
-              No building or branch within {{ formatNumber(report.radius_km, 1) }} km.
+              No building or branch within {{ formatNumber(place.radius_km ?? report.radius_km, 1) }} km.
             </p>
             <UButton
               color="neutral"
@@ -184,8 +190,11 @@ watch(() => props.selectedKey, (key) => {
                   rel="noopener"
                   class="text-primary hover:underline"
                 >
-                  {{ article.domain ?? article.url }}
+                  {{ article.title ?? article.domain ?? article.url }}
                 </ULink>
+                <template v-if="article.title && article.domain">
+                  · {{ article.domain }}
+                </template>
                 · {{ formatDateTime(article.published_at) }} · {{ article.hazard_code }}
               </li>
               <li v-if="place.articles_count > place.articles.length">
@@ -193,22 +202,32 @@ watch(() => props.selectedKey, (key) => {
               </li>
             </ul>
           </div>
-          <UButton
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            icon="i-lucide-locate-fixed"
-            label="Show on map"
-            class="self-start"
-            @click="emit('show', place)"
-          />
+          <div class="flex flex-col items-stretch gap-1 self-start">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-locate-fixed"
+              label="Show on map"
+              @click="emit('show', place)"
+            />
+            <UButton
+              v-if="canDeclareIncident && place.places.length"
+              color="warning"
+              variant="outline"
+              size="sm"
+              :icon="RA_CRISIS_TYPES.incident.icon"
+              label="Declare incident"
+              @click="emit('declare', place, place.hazards[0]!)"
+            />
+          </div>
         </li>
       </ul>
       <p
         v-else-if="report && report.enabled && !error"
         class="py-4 text-center text-sm text-muted"
       >
-        No disaster news in the last {{ report.days }} days.
+        No incident news in the last {{ report.days }} days whose headline names an incident hazard and the place.
       </p>
       <p
         v-if="report && report.matching > report.items.length"

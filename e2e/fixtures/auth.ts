@@ -77,7 +77,7 @@ const MENUS = [
   { code: 'ra_branch.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/ra-branch/manage', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'ra_branch.approval', label: 'Approval', icon: 'i-lucide-badge-check', route: '/ra-branch/approval', parent: 'ra_branch', permission: 'ra_branch.access' },
   { code: 'locations', label: 'Sites', icon: 'i-lucide-map-pinned', route: null, parent: null, permission: null },
-  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/locations/map', parent: 'locations', permission: 'sites.access' },
+  { code: 'locations.map', label: 'Building map', icon: 'i-lucide-map', route: '/sites/map', parent: 'locations', permission: 'sites.access' },
   { code: 'disaster', label: 'Disaster', icon: 'i-lucide-siren', route: null, parent: 'locations', permission: null },
   { code: 'disaster.monitoring', label: 'Monitoring', icon: 'i-lucide-chart-column', route: '/disasters/monitoring', parent: 'disaster', permission: 'sites.access' },
   { code: 'disaster.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/disasters', parent: 'disaster', permission: 'sites.access' },

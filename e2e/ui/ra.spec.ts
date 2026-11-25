@@ -9,7 +9,7 @@ test('the home page links to the RA module', async ({ page }) => {
   // RA (head office) is "RA HO", beside "RA Branch".
   await expect(page.getByRole('heading', { name: 'RA HO', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'Building map' })).toHaveAttribute('href', '/locations/map')
+  await expect(main.getByRole('link', { name: 'Building map' })).toHaveAttribute('href', '/sites/map')
   await expect(main.locator('a[href="/ra/manage"]')).toHaveText('Manage')
   await expect(main.getByRole('link', { name: 'Approval', exact: true }).and(main.locator('a[href="/ra/approval"]'))).toHaveText('Approval')
   await main.locator('a[href="/ra/monitoring"]').click()
@@ -502,6 +502,44 @@ test('GDELT\'s Indonesian news in the building\'s city shows on each hazard it h
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none', { timeout: 60_000 })
   await expect(page.getByTestId('gdelt-news')).toHaveCount(0)
+})
+
+test('Media Cloud\'s incident headlines since 2016 show on each incident hazard it has read', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H16')
+  const archive = page.getByTestId('mediacloud-news')
+  await expect(archive).toContainText('Indonesian headlines named it in Jakarta Selatan in 23 stories, on 19 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(archive.getByRole('link', { name: 'Perampokan toko emas di Jakarta Selatan' })).toHaveAttribute('href', 'https://news.example.id/perampokan-kemang')
+  await expect(archive).toContainText('perampokan, rampok and the city in the headline · Source: Media Cloud')
+  // A hazard whose history across Indonesia is still coming in says how far it is read.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H17')
+  await expect(page.getByTestId('mediacloud-news')).toContainText('in 2 stories, on 2 days', { timeout: 60_000 })
+  await expect(page.getByTestId('mediacloud-news')).toContainText('sandera and the city in the headline · read up to 31 Mar 2019 so far · Source: Media Cloud')
+  // A hazard Media Cloud hasn't read yet says nothing.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H18')
+  await expect(page.getByTestId('past-disasters')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('mediacloud-news')).toHaveCount(0)
+})
+
+test('NASA FIRMS\'s fire hotspots near the building show on its fire hazard', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H09')
+  const fires = page.getByTestId('firms-hotspots')
+  await expect(fires).toContainText('NASA FIRMS saw 7 fire hotspots within 5 km of the building, on 3 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(fires).toContainText('14 Sep 2026 · 4 hotspots · strongest 48,2 MW')
+  await expect(fires).toContainText('Counted from 23 Nov 2025 · Source: NASA FIRMS (VIIRS)')
+  await expect(page.getByTestId('gdacs-alerts')).toHaveCount(0)
+})
+
+test('GDACS\'s alerts near the building show on the hazard their type counts for', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const alerts = page.getByTestId('gdacs-alerts')
+  await expect(alerts).toContainText('GDACS alerted 2 times within 100 km of the building from 2017 to 2026, Orange at most.', { timeout: 60_000 })
+  await expect(alerts.getByRole('link', { name: 'Flood in Indonesia' })).toHaveAttribute('href', /eventid=1102345/)
+  await expect(alerts).toContainText('Alerts kept from 23 Nov 2025 · Source: GDACS')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H05')
+  await expect(page.getByTestId('gdacs-alerts')).toContainText('GDACS alerted none within 100 km of the building', { timeout: 60_000 })
 })
 
 test('BMKG\'s weather warnings over the building show on the weather hazard', async ({ page }) => {
@@ -1591,7 +1629,7 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
 test('the location register links to the location map instead of its own map', async ({ page }) => {
   await mockRa(page)
   await page.goto('/admin/buildings')
-  await expect(page.getByRole('link', { name: 'Building map' }).last()).toHaveAttribute('href', '/locations/map', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Building map' }).last()).toHaveAttribute('href', '/sites/map', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 

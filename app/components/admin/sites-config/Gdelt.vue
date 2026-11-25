@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
- * Sites configuration > Past disasters. GDELT's disaster news: on the building map, the places
- * news of the last 7 days mentions for each hazard's GDELT themes (read every hour), with the
- * buildings within the radius; on the hazard page, Indonesian news naming the building's city
+ * Sites configuration > Past disasters. GDELT's news. On the building map, incident news only
+ * (the hazards set as Incident, shown in the Type column; BMKG, GDACS and NASA FIRMS cover the
+ * disasters): the places news of the last 7 days mentions for each incident hazard's GDELT
+ * themes (read every hour) whose headline names the hazard and the place, with the buildings
+ * within the incident radius. On the hazard page, Indonesian news naming the building's city
  * with each hazard's keywords (each city read again every N days, kept from the first read).
  * BCM switches it on or off, sets the radius, the interval, the themes and keywords per hazard
  * (comma-separated), can go back to the defaults and read everything again.
@@ -16,7 +18,7 @@ const { data, error, refresh } = useAsyncData('sites-config-gdelt', () => sitesC
 const { data: hazardTypes } = useRaHazardTypes()
 const hazards = computed(() => hazardTypes.value?.items ?? [])
 
-const form = reactive({ enabled: true, radius_km: 10, every_days: 1 })
+const form = reactive({ enabled: true, incident_radius_km: 2, every_days: 1 })
 /** Per hazard, the themes and keywords as typed (comma-separated). */
 const themes = ref<Record<string, string>>({})
 const keywords = ref<Record<string, string>>({})
@@ -27,7 +29,7 @@ function fill(source: { themes: Record<string, string[]>, keywords: Record<strin
 }
 watch(data, (value) => {
   if (!value) return
-  Object.assign(form, { enabled: value.enabled, radius_km: value.radius_km, every_days: value.every_days })
+  Object.assign(form, { enabled: value.enabled, incident_radius_km: value.incident_radius_km, every_days: value.every_days })
   fill(value)
 }, { immediate: true })
 
@@ -76,7 +78,7 @@ async function readAgain() {
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="font-semibold text-highlighted">
-          Disaster news from GDELT
+          Incident news from GDELT
         </h2>
         <USwitch
           v-model="form.enabled"
@@ -119,15 +121,16 @@ async function readAgain() {
       />
       <div class="grid gap-4 sm:grid-cols-2">
         <UFormField
-          label="Radius around a news place (km)"
-          name="radius_km"
-          :error="errors.radius_km"
+          label="Radius around incident news (km)"
+          name="incident_radius_km"
+          :error="errors.incident_radius_km"
+          help="An incident is local: a building within it is listed with the news."
         >
           <UInputNumber
-            v-model="form.radius_km"
-            :min="0.5"
-            :max="100"
-            :step="0.5"
+            v-model="form.incident_radius_km"
+            :min="0.2"
+            :max="50"
+            :step="0.1"
             :disabled="!editable"
             class="w-full"
           />
@@ -157,11 +160,14 @@ async function readAgain() {
               <th class="w-56 px-3 py-2">
                 Hazard
               </th>
+              <th class="w-24 px-3 py-2">
+                Type
+              </th>
               <th class="px-3 py-2">
                 Map themes (GDELT)
               </th>
               <th class="px-3 py-2">
-                History keywords
+                Keywords (map titles and history)
               </th>
             </tr>
           </thead>
@@ -174,6 +180,14 @@ async function readAgain() {
                 {{ hazard.code }} · {{ hazard.short_name }}
               </td>
               <td class="px-3 py-2 align-top">
+                <UBadge
+                  :color="data.hazard_types[hazard.code] === 'incident' ? 'warning' : 'neutral'"
+                  variant="outline"
+                  size="sm"
+                  :label="data.hazard_types[hazard.code] === 'incident' ? 'Incident' : 'Disaster'"
+                />
+              </td>
+              <td class="px-3 py-2 align-top">
                 <UFormField
                   :name="`themes.${hazard.code}`"
                   :error="errors[`themes.${hazard.code}`]"
@@ -184,6 +198,12 @@ async function readAgain() {
                     class="w-full"
                     :aria-label="`GDELT themes for ${hazard.code}`"
                   />
+                  <p
+                    v-if="data.hazard_types[hazard.code] !== 'incident'"
+                    class="mt-1 text-xs text-muted"
+                  >
+                    Not on the map while it is a disaster.
+                  </p>
                 </UFormField>
               </td>
               <td class="px-3 py-2 align-top">
@@ -204,12 +224,16 @@ async function readAgain() {
         </table>
       </div>
 
+      <p class="text-xs text-muted">
+        The map shows incident news only. GDELT tags themes and places from the whole article, so a news place shows only when its article's headline names both the hazard (one of its keywords) and that place.
+      </p>
       <p
         class="text-sm text-muted"
         data-testid="gdelt-status"
       >
         <template v-if="data.polled_at">
-          Map read {{ formatDateTime(data.polled_at) }}, {{ formatNumber(data.points, 0) }} news places kept.
+          Map read {{ formatDateTime(data.polled_at) }}, {{ formatNumber(data.points, 0) }} news places shown.
+          Titles: {{ formatNumber(data.titles.kept, 0) }} {{ data.titles.kept === 1 ? 'article' : 'articles' }} kept, {{ formatNumber(data.titles.dropped, 0) }} left out (the hazard or the place only in the body){{ data.titles.waiting ? `, ${formatNumber(data.titles.waiting, 0)} waiting to be checked` : '' }}.
         </template>
         <template v-else>
           Map not read yet.
