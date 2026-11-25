@@ -132,7 +132,7 @@ const inboxColumns: TableColumn<SccaInboxRow>[] = [
   column('submitted_at', 'Submitted date', 'min-w-28'),
   column('submitted_by', 'Submitted by', 'min-w-32'),
   column('level', 'Status', 'min-w-32'),
-  column('working_days_waiting', 'Working days', 'min-w-28', true),
+  column('working_days_waiting', 'Assess days', 'min-w-28', true),
   column('reminders_sent', 'Reminders sent', 'min-w-24', true),
 ]
 
@@ -229,8 +229,8 @@ const boardColumns: TableColumn<SccaBottleneckRow>[] = [
   column('step_title', 'Current approval step', 'min-w-32'),
   column('approver', 'Approver', 'min-w-32'),
   column('level', 'Status', 'min-w-32'),
-  column('waiting_since', 'Waiting since', 'min-w-28'),
-  column('working_days_waiting', 'Working days', 'min-w-28', true),
+  column('waiting_since', 'Assess since', 'min-w-28'),
+  column('working_days_waiting', 'Assess days', 'min-w-28', true),
   column('reminders_sent', 'Reminders sent', 'min-w-24', true),
   column('escalated_at', 'Escalated on', 'min-w-28'),
   { id: 'actions', header: '' },
@@ -349,11 +349,22 @@ const tabs = computed(() => [
         <div class="mt-4 space-y-6">
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <template #header>
-              <div class="flex items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2 class="font-semibold text-highlighted">
                   Waiting for my approval
                 </h2>
-                <span class="text-sm text-muted">Longest-waiting first</span>
+                <div class="flex items-center gap-3">
+                  <span class="text-sm text-muted">Longest-waiting first</span>
+                  <UButton
+                    :to="sccaApprovalExportUrl('inbox')"
+                    external
+                    download
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export to Excel"
+                  />
+                </div>
               </div>
             </template>
             <UTable
@@ -545,6 +556,28 @@ const tabs = computed(() => [
               aria-label="To"
             />
           </ListFilterBar>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
+            <p class="text-sm text-muted">
+              {{ history.data.value?.total ?? 0 }} decision{{ history.data.value?.total === 1 ? '' : 's' }}
+            </p>
+            <UButton
+              :to="sccaApprovalExportUrl('history', {
+                decision: decision === 'all' ? undefined : decision,
+                step: historyStep === 'all' ? undefined : historyStep,
+                category: text('category'),
+                reason: text('reason'),
+                q: text('q'),
+                from: text('from'),
+                to: text('to'),
+              })"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+            />
+          </div>
           <UTable
             :data="history.data.value?.items ?? []"
             :columns="historyColumns"
@@ -684,12 +717,32 @@ const tabs = computed(() => [
                 class="text-primary hover:underline"
               >SCCA configuration > Reminders and escalation</NuxtLink><span v-else>the SCCA reminder rules</span>.
             </p>
-            <UButton
-              icon="i-lucide-bell-ring"
-              :label="`Send reminder (${pickedRows.length})`"
-              :disabled="!pickedRows.length"
-              @click="nudgeMany"
-            />
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                :to="sccaApprovalExportUrl('board', {
+                  step: boardStep === 'all' ? undefined : boardStep,
+                  level: boardLevel === 'all' ? undefined : boardLevel,
+                  approver_id: boardApprover ?? undefined,
+                  category: text('category'),
+                  reason: text('reason'),
+                  q: text('q'),
+                  from: text('from'),
+                  to: text('to'),
+                })"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+              <UButton
+                icon="i-lucide-bell-ring"
+                :label="`Send reminder (${pickedRows.length})`"
+                :disabled="!pickedRows.length"
+                @click="nudgeMany"
+              />
+            </div>
           </div>
           <UTable
             :data="boardRows"

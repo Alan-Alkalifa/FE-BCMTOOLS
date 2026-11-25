@@ -17,7 +17,8 @@ const { data, status } = useSccaApplicationHistory(computed(() => ({
 })))
 
 const columns: TableColumn<SccaHistoryItem>[] = [
-  { accessorKey: 'ref_no', header: 'Ref no' },
+  { accessorKey: 'ref_no', header: 'SCCA ref. no.' },
+  { accessorKey: 'mark', header: 'Active' },
   { accessorKey: 'reason', header: 'Reason' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'assessment_date', header: 'Assessment date' },
@@ -26,7 +27,7 @@ const columns: TableColumn<SccaHistoryItem>[] = [
   { accessorKey: 'due_date', header: 'Renewal date' },
   { accessorKey: 'assessor', header: 'Assessor' },
   { accessorKey: 'contributor', header: 'Contributor' },
-  { id: 'renews', header: 'Renews' },
+  { id: 'renews', header: 'Renews from' },
 ]
 </script>
 
@@ -63,14 +64,19 @@ const columns: TableColumn<SccaHistoryItem>[] = [
             >
               {{ item.original.ref_no || `#${item.original.id}` }}
             </NuxtLink>
+          </template>
+          <template #mark-cell="{ row: item }">
             <UBadge
               v-if="item.original.mark"
               :color="item.original.mark === 'current' ? 'success' : 'neutral'"
               variant="subtle"
               size="sm"
-              class="ms-1"
-              :label="item.original.mark === 'current' ? 'Current' : 'Replaced'"
+              :label="item.original.mark === 'current' ? 'Active' : 'Inactive'"
             />
+            <span
+              v-else
+              class="text-muted"
+            >—</span>
           </template>
           <template #reason-cell="{ row: item }">
             {{ reasonLabel(item.original.reason) || '—' }}

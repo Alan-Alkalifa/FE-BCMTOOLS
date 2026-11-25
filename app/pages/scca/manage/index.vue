@@ -187,6 +187,20 @@ function openRow(_event: Event, row: { original: SccaAssessmentSummary }) {
           aria-label="Filter by reason"
         />
       </ListFilterBar>
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
+        <p class="text-sm text-muted">
+          {{ data?.total ?? 0 }} draft{{ data?.total === 1 ? '' : 's' }}
+        </p>
+        <UButton
+          :to="sccaManageExportUrl(query)"
+          external
+          download
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-file-spreadsheet"
+          label="Export to Excel"
+        />
+      </div>
 
       <UTable
         :data="data?.items ?? []"

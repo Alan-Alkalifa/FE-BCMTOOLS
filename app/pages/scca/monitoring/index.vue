@@ -6,6 +6,7 @@ import type {
   SccaGenerateResult,
   SccaMonitorRef,
   SccaMonitoringFilters,
+  SccaMonitoringStatus,
   SccaRegisterRow,
   SccaRenewalRow,
 } from '~/composables/useSccaWorkflow'
@@ -44,17 +45,22 @@ function text(name: string) {
 
 type Period = 'all' | 'year' | '12m' | 'custom'
 
-const filters = computed<SccaMonitoringFilters>(() => ({
-  from: text('from'),
-  to: text('to'),
-  category: text('category'),
-  status: SCCA_STATUSES.includes(text('status') as SccaStatus) ? text('status') as SccaStatus : undefined,
-  department: text('department'),
-  directorate: text('directorate'),
-  sub_directorate: text('sub_directorate'),
-  division: text('division'),
-  q: text('q'),
-}))
+const MONITORING_STATUSES: readonly SccaMonitoringStatus[] = ['draft', 'in_approval', 'final', 'need_revision', 'in_revision']
+
+const filters = computed<SccaMonitoringFilters>(() => {
+  const rawStatus = text('status')
+  return {
+    from: text('from'),
+    to: text('to'),
+    category: text('category'),
+    status: MONITORING_STATUSES.includes(rawStatus as SccaMonitoringStatus) ? rawStatus as SccaMonitoringStatus : undefined,
+    department: text('department'),
+    directorate: text('directorate'),
+    sub_directorate: text('sub_directorate'),
+    division: text('division'),
+    q: text('q'),
+  }
+})
 const paged = computed(() => ({ ...filters.value, ...sortQuery.value, page: Math.max(1, Number(route.query.page) || 1), per_page: perPage.value }))
 
 function setQuery(patch: Record<string, string | undefined>) {
@@ -105,7 +111,7 @@ const categories = computed<SccaCategory[]>({
 })
 const categoryItems = SCCA_CATEGORIES.map((category) => ({ label: sccaCategory[category].label, value: category }))
 
-const status = computed<SccaStatus | 'any'>({
+const status = computed<SccaMonitoringStatus | 'any'>({
   get: () => filters.value.status ?? 'any',
   set: (value) => setQuery({ status: value === 'any' ? undefined : value }),
 })
@@ -113,6 +119,8 @@ const statusItems = [
   { label: 'Any state', value: 'any' as const },
   { label: 'Has a final SCCA', value: 'final' as const },
   { label: 'Draft open', value: 'draft' as const },
+  { label: 'Need revision', value: 'need_revision' as const },
+  { label: 'In revision', value: 'in_revision' as const },
   { label: 'In approval', value: 'in_approval' as const },
 ]
 
@@ -179,6 +187,8 @@ const cards = computed(() => {
     { key: 'applications_assessed', label: 'Applications assessed', hint: 'With a final SCCA', icon: 'i-lucide-shield-check', value: value?.applications_assessed, to: { tab: 'register', status: 'final' }, tone: 'neutral' },
     { key: 'in_approval', label: 'In approval', hint: 'SCCAs being signed off', icon: 'i-lucide-hourglass', value: value?.in_approval, to: { tab: 'bottlenecks' }, tone: 'neutral' },
     { key: 'drafts', label: 'Drafts', hint: 'Applications with a draft open', icon: 'i-lucide-file-pen', value: value?.drafts, to: { tab: 'register', status: 'draft' }, tone: 'neutral' },
+    { key: 'need_revision', label: 'Need revision', hint: 'In revision but no change yet', icon: 'i-lucide-undo-2', value: value?.need_revision, to: { tab: 'register', status: 'need_revision' }, tone: 'error' },
+    { key: 'in_revision', label: 'In revision', hint: 'Rejected drafts being revised', icon: 'i-lucide-file-pen-line', value: value?.in_revision, to: { tab: 'register', status: 'in_revision' }, tone: 'warning' },
     { key: 'overdue_renewals', label: 'Overdue renewals', hint: 'Past the 2-year renewal date', icon: 'i-lucide-circle-alert', value: value?.overdue_renewals, to: { tab: 'renewals' }, tone: 'error' },
     { key: 'due_in_90_days', label: 'Due in 90 days', hint: 'Renewals coming up', icon: 'i-lucide-calendar-clock', value: value?.due_in_90_days, to: { tab: 'renewals' }, tone: 'warning' },
     { key: 'stuck_approvals', label: 'Stuck approvals', hint: 'Waiting past the escalation threshold', icon: 'i-lucide-siren', value: value?.stuck_approvals, to: { tab: 'bottlenecks' }, tone: 'error' },
@@ -285,8 +295,8 @@ const bottleneckColumns: TableColumn<SccaBottleneckRow>[] = [
   column('step_title', 'Current approval step', ORG),
   column('approver', 'Approver', PERSON),
   column('level', 'Status', 'min-w-36'),
-  column('waiting_since', 'Waiting since', DATE),
-  column('working_days_waiting', 'Working days', 'min-w-32', true),
+  column('waiting_since', 'Assess since', DATE),
+  column('working_days_waiting', 'Assess days', 'min-w-32', true),
   column('reminders_sent', 'Reminders sent', 'min-w-28', true),
   column('escalated_at', 'Escalated on', DATE),
   column('working_days_in_approval', 'Working days in approval', 'min-w-32', true),
@@ -487,7 +497,7 @@ function pageTo(next: number) {
     >
       <template #overview>
         <div class="mt-4 space-y-6">
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               v-for="card in cards"
               :key="card.key"
