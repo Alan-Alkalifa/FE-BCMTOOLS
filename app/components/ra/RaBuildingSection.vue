@@ -53,7 +53,7 @@ function onSaved(saved: RaLocationDetail) {
   dirty.value = false
 }
 
-/** Its name and address also show on the RA (read again unless the RA has unsaved changes). */
+/** Its name and address also show on the RA (read again unless the RA has unsaved changes) */
 function onDetailsSaved(saved: RaLocationDetail) {
   onSaved(saved)
   if (!raDirty?.value) refreshNuxtData(`ra-assessment-${props.assessmentId}`)
