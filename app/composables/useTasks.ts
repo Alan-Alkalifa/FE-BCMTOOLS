@@ -134,7 +134,7 @@ export interface TaskCardFilter { view?: TaskView, type?: TaskType, level?: Task
 export interface TaskCard {
   key: 'mine' | 'in_approval' | 'stuck' | 'overdue' | 'building'
   label: string
-  value: number | null
+  value: number
   hint: string
   icon: string
   tone: 'neutral' | 'warning' | 'error' | 'info'
@@ -156,8 +156,8 @@ export function taskCards(module: TaskModule, counts: TaskCounts | null | undefi
     {
       key: 'mine',
       label: 'Waiting for me',
-      value: counts?.mine ?? null,
-      hint: sites ? 'Disasters and incidents for you to decide.' : module === 'ra' || module === 'ra_branch' ? 'RA sign-off steps for you.' : `${what} approvals for you.`,
+      value: counts?.mine ?? 0,
+      hint: sites ? 'Disasters and incidents for you to decide.' : module === 'ra' || module === 'ra_branch' ? 'RA approvals for you.' : `${what} approvals for you.`,
       icon: 'i-lucide-user-check',
       tone: 'warning',
       filter: { view: 'mine' },
@@ -165,7 +165,7 @@ export function taskCards(module: TaskModule, counts: TaskCounts | null | undefi
     {
       key: 'in_approval',
       label: 'In approval',
-      value: counts?.in_approval ?? null,
+      value: counts?.in_approval ?? 0,
       hint: sites
         ? 'Every disaster and incident waiting for approval.'
         : oversees ? `Every ${what} waiting for a signer.` : `What you sign or started, waiting for a signer.`,
@@ -178,7 +178,7 @@ export function taskCards(module: TaskModule, counts: TaskCounts | null | undefi
   const admin: TaskCard[] = [{
     key: 'stuck',
     label: sites ? 'Escalated approvals' : 'Stuck sign-offs',
-    value: counts?.stuck ?? null,
+    value: counts?.stuck ?? 0,
     hint: sites ? 'Waiting past the escalation to BCM.' : 'Waiting past the escalation.',
     icon: 'i-lucide-siren',
     tone: 'error',
@@ -188,7 +188,7 @@ export function taskCards(module: TaskModule, counts: TaskCounts | null | undefi
     admin.push({
       key: 'overdue',
       label: 'Overdue renewals',
-      value: counts?.overdue_renewals ?? null,
+      value: counts?.overdue_renewals ?? 0,
       hint: `${counts?.due_renewals ?? 0} more due within 90 days.`,
       icon: 'i-lucide-circle-alert',
       tone: 'error',

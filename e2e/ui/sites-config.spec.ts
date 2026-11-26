@@ -195,7 +195,8 @@ test('Sites configuration is under Administration, apart from RA configuration',
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Sites configuration' })).toHaveAttribute('aria-current', 'page', { timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Sites configuration' })).toBeVisible()
-  await expect(page.getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
+  // The page's own tabs (the open-pages bar above has tabs too).
+  await expect(page.getByRole('main').getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
   // An old RA configuration link to one of its tabs opens it.
   await page.goto('/admin/ra-config?tab=earthquakes')
   await expect(page).toHaveURL(/\/admin\/sites-config\?tab=earthquakes$/, { timeout: 60_000 })

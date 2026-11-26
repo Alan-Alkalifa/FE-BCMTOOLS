@@ -124,7 +124,7 @@ const cards = computed(() => {
   const types = moduleTypes.value
     .filter((type): type is CardType => type !== 'signoff' && type !== 'renewal')
     .filter((type) => !(type === 'building' && inAdmin))
-    .map((type) => ({ key: type, label: TYPE_LABELS[type], value: counts?.[type] ?? null, hint: hints[type], filter: { type } as TaskCardFilter, ...looks[type] }))
+    .map((type) => ({ key: type, label: TYPE_LABELS[type], value: counts?.[type] ?? 0, hint: hints[type], filter: { type } as TaskCardFilter, ...looks[type] }))
   return [...shared.value.basic, ...types]
 })
 function cardActive(filter: TaskCardFilter) {
