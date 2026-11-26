@@ -19,6 +19,7 @@ const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 
 const ra = useRaModule()
+const { $posthog } = useNuxtApp()
 /** The steps of the assessment's configuration version: labels, titles, who picks the signer
  *  and whether the step is required. */
 const roles = computed(() => raRoleOptions(props.formula, ra.value.signoffRoles, props.assessment.signoff_step_codes ?? null))
@@ -136,6 +137,7 @@ async function submit() {
   if (changed.value) return
   try {
     const saved = await raApi.submit(props.assessment.id)
+    $posthog?.capture('ra_assessment_submitted', { kind: ra.value.kind })
     reset(saved)
     toast.add({ title: 'Submitted for sign-off', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)
@@ -150,6 +152,7 @@ async function approve() {
   formError.value = null
   try {
     const saved = await raApi.approve(props.assessment.id, approvalComment.value.trim() || null)
+    $posthog?.capture('ra_assessment_approved', { kind: ra.value.kind, is_final: saved.status === 'approved' })
     approvalComment.value = ''
     reset(saved)
     toast.add({
@@ -169,6 +172,7 @@ async function sendBack() {
   if (!comment) return
   try {
     const saved = await raApi.returnToDraft(props.assessment.id, comment)
+    $posthog?.capture('ra_assessment_returned', { kind: ra.value.kind })
     reset(saved)
     toast.add({ title: 'Returned to draft', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)

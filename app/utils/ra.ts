@@ -832,7 +832,7 @@ export const BUILDINGS_GROUP = 'Sites'
 /** Import from Excel: a building and its RA from the HO or Cabang workbook. */
 export const LOCATION_IMPORT_PATH = '/locations/import'
 
-export const LOCATION_MAP_PATH = '/locations/map'
+export const LOCATION_MAP_PATH = '/sites/map'
 
 /** Administration > Sites configuration and its tabs (old RA configuration links to them open it). */
 export const SITES_CONFIG_PATH = '/admin/sites-config'

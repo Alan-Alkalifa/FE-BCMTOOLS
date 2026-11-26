@@ -43,7 +43,7 @@ there is no setting.
   record's tab instead of staying open empty.
 - **A page that only forwards** (a resolver, an old link) sets `definePageMeta({ tab: false })`.
 - **Timers and polling** pause in `onDeactivated` and catch up in `onActivated`
-  (see `pages/locations/map.vue`). Charts and maps size themselves again in `onActivated`
+  (see `pages/sites/map.vue`). Charts and maps size themselves again in `onActivated`
   (`AppChart`, `RaMap`).
 
 Tests: `e2e/ui/tabs.spec.ts`.

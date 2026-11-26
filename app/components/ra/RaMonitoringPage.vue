@@ -14,6 +14,7 @@ import RaGenerateDialog from '~/components/ra/RaGenerateDialog.vue'
 const ra = useRaModule()
 const route = useRoute()
 const router = useRouter()
+const { can } = useAuth()
 const toast = useToast()
 const historyDialog = useOverlay().create(RaHistoryDialog)
 const generateDialog = useOverlay().create(RaGenerateDialog)
@@ -453,14 +454,16 @@ function registerRecord(row: RaMonitorLocation) {
 }
 /** As SCCA's Approval tab. */
 const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: locationColumn.value },
-  { accessorKey: 'ref_no', header: 'RA ref. no.' },
-  { accessorKey: 'step', header: 'Current step' },
-  { id: 'signer', header: 'Signer' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
-  { accessorKey: 'escalated_at', header: 'Escalated on' },
-  { accessorKey: 'working_days_in_signoff', header: 'In approval' },
+  { id: 'assessment', header: locationColumn.value, meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'ref_no', header: 'RA ref. no.', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'step', header: 'Current approval step', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'waiting_since', header: 'Waiting since', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'working_days_waiting', header: 'Working days', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'reminders_sent', header: 'Reminders sent', meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { accessorKey: 'escalated_at', header: 'Escalated on', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'working_days_in_signoff', header: 'Working days in approval', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
 ])
 
 const tabs = [
@@ -1062,7 +1065,18 @@ function record(id: number) {
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
-                RAs in approval, the longest-waiting step first. Waiting is in working days (Monday to Friday) since the submission or the last approval.
+                <template v-if="bottlenecks.data.value?.total">
+                  {{ bottlenecks.data.value.total }} {{ plural(bottlenecks.data.value.total, 'RA') }} in approval, longest-waiting first.
+                </template>
+                <template v-else>
+                  No RA is in approval.
+                </template>
+                <template v-if="can(ra.perm.manage) && bottlenecks.data.value?.total">
+                  <NuxtLink
+                    :to="{ path: raPath(ra.kind, 'approval'), query: { tab: 'board' } }"
+                    class="text-primary hover:underline"
+                  >Act on them in the BCM board</NuxtLink>.
+                </template>
               </p>
               <UButton
                 :to="raExportUrl('bottlenecks', filters)"
@@ -1078,7 +1092,7 @@ function record(id: number) {
               :data="bottlenecks.data.value?.items ?? []"
               :columns="bottleneckColumns"
               :loading="bottlenecks.status.value === 'pending'"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #assessment-cell="{ row }">
                 <NuxtLink
@@ -1099,6 +1113,16 @@ function record(id: number) {
               <template #step-cell="{ row }">
                 {{ stepLabel(row.original.step, row.original.step_title) }}
               </template>
+              <template #level-cell="{ row }">
+                <StatusBadge
+                  :scale="raWaitLevel"
+                  :value="row.original.level"
+                  size="sm"
+                />
+              </template>
+              <template #waiting_since-cell="{ row }">
+                {{ formatDate(row.original.waiting_since) || '—' }}
+              </template>
               <template #signer-cell="{ row }">
                 {{ row.original.signer?.name ?? '—' }}
                 <p
@@ -1109,26 +1133,26 @@ function record(id: number) {
                 </p>
               </template>
               <template #working_days_waiting-cell="{ row }">
-                <span :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''">{{ raWaiting(row.original.working_days_waiting) }}</span>
+                <span
+                  class="block text-right tabular-nums"
+                  :class="row.original.working_days_waiting >= 5 ? 'font-medium text-warning' : ''"
+                >{{ raWaiting(row.original.working_days_waiting) }}</span>
               </template>
               <template #reminders_sent-cell="{ row }">
-                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #escalated_at-cell="{ row }">
-                <span v-if="row.original.escalated_at">{{ formatDate(row.original.escalated_at) }}</span>
-                <StatusBadge
-                  v-else-if="row.original.level !== 'ok'"
-                  :scale="raWaitLevel"
-                  :value="row.original.level"
-                  size="sm"
-                />
+                <span
+                  v-if="row.original.escalated_at"
+                  class="text-error"
+                >{{ formatDate(row.original.escalated_at) }}</span>
                 <span
                   v-else
                   class="text-muted"
                 >—</span>
               </template>
               <template #working_days_in_signoff-cell="{ row }">
-                {{ raWaiting(row.original.working_days_in_signoff) }}
+                <span class="block text-right tabular-nums">{{ raWaiting(row.original.working_days_in_signoff) }}</span>
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">

@@ -288,7 +288,7 @@ const historyIcon: Record<string, string> = {
           />
           <span>Declared from the BMKG earthquake M{{ raFormatMagnitude(crisis.earthquake.magnitude) }} on {{ formatDateTime(crisis.earthquake.occurred_at) }}<template v-if="crisis.earthquake.region">
             ({{ crisis.earthquake.region }})</template>. <NuxtLink
-            :to="`/locations/map?quake=${crisis.earthquake.id}`"
+            :to="`/sites/map?quake=${crisis.earthquake.id}`"
             class="text-primary hover:underline"
           >See it on the map</NuxtLink>. Source: {{ crisis.earthquake.source }}.</span>
         </p>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { SpotlightTourStep } from '~/components/UiSpotlightTour.vue'
 import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
+import type { BiancaGapTab } from '~/components/bianca/BiancaGapSummary.vue'
 
 definePageMeta({ permission: 'bianca.access' })
 
@@ -12,6 +12,131 @@ const { data: detail, status, error, refresh } = useBiaAssessmentDetail(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !detail.value)
 
 const depsFilter = ref<'all' | 'issues'>('all')
+const activeGapRow = ref<string | null>(null)
+const activeGapCell = ref<string | null>(null)
+let activeGapTimer: ReturnType<typeof setTimeout> | null = null
+
+function gapKey(...parts: Array<string | number | null | undefined>) {
+  return parts
+    .map((part) => String(part ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+    .filter(Boolean)
+    .join('-')
+}
+
+function isGapTargetActive(key: string) {
+  return activeGapRow.value === key || activeGapCell.value === key
+}
+
+function resolveGapTargets(gapTab: BiancaGapTab, message: string): { rowTarget: string | null, cellTarget: string | null, fallbackTarget: string | null } {
+  if (gapTab === 'details') {
+    return { rowTarget: 'details-ra', cellTarget: null, fallbackTarget: 'details-ra' }
+  }
+
+  const fnMatch = message.match(/^Function\s+(\d+)\s*\(/)
+  const seq = fnMatch ? Number(fnMatch[1]) : null
+
+  if (gapTab === 'impact' && seq !== null) {
+    return {
+      rowTarget: gapKey('impact-fn', seq),
+      cellTarget: null,
+      fallbackTarget: gapKey('impact-fn', seq),
+    }
+  }
+
+  if (gapTab === 'dependencies') {
+    if (/Part 2a RTO justification is missing/i.test(message)) {
+      return { rowTarget: 'dep-rto-note', cellTarget: null, fallbackTarget: 'dep-rto-note' }
+    }
+    if (seq !== null) {
+      const fn = detail.value?.functions.find((item) => item.seq_no === seq)
+      const fallbackTarget = gapKey('dep-fn', seq)
+      const prefix = fn ? `Function ${seq} (${fn.name}) > ` : null
+      const rest = prefix && message.startsWith(prefix)
+        ? message.slice(prefix.length)
+        : (message.match(/\)\s*>\s*(.+)$/)?.[1] ?? '')
+      const colonIdx = rest.indexOf(': ')
+      const targetLabel = (colonIdx >= 0 ? rest.slice(0, colonIdx) : rest).trim()
+      const nonItMatch = targetLabel.match(/^(Upstream|Downstream)\s*\((.+)\)$/i)
+      if (nonItMatch) {
+        const direction = nonItMatch[1]!.toLowerCase()
+        const partyName = nonItMatch[2]!
+        const rowTarget = gapKey('dep-nonit', seq, direction, partyName)
+        return { rowTarget, cellTarget: null, fallbackTarget }
+      }
+      if (targetLabel) {
+        return {
+          rowTarget: gapKey('dep-it', seq, targetLabel),
+          cellTarget: null,
+          fallbackTarget,
+        }
+      }
+      return { rowTarget: fallbackTarget, cellTarget: null, fallbackTarget }
+    }
+  }
+
+  if (gapTab === 'recovery' && seq !== null) {
+    const rowTarget = gapKey('recovery-fn', seq)
+    let cellTarget: string | null = null
+    if (/seat shortage/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'seats')
+    else if (/Alternate site strategy/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'altsite')
+    else if (/vital record/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'vital')
+    else if (/recovery staff/i.test(message)) cellTarget = gapKey('recovery-cell', seq, 'staff')
+    return { rowTarget, cellTarget, fallbackTarget: rowTarget }
+  }
+
+  return { rowTarget: null, cellTarget: null, fallbackTarget: null }
+}
+
+async function jumpToGap(payload: { tab: BiancaGapTab, message: string }) {
+  if (payload.tab === 'dependencies') {
+    depsFilter.value = 'all'
+  }
+  if (tab.value !== payload.tab) {
+    await router.replace({
+      query: { ...route.query, tab: payload.tab === 'details' ? undefined : payload.tab },
+    })
+  }
+
+  activeGapRow.value = null
+  activeGapCell.value = null
+  if (activeGapTimer) {
+    clearTimeout(activeGapTimer)
+    activeGapTimer = null
+  }
+
+  await nextTick()
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+
+  const resolved = resolveGapTargets(payload.tab, payload.message)
+  const candidates = [resolved.cellTarget, resolved.rowTarget, resolved.fallbackTarget].filter(Boolean) as string[]
+  let matchedKey: string | null = null
+  for (const key of candidates) {
+    const el = document.querySelector(`[data-gap-target="${key}"], .gap-target-${key}`) as HTMLElement | null
+    if (el && el.getClientRects().length > 0) {
+      matchedKey = key
+      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      break
+    }
+  }
+
+  activeGapRow.value = resolved.rowTarget && (matchedKey === resolved.rowTarget || matchedKey === resolved.cellTarget)
+    ? resolved.rowTarget
+    : resolved.fallbackTarget
+  activeGapCell.value = resolved.cellTarget
+
+  activeGapTimer = setTimeout(() => {
+    activeGapRow.value = null
+    activeGapCell.value = null
+    activeGapTimer = null
+  }, 3100)
+}
+
+onBeforeUnmount(() => {
+  if (activeGapTimer) {
+    clearTimeout(activeGapTimer)
+    activeGapTimer = null
+  }
+})
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${formatNumber(count, 0)} ${count === 1 ? one : many}`
@@ -117,11 +242,50 @@ const impactColumns = computed<TableColumn<BiaFunctionItem>[]>(() => [
   { id: 'scores', header: 'Max Reg (A) / Cust (B)' },
 ])
 
+const impactTableMeta = computed(() => ({
+  class: {
+    tr: (row: { original: BiaFunctionItem }) => {
+      const target = gapKey('impact-fn', row.original.seq_no)
+      return [
+        `gap-target-${target}`,
+        activeGapRow.value === target ? 'gap-flash-row' : '',
+      ].filter(Boolean).join(' ')
+    },
+  },
+}))
+
+const exporter = useBiancaExport()
+const appendixPicked = ref<number[]>([])
+const allAppendixPicked = computed(() =>
+  (detail.value?.functions.length ?? 0) > 0 && appendixPicked.value.length === detail.value?.functions.length,
+)
+
+watch(id, () => {
+  appendixPicked.value = []
+})
+
+function toggleAppendixPick(seqNo: number, on: boolean) {
+  appendixPicked.value = on
+    ? [...new Set([...appendixPicked.value, seqNo])].sort((a, b) => a - b)
+    : appendixPicked.value.filter((item) => item !== seqNo)
+}
+
+function toggleAllAppendix(on: boolean) {
+  appendixPicked.value = on ? (detail.value?.functions.map((fn) => fn.seq_no) ?? []) : []
+}
+
+async function exportAppendixFunctions(seqNos?: number[]) {
+  if (!detail.value) return
+  await exporter.run(detail.value.id, seqNos)
+}
+
 const appendixColumns: TableColumn<BiaFunctionItem>[] = [
-  { accessorKey: 'seq_no', header: 'No' },
+  { id: 'select', header: '', meta: { class: { th: 'w-10', td: 'w-10' } } },
+  { accessorKey: 'seq_no', header: 'No', meta: { class: { th: 'w-12', td: 'w-12 tabular-nums text-muted' } } },
   { accessorKey: 'name', header: 'Business function' },
   { accessorKey: 'category', header: 'Business function category' },
   { accessorKey: 'expected_mtd', header: 'Expected MTD' },
+  { id: 'actions', header: '', meta: { class: { th: 'w-28 text-right', td: 'w-28 text-right' } } },
 ]
 
 function formatFileSize(bytes: number) {
@@ -288,254 +452,17 @@ const detailSummary = computed(() => {
   }
 })
 
-interface AttentionItem {
-  key: string
-  text: string
-  title: string
-  targetTab: DetailTab
-  tabLabel: string
-  severity: 'error' | 'warning'
-  depsIssuesOnly?: boolean
-  steps: string[]
-}
-
-const attentionItems = computed<AttentionItem[]>(() => {
-  const s = detailSummary.value
-  const items: AttentionItem[] = []
-  if (s.missingRaJustification) {
-    items.push({
-      key: 'ra_justification',
-      title: 'Missing Risk Assessment justification',
-      text: 'Risk assessment justification is required (BC not considered and no BC controls included)',
-      targetTab: 'details',
-      tabLabel: 'Details',
-      severity: 'error',
-      steps: [
-        'Open the "RA Questionnaire" card in this Details tab.',
-        'Check whether BC was considered or controls were included.',
-        'If both are No, fill in the mandatory RA justification in BIANCA > Manage before resubmitting.',
-      ],
-    })
-  }
-  if (s.mtdExceedCount > 0) {
-    items.push({
-      key: 'mtd_exceed',
-      title: 'Expected MTD exceeds Suggested MTD',
-      text: `${plural(s.mtdExceedCount, 'business function')} has Expected MTD longer than Suggested MTD`,
-      targetTab: 'impact',
-      tabLabel: 'Impact',
-      severity: 'error',
-      steps: [
-        'Check the "Impact assessment" table below for functions highlighted with Expected MTD > Suggested MTD.',
-        'Verify whether the business function can truly tolerate the longer Expected MTD.',
-        'Either shorten Expected MTD to match/be stricter than Suggested MTD, or document a strong justification.',
-      ],
-    })
-  }
-  if (s.suggestedMismatchCount > 0) {
-    items.push({
-      key: 'suggested_mismatch',
-      title: 'Suggested MTD differs from impact rule',
-      text: `${plural(s.suggestedMismatchCount, 'business function')} has Suggested MTD differing from the impact rule`,
-      targetTab: 'impact',
-      tabLabel: 'Impact',
-      severity: 'warning',
-      steps: [
-        'Review the Part 1 loss & regulatory/customer scores in the Impact assessment table.',
-        'Compare the calculated rule MTD against the Suggested MTD column.',
-        'Align Suggested MTD with the impact rule in BIANCA > Manage if no exception is intended.',
-      ],
-    })
-  }
-  if (s.itGapCount > 0) {
-    items.push({
-      key: 'negative_daat',
-      title: 'Negative DAAT on IT application',
-      text: `${plural(s.itGapCount, 'IT application')} has a negative DAAT (RTO + backlog exceeds Expected MTD)`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'We switched the filter below to "Issues only" so only functions with dependency gaps are shown.',
-        'Find the Part 2a IT application row marked with a negative DAAT (red badge).',
-        'Verify the application RTO + backlog hours vs Expected MTD, and make sure a Workaround Critical Gap note & Part 2a RTO justification are provided.',
-      ],
-    })
-  }
-  if (s.missingCriticalGapNote > 0) {
-    items.push({
-      key: 'missing_critical_gap_note',
-      title: 'Missing Workaround Critical Gap note',
-      text: `${plural(s.missingCriticalGapNote, 'IT application')} requires a mandatory Workaround Critical Gap note`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Look at the filtered functions below under Part 2a (IT application systems).',
-        'Locate the application row where Workaround = No or DAAT is negative.',
-        'Add the Workaround Critical Gap explanation in BIANCA > Manage so reviewers understand the mitigation.',
-      ],
-    })
-  }
-  if (s.missingRtoJustification) {
-    items.push({
-      key: 'missing_rto_justification',
-      title: 'Missing Part 2a RTO justification',
-      text: 'Part 2a RTO justification is missing (at least one IT RTO reaches or exceeds Expected MTD)',
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Review the Part 2a IT rows flagged with RTO >= Expected MTD below.',
-        'Scroll to the "Part 2a RTO justification" note card at the bottom of the Dependencies tab.',
-        'Fill in why the business function can operate despite the IT RTO reaching or exceeding Expected MTD.',
-      ],
-    })
-  }
-  if (s.missingDepJustification) {
-    items.push({
-      key: 'missing_dep_justification',
-      title: 'Missing Part 2b dependency justification',
-      text: 'Part 2b dependency justification is missing for misaligned upstream/downstream rows',
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'error',
-      depsIssuesOnly: true,
-      steps: [
-        'Check the Part 2b (Upstream / Downstream) rows marked with alignment warnings below.',
-        'Review each row where planned capacity is lower or MTD is longer than the business function.',
-        'Provide the per-row justification in BIANCA > Manage explaining how the dependency gap is handled.',
-      ],
-    })
-  } else if (s.unalignedNonItCount > 0) {
-    items.push({
-      key: 'unaligned_non_it',
-      title: 'Misaligned upstream/downstream dependency',
-      text: `${plural(s.unalignedNonItCount, 'upstream/downstream dependency row')} has lower capacity or longer MTD than the function`,
-      targetTab: 'dependencies',
-      tabLabel: 'Dependencies',
-      severity: 'warning',
-      depsIssuesOnly: true,
-      steps: [
-        'Look at the Part 2b (Upstream / Downstream) rows highlighted below.',
-        'Compare the dependency capacity & MTD against the business function target.',
-        'Verify the accompanying justification explains how operations remain within MTD.',
-      ],
-    })
-  }
-  if (s.seatGap > 0) {
-    items.push({
-      key: 'seat_shortage',
-      title: 'BCP seat shortage at alternate site',
-      text: `BCP seat shortage of ${plural(s.seatGap, 'seat')} at alternate site (excluding WFH)`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Scroll horizontally in the Part 3 Recovery table below to the "Resources & BCP seats" columns.',
-        'Compare "BCP seats required" vs "Current BCP seats" for non-WFH functions.',
-        'Confirm whether additional alternate-site seats need to be allocated or if WFH/split-shift covers the shortfall.',
-      ],
-    })
-  }
-  if (s.missingVitalCritical > 0) {
-    items.push({
-      key: 'missing_vital_critical',
-      title: 'Missing vital record for Business Critical function',
-      text: `${plural(s.missingVitalCritical, 'Business Critical function')} missing vital record or storage location`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'error',
-      steps: [
-        'Scroll to the right end of the Part 3 Recovery table below ("Vital records").',
-        'Identify any Business Critical function with an empty vital record or storage location.',
-        'Complete both fields in BIANCA > Manage.',
-      ],
-    })
-  }
-  if (s.altSiteMismatchCount > 0) {
-    items.push({
-      key: 'alt_site_mismatch',
-      title: 'Alternate site strategy outside category guidance',
-      text: `${plural(s.altSiteMismatchCount, 'function')} uses an alternate site strategy outside category guidance`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Scroll horizontally in the Part 3 Recovery table below to the "Alternate site strategy" column.',
-        'Look for rows badged "Outside category guidance" — compare with the "Alternate site guide" text at the top of the card.',
-        'Either adjust the strategy to match category guidance or confirm the exception is intentional.',
-      ],
-    })
-  }
-  if (s.staffAnomalyCount > 0) {
-    items.push({
-      key: 'staff_anomaly',
-      title: 'Required recovery staff exceeds total staff',
-      text: `${plural(s.staffAnomalyCount, 'function')} has required recovery staff exceeding total staff`,
-      targetTab: 'recovery',
-      tabLabel: 'Recovery',
-      severity: 'warning',
-      steps: [
-        'Check the "Staffing & recovery level" columns in the Part 3 Recovery table below.',
-        'Find rows where "Required recovery staff" is greater than "Total staff".',
-        'Correct the headcount numbers in BIANCA > Manage.',
-      ],
-    })
-  }
-  return items
-})
-
-const TOUR_TARGET_BY_KEY: Record<string, string> = {
-  negative_daat: '[data-tour="deps-daat-gap"]',
-  missing_critical_gap_note: '[data-tour="deps-filter-issues"]',
-  missing_rto_justification: '[data-tour="deps-filter-issues"]',
-  missing_dep_justification: '[data-tour="deps-filter-issues"]',
-  unaligned_non_it: '[data-tour="deps-filter-issues"]',
-  seat_shortage: '[data-tour="recovery-seat-gap"]',
-  alt_site_mismatch: '[data-tour="recovery-altsite-gap"]',
-  missing_vital_critical: '[data-tour="recovery-vital-gap"]',
-}
-
-const tourStep = ref<number | null>(null)
-const tourSteps = computed<SpotlightTourStep[]>(() =>
-  attentionItems.value.map((item) => ({
-    target: TOUR_TARGET_BY_KEY[item.key] ?? '[data-tour="bia-tabs-panel"]',
-    title: item.title,
-    description: item.steps.join(' '),
-    badge: item.tabLabel,
-    color: item.severity,
-    beforeEnter: () => {
-      tab.value = item.targetTab
-      if (item.targetTab === 'dependencies') {
-        depsFilter.value = item.depsIssuesOnly ? 'issues' : 'all'
-      }
-    },
-  })),
-)
-
-function openGuide(index: number) {
-  if (!attentionItems.value[index]) return
-  tourStep.value = index
-}
-
 const tabAlertCounts = computed<Record<DetailTab, number>>(() => {
-  const counts: Record<DetailTab, number> = {
-    details: 0,
-    impact: 0,
-    dependencies: 0,
-    recovery: 0,
+  const g = detail.value?.gaps
+  return {
+    details: g?.details?.length ?? 0,
+    impact: g?.impact?.length ?? 0,
+    dependencies: g?.dependencies?.length ?? 0,
+    recovery: g?.recovery?.length ?? 0,
     timings: 0,
     signoff: 0,
     appendix: 0,
   }
-  for (const item of attentionItems.value) {
-    counts[item.targetTab] += 1
-  }
-  return counts
 })
 
 const tabs = computed(() => [
@@ -553,6 +480,58 @@ const lossPeriodTotals = computed(() =>
     (detail.value?.functions ?? []).reduce((sum, fn) => sum + (fn.losses?.[idx] ?? 0), 0),
   ),
 )
+
+const origin = computed(() => (typeof route.query.from === 'string' ? route.query.from : undefined))
+
+const backNavigation = computed(() => {
+  const dir = detail.value?.group.directorate
+  const hasDir = Boolean(dir && dir !== '—')
+  switch (origin.value) {
+    case 'assessments':
+      return {
+        label: 'Back to All BIA',
+        to: '/bianca/monitoring?tab=register&view=assessments',
+        middleCrumb: { label: 'All BIA', to: '/bianca/monitoring?tab=register&view=assessments' },
+      }
+    case 'flat':
+      return {
+        label: 'Back to All groups',
+        to: '/bianca/monitoring?tab=register&view=flat',
+        middleCrumb: { label: 'All groups', to: '/bianca/monitoring?tab=register&view=flat' },
+      }
+    case 'renewals':
+      return {
+        label: 'Back to Renewals',
+        to: '/bianca/monitoring?tab=renewals',
+        middleCrumb: { label: 'Renewals', to: '/bianca/monitoring?tab=renewals' },
+      }
+    case 'bottlenecks':
+      return {
+        label: 'Back to Approval',
+        to: '/bianca/monitoring?tab=bottlenecks',
+        middleCrumb: { label: 'Approval', to: '/bianca/monitoring?tab=bottlenecks' },
+      }
+    case 'directorate':
+      return {
+        label: hasDir ? 'Back to directorate' : 'Back to monitoring',
+        to: hasDir ? `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` : '/bianca/monitoring',
+        middleCrumb: hasDir ? { label: dir!, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` } : null,
+      }
+    default:
+      return {
+        label: 'Back to monitoring',
+        to: '/bianca/monitoring',
+        middleCrumb: hasDir ? { label: dir!, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(dir!)}` } : null,
+      }
+  }
+})
+
+const pageCrumbs = computed(() => [
+  { label: 'BIANCA' },
+  { label: 'Monitoring', to: '/bianca/monitoring' },
+  ...(backNavigation.value.middleCrumb ? [backNavigation.value.middleCrumb] : []),
+  ...(detail.value ? [{ label: detail.value.ref_no }] : []),
+])
 </script>
 
 <template>
@@ -592,14 +571,7 @@ const lossPeriodTotals = computed(() =>
     :title="`${detail.group.name} (${detail.ref_no})`"
     icon="i-lucide-chart-column"
     :description="`${detail.group.directorate} › ${detail.group.sub_directorate} · Assessment date ${formatDate(detail.assessment_date)}`"
-    :crumbs="[
-      { label: 'BIANCA' },
-      { label: 'Monitoring', to: '/bianca/monitoring' },
-      ...(detail.group.directorate && detail.group.directorate !== '—'
-        ? [{ label: detail.group.directorate, to: `/bianca/monitoring/directorate?name=${encodeURIComponent(detail.group.directorate)}` }]
-        : []),
-      { label: detail.ref_no },
-    ]"
+    :crumbs="pageCrumbs"
   >
     <template #actions>
       <UBadge
@@ -619,8 +591,26 @@ const lossPeriodTotals = computed(() =>
         :label="`Renewing ${detail.renewal_of.ref_no}`"
       />
       <StatusBadge
+        v-if="detail.status_group"
+        :scale="biaStatusGroup"
+        :value="detail.status_group"
+      />
+      <StatusBadge
+        v-else
         :scale="biaStatus"
         :value="biaStatusKey(detail)"
+      />
+      <UBadge
+        v-if="detail.status_detail_label"
+        :color="detail.status_detail === 'overdue' || detail.status_detail === 'need_revision' || detail.status_detail === 'escalated'
+          ? 'error'
+          : detail.status_detail === 'full_approved'
+            ? 'success'
+            : detail.status_detail === 'due_30' || detail.status_detail === 'in_revision' || detail.status_detail === 'waiting_approval'
+              ? 'warning'
+              : 'neutral'"
+        variant="subtle"
+        :label="detail.status_detail_label"
       />
       <StatusBadge
         v-if="detail.highest_category"
@@ -643,11 +633,11 @@ const lossPeriodTotals = computed(() =>
         label="Edit draft in Manage"
       />
       <UButton
-        to="/bianca/monitoring"
+        :to="backNavigation.to"
         color="neutral"
         variant="outline"
         icon="i-lucide-arrow-left"
-        label="Back to monitoring"
+        :label="backNavigation.label"
       />
     </template>
 
@@ -721,53 +711,25 @@ const lossPeriodTotals = computed(() =>
         </button>
       </div>
 
-      <UAlert
-        v-if="attentionItems.length"
-        :color="attentionItems.some((i) => i.severity === 'error') ? 'error' : 'warning'"
-        variant="subtle"
-        icon="i-lucide-triangle-alert"
-        :title="`Needs attention (${attentionItems.length})`"
-      >
-        <template #description>
-          <ul class="mt-1.5 space-y-1.5 text-xs">
-            <li
-              v-for="(item, idx) in attentionItems"
-              :key="item.key"
-              class="flex flex-wrap items-center justify-between gap-2"
-            >
-              <span class="inline-flex items-center gap-1.5">
-                <span
-                  class="size-1.5 shrink-0 rounded-full"
-                  :class="item.severity === 'error' ? 'bg-error' : 'bg-warning'"
-                />
-                <span>{{ item.text }}</span>
-              </span>
-              <UButton
-                size="xs"
-                :color="item.severity === 'error' ? 'error' : 'warning'"
-                variant="link"
-                class="p-0"
-                :label="`Review in ${item.tabLabel}`"
-                trailing-icon="i-lucide-arrow-right"
-                @click="openGuide(idx)"
-              />
-            </li>
-          </ul>
-        </template>
-      </UAlert>
+      <BiancaGapSummary
+        :gaps="detail.gaps"
+        :status="detail.status"
+        @check="jumpToGap"
+      />
     </div>
-
-    <UiSpotlightTour
-      v-model="tourStep"
-      :steps="tourSteps"
-    />
 
     <UTabs
       v-model="tab"
-      data-tour="bia-tabs-panel"
       :items="tabs"
       variant="link"
+      size="xs"
       :unmount-on-hide="false"
+      :ui="{
+        list: 'overflow-x-auto gap-0.5',
+        trigger: 'shrink-0 px-2.5 py-1.5 text-xs gap-1.5 whitespace-nowrap',
+        leadingIcon: 'size-3.5',
+        label: 'overflow-visible text-clip whitespace-nowrap',
+      }"
     >
       <template #details>
         <div class="mt-4 grid gap-6 lg:grid-cols-2">
@@ -1048,7 +1010,9 @@ const lossPeriodTotals = computed(() =>
                 </div>
                 <div
                   v-if="detail.notes?.ra_justification || detail.ra_questionnaire.ra_justification_required"
-                  class="grid grid-cols-3 gap-4 py-2.5"
+                  data-gap-target="details-ra"
+                  class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+                  :class="isGapTargetActive('details-ra') ? 'gap-flash-box' : ''"
                 >
                   <dt class="text-muted">
                     RA justification
@@ -1088,6 +1052,7 @@ const lossPeriodTotals = computed(() =>
             <UTable
               :data="detail.functions"
               :columns="impactColumns"
+              :meta="impactTableMeta"
               :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #suggested_mtd-header>
@@ -1515,7 +1480,6 @@ const lossPeriodTotals = computed(() =>
             >
               <button
                 type="button"
-                data-tour="deps-filter-issues"
                 class="rounded px-2.5 py-1 font-medium transition"
                 :class="depsFilter === 'all' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
                 @click="depsFilter = 'all'"
@@ -1524,7 +1488,6 @@ const lossPeriodTotals = computed(() =>
               </button>
               <button
                 type="button"
-                data-tour="deps-filter-issues"
                 class="rounded px-2.5 py-1 font-medium transition"
                 :class="depsFilter === 'issues' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
                 @click="depsFilter = 'issues'"
@@ -1543,6 +1506,8 @@ const lossPeriodTotals = computed(() =>
           <UCard
             v-for="fn in displayedDepFunctions"
             :key="fn.seq_no"
+            :data-gap-target="gapKey('dep-fn', fn.seq_no)"
+            :class="activeGapRow === gapKey('dep-fn', fn.seq_no) ? 'gap-flash-box' : ''"
           >
             <template #header>
               <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1650,6 +1615,8 @@ const lossPeriodTotals = computed(() =>
                       <tr
                         v-for="dep in itSection.rows"
                         :key="`${itSection.key}-${dep.app_code}-${dep.app_name}`"
+                        :data-gap-target="gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)"
+                        :class="isGapTargetActive(gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)) ? 'gap-flash-row' : ''"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
                           <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
@@ -1685,10 +1652,7 @@ const lossPeriodTotals = computed(() =>
                           {{ dep.backlog_time }}
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
-                          <div
-                            :data-tour="dep.daat_negative || dep.daat.startsWith('-') ? 'deps-daat-gap' : undefined"
-                            class="inline-flex items-center gap-1.5"
-                          >
+                          <div class="inline-flex items-center gap-1.5">
                             <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
                               {{ dep.daat }}
                             </span>
@@ -1780,6 +1744,8 @@ const lossPeriodTotals = computed(() =>
                       <tr
                         v-for="(ndep, idx) in section.rows"
                         :key="idx"
+                        :data-gap-target="gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)"
+                        :class="isGapTargetActive(gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)) ? 'gap-flash-row' : ''"
                       >
                         <td class="px-3 py-2 font-medium text-highlighted">
                           {{ ndep.party_name }}
@@ -1852,7 +1818,9 @@ const lossPeriodTotals = computed(() =>
             <dl class="divide-y divide-default text-sm">
               <div
                 v-if="detail.notes?.justification_rto || detailSummary.missingRtoJustification"
-                class="grid grid-cols-3 gap-4 py-2.5"
+                data-gap-target="dep-rto-note"
+                class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+                :class="isGapTargetActive('dep-rto-note') ? 'gap-flash-box' : ''"
               >
                 <dt class="text-muted">
                   IT RTO justification (Part 2a)
@@ -2042,7 +2010,9 @@ const lossPeriodTotals = computed(() =>
                   <tr
                     v-for="fn in detail.functions"
                     :key="`rec-${fn.seq_no}`"
+                    :data-gap-target="gapKey('recovery-fn', fn.seq_no)"
                     class="group hover:bg-elevated/40"
+                    :class="activeGapRow === gapKey('recovery-fn', fn.seq_no) ? 'gap-flash-row' : ''"
                   >
                     <td class="sticky left-0 z-10 w-12 border-b border-default bg-default py-3 ps-4 pe-2 align-top tabular-nums text-muted group-hover:bg-elevated/40">
                       {{ fn.seq_no }}
@@ -2066,7 +2036,11 @@ const lossPeriodTotals = computed(() =>
                     <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
                       {{ formatNumber(fn.total_staff, 0) }}
                     </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'staff')"
+                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'staff')) ? 'gap-flash-cell' : ''"
+                    >
                       <div class="inline-flex items-center justify-end gap-1">
                         <span :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''">
                           {{ formatNumber(fn.required_staff, 0) }}
@@ -2091,7 +2065,11 @@ const lossPeriodTotals = computed(() =>
                     <td class="min-w-56 max-w-72 border-b border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
                       {{ fn.outstanding_strategy || '—' }}
                     </td>
-                    <td class="min-w-44 border-b border-default px-3 py-3 align-top">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'altsite')"
+                      class="min-w-44 border-b border-default px-3 py-3 align-top"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'altsite')) ? 'gap-flash-cell' : ''"
+                    >
                       <div class="space-y-1">
                         <span class="block text-sm">{{ fn.alt_site_strategy }}</span>
                         <UTooltip
@@ -2099,7 +2077,6 @@ const lossPeriodTotals = computed(() =>
                           :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
                         >
                           <UBadge
-                            data-tour="recovery-altsite-gap"
                             color="warning"
                             variant="subtle"
                             size="xs"
@@ -2122,14 +2099,17 @@ const lossPeriodTotals = computed(() =>
                       </UTooltip>
                       <span v-else>{{ formatNumber(fn.bcp_seats_current, 0) }}</span>
                     </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'seats')"
+                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'seats')) ? 'gap-flash-cell' : ''"
+                    >
                       <span
                         v-if="isWfhStrategy(fn)"
                         class="text-muted"
                       >—</span>
                       <span
                         v-else
-                        :data-tour="fn.bcp_seats_current < fn.bcp_seats_required ? 'recovery-seat-gap' : undefined"
                         :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
                       >
                         {{ formatNumber(fn.bcp_seats_required, 0) }}
@@ -2170,7 +2150,11 @@ const lossPeriodTotals = computed(() =>
                       <span v-if="isWfhStrategy(fn)">Excluded (WFH)</span>
                       <span v-else>{{ fn.equipment?.others || '—' }}</span>
                     </td>
-                    <td class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top">
+                    <td
+                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'vital')"
+                      class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top"
+                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'vital')) ? 'gap-flash-cell' : ''"
+                    >
                       <UBadge
                         v-if="fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')"
                         color="error"
@@ -2397,12 +2381,32 @@ const lossPeriodTotals = computed(() =>
                     For BCM use only: overview of Business Functions&apos; Criticality and Expected MTD (automatically propagated from Part 1 &amp; Part 2a).
                   </p>
                 </div>
-                <UBadge
-                  color="neutral"
-                  variant="subtle"
-                  size="sm"
-                  label="For BCM Use Only"
-                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                    label="For BCM Use Only"
+                  />
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-file-spreadsheet"
+                    :label="appendixPicked.length ? `Export ${appendixPicked.length} selected to Excel` : 'Export selected to Excel'"
+                    :disabled="!appendixPicked.length"
+                    :loading="exporter.busy.value"
+                    @click="exportAppendixFunctions(appendixPicked)"
+                  />
+                  <UButton
+                    size="sm"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export all to Excel"
+                    :disabled="!detail.functions.length"
+                    :loading="exporter.busy.value"
+                    @click="exportAppendixFunctions()"
+                  />
+                </div>
               </div>
               <div class="grid gap-3 rounded-lg border border-default bg-elevated/40 p-3 text-xs sm:grid-cols-4">
                 <div>
@@ -2445,8 +2449,28 @@ const lossPeriodTotals = computed(() =>
               :columns="appendixColumns"
               :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
+              <template #select-header>
+                <UCheckbox
+                  :model-value="allAppendixPicked ? true : appendixPicked.length ? 'indeterminate' : false"
+                  aria-label="Select every function"
+                  :disabled="!detail.functions.length"
+                  @update:model-value="toggleAllAppendix($event === true)"
+                />
+              </template>
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="appendixPicked.includes(row.original.seq_no)"
+                  :aria-label="`Select ${row.original.name}`"
+                  @update:model-value="toggleAppendixPick(row.original.seq_no, $event === true)"
+                />
+              </template>
               <template #name-cell="{ row }">
-                <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+                <NuxtLink
+                  :to="biancaReportPath(detail.id, row.original.seq_no)"
+                  class="font-medium text-primary hover:underline"
+                >
+                  {{ row.original.name }}
+                </NuxtLink>
               </template>
               <template #category-cell="{ row }">
                 <StatusBadge
@@ -2454,6 +2478,20 @@ const lossPeriodTotals = computed(() =>
                   :value="row.original.category"
                   size="sm"
                 />
+              </template>
+              <template #actions-cell="{ row }">
+                <div class="flex justify-end">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Excel"
+                    :aria-label="`Export ${row.original.name} to Excel`"
+                    :disabled="exporter.busy.value"
+                    @click="exportAppendixFunctions([row.original.seq_no])"
+                  />
+                </div>
               </template>
             </UTable>
           </UCard>
@@ -2511,3 +2549,66 @@ const lossPeriodTotals = computed(() =>
     </UTabs>
   </AppPage>
 </template>
+
+<style scoped>
+@keyframes gap-flash-fade {
+  0% {
+    background-color: rgba(239, 68, 68, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.85), 0 0 0 3px rgba(239, 68, 68, 0.2);
+  }
+  25% {
+    background-color: rgba(245, 158, 11, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.7), 0 0 0 3px rgba(245, 158, 11, 0.16);
+  }
+  65% {
+    background-color: rgba(245, 158, 11, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35), 0 0 0 0 transparent;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent, 0 0 0 0 transparent;
+  }
+}
+
+@keyframes gap-flash-row-fade {
+  0% {
+    box-shadow: inset 0 0 0 9999px rgba(239, 68, 68, 0.16), inset 0 1px 0 rgba(245, 158, 11, 0.85), inset 0 -1px 0 rgba(245, 158, 11, 0.85);
+  }
+  25% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.16), inset 0 1px 0 rgba(239, 68, 68, 0.65), inset 0 -1px 0 rgba(239, 68, 68, 0.65);
+  }
+  65% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.08), inset 0 1px 0 rgba(245, 158, 11, 0.25), inset 0 -1px 0 rgba(245, 158, 11, 0.25);
+  }
+  100% {
+    box-shadow: inset 0 0 0 9999px transparent, inset 0 1px 0 transparent, inset 0 -1px 0 transparent;
+  }
+}
+
+@keyframes gap-flash-cell-fade {
+  0% {
+    box-shadow: inset 0 0 0 9999px rgba(239, 68, 68, 0.24), inset 0 0 0 2px rgba(245, 158, 11, 0.9);
+  }
+  25% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.24), inset 0 0 0 2px rgba(239, 68, 68, 0.75);
+  }
+  65% {
+    box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.12), inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+  }
+  100% {
+    box-shadow: inset 0 0 0 9999px transparent, inset 0 0 0 0 transparent;
+  }
+}
+
+:deep(.gap-flash-box) {
+  animation: gap-flash-fade 3s ease-out forwards;
+}
+
+:deep(tr.gap-flash-row > td) {
+  animation: gap-flash-row-fade 3s ease-out forwards;
+}
+
+:deep(td.gap-flash-cell) {
+  animation: gap-flash-cell-fade 3s ease-out forwards;
+}
+</style>

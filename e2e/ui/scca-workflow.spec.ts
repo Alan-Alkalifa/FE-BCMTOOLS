@@ -44,8 +44,8 @@ test('the register lists one row per application with its history, and bottlenec
   await table.getByRole('button', { name: 'SCCA history of CC Omni Channel' }).click()
   const history = page.getByRole('dialog', { name: 'SCCAs of CC Omni Channel' })
   await expect(history.getByRole('link', { name: 'SCCA-2024-0007' })).toHaveAttribute('href', '/scca/monitoring/7')
-  await expect(history.getByRole('row', { name: /SCCA-2024-0007 Current/ })).toBeVisible()
-  await expect(history.getByRole('row', { name: /SCCA-2022-0004 Replaced/ })).toBeVisible()
+  await expect(history.getByRole('row', { name: /SCCA-2024-0007 Active/ })).toBeVisible()
+  await expect(history.getByRole('row', { name: /SCCA-2022-0004 Inactive/ })).toBeVisible()
   await expect(history.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/scca/monitoring/application-sccas.xlsx?key=CCOMNI')
   await page.keyboard.press('Escape')
 
@@ -170,7 +170,7 @@ test('Approval: my inbox, coming up and my history', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Waiting for my approval' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('table').getByText('Escalated')).toBeVisible()
   const inbox = page.getByRole('table').first()
-  for (const name of ['Application name', 'SCCA ref. no.', 'Submitted date', 'Submitted by', 'Status', 'Working days', 'Reminders sent']) {
+  for (const name of ['Application name', 'SCCA ref. no.', 'Submitted date', 'Submitted by', 'Status', 'Assess days', 'Reminders sent']) {
     await expect(inbox.getByRole('columnheader', { name })).toBeVisible()
   }
   await expect(inbox.getByRole('cell', { name: '3', exact: true })).toBeVisible()

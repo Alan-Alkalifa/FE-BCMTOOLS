@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { LOCATIONS, mockRa, SUMMARY } from '../fixtures/ra'
+import { ASSESSMENT, LOCATIONS, mockRa, SUMMARY } from '../fixtures/ra'
 import PREVIEW from '../fixtures/ra/import-preview.json' with { type: 'json' }
 
 test.setTimeout(90_000)
@@ -347,4 +347,54 @@ test('a workbook with a missing required input is listed to fix and not imported
   await expect(dialog.getByRole('list', { name: 'Check after import' }).getByText('Building name: required.')).toHaveCount(0)
   await expect(dialog.getByText('Fix the workbook and choose it again.')).toBeVisible()
   await expect(importButton(dialog)).toBeDisabled()
+})
+
+test('Upload Excel on a draft replaces its ratings from the workbook, the status beside it', async ({ page }) => {
+  await mockRa(page)
+  const sent: { url: string, replaceProfile: boolean }[] = []
+  await page.route(/\/api\/ra\/assessments\/1\/import\/preview$/, (route) => route.fulfill({ json: { ...PREVIEW, draft: { id: 1, ref_no: 'RA-2025-0001' } } }))
+  await page.route(/\/api\/ra\/assessments\/1\/import$/, async (route) => {
+    const body = route.request().postData() ?? ''
+    sent.push({ url: route.request().url(), replaceProfile: /name="replace_profile"\r\n\r\ntrue/.test(body) })
+    return route.fulfill({ json: ASSESSMENT })
+  })
+  await page.goto('/ra/manage/1')
+  await expect(page.getByRole('button', { name: 'Upload Excel' })).toBeVisible({ timeout: 60_000 })
+  // The status, highest residual and hazards rated are in the top bar: once on the page, before
+  // Upload Excel. The completion badge is no longer shown.
+  await expect(page.getByText('Draft', { exact: true })).toHaveCount(1)
+  await expect(page.getByText('Incomplete', { exact: true })).toHaveCount(0)
+  await expect(page.getByTitle(/^Highest residual risk:/)).toHaveCount(1)
+  await expect(page.getByTitle(/ hazards rated$/)).toHaveCount(1)
+  const order = await page.evaluate(() => {
+    const at = (text: string) => [...document.querySelectorAll('span, button')].find((item) => item.textContent?.trim() === text)
+    const rated = [...document.querySelectorAll('span')].find((item) => /^\d+\/33 rated$/.test(item.textContent?.trim() ?? ''))
+    const upload = at('Upload Excel')
+    return Boolean(rated && upload && (rated.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING))
+  })
+  expect(order).toBe(true)
+  await page.getByRole('button', { name: 'Upload Excel' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Replace this draft from Excel' })
+  await expect(dialog.getByRole('button', { name: 'Replace draft' })).toBeDisabled()
+  await dialog.getByLabel('Choose the RA workbook').setInputFiles(WORKBOOK)
+  await expect(dialog.getByTestId('draft-file')).toHaveText('Griya.xlsx')
+  await expect(dialog.getByText('33 of 33 hazards rated')).toBeVisible()
+  await dialog.getByRole('switch', { name: /Update the building's profile from this file/ }).click()
+  await dialog.getByRole('button', { name: 'Replace draft' }).click()
+  await expect(page.getByText('Draft replaced from the workbook').first()).toBeVisible()
+  expect(sent).toEqual([expect.objectContaining({ replaceProfile: true })])
+})
+
+test('a workbook with an error can\'t replace the draft', async ({ page }) => {
+  await mockRa(page)
+  await page.route(/\/api\/ra\/assessments\/1\/import\/preview$/, (route) => route.fulfill({ json: {
+    ...PREVIEW, warnings: [{ sheet: 'LRP (front)', cell: 'F10', message: 'Building name: required.', level: 'error' }, ...PREVIEW.warnings], errors: 1, can_import: false,
+  } }))
+  await page.goto('/ra/manage/1')
+  await page.getByRole('button', { name: 'Upload Excel' }).click({ timeout: 60_000 })
+  const dialog = page.getByRole('dialog', { name: 'Replace this draft from Excel' })
+  await dialog.getByLabel('Choose the RA workbook').setInputFiles(WORKBOOK)
+  await expect(dialog.getByText('1 thing to fix in the workbook')).toBeVisible()
+  await expect(dialog.getByText('Fix the workbook and choose it again.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Replace draft' })).toBeDisabled()
 })

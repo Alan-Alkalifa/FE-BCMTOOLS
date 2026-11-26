@@ -19,7 +19,8 @@ onActivated(() => {
 })
 const { data: lookups } = useBiancaLookups(id)
 const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data.value)
-const exporter = useBiancaExport()
+const exportAll = useBiancaExport()
+const exportFunction = useBiancaExport()
 const pdf = useBiancaPdf()
 
 useHead({ title: computed(() => `Report ${data.value?.ref_no ?? 'BIA'} · BCM Tools`) })
@@ -106,43 +107,50 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
     >
       <!-- The BIA, and what to do with the report -->
       <UCard>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <dl class="grid flex-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt class="text-xs text-muted">
-                BIA
-              </dt>
-              <dd class="font-medium">
-                {{ data.ref_no ?? `#${data.id}` }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted">
-                Directorate
-              </dt>
-              <dd>{{ shown(data.directorate) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted">
-                Sub directorate
-              </dt>
-              <dd>{{ shown(data.sub_directorate) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted">
-                Group
-              </dt>
-              <dd>{{ shown(data.org_group) }}</dd>
-            </div>
-          </dl>
-          <div class="flex flex-wrap gap-2 print:hidden">
-            <UButton
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-arrow-left"
-              :label="editable ? 'Back to the form' : 'Back to the BIA'"
-              :to="`${biancaPath(data.id)}?tab=appendix`"
-            />
+        <dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-12">
+          <div class="lg:col-span-2">
+            <dt class="text-xs text-muted">
+              BIA
+            </dt>
+            <dd class="mt-0.5 font-mono font-semibold whitespace-nowrap text-highlighted">
+              {{ data.ref_no ?? `#${data.id}` }}
+            </dd>
+          </div>
+          <div class="lg:col-span-3">
+            <dt class="text-xs text-muted">
+              Directorate
+            </dt>
+            <dd class="mt-0.5 font-medium text-highlighted">
+              {{ shown(data.directorate) }}
+            </dd>
+          </div>
+          <div class="lg:col-span-3">
+            <dt class="text-xs text-muted">
+              Sub directorate
+            </dt>
+            <dd class="mt-0.5 font-medium text-highlighted">
+              {{ shown(data.sub_directorate) }}
+            </dd>
+          </div>
+          <div class="lg:col-span-4">
+            <dt class="text-xs text-muted">
+              Group
+            </dt>
+            <dd class="mt-0.5 font-medium text-highlighted">
+              {{ shown(data.org_group) }}
+            </dd>
+          </div>
+        </dl>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-default pt-3.5 print:hidden">
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-arrow-left"
+            :label="editable ? 'Back to the form' : 'Back to the BIA'"
+            :to="`${biancaPath(data.id)}?tab=appendix`"
+          />
+          <div class="flex flex-wrap items-center gap-2">
             <UButton
               v-if="functions.length"
               icon="i-lucide-printer"
@@ -163,8 +171,8 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
                 variant="outline"
                 icon="i-lucide-file-spreadsheet"
                 label="Export all to Excel"
-                :loading="exporter.busy.value"
-                @click="exporter.run(data.id)"
+                :loading="exportAll.busy.value"
+                @click="exportAll.run(data.id)"
               />
             </template>
           </div>
@@ -207,8 +215,8 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
               variant="outline"
               icon="i-lucide-file-spreadsheet"
               label="Export this function to Excel"
-              :loading="exporter.busy.value"
-              @click="exporter.run(data.id, [number])"
+              :loading="exportFunction.busy.value"
+              @click="exportFunction.run(data.id, [number])"
             />
           </div>
         </div>

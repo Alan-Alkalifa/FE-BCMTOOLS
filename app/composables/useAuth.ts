@@ -30,6 +30,15 @@ export interface MenuNode {
 export function useAuth() {
   const user = useState<CurrentUser | null>('user', () => null)
   const menu = useState<MenuNode[] | null>('menu', () => null)
+  const { $posthog } = useNuxtApp()
+
+  function identifyUser(value: CurrentUser) {
+    $posthog?.identify(String(value.id), {
+      ...(value.email ? { email: value.email } : {}),
+      name: value.name,
+      role_codes: value.roles.map((role) => role.code),
+    })
+  }
 
   function setUser(value: CurrentUser | null) {
     user.value = value
@@ -41,7 +50,10 @@ export function useAuth() {
     try {
       // A timeout, because the route middleware awaits this before anything renders: a backend
       // that is down or hanging would otherwise leave the page blank instead of showing sign-in.
-      setUser(await $fetch<CurrentUser>('/api/me', { timeout: 8000 }))
+      const currentUser = await $fetch<CurrentUser>('/api/me', { timeout: 8000 })
+      setUser(currentUser)
+      // Restore identity after a page refresh; posthog-js then attributes errors and events to it.
+      identifyUser(currentUser)
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode !== 401) throw error
       setUser(null)
@@ -61,7 +73,12 @@ export function useAuth() {
   async function login(username: string, password: string) {
     // The ID and password travel sealed (utils/seal.ts), never as readable JSON.
     const signedIn = await sealedFetch<CurrentUser>('/api/auth/login', 'login', { username, password })
+    if (user.value && user.value.id !== signedIn.id) $posthog?.reset()
     setUser(signedIn)
+    // The backend returns the stable primary key in CurrentUser.id, not merely the login email.
+    identifyUser(signedIn)
+    $posthog?.capture('user_logged_in')
+    $posthog?.logger.info('user login succeeded', { role_count: signedIn.roles.length })
     menu.value = null
     return signedIn
   }
@@ -76,16 +93,24 @@ export function useAuth() {
     try {
       await $fetch('/api/auth/logout', { method: 'POST' })
     } finally {
+      if (user.value) {
+        $posthog?.capture('user_logged_out')
+        $posthog?.logger.info('user logout requested')
+        $posthog?.reset()
+      }
       setUser(null)
       clearNuxtData()
     }
   }
 
   async function changePassword(currentPassword: string, password: string) {
-    setUser(await sealedFetch<CurrentUser>('/api/auth/password', 'change_password', {
+    const updatedUser = await sealedFetch<CurrentUser>('/api/auth/password', 'change_password', {
       current_password: currentPassword,
       password,
-    }))
+    })
+    setUser(updatedUser)
+    $posthog?.capture('password_changed')
+    $posthog?.logger.info('password changed')
   }
 
   /** True if the user holds any of the permission codes. */

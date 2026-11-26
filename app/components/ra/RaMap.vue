@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Map as LeafletMap, Marker, LeafletMouseEvent } from 'leaflet'
-import type { RaMapArea, RaMapCircle, RaMapMarker, RaMapStation, RaPin } from '~/composables/useRa'
+import type { RaMapAlert, RaMapArea, RaMapCircle, RaMapHotspot, RaMapMarker, RaMapNews, RaMapStation, RaPin } from '~/composables/useRa'
 import 'leaflet/dist/leaflet.css'
 
 /**
@@ -37,6 +37,16 @@ const props = withDefaults(defineProps<{
   /** WAQI's air quality stations, each a dot with its AQI and its area. Not part of the fitted
    *  view. */
   stations?: RaMapStation[]
+  /** Places GDELT's news mentions, each a square with its number of articles (violet for a
+   *  disaster, amber for an incident); the selected one with its radius. Not part of the fitted
+   *  view. */
+  news?: RaMapNews[]
+  /** NASA FIRMS's fire hotspots, small dots drawn on a canvas (there can be thousands); red
+   *  when a building is within the radius. Not part of the fitted view. */
+  hotspots?: RaMapHotspot[]
+  /** GDACS's disaster alerts, each its event type in its alert level's colour; the selected one
+   *  with its radius. Not part of the fitted view. */
+  alerts?: RaMapAlert[]
 }>(), {
   markers: () => [],
   circles: () => [],
@@ -51,9 +61,12 @@ const props = withDefaults(defineProps<{
   pinLabel: 'Disaster point',
   scrollZoom: false,
   stations: () => [],
+  news: () => [],
+  hotspots: () => [],
+  alerts: () => [],
 })
 const pin = defineModel<RaPin | null>('pin', { default: null })
-const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], area: [id: string], station: [id: number], ready: [] }>()
+const emit = defineEmits<{ select: [id: number, variant: RaMapMarker['variant']], area: [id: string], station: [id: number], news: [id: string], hotspot: [id: number], alert: [id: number], ready: [] }>()
 
 const { data: settings, error: settingsError } = useRaMapSettings()
 const container = useTemplateRef<HTMLDivElement>('container')
@@ -67,6 +80,8 @@ const PIN_ZOOM = 17
 let L: typeof import('leaflet') | undefined
 let map: LeafletMap | undefined
 let layer: import('leaflet').LayerGroup | undefined
+/** Hotspots are many: one canvas draws them all. */
+let canvas: import('leaflet').Canvas | undefined
 let editMarker: Marker | undefined
 
 function icon(level: RaMapMarker['level'], active: boolean, approval?: RaPinApproval | null, out = false) {
@@ -130,6 +145,38 @@ function stationIcon(station: RaMapStation) {
   })
 }
 
+/** A GDELT news place: its number of articles in a violet square. */
+function newsIcon(place: RaMapNews) {
+  const element = document.createElement('span')
+  element.className = place.incident ? 'ra-news ra-news-incident' : 'ra-news'
+  element.textContent = place.count > 99 ? '99+' : String(place.count)
+  return L!.divIcon({
+    html: element,
+    className: `ra-pin ra-pin-news${place.active ? ' ra-pin-active' : ''}`,
+    iconSize: [26, 20],
+    iconAnchor: [13, 10],
+    tooltipAnchor: [0, -10],
+  })
+}
+
+/** GDACS's alert levels, as GDACS colours them. */
+const ALERT_COLOURS: Record<string, string> = { Green: '#15803d', Orange: '#c2410c', Red: '#b91c1c' }
+
+/** A GDACS alert: its event type (EQ, FL, TC, ...) in a tag of its level's colour. */
+function alertIcon(alert: RaMapAlert) {
+  const element = document.createElement('span')
+  element.className = 'ra-alert'
+  element.textContent = alert.type
+  element.style.backgroundColor = ALERT_COLOURS[alert.level] ?? ALERT_COLOURS.Green!
+  return L!.divIcon({
+    html: element,
+    className: `ra-pin ra-pin-alert${alert.active ? ' ra-pin-active' : ''}`,
+    iconSize: [26, 20],
+    iconAnchor: [13, 10],
+    tooltipAnchor: [0, -10],
+  })
+}
+
 /** Tooltips take a DOM node, so names are never parsed as HTML. */
 function tooltip(text: string) {
   const element = document.createElement('span')
@@ -168,6 +215,52 @@ function drawMarkers(fit: boolean) {
     })
     marker.bindTooltip(tooltip(station.label), { direction: 'top' })
     marker.on('click', () => emit('station', station.id))
+    layer.addLayer(marker)
+  }
+  for (const spot of props.hotspots) {
+    const marker = L.circleMarker([spot.lat, spot.lng], {
+      renderer: canvas,
+      radius: spot.active ? 7 : spot.near ? 5 : 3.5,
+      color: '#ffffff',
+      weight: spot.active ? 2 : 1,
+      fillColor: spot.near ? '#dc2626' : '#f97316',
+      fillOpacity: 0.9,
+    })
+    marker.bindTooltip(tooltip(spot.label), { direction: 'top' })
+    marker.on('click', () => emit('hotspot', spot.id))
+    layer.addLayer(marker)
+  }
+  for (const alert of props.alerts) {
+    if (alert.active) {
+      const colour = ALERT_COLOURS[alert.level] ?? ALERT_COLOURS.Green!
+      layer.addLayer(L.circle([alert.lat, alert.lng], { radius: alert.radiusM, className: 'ra-radius-alert', color: colour, fillColor: colour, interactive: false }))
+    }
+    const marker = L.marker([alert.lat, alert.lng], {
+      icon: alertIcon(alert),
+      title: alert.label,
+      alt: alert.label,
+      keyboard: true,
+      riseOnHover: true,
+      zIndexOffset: -800,
+    })
+    marker.bindTooltip(tooltip(alert.label), { direction: 'top' })
+    marker.on('click', () => emit('alert', alert.id))
+    layer.addLayer(marker)
+  }
+  for (const place of props.news) {
+    if (place.active) {
+      layer.addLayer(L.circle([place.lat, place.lng], { radius: place.radiusM, className: place.incident ? 'ra-radius-news ra-radius-news-incident' : 'ra-radius-news', interactive: false }))
+    }
+    const marker = L.marker([place.lat, place.lng], {
+      icon: newsIcon(place),
+      title: place.label,
+      alt: place.label,
+      keyboard: true,
+      riseOnHover: true,
+      zIndexOffset: -900,
+    })
+    marker.bindTooltip(tooltip(place.label), { direction: 'top' })
+    marker.on('click', () => emit('news', place.id))
     layer.addLayer(marker)
   }
   for (const ring of props.circles) {
@@ -274,6 +367,7 @@ async function init() {
     .addTo(map)
   map.attributionControl.setPrefix(false)
   layer = L.layerGroup().addTo(map)
+  canvas = L.canvas({ padding: 0.5 })
   if (props.editable) {
     map.on('click', (event: LeafletMouseEvent) => {
       pin.value = round(event.latlng.lat, event.latlng.lng)
@@ -328,6 +422,8 @@ watch(() => props.areas, () => drawMarkers(false), { deep: true })
 watch(() => props.line, () => drawMarkers(false), { deep: true })
 watch(() => props.selected, () => drawMarkers(false))
 watch(() => props.stations, () => drawMarkers(false), { deep: true })
+watch(() => props.news, () => drawMarkers(false), { deep: true })
+watch(() => [props.hotspots, props.alerts], () => drawMarkers(false), { deep: true })
 watch(pin, (value, previous) => {
   // Typed or reset coordinates move the view; a click or drag already shows the spot.
   const moved = !previous || !value || Math.abs(value.lat - previous.lat) > 0.01 || Math.abs(value.lng - previous.lng) > 0.01
@@ -484,6 +580,77 @@ defineExpose({
 .ra-pin-air.ra-pin-active .ra-aqi {
   box-shadow: 0 0 0 2px var(--ui-primary);
   transform: scale(1.15);
+}
+
+/* A GDELT news place: its number of articles in a violet square, and the selected one's radius,
+   violet and dashed. */
+.ra-news {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+  background-color: #7c3aed;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ra-pin-news.ra-pin-active .ra-news {
+  box-shadow: 0 0 0 2px var(--ui-primary);
+  transform: scale(1.15);
+}
+
+.ra-radius-news {
+  stroke: #7c3aed;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: #7c3aed;
+  fill-opacity: 0.08;
+}
+
+/* News of an incident hazard: amber (an incident is local, its radius smaller). */
+.ra-news-incident {
+  background-color: #b45309;
+}
+
+.ra-radius-news-incident {
+  stroke: #b45309;
+  fill: #b45309;
+}
+
+/* A GDACS alert: its event type in a tag of its level's colour (set on the tag), and the
+   selected one's radius, dashed in that colour. */
+.ra-alert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: 4px 4px 4px 0;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.ra-pin-alert.ra-pin-active .ra-alert {
+  box-shadow: 0 0 0 2px var(--ui-primary);
+  transform: scale(1.15);
+}
+
+.ra-radius-alert {
+  stroke-width: 2;
+  stroke-dasharray: 8 4;
+  fill-opacity: 0.06;
 }
 
 /* A BMKG weather warning's area: blue and dashed; the selected one stronger. */

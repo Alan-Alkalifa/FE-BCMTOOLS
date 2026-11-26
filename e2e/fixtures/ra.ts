@@ -508,6 +508,48 @@ export async function mockRa(
           events: 3, days: 2, last: '2026-11-18T03:45:00Z',
           items: [{ event: 'Hujan Lebat dan Petir', headline: 'Hujan Lebat disertai Petir di DKI Jakarta', effective_at: '2026-11-18T03:45:00Z', expires_at: '2026-11-18T06:00:00Z' }],
         },
+        gdelt: {
+          enabled: true, city: 'Jakarta Selatan', from_year: from, to_year: to, source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+          hazards: {
+            H01: {
+              keywords: ['banjir', 'banjir bandang', 'flood'], read_at: '2026-11-23T03:00:00Z', held_from: '2025-11-23', articles: 46, days: 9, last: '2026-11-20',
+              items: [{ url: 'https://news.example.id/banjir-kemang', title: 'Banjir rendam Kemang', domain: 'news.example.id', seen_at: '2026-11-20T05:30:00Z' }],
+            },
+            H03: { keywords: ['gempa'], read_at: null, held_from: null, articles: 0, days: 0, last: null, items: [] },
+          },
+        },
+        firms: {
+          enabled: true, hazard_code: 'H09', radius_km: 5, has_coordinates: true, from_year: from, to_year: to, read_at: '2026-11-23T03:30:00Z',
+          held_from: '2025-11-23', read_until: '2026-11-22', hotspots: 7, days: 3, last: '2026-09-14', max_frp: 48.2,
+          items: [{ day: '2026-09-14', count: 4, max_frp: 48.2 }, { day: '2026-08-30', count: 2, max_frp: 12.1 }],
+          source: 'NASA FIRMS (Fire Information for Resource Management System)', source_url: 'https://firms.modaps.eosdis.nasa.gov/',
+        },
+        mediacloud: {
+          enabled: true, city: 'Jakarta Selatan', from_year: from, to_year: to, source: 'Media Cloud', source_url: 'https://www.mediacloud.org/',
+          hazards: {
+            H16: {
+              keywords: ['perampokan', 'rampok'], read_at: '2026-11-24T03:30:00Z', held_from: '2016-01-01', stories: 23, days: 19, last: '2026-10-02',
+              items: [{ url: 'https://news.example.id/perampokan-kemang', title: 'Perampokan toko emas di Jakarta Selatan', media_name: 'kompas.com', published_on: '2026-10-02' }],
+            },
+            H17: { keywords: ['sandera'], read_at: null, held_from: '2016-01-01', read_until: '2019-03-31', stories: 2, days: 2, last: '2018-07-14', items: [] },
+            H18: { keywords: ['bom'], read_at: null, held_from: null, stories: 0, days: 0, last: null, items: [] },
+          },
+        },
+        gdacs: {
+          enabled: true, radius_km: 100, has_coordinates: true, from_year: from, to_year: to, polled_at: '2026-11-23T03:00:00Z', held_from: '2025-11-23',
+          source: 'GDACS (Global Disaster Alert and Coordination System)', source_url: 'https://www.gdacs.org/',
+          hazards: {
+            H01: {
+              event_types: ['FL'], events: 2, highest: 'Orange', last: '2026-02-03T00:00:00Z',
+              items: [{
+                id: 9, event_type: 'FL', type_label: 'Flood', hazard_code: 'H01', event_id: 1102345, name: 'Flood in Indonesia', description: null,
+                alert_level: 'Orange', severity: 'Magnitude 2.1', country: 'Indonesia', lat: -6.3, lon: 106.8, from_at: '2026-02-03T00:00:00Z', to_at: '2026-02-06T00:00:00Z',
+                is_current: false, report_url: 'https://www.gdacs.org/report.aspx?eventid=1102345&eventtype=FL',
+              }],
+            },
+            H05: { event_types: ['TC'], events: 0, highest: null, last: null, items: [] },
+          },
+        },
         air: {
           hazard_code: 'H10', enabled: true, configured: true, has_coordinates: true, read_at: '2026-11-17T03:00:00Z', station: 'US Embassy Jakarta South',
           distance_km: 2.5, threshold: 55.4, ...range, days: 1001, unhealthy_days: 501, rating: 5, from: '2024-01-01', to: '2026-11-15', held_from: '2024-01-01',
@@ -1226,6 +1268,48 @@ export async function mockRaMap(page: Page, options: { crisis?: boolean, declare
       ],
     } })
   })
+  // GDELT's incident news: a robbery 1.2 km from the Bintaro branch, and a fire in Bandung with
+  // no place near (H14 asked: only Bandung).
+  const newsPlace = (key: string, name: string, lat: number, lon: number, hazard: string, count: number, places: { id: number, code: string, kind: string, name: string, distance_km: number }[], kind = 'incident') => ({
+    key, kind, radius_km: 2, name, lat, lon, hazards: [hazard], articles_count: count, last: '2026-11-23T02:15:00Z', places,
+    articles: [{ url: `https://news.example.id/${key}`, title: null, domain: 'news.example.id', language: 'ind', hazard_code: hazard, tone: -4.2, published_at: '2026-11-23T02:15:00Z' }],
+  })
+  const robbery = {
+    ...newsPlace('-6.2800,106.7300', 'Bintaro, Banten, Indonesia', -6.28, 106.73, 'H16', 12, [{ ...bintaro, distance_km: 1.2 }]),
+    articles: [{ url: 'https://news.example.id/perampokan-minimarket-bintaro', title: 'Perampokan minimarket di Bintaro', domain: 'news.example.id', language: 'ind', hazard_code: 'H16', tone: -6.1, published_at: '2026-11-23T01:40:00Z' }],
+  }
+  const fire = newsPlace('-6.9000,107.6000', 'Bandung, Jawa Barat, Indonesia', -6.9, 107.6, 'H14', 3, [])
+  await page.route(/\/api\/ra\/gdelt/, (route) => {
+    const hazard = new URL(route.request().url()).searchParams.get('hazard')
+    const items = hazard === 'H14' ? [fire] : [robbery, fire]
+    return route.fulfill({ json: {
+      enabled: true, polled_at: '2026-11-23T03:00:00Z', poll_error: null, stale: false, source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+      hazard, days: 7, radius_km: 2, hazards: ['H14', 'H16'], matching: items.length, affected: hazard === 'H14' ? 0 : 1, items,
+    } })
+  })
+  // NASA FIRMS: a hotspot 2.4 km from the Bintaro branch and two in Riau with no place near.
+  const hotspot = (id: number, lat: number, lon: number, near: boolean, frp: number) => ({
+    id, lat, lon, acquired_at: '2026-11-22T06:12:00Z', confidence: 'high', frp, source: 'VIIRS_SNPP_NRT', satellite: 'N', daynight: 'D', near,
+  })
+  await page.route(/\/api\/ra\/firms/, (route) => route.fulfill({ json: {
+    enabled: true, configured: true, polled_at: '2026-11-23T03:00:00Z', poll_error: null, stale: false,
+    source: 'NASA FIRMS (Fire Information for Resource Management System)', source_url: 'https://firms.modaps.eosdis.nasa.gov/',
+    days: 7, radius_km: 5, matching: 3, affected: 1,
+    items: [hotspot(31, -6.27, 106.75, true, 12.5), hotspot(32, 0.52, 101.46, false, 40.2), hotspot(33, 0.6, 101.5, false, 8)],
+    buildings: [{ ...bintaro, count: 1, nearest_km: 2.4, last: '2026-11-22T06:12:00Z', max_frp: 12.5 }],
+  } }))
+  // GDACS: a Red cyclone far south of Java, and a Green flood 20 km from the Bintaro branch.
+  const gdacsAlert = (id: number, type: string, label: string, level: string, lat: number, lon: number, places: object[]) => ({
+    id, event_type: type, type_label: label, hazard_code: type === 'FL' ? 'H01' : 'H05', event_id: 1000000 + id, name: `${label} in Indonesia`, description: null,
+    alert_level: level, severity: type === 'TC' ? 'Tropical Storm (maximum wind speed of 83 km/h)' : 'Heavy rain', country: 'Indonesia', lat, lon,
+    from_at: '2026-11-20T00:00:00Z', to_at: '2026-11-22T00:00:00Z', is_current: true, report_url: `https://www.gdacs.org/report.aspx?eventid=${1000000 + id}&eventtype=${type}`, places,
+  })
+  await page.route(/\/api\/ra\/gdacs/, (route) => route.fulfill({ json: {
+    enabled: true, polled_at: '2026-11-23T03:00:00Z', poll_error: null, stale: false,
+    source: 'GDACS (Global Disaster Alert and Coordination System)', source_url: 'https://www.gdacs.org/',
+    days: 7, radius_km: 100, event_types: { EQ: 'Earthquake', TC: 'Tropical cyclone', FL: 'Flood' }, matching: 2, affected: 1,
+    items: [gdacsAlert(41, 'TC', 'Tropical cyclone', 'Red', -11, 110, []), gdacsAlert(42, 'FL', 'Flood', 'Green', -6.3, 106.9, [{ ...bintaro, distance_km: 20.4 }])],
+  } }))
   // A place's daily PM2.5 for the trend chart: three days.
   await page.route(/\/api\/ra\/air-quality\/\d+\/days/, (route) => route.fulfill({ json: {
     location_id: MAP_PLACES[2]!.id, station: 'US Embassy Jakarta South', distance_km: 2.5, threshold: 55.4, from_year: 2017, to_year: 2026,

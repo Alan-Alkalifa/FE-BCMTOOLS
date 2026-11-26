@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * The legend under a map, one row per kind of thing it draws: places, their status, events,
- * the pin colours (`residual`) and WAQI's air quality (`aqi`). The symbols are the map's own
+ * the pin colours (`residual`), WAQI's air quality (`aqi`), GDELT's disaster news (`news`), NASA
+ * FIRMS's fire hotspots (`fires`) and GDACS's alerts (`alerts`). The symbols are the map's own
  * (the same RaMapSymbol the pins use). Every map shows one (Location map, the disaster dialog
  * and the disaster page), listing only what that map can show.
  */
@@ -15,12 +16,21 @@ const props = withDefaults(defineProps<{
   weather?: boolean
   /** The map draws WAQI's air quality stations. */
   aqi?: boolean
+  /** The map draws GDELT's disaster news places. */
+  news?: boolean
+  /** The map draws NASA FIRMS's fire hotspots. */
+  fires?: boolean
+  /** The map draws GDACS's alerts. */
+  alerts?: boolean
 }>(), {
   items: () => ['building', 'branch', 'waiting', 'rejected', 'inactive', 'crisis', 'crisis_pending', 'quake'],
   labels: () => ({}),
   residual: 'Latest residual risk',
   weather: false,
   aqi: false,
+  news: false,
+  fires: false,
+  alerts: false,
 })
 
 type Group = 'places' | 'status' | 'events'
@@ -47,7 +57,7 @@ const rows = computed(() => GROUPS
       .filter((key) => SYMBOLS[key].group === group.key)
       .map((key) => ({ key, ...SYMBOLS[key], label: props.labels[key] ?? SYMBOLS[key].label })),
   }))
-  .filter((group) => group.items.length || (group.key === 'events' && props.weather)))
+  .filter((group) => group.items.length || (group.key === 'events' && (props.weather || props.news || props.fires || props.alerts))))
 /** Faded markers are explained wherever the map can show a place not in service. */
 const showsFaded = computed(() => props.items.includes('inactive') || props.items.includes('rejected'))
 </script>
@@ -88,6 +98,33 @@ const showsFaded = computed(() => props.items.includes('inactive') || props.item
           class="inline-block h-3 w-4 rounded-sm border border-dashed border-info bg-info/15"
           aria-hidden="true"
         /> Weather warning (BMKG) and its area</span>
+        <span
+          v-if="group.key === 'events' && news"
+          class="flex items-center gap-1"
+        ><span
+          class="inline-flex h-3 w-4 items-center justify-center rounded-[3px] bg-[#b45309] text-[8px] font-semibold leading-none text-white"
+          aria-hidden="true"
+        >3</span> Incident news (GDELT), the number of articles, dashed ring for the selected place's radius</span>
+        <span
+          v-if="group.key === 'events' && fires"
+          class="flex items-center gap-1"
+        ><span
+          class="inline-block size-2 rounded-full bg-[#f97316] ring-1 ring-white"
+          aria-hidden="true"
+        /><span
+          class="inline-block size-2.5 rounded-full bg-[#dc2626] ring-1 ring-white"
+          aria-hidden="true"
+        /> Fire hotspot (NASA FIRMS), red within the radius of a building</span>
+        <span
+          v-if="group.key === 'events' && alerts"
+          class="flex items-center gap-1"
+        ><span
+          v-for="level in ['Green', 'Orange', 'Red']"
+          :key="level"
+          class="inline-flex h-3 w-4 items-center justify-center rounded-[3px] text-[7px] font-bold leading-none text-white"
+          :class="level === 'Red' ? 'bg-[#b91c1c]' : level === 'Orange' ? 'bg-[#c2410c]' : 'bg-[#15803d]'"
+          aria-hidden="true"
+        >EQ</span> Disaster alert (GDACS): earthquake EQ, flood FL, cyclone TC, volcano VO, drought DR, forest fire WF, coloured Green, Orange or Red by its alert level</span>
       </dd>
     </template>
 
