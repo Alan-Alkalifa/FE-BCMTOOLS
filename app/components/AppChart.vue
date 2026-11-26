@@ -20,6 +20,8 @@ const props = withDefaults(defineProps<{
   height?: number
 }>(), { summary: '', loading: false, empty: null, height: 280 })
 
+const emit = defineEmits<{ select: [params: unknown] }>()
+
 // Back from another in-app tab (docs/tabs.md): the chart was drawn off screen, size it again.
 const chart = ref<{ resize?: () => void } | null>(null)
 onActivated(() => nextTick(() => chart.value?.resize?.()))
@@ -153,6 +155,7 @@ const showSkeleton = useDelayedLoading(() => props.loading)
         :option="option"
         autoresize
         class="size-full"
+        @click="emit('select', $event)"
       />
     </div>
   </UCard>

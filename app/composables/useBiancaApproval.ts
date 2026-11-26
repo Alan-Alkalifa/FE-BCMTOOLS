@@ -182,6 +182,18 @@ export function biancaApprovalPath(id?: number) {
   return id === undefined ? '/bianca/approval' : `/bianca/approval/${id}`
 }
 
+export function biancaApprovalExportUrl(
+  view: 'inbox' | 'history' | 'board',
+  filters: Record<string, string | number | undefined> = {},
+) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const text = query.toString()
+  return `/api/bianca/approvals/${view}.xlsx${text ? `?${text}` : ''}`
+}
+
 /** "Today", "1 working day", "4 working days". */
 export function biancaWaiting(days: number | null | undefined) {
   if (days == null) return '—'

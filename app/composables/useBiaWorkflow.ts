@@ -1,6 +1,16 @@
-import type { BiaCategory, BiaGroupStatusKey, BiaReason, BiaRevisionState, BiaStatus, BiaStatusKey, BiaWaitLevel } from '~/utils/bia'
+import type {
+  BiaCategory,
+  BiaGroupStatusKey,
+  BiaReason,
+  BiaRevisionState,
+  BiaStatus,
+  BiaStatusDetailKey,
+  BiaStatusGroup,
+  BiaStatusKey,
+  BiaWaitLevel,
+} from '~/utils/bia'
 
-export type BiaRenewalBucket = 'overdue' | 'due_30' | 'due_90' | 'later'
+export type BiaRenewalBucket = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'later'
 
 export interface BiaAssessmentRef {
   id: number
@@ -11,6 +21,10 @@ export interface BiaAssessmentRef {
   status: BiaStatus
   is_returned?: boolean
   revision_state?: BiaRevisionState | null
+  status_group?: BiaStatusGroup
+  status_group_label?: string
+  status_detail?: BiaStatusDetailKey
+  status_detail_label?: string
   current_signoff_role: string | null
   current_step_title: string | null
   highest_category: BiaCategory | null
@@ -39,6 +53,15 @@ export interface BiaGroupInfo {
   sub_directorate: string
   main_building: string
   alt_building: string
+}
+
+export interface BiaMonitorAssessmentRow extends BiaAssessmentRef {
+  group: BiaGroupInfo
+  renewal_date: string | null
+  days_left: number | null
+  bucket: BiaRenewalBucket | null
+  assessor: string | null
+  alt_coordinator: string | null
 }
 
 export interface BiaMonitorGroupRow {
@@ -187,6 +210,10 @@ export interface BiaSignoffWaitingRow {
   reminders_sent: number
   escalated_at: string | null
   level: BiaWaitLevel
+  status_group?: BiaStatusGroup
+  status_group_label?: string
+  status_detail?: BiaStatusDetailKey
+  status_detail_label?: string
 }
 
 export interface BiaItDependencyItem {
@@ -285,6 +312,10 @@ export interface BiaAssessmentDetail {
   status: BiaStatus
   is_returned?: boolean
   revision_state?: BiaRevisionState | null
+  status_group?: BiaStatusGroup
+  status_group_label?: string
+  status_detail?: BiaStatusDetailKey
+  status_detail_label?: string
   can_edit?: boolean
   current_signoff_role: string | null
   current_step_title: string | null
@@ -316,6 +347,12 @@ export interface BiaAssessmentDetail {
     justification_customer: string | null
     justification_rto: string | null
     justification_dependency: string | null
+  }
+  gaps?: {
+    details?: string[]
+    impact?: string[]
+    dependencies?: string[]
+    recovery?: string[]
   }
   group: BiaGroupInfo & {
     description: string
@@ -409,7 +446,28 @@ export interface BiaAssessmentDetail {
 export interface BiaMonitoringFilters {
   q?: string
   category?: BiaCategory | 'none'
-  state?: 'approved' | 'valid' | 'draft' | 'need_revision' | 'in_revision' | 'returned' | 'in_signoff' | 'none' | 'not_started' | 'overdue' | 'due_soon' | 'open'
+  state?:
+    | 'approved'
+    | 'full_approved'
+    | 'in_renewal'
+    | 'valid'
+    | 'draft_group'
+    | 'draft'
+    | 'waiting_submission'
+    | 'need_revision'
+    | 'in_revision'
+    | 'returned'
+    | 'in_signoff'
+    | 'waiting_approval'
+    | 'escalated'
+    | 'none'
+    | 'not_started'
+    | 'overdue'
+    | 'due_soon'
+    | 'due_30'
+    | 'due_60'
+    | 'due_90'
+    | 'open'
   reason?: BiaReason
   from?: string
   to?: string
@@ -428,6 +486,10 @@ export interface BiaGroupHistoryRow {
   status: BiaStatus
   is_returned?: boolean
   revision_state?: BiaRevisionState | null
+  status_group?: BiaStatusGroup
+  status_group_label?: string
+  status_detail?: BiaStatusDetailKey
+  status_detail_label?: string
   assessment_date: string | null
   approved_at: string | null
   highest_category: BiaCategory | null
@@ -450,19 +512,32 @@ export interface BiaOverviewResponse {
     assessed: number
     not_assessed: number
     drafts: number
+    waiting_submission?: number
     need_revision: number
     in_revision: number
     returned: number
     in_signoff: number
+    waiting_approval?: number
+    waiting_group_head?: number
+    waiting_head_of?: number
+    waiting_bcm_head?: number
+    full_approved?: number
+    expired?: number
+    cancelled?: number
     overdue_renewals: number
+    due_30?: number
+    due_60?: number
+    due_90?: number
     due_in_90_days: number
     business_critical: number
     stuck_approvals: number
   }
-  by_existing_status?: { status: BiaGroupStatusKey, groups: number }[]
-  by_open_status?: { status: BiaStatusKey, groups: number }[]
+  by_existing_status?: { status: BiaGroupStatusKey | BiaStatusDetailKey, groups: number }[]
+  by_open_status?: { status: BiaStatusKey | BiaStatusDetailKey, groups: number }[]
+  by_status_group?: { group: BiaStatusGroup, label: string, count: number }[]
   by_category: { category: BiaCategory | 'none', groups: number }[]
   approved_per_month: { month: string, assessments: number }[]
+  available_years?: number[]
 }
 
 export interface BiaPaginatedResponse<T> {
@@ -477,6 +552,7 @@ export interface BiaRenewalsResponse extends BiaPaginatedResponse<BiaMonitorGrou
   counts: {
     overdue: number
     due_30: number
+    due_60?: number
     due_90: number
   }
 }
@@ -512,6 +588,12 @@ export function useBiaRenewals(filters: MaybeRefOrGetter<BiaMonitoringFilters>) 
 
 export function useBiaRegister(filters: MaybeRefOrGetter<BiaMonitoringFilters>) {
   return useFetch<BiaPaginatedResponse<BiaMonitorGroupRow>>('/api/bianca/monitoring/register', {
+    query: computed(() => toValue(filters)),
+  })
+}
+
+export function useBiaAssessments(filters: MaybeRefOrGetter<BiaMonitoringFilters>) {
+  return useFetch<BiaPaginatedResponse<BiaMonitorAssessmentRow>>('/api/bianca/monitoring/assessments', {
     query: computed(() => toValue(filters)),
   })
 }
@@ -578,7 +660,11 @@ export function useBiaAssessmentDetail(id: MaybeRefOrGetter<number>) {
   )
 }
 
-export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[], tab?: 'register' | 'bottlenecks') {
+export function biaExportUrl(
+  filters: BiaMonitoringFilters & { bucket?: string },
+  selectedIds?: number[],
+  tab?: 'register' | 'bottlenecks' | 'renewals' | 'assessments',
+) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
@@ -588,8 +674,8 @@ export function biaExportUrl(filters: BiaMonitoringFilters, groupIds?: number[],
   if (tab && tab !== 'register') {
     query.set('tab', tab)
   }
-  if (groupIds?.length) {
-    query.set('group_ids', groupIds.join(','))
+  if (selectedIds?.length) {
+    query.set(tab === 'assessments' ? 'bia_ids' : 'group_ids', selectedIds.join(','))
   }
   const text = query.toString()
   return `/api/bianca/monitoring/export.xlsx${text ? `?${text}` : ''}`

@@ -200,8 +200,8 @@ const boardColumns: TableColumn<BiancaBoardRow>[] = [
   { accessorKey: 'step_title', header: boardSortHeader('Current approval step', 'step_title'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
   { accessorKey: 'approver', header: boardSortHeader('Approver', 'approver'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
   { accessorKey: 'level', header: boardSortHeader('Status', 'level'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'waiting_since', header: boardSortHeader('Assign date', 'waiting_since'), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
-  { accessorKey: 'working_days_waiting', header: boardSortHeader('Working days', 'working_days_waiting', true), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { accessorKey: 'waiting_since', header: boardSortHeader('Assess since', 'waiting_since'), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { accessorKey: 'working_days_waiting', header: boardSortHeader('Assess days', 'working_days_waiting', true), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
   { accessorKey: 'reminders_sent', header: boardSortHeader('Reminders sent', 'reminders_sent', true), meta: { class: { th: 'min-w-24', td: 'min-w-24' } } },
   { accessorKey: 'escalated_at', header: boardSortHeader('Escalated on', 'escalated_at'), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
   { id: 'actions', header: '' },
@@ -322,12 +322,25 @@ const tabs = computed(() => [
         <div class="mt-4 space-y-6">
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <template #header>
-              <h2 class="text-lg font-semibold">
-                Waiting for my sign-off
-              </h2>
-              <p class="text-sm text-muted">
-                Open one to approve it or return it for changes.
-              </p>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 class="text-lg font-semibold">
+                    Waiting for my sign-off
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Open one to approve it or return it for changes.
+                  </p>
+                </div>
+                <UButton
+                  :to="biancaApprovalExportUrl('inbox')"
+                  external
+                  download
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                />
+              </div>
             </template>
             <UTable
               :data="inbox.data.value?.items ?? []"
@@ -470,6 +483,15 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Action"
             />
+            <UButton
+              :to="biancaApprovalExportUrl('history', { action: action === 'all' ? undefined : action, q: text('q') })"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+            />
           </ListFilterBar>
           <UTable
             :data="history.data.value?.items ?? []"
@@ -593,13 +615,30 @@ const tabs = computed(() => [
                 class="text-primary hover:underline"
               >BIANCA configuration > Reminders and escalation</NuxtLink><span v-else>the BIANCA reminder rules</span>.
             </p>
-            <UButton
-              icon="i-lucide-bell-ring"
-              :label="`Send reminder (${pickedRows.length})`"
-              :loading="nudgingBulk"
-              :disabled="!pickedRows.length || nudgingBulk"
-              @click="nudgeMany"
-            />
+            <div class="flex flex-wrap items-center gap-2">
+              <UButton
+                :to="biancaApprovalExportUrl('board', {
+                  step: boardStep === 'all' ? undefined : boardStep,
+                  level: boardLevel === 'all' ? undefined : boardLevel,
+                  category: categoryFilter === 'all' ? undefined : categoryFilter,
+                  approver_id: boardApprover ?? undefined,
+                  q: text('q'),
+                })"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+              <UButton
+                icon="i-lucide-bell-ring"
+                :label="`Send reminder (${pickedRows.length})`"
+                :loading="nudgingBulk"
+                :disabled="!pickedRows.length || nudgingBulk"
+                @click="nudgeMany"
+              />
+            </div>
           </div>
           <UTable
             :data="boardRows"
