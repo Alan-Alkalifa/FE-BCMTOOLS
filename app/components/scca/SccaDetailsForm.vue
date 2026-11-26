@@ -296,16 +296,19 @@ function payload() {
 // The Save button sits in the page's top bar and submits this form by its id
 // (`<button form="scca-form-…">`); `saving` drives its spinner.
 const saving = useSccaSaving()
+const { $posthog } = useNuxtApp()
 
 async function onSubmit() {
   formError.value = null
   if (saving) saving.value = true
   try {
     const body = payload()
+    const isNew = !props.assessment
     const saved = props.assessment
       ? await sccaApi.update(props.assessment.id, body)
       : await sccaApi.create({ ...body, application_name: state.application_name.trim() })
     reset(saved)
+    $posthog?.capture('scca_draft_saved', { is_new: isNew })
     toast.add({ title: props.assessment ? 'Assessment saved' : 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
     emit('saved', saved)
   } catch (error) {

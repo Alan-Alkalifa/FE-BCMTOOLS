@@ -401,6 +401,7 @@ async function collectBuilding() {
 }
 
 const submitting = ref(false)
+const { $posthog } = useNuxtApp()
 async function createWithBuilding() {
   formError.value = null
   submitting.value = true
@@ -419,6 +420,7 @@ async function createWithBuilding() {
       licom_user_id: state.licom_user_id ?? undefined,
       licom_phone: state.licom_phone.trim(),
     })
+    $posthog?.capture('ra_assessment_created', { kind: ra.value.kind, created_with_building: true })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
     await navigateTo(raPath(ra.value.kind, 'manage', created.id), { replace: true })
   } catch (error) {
@@ -449,6 +451,7 @@ async function onSubmit() {
       licom_user_id: state.licom_user_id ?? undefined,
       licom_phone: state.licom_phone.trim(),
     })
+    $posthog?.capture('ra_assessment_created', { kind: ra.value.kind, created_with_building: false })
     toast.add({ title: 'Assessment created', color: 'success', icon: 'i-lucide-circle-check' })
     await navigateTo(raPath(ra.value.kind, 'manage', created.id), { replace: true })
   } catch (error) {

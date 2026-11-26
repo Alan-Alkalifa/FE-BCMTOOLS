@@ -24,6 +24,14 @@ export default defineNuxtConfig({
     fonts: false,
     colorMode: false,
   },
+  runtimeConfig: {
+    public: {
+      posthog: {
+        projectToken: process.env.NUXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
+        host: process.env.NUXT_PUBLIC_POSTHOG_HOST,
+      },
+    },
+  },
   compatibilityDate: '2025-07-15',
   nitro: {
     devProxy: {

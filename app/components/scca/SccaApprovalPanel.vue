@@ -14,6 +14,7 @@ const emit = defineEmits<{ saved: [assessment: SccaAssessment] }>()
 
 const toast = useToast()
 const confirm = useConfirm()
+const { $posthog } = useNuxtApp()
 const dirty = useSccaDirty()
 const note = ref('')
 const noteError = ref<string | null>(null)
@@ -83,10 +84,15 @@ function emailNote(result: SccaApprovalResult, who: string) {
   return result.email_sent ? `${who} has been emailed.` : `The email to ${who} could not be sent; please let them know.`
 }
 
-async function run(action: () => Promise<SccaApprovalResult>, success: (result: SccaApprovalResult) => { title: string, description?: string }) {
+async function run(
+  action: () => Promise<SccaApprovalResult>,
+  success: (result: SccaApprovalResult) => { title: string, description?: string },
+  event: { name: 'scca_submitted' | 'scca_approval_decided', properties?: Record<string, string | boolean> },
+) {
   busy.value = true
   try {
     const result = await action()
+    $posthog?.capture(event.name, event.properties)
     note.value = ''
     noteError.value = null
     emit('saved', result)
@@ -119,7 +125,7 @@ async function submit() {
   await run(() => sccaApi.submit(props.assessment.id), (result) => ({
     title: 'Submitted for approval',
     description: emailNote(result, nextApprover(result)),
-  }))
+  }), { name: 'scca_submitted' })
 }
 
 async function approve() {
@@ -127,7 +133,7 @@ async function approve() {
     result.status === 'final'
       ? { title: 'Approved. The SCCA is final', description: emailNote(result, 'The assessor') }
       : { title: 'Approved', description: emailNote(result, nextApprover(result)) },
-  )
+  { name: 'scca_approval_decided', properties: { decision: 'approved' } })
 }
 
 async function reject() {
@@ -145,7 +151,7 @@ async function reject() {
   await run(() => sccaApi.reject(props.assessment.id, note.value.trim()), (result) => ({
     title: 'Rejected and returned to draft',
     description: emailNote(result, 'The assessor'),
-  }))
+  }), { name: 'scca_approval_decided', properties: { decision: 'rejected' } })
 }
 </script>
 
