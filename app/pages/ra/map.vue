@@ -1,8 +1,8 @@
 <script setup lang="ts">
-/** The location map moved to the Locations menu. */
+/** The building map moved to Sites (/sites/map). */
 definePageMeta({
   permission: ['ra.access', 'ra_branch.access'],
-  redirect: (to) => ({ path: '/locations/map', query: to.query }),
+  redirect: (to) => ({ path: '/sites/map', query: to.query }),
 })
 </script>
 

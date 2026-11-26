@@ -1,22 +1,27 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { Task, TaskLevelFilter, TaskModule, TaskType } from '~/composables/useTasks'
+import type { Task, TaskCardFilter, TaskLevelFilter, TaskModule, TaskType, TaskView } from '~/composables/useTasks'
 
 /**
  * Task Management: one tab per module the user's roles open — SCCA, RA HO, RA Branch (with
- * their buildings waiting for approval) and Sites (disasters and incidents waiting for approval,
- * for their approvers). In a tab the
- * module's BCM sees every task; everyone else what waits for them: the approvals and sign-off
- * steps they sign and the renewals of what they look after. Each task is done on its own page.
- * Nothing is reminded from here.
+ * their buildings waiting for approval), BIA and Sites (disasters and incidents waiting for
+ * approval, for their approvers). In a tab the module's BCM sees every task; everyone else what
+ * waits for them (the approvals and sign-off steps they sign), what they started that is in
+ * approval and the renewals of what they look after. The cards are the same as on Home
+ * (`taskCards`): Waiting for me and In approval, then Buildings, Disasters or Incidents (no
+ * Sign-offs or Renewals cards; the task filter has them); above them, for the
+ * module's BCM, the Admin Task row (stuck sign-offs, overdue renewals, and in RA HO and RA
+ * Branch the buildings waiting). Each task is done on its own page. Nothing is reminded from
+ * here.
  */
-definePageMeta({ permission: ['scca.access', 'ra.access', 'ra_branch.access'] })
+definePageMeta({ permission: ['scca.access', 'ra.access', 'ra_branch.access', 'bianca.access'] })
 
 const route = useRoute()
 const router = useRouter()
 const perPage = useRowsPerPage()
 
-const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'sites']
+const MODULES: TaskModule[] = ['scca', 'ra', 'ra_branch', 'bia', 'sites']
+const VIEWS: TaskView[] = ['mine', 'approval']
 const TYPES: TaskType[] = ['signoff', 'renewal', 'building', 'disaster', 'incident']
 const LEVELS: TaskLevelFilter[] = ['stuck', 'overdue', 'due']
 function pick<T extends string>(value: unknown, options: T[]): T | undefined {
@@ -26,6 +31,7 @@ function pick<T extends string>(value: unknown, options: T[]): T | undefined {
 const query = computed(() => ({
   // Sites was called Location: old links open it.
   module: pick(route.query.module === 'location' ? 'sites' : route.query.module, MODULES),
+  view: pick(route.query.view, VIEWS),
   type: pick(route.query.type, TYPES),
   level: pick(route.query.level, LEVELS),
   q: typeof route.query.q === 'string' && route.query.q.trim() ? route.query.q.trim() : undefined,
@@ -67,7 +73,7 @@ const tabItems = computed(() => (data.value?.tabs ?? []).map((item) => ({
   icon: TASK_MODULE_ICONS[item.module],
   badge: item.total ? { label: String(item.total), color: 'neutral' as const, variant: 'subtle' as const } : undefined,
 })))
-const filtered = computed(() => Boolean(query.value.q || query.value.type || query.value.level))
+const filtered = computed(() => Boolean(query.value.q || query.value.view || query.value.type || query.value.level))
 function clearFilters() {
   clearTimeout(searchTimer)
   search.value = ''
@@ -79,7 +85,7 @@ function setQuery(values: Record<string, string | undefined>) {
 
 const typeFilter = computed({
   get: () => query.value.type ?? 'all',
-  set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, level: undefined }),
+  set: (value: TaskType | 'all') => setQuery({ type: value === 'all' ? undefined : value, view: undefined, level: undefined }),
 })
 const TYPE_LABELS: Record<TaskType, string> = { signoff: 'Sign-offs', renewal: 'Renewals', building: 'Buildings', disaster: 'Disasters', incident: 'Incidents' }
 const { can } = useAuth()
@@ -91,32 +97,45 @@ const typeItems = computed(() => [
   ...moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], value: type })),
 ])
 
-/** The tab's cards filter the list, like Monitoring's; clicking the active one shows all again. */
+/** The tab's cards filter the list, like Monitoring's; clicking the active one shows all again.
+ *  Waiting for me and In approval first, the same as on Home, then each type; above them the
+ *  Admin Task row for the module's BCM. */
+const shared = computed(() => module.value
+  ? taskCards(module.value, data.value?.counts, Boolean(data.value?.oversees))
+  : { basic: [], admin: [] })
+const adminCards = computed(() => shared.value.admin)
 const cards = computed(() => {
   const counts = data.value?.counts
-  const all = data.value?.oversees
-  const hints: Record<TaskType, string> = {
-    signoff: module.value === 'scca'
-      ? (all ? 'Every SCCA in approval.' : 'SCCA approvals waiting for you.')
-      : (all ? 'Every RA in sign-off.' : 'RA sign-off steps waiting for you.'),
-    renewal: all ? 'Overdue or due within 90 days.' : 'Of what you look after, overdue or due within 90 days.',
+  type CardType = Exclude<TaskType, 'signoff' | 'renewal'>
+  const hints: Record<CardType, string> = {
     building: 'New, or to make inactive, waiting for approval.',
     disaster: 'Declared, waiting for approval.',
     incident: 'Declared, waiting for approval.',
   }
-  const looks: Record<TaskType, { icon: string, tone: 'info' | 'warning' | 'error' }> = {
-    signoff: { icon: 'i-lucide-badge-check', tone: 'info' },
-    renewal: { icon: 'i-lucide-calendar-clock', tone: 'warning' },
+  const looks: Record<CardType, { icon: string, tone: 'info' | 'warning' | 'error' }> = {
     building: { icon: 'i-lucide-building', tone: 'warning' },
     disaster: { icon: 'i-lucide-siren', tone: 'error' },
     incident: { icon: 'i-lucide-triangle-alert', tone: 'error' },
   }
-  return moduleTypes.value.map((type) => ({ label: TYPE_LABELS[type], type, value: counts?.[type], hint: hints[type], ...looks[type] }))
+  // No Sign-offs and Renewals cards: Waiting for me and In approval show the sign-offs, the
+  // task filter the renewals. The buildings waiting are an admin task when the Admin Task row
+  // shows them.
+  const inAdmin = adminCards.value.some((card) => card.key === 'building')
+  const types = moduleTypes.value
+    .filter((type): type is CardType => type !== 'signoff' && type !== 'renewal')
+    .filter((type) => !(type === 'building' && inAdmin))
+    .map((type) => ({ key: type, label: TYPE_LABELS[type], value: counts?.[type] ?? null, hint: hints[type], filter: { type } as TaskCardFilter, ...looks[type] }))
+  return [...shared.value.basic, ...types]
 })
-function cardLink(type: TaskType) {
-  return { query: { ...route.query, type: query.value.type === type ? undefined : type, level: undefined, page: undefined } }
+function cardActive(filter: TaskCardFilter) {
+  return query.value.view === filter.view && query.value.type === filter.type && query.value.level === filter.level
+}
+function cardLink(filter: TaskCardFilter) {
+  const on = !cardActive(filter)
+  return { query: { ...route.query, view: on ? filter.view : undefined, type: on ? filter.type : undefined, level: on ? filter.level : undefined, page: undefined } }
 }
 
+const VIEW_LABELS: Record<TaskView, string> = { mine: 'Waiting for me', approval: 'In approval' }
 const LEVEL_LABELS: Record<TaskLevelFilter, string> = { stuck: 'Stuck sign-offs', overdue: 'Overdue renewals', due: 'Renewals due' }
 
 function waited(task: Task) {
@@ -207,25 +226,72 @@ const columns: TableColumn<Task>[] = [
         variant="subtle"
         icon="i-lucide-lock"
         title="No module to show"
-        description="Your roles open none of SCCA, RA HO, RA Branch or Sites."
+        description="Your roles open none of SCCA, RA HO, RA Branch, BIA or Sites."
       />
-      <div
-        v-else
-        class="grid gap-4 sm:grid-cols-2"
-        :class="cards.length > 2 ? 'xl:grid-cols-3' : ''"
-      >
-        <KpiCard
-          v-for="card in cards"
-          :key="card.type"
-          :to="cardLink(card.type)"
-          :label="card.label"
-          :value="card.value ?? null"
-          :hint="query.type === card.type ? 'Showing only these. Click again to show all.' : card.hint"
-          :icon="card.icon"
-          :tone="card.tone"
-          :active="query.type === card.type"
-        />
-      </div>
+      <template v-else>
+        <section
+          v-if="adminCards.length"
+          class="space-y-3"
+          aria-labelledby="tasks-admin"
+        >
+          <h2
+            id="tasks-admin"
+            class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted"
+          >
+            <UIcon
+              name="i-lucide-shield-alert"
+              class="size-4"
+            />
+            Admin Task
+          </h2>
+          <div
+            class="grid gap-4 sm:grid-cols-2"
+            :class="adminCards.length > 2 ? 'xl:grid-cols-3' : ''"
+            data-testid="tasks-admin-cards"
+          >
+            <KpiCard
+              v-for="card in adminCards"
+              :key="card.key"
+              :to="cardLink(card.filter)"
+              :label="card.label"
+              :value="card.value"
+              :hint="cardActive(card.filter) ? 'Showing only these. Click again to show all.' : card.hint"
+              :icon="card.icon"
+              :tone="card.tone"
+              :active="cardActive(card.filter)"
+            />
+          </div>
+        </section>
+        <section
+          class="space-y-3"
+          :aria-labelledby="adminCards.length ? 'tasks-cards' : undefined"
+        >
+          <h2
+            v-if="adminCards.length"
+            id="tasks-cards"
+            class="text-sm font-semibold uppercase tracking-wide text-muted"
+          >
+            Tasks
+          </h2>
+          <div
+            class="grid gap-4 sm:grid-cols-2"
+            :class="{ 'xl:grid-cols-3': cards.length === 3, 'xl:grid-cols-4': cards.length > 3 }"
+            data-testid="tasks-cards"
+          >
+            <KpiCard
+              v-for="card in cards"
+              :key="card.key"
+              :to="cardLink(card.filter)"
+              :label="card.label"
+              :value="card.value"
+              :hint="cardActive(card.filter) ? 'Showing only these. Click again to show all.' : card.hint"
+              :icon="card.icon"
+              :tone="card.tone"
+              :active="cardActive(card.filter)"
+            />
+          </div>
+        </section>
+      </template>
 
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <ListFilterBar
@@ -247,6 +313,24 @@ const columns: TableColumn<Task>[] = [
             class="w-40"
             aria-label="Filter by task"
           />
+          <UBadge
+            v-if="query.view"
+            color="neutral"
+            variant="subtle"
+            size="lg"
+            class="gap-1"
+          >
+            {{ VIEW_LABELS[query.view] }}
+            <UButton
+              color="neutral"
+              variant="link"
+              size="xs"
+              icon="i-lucide-x"
+              class="p-0"
+              :aria-label="`Show more than ${VIEW_LABELS[query.view].toLowerCase()}`"
+              @click="setQuery({ view: undefined })"
+            />
+          </UBadge>
           <UBadge
             v-if="query.level"
             color="neutral"

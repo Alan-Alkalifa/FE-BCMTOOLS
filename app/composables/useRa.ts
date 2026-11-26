@@ -331,6 +331,37 @@ export interface RaMapStation extends RaPin {
   active?: boolean
 }
 
+/** A place GDELT's disaster news mentions: a dot with its number of articles and, when
+ *  selected, the radius within which buildings are listed. */
+export interface RaMapNews extends RaPin {
+  id: string
+  label: string
+  count: number
+  radiusM: number
+  /** News of an incident hazard: an amber square. */
+  incident?: boolean
+  active?: boolean
+}
+
+/** A fire hotspot NASA FIRMS detected: a small dot, red when a building is within the radius. */
+export interface RaMapHotspot extends RaPin {
+  id: number
+  label: string
+  near: boolean
+  active?: boolean
+}
+
+/** A GDACS disaster alert: its event type's letters in its alert level's colour and, when
+ *  selected, the radius within which buildings are listed. */
+export interface RaMapAlert extends RaPin {
+  id: number
+  label: string
+  type: string
+  level: RaGdacsLevel
+  radiusM: number
+  active?: boolean
+}
+
 /** A polygon area on the map: a BMKG weather warning. Each polygon as [[lat, lon], ...]. */
 export interface RaMapArea {
   id: string
@@ -622,6 +653,10 @@ export interface RaLocation extends RaLocationRef {
   zip_code?: string | null
   /** How many people the building can hold on site. */
   onsite_capacity?: number | null
+  /** The building has a Hyspace, then on which floor and for how many people. */
+  hyspace_available?: boolean
+  hyspace_floor?: string | null
+  hyspace_capacity?: number | null
   /** The occupants' employees (null without occupants). */
   onsite_employees?: number | null
   latitude: number | null
@@ -814,6 +849,11 @@ export interface RaLocationInput {
   city?: string | null
   district?: string | null
   zip_code?: string | null
+  onsite_capacity?: number | null
+  /** With true, the Hyspace floor and capacity are required; with false they are cleared. */
+  hyspace_available?: boolean
+  hyspace_floor?: string | null
+  hyspace_capacity?: number | null
   region?: string | null
   area?: string | null
   region_description?: string | null
@@ -1190,6 +1230,221 @@ export interface RaPastDisasters {
   air?: RaAirSuggestion
   /** BMKG's weather warnings over the building, for its hazard (H06). */
   weather?: RaWeatherHistory
+  /** GDELT's Indonesian news naming the building's city, per hazard with keywords. */
+  gdelt?: RaGdeltHistory
+  /** NASA FIRMS's fire hotspots within the radius of the building, for its hazard (H09). */
+  firms?: RaFirmsHistory
+  /** GDACS's alerts within the radius of the building, per hazard an event type counts for. */
+  gdacs?: RaGdacsHistory
+  /** Media Cloud's stories naming an incident hazard and the city in their headline, since 2016. */
+  mediacloud?: RaMediacloudHistory
+}
+
+export interface RaMediacloudHistory {
+  enabled: boolean
+  city: string | null
+  from_year: number
+  to_year: number
+  source: string
+  source_url: string
+  hazards: Record<string, {
+    keywords: string[]
+    read_at: string | null
+    /** The first day the counts cover (1 Jan 2016). */
+    held_from: string | null
+    /** The last day read: the hazard's history across Indonesia comes in over several runs. */
+    read_until?: string | null
+    stories: number
+    /** Days with a story. */
+    days: number
+    last: string | null
+    items: { url: string, title: string | null, media_name: string | null, published_on: string }[]
+  }>
+}
+
+export interface RaFirmsHistory {
+  enabled: boolean
+  hazard_code: string
+  radius_km: number
+  has_coordinates: boolean
+  from_year: number
+  to_year: number
+  read_at: string | null
+  /** The first day the counts cover. */
+  held_from: string | null
+  read_until: string | null
+  hotspots: number
+  /** Days (UTC) with a hotspot. */
+  days: number
+  last: string | null
+  /** The strongest fire's radiative power (MW). */
+  max_frp: number | null
+  items: { day: string, count: number, max_frp: number | null }[]
+  source: string
+  source_url: string
+}
+
+export type RaGdacsLevel = 'Green' | 'Orange' | 'Red'
+
+export interface RaGdacsEvent {
+  id: number
+  event_type: string
+  type_label: string
+  hazard_code: string | null
+  event_id: number
+  name: string | null
+  description: string | null
+  alert_level: RaGdacsLevel
+  severity: string | null
+  country: string | null
+  lat: number
+  lon: number
+  from_at: string
+  to_at: string
+  is_current: boolean
+  report_url: string | null
+}
+
+export interface RaGdacsHistory {
+  enabled: boolean
+  radius_km: number
+  has_coordinates: boolean
+  from_year: number
+  to_year: number
+  polled_at: string | null
+  held_from: string | null
+  source: string
+  source_url: string
+  hazards: Record<string, {
+    event_types: string[]
+    events: number
+    highest: RaGdacsLevel | null
+    last: string | null
+    items: RaGdacsEvent[]
+  }>
+}
+
+/** GET /api/ra/firms: NASA FIRMS's fire hotspots on the building map (the last 7 days). */
+export interface RaFirmsHotspot {
+  id: number
+  lat: number
+  lon: number
+  acquired_at: string
+  confidence: 'low' | 'nominal' | 'high'
+  /** Fire radiative power (MW). */
+  frp: number | null
+  source: string
+  satellite: string | null
+  daynight: 'D' | 'N' | null
+  /** Within the radius of a building. */
+  near: boolean
+}
+
+export interface RaFirmsBuilding {
+  id: number
+  code: string
+  kind: RaKind
+  name: string
+  count: number
+  nearest_km: number
+  last: string
+  max_frp: number | null
+}
+
+export interface RaFirmsReport {
+  enabled: boolean
+  /** The server has a MAP_KEY. */
+  configured: boolean
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  source: string
+  source_url: string
+  days: number
+  radius_km: number
+  matching: number
+  /** Buildings and branches with a hotspot within the radius. */
+  affected: number
+  items: RaFirmsHotspot[]
+  buildings: RaFirmsBuilding[]
+}
+
+/** GET /api/ra/gdacs: GDACS's alerts over Indonesia on the building map (the last 7 days). */
+export interface RaGdacsAlert extends RaGdacsEvent {
+  places: { id: number, code: string, kind: RaKind, name: string, distance_km: number }[]
+}
+
+export interface RaGdacsReport {
+  enabled: boolean
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  source: string
+  source_url: string
+  days: number
+  radius_km: number
+  event_types: Record<string, string>
+  matching: number
+  affected: number
+  items: RaGdacsAlert[]
+}
+
+export interface RaGdeltHistory {
+  enabled: boolean
+  city: string | null
+  from_year: number
+  to_year: number
+  source: string
+  source_url: string
+  hazards: Record<string, {
+    keywords: string[]
+    read_at: string | null
+    /** The first day the kept counts cover. */
+    held_from: string | null
+    articles: number
+    /** Days (UTC) with an article. */
+    days: number
+    last: string | null
+    items: { url: string, title: string | null, domain: string | null, seen_at: string }[]
+  }>
+}
+
+/** GET /api/ra/gdelt: GDELT's incident news places on the building map (the last 7 days). */
+export interface RaGdeltPlace {
+  /** lat,lon. */
+  key: string
+  /** Always incident: the map has incident news only. */
+  kind: RaCrisisType
+  /** Buildings within it are listed: smaller for an incident. */
+  radius_km: number
+  name: string | null
+  lat: number
+  lon: number
+  hazards: string[]
+  articles_count: number
+  last: string
+  /** `title` is null when the article's address alone named the hazard. */
+  articles: { url: string, title: string | null, domain: string | null, language: string | null, hazard_code: string, tone: number | null, published_at: string }[]
+  places: { id: number, code: string, kind: RaKind, name: string, distance_km: number }[]
+}
+
+export interface RaGdeltReport {
+  enabled: boolean
+  polled_at: string | null
+  poll_error: string | null
+  stale: boolean
+  source: string
+  source_url: string
+  hazard: string | null
+  days: number
+  /** The incident radius. */
+  radius_km: number
+  /** The incident hazards with GDELT themes. */
+  hazards: string[]
+  matching: number
+  /** Buildings and branches within the radius of a place. */
+  affected: number
+  items: RaGdeltPlace[]
 }
 
 export interface RaWeatherHistory {
@@ -1372,6 +1627,8 @@ export interface RaImportPreview {
   errors: number
   /** No error: the workbook can be imported. */
   can_import: boolean
+  /** Read for replacing this draft (Upload Excel on a draft). */
+  draft?: { id: number, ref_no: string | null } | null
 }
 export interface RaImportOptions {
   location_id?: number
@@ -1401,6 +1658,19 @@ export const raApi = {
     const body = new FormData()
     body.append('file', file)
     return $fetch<RaImportPreview>('/api/ra/imports/preview', { method: 'POST', body })
+  },
+  /** Upload Excel on a draft: what the workbook holds, for replacing that draft. */
+  importDraftPreview: (id: number, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return $fetch<RaImportPreview>(`/api/ra/assessments/${id}/import/preview`, { method: 'POST', body })
+  },
+  /** Replace the draft's ratings (and the building's profile with `replaceProfile`). */
+  replaceDraft: (id: number, file: File, replaceProfile: boolean) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('replace_profile', replaceProfile ? 'true' : 'false')
+    return $fetch<RaAssessment>(`/api/ra/assessments/${id}/import`, { method: 'POST', body })
   },
   importWorkbook: (file: File, options: RaImportOptions) => {
     const body = new FormData()

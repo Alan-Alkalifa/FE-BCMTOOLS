@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaCrisis, RaCrisisInput, RaCrisisType, RaEarthquake, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
+import type { RaCrisis, RaCrisisInput, RaCrisisType, RaEarthquake, RaGdeltPlace, RaMapMarker, RaMapPlace, RaPin } from '~/composables/useRa'
 
 /**
  * Declares a disaster or an incident (`type`: only its hazards are offered), or updates one that
@@ -23,9 +23,12 @@ const props = withDefaults(defineProps<{
   /** Declaring from a BMKG earthquake: the hazard, the epicentre, the radius, the time and the
    *  description are filled in, and the disaster is linked to the earthquake. */
   fromQuake?: { earthquake: RaEarthquake, hazardCode: string, radiusM: number, source: string } | null
+  /** Declaring an incident from GDELT news: the hazard, the news place, its radius, the latest
+   *  article's time and the articles as the description are filled in, all of them editable. */
+  fromNews?: { place: RaGdeltPlace, hazardCode: string, source: string } | null
   /** Declaring a disaster or an incident (from a BMKG earthquake: the earthquake hazard's type). */
   type?: RaCrisisType
-}>(), { crisis: null, locationId: null, fromQuake: null, type: 'disaster' })
+}>(), { crisis: null, locationId: null, fromQuake: null, fromNews: null, type: 'disaster' })
 const emit = defineEmits<{ close: [crisis: RaCrisis | false] }>()
 
 const { data: formula } = useRaFormula('head_office')
@@ -60,10 +63,18 @@ const placeItems = computed(() => places.value.map((place) => ({
 })))
 
 const quake = props.crisis ? null : props.fromQuake
+const news = props.crisis || quake ? null : props.fromNews
 /** A disaster from a BMKG earthquake is an earthquake: its hazard can't be changed. */
 const hazardLocked = !!quake || !!props.crisis?.earthquake
-const startedAt = raWibParts(props.crisis?.started_at ?? quake?.earthquake.occurred_at ?? new Date())
-const initialPlace = places.value.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
+const startedAt = raWibParts(props.crisis?.started_at ?? quake?.earthquake.occurred_at ?? news?.place.last ?? new Date())
+// From news the pin stays on the news place, not on a building.
+const initialPlace = news ? null : places.value.find((place) => place.id === (props.crisis?.location?.id ?? props.locationId)) ?? null
+
+/** The news that reported it, as the incident's description. */
+function newsDescription(item: { place: RaGdeltPlace, source: string }) {
+  const lines = item.place.articles.slice(0, 3).map((article) => `${article.title ?? article.domain ?? 'Article'}${article.domain && article.title ? ` (${article.domain})` : ''}: ${article.url}`)
+  return [`Reported in the news near ${item.place.name ?? 'this place'} (${item.source}).`, ...lines].join('\n')
+}
 
 /** What BMKG says about the earthquake, as the disaster's description. */
 function quakeDescription(item: RaEarthquake) {
@@ -76,17 +87,19 @@ function quakeDescription(item: RaEarthquake) {
 }
 
 const state = reactive({
-  hazard_code: props.crisis?.hazard_code ?? quake?.hazardCode ?? '',
+  hazard_code: props.crisis?.hazard_code ?? quake?.hazardCode ?? news?.hazardCode ?? '',
   location_id: initialPlace?.id as number | undefined,
   pin: (props.crisis
     ? { lat: props.crisis.latitude, lng: props.crisis.longitude }
     : quake
       ? { lat: quake.earthquake.latitude, lng: quake.earthquake.longitude }
-      : initialPlace ? { lat: initialPlace.latitude, lng: initialPlace.longitude } : null) as RaPin | null,
-  radius_km: (props.crisis?.radius_m ?? quake?.radiusM ?? 1000) / 1000,
+      : news
+        ? { lat: news.place.lat, lng: news.place.lon }
+        : initialPlace ? { lat: initialPlace.latitude, lng: initialPlace.longitude } : null) as RaPin | null,
+  radius_km: (props.crisis?.radius_m ?? quake?.radiusM ?? (news ? news.place.radius_km * 1000 : 1000)) / 1000,
   date: startedAt.date,
   time: startedAt.time,
-  description: props.crisis?.description ?? (quake ? quakeDescription(quake.earthquake) : ''),
+  description: props.crisis?.description ?? (quake ? quakeDescription(quake.earthquake) : news ? newsDescription(news) : ''),
   note: '',
 })
 
@@ -233,6 +246,15 @@ async function onSubmit() {
           icon="i-lucide-activity"
           :title="`From the BMKG earthquake M${raFormatMagnitude(quake.earthquake.magnitude)} on ${formatDateTime(quake.earthquake.occurred_at)}`"
           :description="`The epicentre, time and description come from BMKG, and the radius is the earthquake's alert radius (at most 200 km). Change anything that doesn't fit. Source: ${quake.source}.`"
+        />
+        <UAlert
+          v-if="news"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-newspaper"
+          :title="`From the news near ${news.place.name ?? 'this place'}`"
+          :description="`The hazard, the place the news names, the incident radius, the latest article's time and the articles come from the news. Check it is real and change anything that doesn't fit. Source: ${news.source}.`"
+          data-testid="crisis-from-news"
         />
 
         <UFormField

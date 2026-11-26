@@ -34,6 +34,38 @@ async function mockSitesConfig(page: Page, permissions?: string[]) {
     rows: 840, over_places: 12, active: 31, source: 'BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)', source_url: 'https://www.bmkg.go.id/peringatan-dini',
   }
   let waqi = { configured: false, radius_km: 5, threshold: 101, source: 'World Air Quality Index Project', source_url: 'https://waqi.info' }
+  const GDELT_THEMES = { H01: ['NATURAL_DISASTER_FLOODS'] }
+  const GDELT_KEYWORDS = { H01: ['banjir', 'flood'], H09: ['kebakaran hutan'] }
+  let gdelt = {
+    enabled: true, polled_at: '2026-11-23T03:00:00Z' as string | null, poll_error: null as string | null, stale: false, incident_radius_km: 2, every_days: 1,
+    hazard_types: { H01: 'disaster', H06: 'disaster', H09: 'disaster', H10: 'incident', H11: 'incident', H12: 'incident' } as Record<string, string>,
+    themes: GDELT_THEMES as Record<string, string[]>, keywords: GDELT_KEYWORDS as Record<string, string[]>, default_themes: GDELT_THEMES, default_keywords: GDELT_KEYWORDS,
+    themes_url: 'http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT', points: 420, titles: { kept: 380, dropped: 95, waiting: 12 },
+    history: { cities: 14, pairs: 28, read: 20, due: 8, failing: 0, held_from: '2025-11-23', ran_at: '2026-11-23T03:30:00Z', error: 'Medan, H01: GDELT: Please limit requests to one every 5 seconds.' as string | null },
+    source: 'The GDELT Project', source_url: 'https://www.gdeltproject.org/',
+  }
+  let firms = {
+    enabled: false, switched_on: true, configured: false, key_url: 'https://firms.modaps.eosdis.nasa.gov/api/map_key/',
+    polled_at: null as string | null, poll_error: null as string | null, stale: false, radius_km: 5, hazard_code: 'H09',
+    sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'], default_sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'],
+    all_sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'MODIS_NRT'], confidence: 'nominal', every_days: 1, hotspots: 0,
+    history: { buildings: 40, read: 0, due: 40, failing: 0, held_from: null, ran_at: null, error: null },
+    source: 'NASA FIRMS (Fire Information for Resource Management System)', source_url: 'https://firms.modaps.eosdis.nasa.gov/',
+  }
+  let mediacloudStatus = {
+    enabled: true, switched_on: true, configured: true, key_url: 'https://search.mediacloud.org/', every_days: 1, collections: [] as { id: number, name: string | null }[],
+    history_start: '2016-01-01', hazards: ['H16', 'H19'], example_query: 'article_title:(perampokan OR rampok) AND language:id',
+    history: { cities: 514, hazards: 2, complete: 1, read_until: '2019-03-31', due: 1, failing: 0, stories: 48210, tagged: 31877, held_from: '2016-01-01', ran_at: '2026-11-24T03:30:00Z', error: null as string | null },
+    source: 'Media Cloud', source_url: 'https://www.mediacloud.org/',
+  }
+  const GDACS_HAZARDS = { EQ: 'H03', TC: 'H05', FL: 'H01', VO: 'H08', WF: 'H09' }
+  let gdacs = {
+    enabled: true, polled_at: '2026-11-24T03:00:00Z' as string | null, poll_error: null as string | null, stale: false, radius_km: 100,
+    hazards: GDACS_HAZARDS as Record<string, string>, default_hazards: GDACS_HAZARDS, types: ['EQ', 'TC', 'FL', 'VO', 'DR', 'WF'],
+    event_types: { EQ: 'Earthquake', TC: 'Tropical cyclone', FL: 'Flood', VO: 'Volcano', DR: 'Drought', WF: 'Forest fire' },
+    events: 312, first: '2025-11-24T02:00:00Z', history: { held_from: '2026-03-01', done: false, ran_at: '2026-11-24T03:30:00Z', error: null },
+    source: 'GDACS (Global Disaster Alert and Coordination System)', source_url: 'https://www.gdacs.org/',
+  }
   // Sites configuration > Earthquakes (BMKG).
   let bmkg = { enabled: true, min_magnitude: 5, polled_at: '2026-11-06T06:44:00Z', poll_error: null, stale: false }
   await page.route(/\/api\/ra\/hazard-types/, (route) => route.fulfill({ json: { items: [
@@ -68,6 +100,53 @@ async function mockSitesConfig(page: Page, permissions?: string[]) {
       return route.fulfill({ json: weatherStatus })
     }
     if (path.endsWith('/weather')) return route.fulfill({ json: weatherStatus })
+    if (path.endsWith('/gdelt/read')) {
+      gdelt = { ...gdelt, polled_at: null, history: { ...gdelt.history, read: 0, due: 28 } }
+      return route.fulfill({ json: gdelt })
+    }
+    if (path.endsWith('/gdelt') && request.method() === 'PUT') {
+      const sent = body as { themes: Record<string, string[]> }
+      if (sent.themes.H09?.includes('wildfire')) {
+        return route.fulfill({ status: 422, json: { error: 'validation_failed', details: { 'themes.H09': 'Use GDELT theme names: capital letters, digits and _ (e.g. NATURAL_DISASTER_FLOODS).' } } })
+      }
+      gdelt = { ...gdelt, ...(body as object) }
+      return route.fulfill({ json: gdelt })
+    }
+    if (path.endsWith('/gdelt')) return route.fulfill({ json: gdelt })
+    if (path.endsWith('/mediacloud/collections')) {
+      const q = new URL(request.url()).searchParams.get('q') ?? ''
+      const all = [
+        { id: 34412118, name: 'Indonesia - National', sources: 120, description: null },
+        { id: 38376341, name: 'Indonesia - State & Local', sources: 310, description: null },
+        { id: 38379954, name: 'Indonesia Election Study', sources: 45, description: null },
+      ]
+      return route.fulfill({ json: { items: all.filter((item) => item.name.toLowerCase().includes(q.toLowerCase())) } })
+    }
+    if (path.endsWith('/mediacloud/read')) {
+      mediacloudStatus = { ...mediacloudStatus, history: { ...mediacloudStatus.history, due: 2 } }
+      return route.fulfill({ json: mediacloudStatus })
+    }
+    if (path.endsWith('/mediacloud') && request.method() === 'PUT') {
+      mediacloudStatus = { ...mediacloudStatus, ...(body as object) }
+      return route.fulfill({ json: mediacloudStatus })
+    }
+    if (path.endsWith('/mediacloud')) return route.fulfill({ json: mediacloudStatus })
+    if (path.endsWith('/firms/read')) return route.fulfill({ json: firms })
+    if (path.endsWith('/firms') && request.method() === 'PUT') {
+      firms = { ...firms, ...(body as object), switched_on: (body as { enabled: boolean }).enabled }
+      return route.fulfill({ json: firms })
+    }
+    if (path.endsWith('/firms')) return route.fulfill({ json: firms })
+    if (path.endsWith('/gdacs/read')) {
+      gdacs = { ...gdacs, polled_at: null }
+      return route.fulfill({ json: gdacs })
+    }
+    if (path.endsWith('/gdacs') && request.method() === 'PUT') {
+      const sent = body as { hazards: Record<string, string | null> }
+      gdacs = { ...gdacs, ...(body as object), hazards: Object.fromEntries(Object.entries(sent.hazards).filter(([, code]) => code)) as Record<string, string> }
+      return route.fulfill({ json: gdacs })
+    }
+    if (path.endsWith('/gdacs')) return route.fulfill({ json: gdacs })
     if (path.endsWith('/waqi') && request.method() === 'PUT') {
       waqi = { ...waqi, ...(body as object) }
       return route.fulfill({ json: waqi })
@@ -116,7 +195,7 @@ test('Sites configuration is under Administration, apart from RA configuration',
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: 'Sites configuration' })).toHaveAttribute('aria-current', 'page', { timeout: 60_000 })
   await expect(page.getByRole('heading', { name: 'Sites configuration' })).toBeVisible()
-  await expect(page.getByRole('main').getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
+  await expect(page.getByRole('tab')).toHaveText(['Disaster or incident', 'Earthquakes', 'Past disasters'])
   // An old RA configuration link to one of its tabs opens it.
   await page.goto('/admin/ra-config?tab=earthquakes')
   await expect(page).toHaveURL(/\/admin\/sites-config\?tab=earthquakes$/, { timeout: 60_000 })
@@ -253,4 +332,125 @@ test('WAQI\'s station area and the AQI from which a building is affected are set
   await card.getByRole('button', { name: 'Save WAQI settings' }).click()
   await expect(page.getByText('WAQI settings saved').first()).toBeVisible()
   expect(calls.find((call) => call.method === 'PUT' && call.path.endsWith('/waqi'))!.body).toEqual({ radius_km: 2.5, threshold: 151 })
+})
+
+test('GDELT\'s incident news: radius, interval, and themes and keywords per hazard', async ({ page }) => {
+  const calls = await mockSitesConfig(page)
+  await page.goto('/admin/sites-config?tab=past-disasters')
+  const card = page.getByTestId('gdelt-source')
+  await expect(card.getByRole('heading', { name: 'Incident news from GDELT' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('gdelt-status')).toContainText('420 news places shown. Titles: 380 articles kept, 95 left out (the hazard or the place only in the body), 12 waiting to be checked.')
+  await expect(card).toContainText('The map shows incident news only.')
+  await expect(card.locator('tr').filter({ hasText: 'H01' })).toContainText('Not on the map while it is a disaster.')
+  await expect(page.getByTestId('gdelt-status')).toContainText('History of 14 cities: 20 of 28 city and hazard pairs read, 8 due, counted from 23 Nov 2025.')
+  await expect(card).toContainText('Medan, H01: GDELT: Please limit requests')
+  await expect(card.getByRole('textbox', { name: 'GDELT themes for H01' })).toHaveValue('NATURAL_DISASTER_FLOODS')
+  await expect(card.getByRole('textbox', { name: 'Keywords for H01' })).toHaveValue('banjir, flood')
+
+  // A theme that isn't GDELT's: the API's message lands on its field.
+  await card.getByRole('textbox', { name: 'GDELT themes for H09' }).fill('wildfire')
+  await card.getByRole('button', { name: 'Save GDELT settings' }).click()
+  await expect(card.getByText('Use GDELT theme names')).toBeVisible()
+
+  await card.getByRole('textbox', { name: 'GDELT themes for H09' }).fill('NATURAL_DISASTER_WILDFIRE')
+  await card.getByRole('textbox', { name: 'Keywords for H01' }).fill('banjir,  banjir rob , ')
+  await card.getByRole('spinbutton', { name: 'Radius around incident news (km)' }).fill('3')
+  await card.getByRole('spinbutton', { name: 'Radius around incident news (km)' }).blur()
+  await expect(card.locator('tr').filter({ hasText: 'H12' })).toContainText('Incident')
+  await card.getByRole('button', { name: 'Save GDELT settings' }).click()
+  await expect(page.getByText('GDELT settings saved').first()).toBeVisible()
+  const saved = calls.filter((call) => call.method === 'PUT' && call.path.endsWith('/gdelt')).at(-1)!.body
+  expect(saved).toEqual({
+    enabled: true, incident_radius_km: 3, every_days: 1,
+    themes: { H01: ['NATURAL_DISASTER_FLOODS'], H09: ['NATURAL_DISASTER_WILDFIRE'] },
+    keywords: { H01: ['banjir', 'banjir rob'], H09: ['kebakaran hutan'] },
+  })
+  await card.getByRole('button', { name: 'Use the defaults' }).click()
+  await expect(card.getByRole('textbox', { name: 'GDELT themes for H09' })).toHaveValue('')
+  await card.getByRole('button', { name: 'Read again' }).click()
+  await expect(page.getByTestId('gdelt-status')).toContainText('Map not read yet.')
+})
+
+test('NASA FIRMS says it needs a MAP_KEY, and its radius, hazard, satellites and confidence are saved', async ({ page }) => {
+  const calls = await mockSitesConfig(page)
+  await page.goto('/admin/sites-config?tab=past-disasters')
+  const card = page.getByTestId('firms-source')
+  await expect(card.getByRole('heading', { name: 'Fire hotspots from NASA FIRMS' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('firms-no-key')).toContainText('FIRMS stays off until the administrator sets FIRMS_MAP_KEY.')
+  await expect(page.getByTestId('firms-no-key').getByRole('link', { name: 'NASA FIRMS' })).toHaveAttribute('href', 'https://firms.modaps.eosdis.nasa.gov/api/map_key/')
+  await expect(page.getByTestId('firms-status')).toContainText('Map not read yet. History: 0 of 40 buildings read, 40 due.')
+  await expect(card.getByRole('button', { name: 'Read again' })).toBeDisabled()
+
+  await card.getByRole('spinbutton', { name: 'Radius around a building (km)' }).fill('10')
+  await card.getByRole('spinbutton', { name: 'Radius around a building (km)' }).blur()
+  await card.getByRole('button', { name: 'Satellites read for the map' }).click()
+  await page.getByRole('option', { name: 'MODIS on Terra and Aqua' }).click()
+  await page.keyboard.press('Escape')
+  await card.getByRole('button', { name: 'Lowest confidence kept' }).click()
+  await page.getByRole('option', { name: 'High only' }).click()
+  await card.getByRole('button', { name: 'Save NASA FIRMS settings' }).click()
+  await expect(page.getByText('NASA FIRMS settings saved').first()).toBeVisible()
+  expect(calls.filter((call) => call.method === 'PUT' && call.path.endsWith('/firms')).at(-1)!.body).toEqual({
+    enabled: true, radius_km: 10, hazard_code: 'H09', sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'MODIS_NRT'], confidence: 'high', every_days: 1,
+  })
+})
+
+test('GDACS: radius and the hazard each alert type counts for', async ({ page }) => {
+  const calls = await mockSitesConfig(page)
+  await page.goto('/admin/sites-config?tab=past-disasters')
+  const card = page.getByTestId('gdacs-source')
+  await expect(card.getByRole('heading', { name: 'Disaster alerts from GDACS' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('gdacs-status')).toContainText('312 alerts kept. The past year is being read, back to 1 Mar 2026 so far.')
+  await expect(card.getByRole('button', { name: 'Hazard GDACS\'s flood alerts count for' })).toContainText('H01')
+  await expect(card.getByRole('button', { name: 'Hazard GDACS\'s drought alerts count for' })).toContainText('None (not on the hazard page)')
+
+  // Droughts and forest fires are not shown.
+  await expect(card.getByRole('checkbox', { name: 'Drought (DR)' })).toBeChecked()
+  await card.getByRole('checkbox', { name: 'Drought (DR)' }).uncheck()
+  await card.getByRole('checkbox', { name: 'Forest fire (WF)' }).uncheck()
+  await card.getByRole('button', { name: 'Hazard GDACS\'s drought alerts count for' }).click()
+  await page.getByRole('option', { name: /^H12/ }).click()
+  await card.getByRole('button', { name: 'Hazard GDACS\'s forest fire alerts count for' }).click()
+  await page.getByRole('listbox', { name: /forest fire/ }).getByRole('option', { name: 'None (not on the hazard page)' }).click()
+  await card.getByRole('button', { name: 'Save GDACS settings' }).click()
+  await expect(page.getByText('GDACS settings saved').first()).toBeVisible()
+  expect(calls.filter((call) => call.method === 'PUT' && call.path.endsWith('/gdacs')).at(-1)!.body).toEqual({
+    enabled: true, radius_km: 100, types: ['EQ', 'TC', 'FL', 'VO'], hazards: { EQ: 'H03', TC: 'H05', FL: 'H01', VO: 'H08', DR: 'H12', WF: null },
+  })
+  await card.getByRole('button', { name: 'Read again' }).click()
+  await expect(page.getByTestId('gdacs-status')).toContainText('Not read yet.')
+})
+
+test('Media Cloud: the strict query, the interval and the collections picked by name', async ({ page }) => {
+  const calls = await mockSitesConfig(page)
+  await page.goto('/admin/sites-config?tab=past-disasters')
+  const card = page.getByTestId('mediacloud-source')
+  await expect(card.getByRole('heading', { name: 'Incident news history from Media Cloud' })).toBeVisible({ timeout: 60_000 })
+  await expect(card).toContainText('from 1 Jan 2016')
+  await expect(page.getByTestId('mediacloud-query')).toHaveText('article_title:(perampokan OR rampok) AND language:id')
+  await expect(card).toContainText('A story then counts for each of Indonesia\'s 514 regencies and cities its headline names')
+  await expect(page.getByTestId('mediacloud-status')).toContainText('2 incident hazards across Indonesia: 1 read up to date, 1 due (history read up to 31 Mar 2019). 48.210 stories read, 31.877 naming a regency or city, counted from 1 Jan 2016.')
+  await expect(page.getByTestId('mediacloud-no-key')).toHaveCount(0)
+  await expect(card).toContainText('No collection picked: every source in Indonesian is searched.')
+
+  // Select collections…: Media Cloud's directory searched by name.
+  for (const name of ['Indonesia - National', 'Indonesia - State & Local', 'Indonesia Election Study']) {
+    await card.getByRole('button', { name: 'Select Media Cloud collections' }).click()
+    await page.getByRole('combobox').last().fill('Indonesia')
+    await page.getByRole('option', { name: new RegExp(`^${name.replace(/[&]/g, '\\$&')}`) }).click()
+  }
+  const picked = page.getByTestId('mediacloud-collections')
+  await expect(picked.getByRole('link')).toHaveText(['Indonesia - National', 'Indonesia - State & Local', 'Indonesia Election Study'])
+  await expect(picked.getByRole('link', { name: 'Indonesia - National' })).toHaveAttribute('href', 'https://search.mediacloud.org/collections/34412118')
+  await picked.getByRole('button', { name: 'Remove Indonesia Election Study' }).click()
+
+  await card.getByRole('spinbutton', { name: 'Read each hazard again every (days)' }).fill('7')
+  await card.getByRole('spinbutton', { name: 'Read each hazard again every (days)' }).blur()
+  await card.getByRole('button', { name: 'Save Media Cloud settings' }).click()
+  await expect(page.getByText('Media Cloud settings saved').first()).toBeVisible()
+  expect(calls.filter((call) => call.method === 'PUT' && call.path.endsWith('/mediacloud')).at(-1)!.body).toEqual({
+    enabled: true, every_days: 7, collections: [{ id: 34412118, name: 'Indonesia - National' }, { id: 38376341, name: 'Indonesia - State & Local' }],
+  })
+  await card.getByRole('button', { name: 'Read again' }).click()
+  await expect(page.getByTestId('mediacloud-status')).toContainText('2 due')
 })

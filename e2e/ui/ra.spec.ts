@@ -9,7 +9,7 @@ test('the home page links to the RA module', async ({ page }) => {
   // RA (head office) is "RA HO", beside "RA Branch".
   await expect(page.getByRole('heading', { name: 'RA HO', exact: true })).toBeVisible({ timeout: 60_000 })
   const main = page.getByRole('main')
-  await expect(main.getByRole('link', { name: 'Building map' })).toHaveAttribute('href', '/locations/map')
+  await expect(main.getByRole('link', { name: 'Building map' })).toHaveAttribute('href', '/sites/map')
   await expect(main.locator('a[href="/ra/manage"]')).toHaveText('Manage')
   await expect(main.getByRole('link', { name: 'Approval', exact: true }).and(main.locator('a[href="/ra/approval"]'))).toHaveText('Approval')
   await main.locator('a[href="/ra/monitoring"]').click()
@@ -75,13 +75,17 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/ra/monitoring/renewals.xlsx?kind=head_office&state=none')
 
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
-  await expect(page.getByRole('table').filter({ visible: true }).getByText('Budi Hartono')).toBeVisible()
+  const approval = page.getByRole('table').filter({ visible: true })
+  await expect(approval.getByText('Budi Hartono')).toBeVisible()
+  for (const header of ['Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
+    await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  }
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
   await expect(page.getByText(/Slowest step: Unit Critical Business Function, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
-  // The step is named by its title, like SCCA.
-  await expect(page.getByRole('table').getByText('Reviewed by Alternate Location Incident Commander (LICOM)')).toBeVisible()
+  // The step is named by its configured short name.
+  await expect(page.getByRole('table').getByText('LICOM', { exact: true })).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
 })
 
@@ -154,7 +158,7 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.keyboard.press('Escape')
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   const approval = page.getByRole('table').filter({ visible: true })
-  for (const header of ['RA ref. no.', 'Current step', 'Signer', 'Escalated on', 'In approval']) {
+  for (const header of ['RA ref. no.', 'Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
     await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
   }
 })
@@ -485,6 +489,59 @@ test('WHO\'s outbreak news and OpenAQ\'s air quality show on their hazards over 
   await expect(page.getByTestId('outbreak-news')).toHaveCount(0)
 })
 
+test('GDELT\'s Indonesian news in the building\'s city shows on each hazard it has read', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const news = page.getByTestId('gdelt-news')
+  await expect(news).toContainText('Indonesian news reported it in Jakarta Selatan in 46 articles, on 9 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(news.getByRole('link', { name: 'Banjir rendam Kemang' })).toHaveAttribute('href', 'https://news.example.id/banjir-kemang')
+  await expect(news).toContainText('banjir, banjir bandang, flood · counted from 23 Nov 2025 · Source: GDELT')
+  // DIBI still speaks for floods.
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded it 12 times')
+  // A hazard GDELT hasn't read yet says nothing.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
+  await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none', { timeout: 60_000 })
+  await expect(page.getByTestId('gdelt-news')).toHaveCount(0)
+})
+
+test('Media Cloud\'s incident headlines since 2016 show on each incident hazard it has read', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H16')
+  const archive = page.getByTestId('mediacloud-news')
+  await expect(archive).toContainText('Indonesian headlines named it in Jakarta Selatan in 23 stories, on 19 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(archive.getByRole('link', { name: 'Perampokan toko emas di Jakarta Selatan' })).toHaveAttribute('href', 'https://news.example.id/perampokan-kemang')
+  await expect(archive).toContainText('perampokan, rampok and the city in the headline · Source: Media Cloud')
+  // A hazard whose history across Indonesia is still coming in says how far it is read.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H17')
+  await expect(page.getByTestId('mediacloud-news')).toContainText('in 2 stories, on 2 days', { timeout: 60_000 })
+  await expect(page.getByTestId('mediacloud-news')).toContainText('sandera and the city in the headline · read up to 31 Mar 2019 so far · Source: Media Cloud')
+  // A hazard Media Cloud hasn't read yet says nothing.
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H18')
+  await expect(page.getByTestId('past-disasters')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('mediacloud-news')).toHaveCount(0)
+})
+
+test('NASA FIRMS\'s fire hotspots near the building show on its fire hazard', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H09')
+  const fires = page.getByTestId('firms-hotspots')
+  await expect(fires).toContainText('NASA FIRMS saw 7 fire hotspots within 5 km of the building, on 3 days, from 2017 to 2026.', { timeout: 60_000 })
+  await expect(fires).toContainText('14 Sep 2026 · 4 hotspots · strongest 48,2 MW')
+  await expect(fires).toContainText('Counted from 23 Nov 2025 · Source: NASA FIRMS (VIIRS)')
+  await expect(page.getByTestId('gdacs-alerts')).toHaveCount(0)
+})
+
+test('GDACS\'s alerts near the building show on the hazard their type counts for', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const alerts = page.getByTestId('gdacs-alerts')
+  await expect(alerts).toContainText('GDACS alerted 2 times within 100 km of the building from 2017 to 2026, Orange at most.', { timeout: 60_000 })
+  await expect(alerts.getByRole('link', { name: 'Flood in Indonesia' })).toHaveAttribute('href', /eventid=1102345/)
+  await expect(alerts).toContainText('Alerts kept from 23 Nov 2025 · Source: GDACS')
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H05')
+  await expect(page.getByTestId('gdacs-alerts')).toContainText('GDACS alerted none within 100 km of the building', { timeout: 60_000 })
+})
+
 test('BMKG\'s weather warnings over the building show on the weather hazard', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H06')
@@ -618,7 +675,7 @@ test('buildings have no Delete button: a building is made inactive instead', asy
 test('as SCCA, Save is in the top bar for the open tab, beside View report; no Delete', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1')
-  await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('p', { hasText: 'Griya CIMB Niaga 2 · 2025' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', '/ra/manage/1/report')
   // One Save per tab, in the top bar: enabled once something changed.
@@ -940,6 +997,32 @@ test('the location page lists its assessments and edits its details', async ({ p
   await expect(page.getByLabel('Type of building', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Save building' }).click()
   expect((await request).postDataJSON()).toMatchObject({ address: 'Jl. Wahid Hasyim, Bintaro', is_active: true })
+})
+
+test('Building details asks whether a Hyspace is available, then its floor and capacity', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/admin/buildings/1')
+  const hyspace = page.getByRole('combobox', { name: 'Hyspace Available?' })
+  await expect(hyspace).toContainText('No', { timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: /Hyspace Floor/ })).toHaveCount(0)
+  await hyspace.click()
+  await page.getByRole('option', { name: 'Yes', exact: true }).click()
+  await page.getByRole('button', { name: 'Save building' }).click()
+  await expect(page.getByText('Enter the Hyspace floor.')).toBeVisible()
+  await expect(page.getByText('Enter the Hyspace capacity, 1 or more.')).toBeVisible()
+  await page.getByRole('textbox', { name: /Hyspace Floor/ }).fill('Lantai 12')
+  await page.getByRole('spinbutton', { name: /Hyspace Capacity/ }).fill('40')
+  await page.getByRole('spinbutton', { name: /Hyspace Capacity/ }).blur()
+  const saved = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
+  await page.getByRole('button', { name: 'Save building' }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ hyspace_available: true, hyspace_floor: 'Lantai 12', hyspace_capacity: 40 })
+  // No: the floor and capacity go, and are cleared.
+  await hyspace.click()
+  await page.getByRole('option', { name: 'No', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: /Hyspace Floor/ })).toHaveCount(0)
+  const cleared = page.waitForRequest((r) => r.url().endsWith('/api/ra/locations/1') && r.method() === 'PUT')
+  await page.getByRole('button', { name: 'Save building' }).click()
+  expect((await cleared).postDataJSON()).toMatchObject({ hyspace_available: false, hyspace_floor: null, hyspace_capacity: null })
 })
 
 test('the Details tab shows the building and edits it, as on its page', async ({ page }) => {
@@ -1546,7 +1629,7 @@ test('a location gets its map pin on the Map tab', async ({ page }) => {
 test('the location register links to the location map instead of its own map', async ({ page }) => {
   await mockRa(page)
   await page.goto('/admin/buildings')
-  await expect(page.getByRole('link', { name: 'Building map' }).last()).toHaveAttribute('href', '/locations/map', { timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Building map' }).last()).toHaveAttribute('href', '/sites/map', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0)
 })
 
@@ -1557,7 +1640,7 @@ test('downloads are offered only once the RA is approved, on its report', async 
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
   // As SCCA's: the record itself has no downloads.
   await page.goto('/ra/monitoring/1')
-  await expect(page.getByText('Griya CIMB Niaga 2 · 2025').first()).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('p', { hasText: 'Griya CIMB Niaga 2 · 2025' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Download' })).toHaveCount(0)
 })
 

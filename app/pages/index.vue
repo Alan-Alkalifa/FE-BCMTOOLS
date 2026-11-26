@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MenuNode } from '~/composables/useAuth'
-import type { TaskGlance, TaskModule } from '~/composables/useTasks'
+import type { TaskCardFilter, TaskModule } from '~/composables/useTasks'
 
 const { user, menu } = useAuth()
 
@@ -36,47 +36,36 @@ const modules = computed(() =>
 )
 
 /**
- * The overview: each module the user's roles open, at a glance (SCCA, RA HO, RA Branch, Sites).
- * Its BCM sees the whole module (waiting for me, in approval, stuck, overdue, and for RA HO and
- * RA Branch the buildings waiting for approval); everyone else what is theirs (sign-offs for me,
- * overdue and due renewals). Sites counts the disasters and incidents waiting for approval. Each
- * card opens that module's tab in Task Management.
+ * The overview, one tab per module the user's roles open (SCCA, RA HO, RA Branch, BIA, Sites),
+ * with the same cards as its Task Management tab (`taskCards`): Waiting for me and In approval
+ * for everyone, and for the module's BCM the Overview Administrator (stuck sign-offs, overdue
+ * renewals, and in RA HO and RA Branch the buildings waiting for approval). Each card opens
+ * that list in Task Management.
  */
-interface GlanceCard { key: string, label: string, value: number, icon: string, tone: 'neutral' | 'warning' | 'error' | 'info', hint: string, to: string }
 const { data: summary } = useTaskSummary()
-function tasksLink(module: TaskModule, extra: Record<string, string> = {}) {
-  return `/tasks?${new URLSearchParams({ module, ...extra }).toString()}`
-}
-function glanceCards(glance: TaskGlance): GlanceCard[] {
-  const { module } = glance
-  if (module === 'sites') {
-    return [
-      { key: 'disaster', label: 'Disasters waiting', value: glance.disaster ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'disaster' }) },
-      { key: 'incident', label: 'Incidents waiting', value: glance.incident ?? 0, icon: 'i-lucide-triangle-alert', tone: 'error', hint: 'Declared, waiting for approval.', to: tasksLink(module, { type: 'incident' }) },
-    ]
-  }
-  const what = module === 'scca' ? 'SCCA' : 'RA'
-  const mine: GlanceCard = { key: 'mine', label: 'Waiting for me', value: glance.mine ?? 0, icon: 'i-lucide-user-check', tone: 'warning', hint: module === 'scca' ? 'SCCA approvals for you.' : 'RA sign-off steps for you.', to: tasksLink(module, { type: 'signoff' }) }
-  const overdue: GlanceCard = { key: 'overdue', label: glance.oversees ? 'Overdue renewals' : 'My overdue renewals', value: glance.overdue_renewals ?? 0, icon: 'i-lucide-circle-alert', tone: 'error', hint: `${glance.due_renewals ?? 0} more due within 90 days.`, to: tasksLink(module, { type: 'renewal', level: 'overdue' }) }
-  // Only for who reviews buildings in Master building (the API leaves `building` out otherwise).
-  const buildings: GlanceCard[] = module !== 'scca' && glance.building !== undefined
-    ? [{ key: 'building', label: 'Buildings waiting', value: glance.building ?? 0, icon: 'i-lucide-building', tone: 'warning', hint: 'New, or to make inactive, waiting for approval.', to: tasksLink(module, { type: 'building' }) }]
-    : []
-  if (!glance.oversees) return [mine, overdue, ...buildings]
-  return [
-    mine,
-    { key: 'in_approval', label: 'In approval', value: glance.in_approval ?? 0, icon: 'i-lucide-hourglass', tone: 'info', hint: `Every ${what} waiting for a signer.`, to: tasksLink(module, { type: 'signoff' }) },
-    { key: 'stuck', label: 'Stuck sign-offs', value: glance.stuck ?? 0, icon: 'i-lucide-siren', tone: 'error', hint: 'Waiting past the escalation.', to: tasksLink(module, { type: 'signoff', level: 'stuck' }) },
-    overdue,
-    ...buildings,
-  ]
+function tasksLink(module: TaskModule, filter: TaskCardFilter) {
+  const query: Record<string, string> = { module }
+  for (const [key, value] of Object.entries(filter)) if (value) query[key] = value
+  return `/tasks?${new URLSearchParams(query).toString()}`
 }
 const glances = computed(() => (summary.value?.modules ?? []).map((glance) => ({
   module: glance.module,
-  title: `${TASK_MODULES[glance.module]} at a glance`,
-  icon: TASK_MODULE_ICONS[glance.module],
-  cards: glanceCards(glance),
+  oversees: glance.oversees,
+  mine: glance.mine ?? 0,
+  ...taskCards(glance.module, glance, glance.oversees),
 })))
+const overviewTab = ref<TaskModule>()
+const glance = computed(() => glances.value.find((item) => item.module === overviewTab.value) ?? glances.value[0])
+const overviewTabs = computed(() => glances.value.map((item) => ({
+  label: TASK_MODULES[item.module],
+  value: item.module,
+  icon: TASK_MODULE_ICONS[item.module],
+  badge: item.mine ? { label: String(item.mine), color: 'warning' as const, variant: 'subtle' as const } : undefined,
+})))
+const overviewModel = computed<TaskModule | undefined>({
+  get: () => glance.value?.module,
+  set: (value) => { overviewTab.value = value },
+})
 
 const greeting = computed(() => {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jakarta' }).format(new Date()))
@@ -128,7 +117,7 @@ const greeting = computed(() => {
     />
 
     <section
-      v-if="glances.length"
+      v-if="glance"
       class="space-y-6"
       aria-labelledby="home-overview"
     >
@@ -146,32 +135,56 @@ const greeting = computed(() => {
           Open Task Management
         </ULink>
       </div>
+      <UTabs
+        v-model="overviewModel"
+        :items="overviewTabs"
+        :content="false"
+        variant="link"
+        class="w-full"
+        aria-label="Overview by module"
+      />
+      <div
+        class="grid gap-4 sm:grid-cols-2"
+        data-testid="home-overview-cards"
+      >
+        <KpiCard
+          v-for="card in glance.basic"
+          :key="card.key"
+          :to="tasksLink(glance.module, card.filter)"
+          :label="card.label"
+          :value="card.value ?? 0"
+          :hint="card.hint"
+          :icon="card.icon"
+          :tone="card.tone"
+        />
+      </div>
       <section
-        v-for="glance in glances"
-        :key="glance.module"
+        v-if="glance.admin.length"
         class="space-y-3"
-        :aria-labelledby="`home-glance-${glance.module}`"
+        aria-labelledby="home-overview-admin"
       >
         <h3
-          :id="`home-glance-${glance.module}`"
+          id="home-overview-admin"
           class="flex items-center gap-2 font-semibold text-highlighted"
         >
           <UIcon
-            :name="glance.icon"
+            name="i-lucide-shield-alert"
             class="size-4 text-muted"
           />
-          {{ glance.title }}
+          Overview Administrator
+          <span class="text-sm font-normal text-muted">{{ TASK_MODULES[glance.module] }}</span>
         </h3>
         <div
           class="grid gap-4 sm:grid-cols-2"
-          :class="{ 'xl:grid-cols-3': glance.cards.length === 3, 'xl:grid-cols-4': glance.cards.length === 4, 'xl:grid-cols-5': glance.cards.length === 5 }"
+          :class="{ 'xl:grid-cols-3': glance.admin.length === 3 }"
+          data-testid="home-overview-admin-cards"
         >
           <KpiCard
-            v-for="card in glance.cards"
+            v-for="card in glance.admin"
             :key="card.key"
-            :to="card.to"
+            :to="tasksLink(glance.module, card.filter)"
             :label="card.label"
-            :value="card.value"
+            :value="card.value ?? 0"
             :hint="card.hint"
             :icon="card.icon"
             :tone="card.tone"

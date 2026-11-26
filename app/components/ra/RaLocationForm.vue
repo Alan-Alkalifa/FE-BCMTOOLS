@@ -19,6 +19,9 @@ import type { RaLocationDetail, RaNetworkHead, RaOrgValues } from '~/composables
  * region directory, a branch's Directorate, Sub Directorate and Group follow its region and
  * area. Monitoring filters by them and the access scope opens a location to the users of its
  * directorate. Division and Department are no longer asked; a saved value is kept.
+ *
+ * "Hyspace Available?" (Yes or No): with Yes, the Hyspace Floor and Hyspace Capacity are asked
+ * and required; with No they are cleared.
  */
 const props = withDefaults(defineProps<{
   location?: RaLocationDetail
@@ -75,6 +78,9 @@ const schema = computed(() => z.object({
   district: z.string().trim().min(1, 'Enter the district.'),
   zip_code: z.string().trim().min(1, 'Enter the zip code.').max(10, 'At most 10 characters.').regex(/^[0-9A-Za-z -]*$/, 'Use digits and letters only.'),
   onsite_capacity: z.number().int('Enter a whole number.').min(0, 'Enter 0 or more.').max(100000, 'At most 100,000.').nullish(),
+  hyspace_available: z.boolean(),
+  hyspace_floor: z.string().trim().max(32, 'At most 32 characters.'),
+  hyspace_capacity: z.number().int('Enter a whole number.').max(100000, 'At most 100,000.').nullish(),
   is_active: z.boolean(),
   region: z.string(),
   area: z.string(),
@@ -84,6 +90,10 @@ const schema = computed(() => z.object({
   org_group: z.string(),
   org_level: z.string(),
 }).superRefine((value, context) => {
+  if (value.hyspace_available) {
+    if (!value.hyspace_floor.trim()) context.addIssue({ code: 'custom', path: ['hyspace_floor'], message: 'Enter the Hyspace floor.' })
+    if (!value.hyspace_capacity || value.hyspace_capacity < 1) context.addIssue({ code: 'custom', path: ['hyspace_capacity'], message: 'Enter the Hyspace capacity, 1 or more.' })
+  }
   if (!isBranch.value || !fromDirectory.value) return
   const region = regionList.value.find((item) => item.region === value.region)
   if (!region) {
@@ -103,6 +113,9 @@ function fromLocation(location?: RaLocationDetail): State {
     district: location?.district ?? '',
     zip_code: location?.zip_code ?? '',
     onsite_capacity: location?.onsite_capacity ?? null,
+    hyspace_available: location?.hyspace_available ?? false,
+    hyspace_floor: location?.hyspace_floor ?? '',
+    hyspace_capacity: location?.hyspace_capacity ?? null,
     region: location?.region ?? '',
     area: location?.area ?? '',
     region_description: location?.region_description ?? '',
@@ -124,6 +137,13 @@ function isNewAndWaiting(location?: RaLocationDetail | null) {
 const waitingApproval = computed(() => isNewAndWaiting(props.location))
 
 const state = reactive<State>(fromLocation(props.location))
+/** "Hyspace Available?" as Yes or No. */
+const hyspaceModel = computed<'yes' | 'no'>({
+  get: () => (state.hyspace_available ? 'yes' : 'no'),
+  set: (value) => {
+    state.hyspace_available = value === 'yes'
+  },
+})
 
 // --- Organization ------------------------------------------------------------------------------
 
@@ -223,6 +243,9 @@ function payload() {
     name: state.name.trim(),
     // Cleared, the capacity is sent as null.
     onsite_capacity: state.onsite_capacity ?? null,
+    // Without a Hyspace its floor and capacity are cleared.
+    hyspace_floor: state.hyspace_available ? state.hyspace_floor.trim() : null,
+    hyspace_capacity: state.hyspace_available ? state.hyspace_capacity ?? null : null,
     // With the region directory, a branch sends its region and area: its Sub Directorate and
     // Group follow them and its Directorate comes from there (the backend sets them). Without
     // it, the Sub Directorate and Group are sent and the region and area follow them.
@@ -470,6 +493,46 @@ async function onSubmit() {
                   class="w-full"
                 />
               </UFormField>
+              <UFormField
+                label="Hyspace Available?"
+                name="hyspace_available"
+                class="sm:col-span-2"
+              >
+                <USelect
+                  v-model="hyspaceModel"
+                  :items="[{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }]"
+                  aria-label="Hyspace Available?"
+                  class="w-full sm:w-72"
+                />
+              </UFormField>
+              <template v-if="state.hyspace_available">
+                <UFormField
+                  label="Hyspace Floor"
+                  name="hyspace_floor"
+                  required
+                >
+                  <UInput
+                    v-model="state.hyspace_floor"
+                    placeholder="e.g. Lantai 12"
+                    :maxlength="32"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Hyspace Capacity"
+                  name="hyspace_capacity"
+                  required
+                >
+                  <UInputNumber
+                    v-model="state.hyspace_capacity"
+                    :min="1"
+                    :max="100000"
+                    :step="1"
+                    placeholder="e.g. 40"
+                    class="w-full"
+                  />
+                </UFormField>
+              </template>
             </div>
             <UFormField
               v-if="location"
