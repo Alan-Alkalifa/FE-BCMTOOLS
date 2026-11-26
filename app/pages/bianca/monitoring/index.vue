@@ -50,6 +50,7 @@ type Period = 'all' | 'month' | 'quarter' | 'year' | '12m' | `year:${number}` | 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
 const STATES = [
   'approved',
+  'final_group',
   'full_approved',
   'in_renewal',
   'valid',
@@ -249,7 +250,15 @@ function clearFilters() {
 
 // --- data ------------------------------------------------------------------------------------
 
-const overview = useBiaOverview(filters)
+const overviewBasis = computed<'assessments' | 'groups'>({
+  get: () => (text('basis') === 'groups' ? 'groups' : 'assessments'),
+  set: (value) => setQuery({ basis: value === 'assessments' ? undefined : value }),
+})
+const overviewFilters = computed<BiaMonitoringFilters>(() => ({
+  ...filters.value,
+  basis: overviewBasis.value,
+}))
+const overview = useBiaOverview(overviewFilters)
 const bucket = computed<Exclude<BiaRenewalBucket, 'later'> | undefined>(() => {
   const value = text('bucket')
   return value === 'overdue' || value === 'due_30' || value === 'due_60' || value === 'due_90' ? value : undefined
@@ -270,10 +279,10 @@ const listView = computed<'directorates' | 'flat' | 'assessments'>({
   get: () => {
     const v = text('view')
     if (v === 'directorates') return 'directorates'
-    if (v === 'assessments') return 'assessments'
-    return 'flat'
+    if (v === 'flat') return 'flat'
+    return 'assessments'
   },
-  set: (value) => setQuery({ view: value === 'flat' ? undefined : value }),
+  set: (value) => setQuery({ view: value === 'assessments' ? undefined : value }),
 })
 const dirSort = computed<BiaDirectorateSort>({
   get: () => {
@@ -328,15 +337,25 @@ const stepAverages = useBiaBottlenecksStepAverages(filters)
 
 const cardSections = computed(() => {
   const value = overview.data.value?.cards
+  const isAssessments = overviewBasis.value === 'assessments'
+  const listTargetView = isAssessments ? 'assessments' : 'flat'
   return [
     {
       groupKey: 'draft',
       title: 'Draft',
       cols: 'sm:grid-cols-3',
       cards: [
-        { key: 'need_revision', label: 'Need Revision', hint: 'Rejected by approver; no action yet', icon: 'i-lucide-undo-2', value: value?.need_revision ?? 0, to: { tab: 'register', state: 'need_revision', bucket: undefined }, tone: 'error' as const },
-        { key: 'in_revision', label: 'In Revision', hint: 'Rejected by approver; revision in progress', icon: 'i-lucide-pencil-line', value: value?.in_revision ?? 0, to: { tab: 'register', state: 'in_revision', bucket: undefined }, tone: 'warning' as const },
-        { key: 'waiting_submission', label: 'Waiting for Submission Task', hint: 'Unsubmitted drafts & pending initial tasks', icon: 'i-lucide-file-pen', value: value?.waiting_submission ?? value?.drafts ?? 0, to: { tab: 'register', state: 'waiting_submission', bucket: undefined }, tone: 'neutral' as const },
+        { key: 'need_revision', label: 'Need Revision', hint: 'Rejected by approver; no action yet', icon: 'i-lucide-undo-2', value: value?.need_revision ?? 0, to: { tab: 'register', view: listTargetView, state: 'need_revision', bucket: undefined }, tone: 'error' as const },
+        { key: 'in_revision', label: 'In Revision', hint: 'Rejected by approver; revision in progress', icon: 'i-lucide-pencil-line', value: value?.in_revision ?? 0, to: { tab: 'register', view: listTargetView, state: 'in_revision', bucket: undefined }, tone: 'warning' as const },
+        {
+          key: 'waiting_submission',
+          label: 'Waiting for Submission Task',
+          hint: isAssessments ? 'Unsubmitted draft assessments' : 'Unsubmitted drafts & pending initial tasks',
+          icon: 'i-lucide-file-pen',
+          value: value?.waiting_submission ?? value?.drafts ?? 0,
+          to: { tab: 'register', view: listTargetView, state: 'waiting_submission', bucket: undefined },
+          tone: 'neutral' as const,
+        },
       ],
     },
     {
@@ -353,7 +372,7 @@ const cardSections = computed(() => {
       title: 'Final',
       cols: 'sm:grid-cols-3',
       cards: [
-        { key: 'full_approved', label: 'Full Approved', hint: 'Active final BIA (> 90 days before renewal)', icon: 'i-lucide-badge-check', value: value?.full_approved ?? 0, to: { tab: 'register', view: undefined, state: 'full_approved', bucket: undefined }, tone: 'neutral' as const },
+        { key: 'full_approved', label: 'Full Approved', hint: 'Active final BIA (> 90 days before renewal)', icon: 'i-lucide-badge-check', value: value?.full_approved ?? 0, to: { tab: 'register', view: listTargetView, state: 'full_approved', bucket: undefined }, tone: 'neutral' as const },
         { key: 'expired', label: 'Expired', hint: 'Prior final BIAs superseded by a newer final', icon: 'i-lucide-archive', value: value?.expired ?? 0, to: { tab: 'register', view: 'assessments', state: 'expired', bucket: undefined }, tone: 'neutral' as const },
         { key: 'cancelled', label: 'Cancelled', hint: 'Cancelled BIA assessments', icon: 'i-lucide-ban', value: value?.cancelled ?? 0, to: { tab: 'register', view: 'assessments', state: 'cancelled', bucket: undefined }, tone: 'neutral' as const },
       ],
@@ -383,12 +402,16 @@ const statusGroupColors: Record<string, string> = {
   in_renewal: '#dc2626',
 }
 
-const statusGroupTarget: Record<string, Record<string, string | undefined>> = {
-  draft: { tab: 'register', state: 'draft_group', bucket: undefined },
-  in_approval: { tab: 'bottlenecks', state: undefined, bucket: undefined },
-  final: { tab: 'register', state: 'full_approved', bucket: undefined },
-  in_renewal: { tab: 'renewals', state: undefined, bucket: undefined },
-}
+const statusGroupTarget = computed<Record<string, Record<string, string | undefined>>>(() => {
+  const isAssessments = overviewBasis.value === 'assessments'
+  const targetView = isAssessments ? 'assessments' : 'flat'
+  return {
+    draft: { tab: 'register', view: targetView, state: 'draft_group', bucket: undefined },
+    in_approval: { tab: 'bottlenecks', state: undefined, bucket: undefined },
+    final: { tab: 'register', view: targetView, state: isAssessments ? 'final_group' : 'full_approved', bucket: undefined },
+    in_renewal: { tab: 'renewals', state: undefined, bucket: undefined },
+  }
+})
 
 const statusGroupPieItems = computed(() => {
   const rows = overview.data.value?.by_status_group ?? []
@@ -411,7 +434,7 @@ const totalStatusGroups = computed(() =>
 )
 
 function inspectStatusGroup(groupKey: string) {
-  const target = statusGroupTarget[groupKey] ?? { tab: 'register' }
+  const target = statusGroupTarget.value[groupKey] ?? { tab: 'register' }
   navigateTo(cardLink(target))
 }
 
@@ -438,8 +461,9 @@ function plural(count: number, one: string, many = `${one}s`) {
 const categorySummary = computed(() => {
   const total = categoryBars.value.reduce((sum, row) => sum + row.value, 0)
   const critical = overview.data.value?.cards.business_critical ?? 0
+  const noun = overviewBasis.value === 'assessments' ? 'final assessment' : 'group'
   return total
-    ? `${plural(total, 'group')} with a final BIA; ${formatNumber(critical, 0)} with Business Critical functions.`
+    ? `${plural(total, noun)}${overviewBasis.value === 'groups' ? ' with a final BIA' : ''}; ${formatNumber(critical, 0)} with Business Critical functions.`
     : ''
 })
 const monthWindowLabel = computed(() =>
@@ -914,15 +938,39 @@ function record(id: number) {
       <template #overview>
         <div class="mt-4 space-y-6">
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default bg-default px-4 py-3">
-            <div class="flex items-center gap-2 text-sm">
-              <UIcon
-                name="i-lucide-calendar-range"
-                class="size-4 text-muted"
-              />
-              <span class="font-medium text-highlighted">Period</span>
-              <span class="text-xs text-muted">
-                {{ overviewPeriodSummary }}
-              </span>
+            <div class="flex flex-wrap items-center gap-3">
+              <div
+                class="inline-flex rounded-md border border-default p-0.5 text-xs"
+                role="group"
+                aria-label="Overview aggregation basis"
+              >
+                <button
+                  type="button"
+                  class="rounded px-2.5 py-1 font-medium transition"
+                  :class="overviewBasis === 'assessments' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                  @click="overviewBasis = 'assessments'"
+                >
+                  By assessment
+                </button>
+                <button
+                  type="button"
+                  class="rounded px-2.5 py-1 font-medium transition"
+                  :class="overviewBasis === 'groups' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                  @click="overviewBasis = 'groups'"
+                >
+                  By group
+                </button>
+              </div>
+              <div class="flex items-center gap-2 text-sm">
+                <UIcon
+                  name="i-lucide-calendar-range"
+                  class="size-4 text-muted"
+                />
+                <span class="font-medium text-highlighted">Period</span>
+                <span class="text-xs text-muted">
+                  {{ overviewPeriodSummary }}
+                </span>
+              </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <USelectMenu
@@ -960,13 +1008,13 @@ function record(id: number) {
           </div>
 
           <BiancaPieChart
-            title="BIA status by group"
-            :summary="`4 standardized status groups across ${plural(totalStatusGroups, 'group')}. Click a slice to inspect.`"
-            measure="Groups"
+            :title="overviewBasis === 'assessments' ? 'BIA status by assessment' : 'BIA status by group'"
+            :summary="`4 standardized status groups across ${plural(totalStatusGroups, overviewBasis === 'assessments' ? 'assessment' : 'group')}. Click a slice to inspect.`"
+            :measure="overviewBasis === 'assessments' ? 'Assessments' : 'Groups'"
             :height="260"
             :items="statusGroupPieItems"
             :loading="overview.status.value === 'pending' && !overview.data.value"
-            empty="No groups match these filters."
+            :empty="overviewBasis === 'assessments' ? 'No assessments match these filters.' : 'No groups match these filters.'"
             @select="inspectStatusGroup"
           />
 
@@ -997,13 +1045,13 @@ function record(id: number) {
 
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart
-              title="Groups by highest category"
-              measure="Groups"
+              :title="overviewBasis === 'assessments' ? 'BIAs by highest category' : 'Groups by highest category'"
+              :measure="overviewBasis === 'assessments' ? 'Assessments' : 'Groups'"
               :height="260"
               :items="categoryBars"
               :summary="categorySummary"
               :loading="overview.status.value === 'pending' && !overview.data.value"
-              :empty="categorySummary ? null : 'No group has a final BIA yet for these filters.'"
+              :empty="categorySummary ? null : (overviewBasis === 'assessments' ? 'No final BIA matches these filters.' : 'No group has a final BIA yet for these filters.')"
             />
             <SccaLineChart
               title="BIAs approved per month"
@@ -1348,10 +1396,10 @@ function record(id: number) {
                   <button
                     type="button"
                     class="rounded px-2.5 py-1 font-medium transition"
-                    :class="listView === 'directorates' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
-                    @click="listView = 'directorates'"
+                    :class="listView === 'assessments' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="listView = 'assessments'"
                   >
-                    By directorate
+                    All BIA
                   </button>
                   <button
                     type="button"
@@ -1364,10 +1412,10 @@ function record(id: number) {
                   <button
                     type="button"
                     class="rounded px-2.5 py-1 font-medium transition"
-                    :class="listView === 'assessments' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
-                    @click="listView = 'assessments'"
+                    :class="listView === 'directorates' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="listView = 'directorates'"
                   >
-                    All BIA
+                    By directorate
                   </button>
                 </div>
 

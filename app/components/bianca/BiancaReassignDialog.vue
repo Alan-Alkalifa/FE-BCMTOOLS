@@ -1,11 +1,25 @@
 <script setup lang="ts">
 import type { BiancaBoardResult, BiancaBoardRow } from '~/composables/useBiancaApproval'
 
-/** BCM board: hand the current step of a BIA to another user, with a reason. */
+/** Board / Administrator: assign or reassign a pending approval step to another user, with a reason. */
 const props = defineProps<{ row: BiancaBoardRow }>()
 const emit = defineEmits<{ close: [result?: BiancaBoardResult] }>()
 
 const toast = useToast()
+const { hasRole } = useAuth()
+const isAdmin = computed(() => hasRole('administrator'))
+const stepItems = computed(() =>
+  (props.row.steps ?? [])
+    .filter((step) => step.status !== 'approved')
+    .map((step) => ({
+      value: step.role,
+      label: `${step.title} (${step.current ? 'Current' : step.name ? step.name : 'Unassigned'})`,
+    })),
+)
+const selectedRole = ref<string>(props.row.step ?? stepItems.value[0]?.value ?? '')
+const selectedStepInfo = computed(() =>
+  (props.row.steps ?? []).find((step) => step.role === selectedRole.value) ?? null,
+)
 const userId = ref<number | null>(null)
 const reason = ref('')
 const busy = ref(false)
@@ -18,9 +32,10 @@ async function save() {
   if (Object.keys(errors.value).length) return
   busy.value = true
   try {
-    const result = await biancaBoardApi.reassign(props.row.id, userId.value!, reason.value.trim())
+    const roleArg = isAdmin.value && stepItems.value.length && selectedRole.value ? selectedRole.value : undefined
+    const result = await biancaBoardApi.reassign(props.row.id, userId.value!, reason.value.trim(), roleArg)
     toast.add({
-      title: 'Step reassigned',
+      title: 'Step assigned / reassigned',
       description: result.email_sent ? 'The new approver has been emailed.' : 'The email could not be sent; please let the new approver know.',
       color: 'success',
       icon: 'i-lucide-circle-check',
@@ -37,7 +52,7 @@ async function save() {
 
 <template>
   <UModal
-    title="Reassign the step"
+    :title="isAdmin && stepItems.length ? 'Assign / Reassign approver' : 'Reassign the step'"
     :description="`${row.ref_no ?? `#${row.id}`} · ${row.org_group ?? 'BIA'}`"
   >
     <template #body>
@@ -55,15 +70,32 @@ async function save() {
           :title="errors.form"
         />
         <p class="text-sm">
-          <span class="font-medium">{{ row.step_title || row.step || 'Current step' }}</span> is with
-          <span class="font-medium">{{ row.approver || 'nobody' }}</span> and has waited {{ biancaWaiting(row.working_days_waiting) }}.
-          The new approver is emailed and the reminder clock starts again.
+          <span class="font-medium">{{ selectedStepInfo?.title || row.step_title || row.step || 'Current step' }}</span> is currently with
+          <span class="font-medium">{{ selectedStepInfo?.name || row.approver || 'nobody' }}</span>
+          <template v-if="!selectedStepInfo || selectedStepInfo.current">
+            and has waited {{ biancaWaiting(row.working_days_waiting) }}.
+          </template>
+          The assigned approver is emailed cleanly.
         </p>
+        <UFormField
+          v-if="isAdmin && stepItems.length"
+          label="Approval step"
+          name="role"
+        >
+          <USelectMenu
+            v-model="selectedRole"
+            value-key="value"
+            :items="stepItems"
+            :search-input="false"
+            class="w-full"
+            aria-label="Approval step"
+          />
+        </UFormField>
         <UFormField
           label="New approver"
           name="user_id"
           required
-          help="An active user with BIANCA access; not the BIA owner, coordinator or alternate."
+          :help="isAdmin ? 'Administrator access: pick any active user with BIANCA access.' : 'An active user with BIANCA access; not the BIA owner, coordinator or alternate.'"
           :error="errors.user_id"
         >
           <UserPicker

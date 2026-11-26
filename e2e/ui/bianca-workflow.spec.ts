@@ -447,6 +447,11 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
               reminders_sent: 2,
               escalated_at: '2026-11-19',
               can_act: true,
+              steps: [
+                { role: 'bcm_coordinator', title: 'Dibuat Oleh', name: 'Test User', designation: 'Maker', user_id: 1, status: 'approved', current: false, decided_at: '2026-11-10T00:00:00Z', decision_note: null, pending_since: null },
+                { role: 'group_head', title: 'Group Head / IMT', name: 'Group Head User', designation: 'Group Head', user_id: 2, status: 'pending', current: true, decided_at: null, decision_note: null, pending_since: '2026-11-10T00:00:00Z' },
+                { role: 'head_of', title: 'Head of Sub-Directorate', name: null, designation: null, user_id: null, status: null, current: false, decided_at: null, decision_note: null, pending_since: null },
+              ],
             },
           ],
           page: 1,
@@ -455,6 +460,9 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
           pages: 1,
         },
       })
+    }
+    if (path === '/api/bianca/assessments/1/reassign' && route.request().method() === 'POST') {
+      return route.fulfill({ json: { ...current, email_sent: true } })
     }
     if (path === '/api/bianca/monitoring/org-values') {
       return route.fulfill({
@@ -466,9 +474,12 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
       })
     }
     if (path === '/api/bianca/monitoring/overview') {
+      const basis = url.searchParams.get('basis') === 'groups' ? 'groups' : 'assessments'
       return route.fulfill({
         json: {
+          basis,
           cards: {
+            assessments: basis === 'assessments' ? 19 : undefined,
             groups: 16,
             assessed: 7,
             not_assessed: 9,
@@ -496,7 +507,7 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
           by_status_group: [
             { group: 'draft', label: 'Draft', count: 8 },
             { group: 'in_approval', label: 'In Approval', count: 1 },
-            { group: 'final', label: 'Final', count: 2 },
+            { group: 'final', label: 'Final', count: basis === 'assessments' ? 5 : 2 },
             { group: 'in_renewal', label: 'In Renewal', count: 5 },
           ],
           by_category: [
@@ -691,6 +702,17 @@ async function setupBiancaMocks(page: Page, initial = makeAssessment()) {
         json: {
           items: [{ step: 'group_head', step_title: 'Group Head / IMT', approvals: 4, average_working_days: 3.5 }],
         },
+      })
+    }
+    if (path === '/api/bianca/monitoring/assessments/4/export') {
+      const section = url.searchParams.get('section') || 'all'
+      return route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Disposition': `attachment; filename="BIA-2026-0002-monitoring-${section}.xlsx"`,
+        },
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        body: Buffer.from('PK\x03\x04mock-section-xlsx'),
       })
     }
     if (path === '/api/bianca/monitoring/assessments/4') {
@@ -907,9 +929,22 @@ test('Approval Inbox, History, BCM Board exports and Return/Approve flow', async
   await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/approvals/history.xlsx')
 
   await page.getByRole('tab', { name: 'BCM board' }).click()
-  await expect(page.getByRole('columnheader', { name: 'Assess since' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Assess days' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/approvals/board.xlsx')
+  const boardPanel = page.getByRole('tabpanel', { name: 'BCM board' })
+  await expect(boardPanel.getByRole('columnheader', { name: 'Assess since' })).toBeVisible()
+  await expect(boardPanel.getByRole('columnheader', { name: 'Assess days' })).toBeVisible()
+  await expect(boardPanel.getByRole('columnheader', { name: 'Sign-off steps' })).toBeVisible()
+  await expect(boardPanel.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/approvals/board.xlsx')
+
+  // Administrator gets unrestricted Assign / Reassign approver & Approve on behalf directly in BCM board
+  await boardPanel.getByRole('button', { name: 'Act on BIA-2026-0001' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Approve on behalf' })).toBeEnabled()
+  await page.getByRole('menuitem', { name: 'Assign / Reassign approver' }).click()
+  const assignDialog = page.getByRole('dialog', { name: 'Assign / Reassign approver' })
+  await expect(assignDialog.getByText('Approval step')).toBeVisible()
+  await assignDialog.getByRole('button', { name: 'Approval step' }).click()
+  await expect(page.getByRole('option', { name: /Head of Sub-Directorate \(Unassigned\)/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
 
   await page.goto('/bianca/approval/1')
   await expect(page.getByRole('button', { name: 'Return for changes' })).toBeVisible({ timeout: 45_000 })
@@ -931,38 +966,28 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await signIn(page, { permissions: BIANCA_PERMISSIONS })
   await setupBiancaMocks(page)
 
-  // Overview
+  // Overview defaults to By assessment, with switcher to By group
   await page.goto('/bianca/monitoring')
-  await expect(page.getByText('BIA status by group')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('4 standardized status groups across 16 groups.')).toBeVisible()
+  await expect(page.getByText('BIA status by assessment')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('4 standardized status groups across 19 assessments.')).toBeVisible()
   await expect(page.getByRole('link', { name: /In Approval: 1/ })).toBeVisible()
   await expect(page.getByRole('link', { name: /Escalated: 1/ })).toBeVisible()
+  await expect(page.getByText('BIAs by highest category')).toBeVisible()
+
+  await page.getByRole('button', { name: 'By group', exact: true }).click()
+  await expect(page.getByText('BIA status by group')).toBeVisible()
+  await expect(page.getByText('4 standardized status groups across 16 groups.')).toBeVisible()
   await expect(page.getByText('Groups by highest category')).toBeVisible()
+  await page.getByRole('button', { name: 'By assessment', exact: true }).click()
 
   // Renewals
   await page.getByRole('tab', { name: 'Renewals' }).click()
   const renewalsPanel = page.getByRole('tabpanel', { name: 'Renewals' })
   await expect(renewalsPanel.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/monitoring/export.xlsx?tab=renewals')
 
-  // List: All groups -> By directorate -> All BIA
+  // List defaults to All BIA -> can switch to All groups & By directorate
   await page.getByRole('tab', { name: 'List' }).click()
   const listPanel = page.getByRole('tabpanel', { name: 'List' })
-  await expect(listPanel.getByRole('columnheader', { name: 'Open BIA' })).toBeVisible()
-  await expect(listPanel.getByText('GRP-DCG-05')).toBeVisible()
-  await expect(listPanel.getByText('BIA-2026-0002').first()).toBeVisible()
-
-  // History dialog
-  await listPanel.getByRole('button', { name: /BIA history of Digital Channels Group|2/i }).first().click()
-  const historyDialog = page.getByRole('dialog', { name: 'BIAs of Digital Channels Group' })
-  await expect(historyDialog).toBeVisible()
-  await expect(historyDialog.getByText('Expired', { exact: true })).toBeVisible()
-  await page.keyboard.press('Escape')
-
-  await listPanel.getByRole('button', { name: 'By directorate', exact: true }).click()
-  await expect(listPanel.getByRole('columnheader', { name: 'Final coverage' })).toBeVisible()
-  await expect(listPanel.getByRole('link', { name: 'Export to Excel' })).toBeVisible()
-
-  await listPanel.getByRole('button', { name: 'All BIA', exact: true }).click()
   await expect(listPanel.getByRole('columnheader', { name: 'BIA ref. no.' })).toBeVisible()
   await expect(listPanel.getByRole('columnheader', { name: 'Open BIA' })).toHaveCount(0)
   await expect(listPanel.getByText('Expired', { exact: true })).toBeVisible()
@@ -979,6 +1004,22 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await expect(page).toHaveURL(/\/bianca\/monitoring\?tab=register&view=assessments/)
   await expect(listPanel.getByRole('columnheader', { name: 'BIA ref. no.' })).toBeVisible()
 
+  await listPanel.getByRole('button', { name: 'All groups', exact: true }).click()
+  await expect(listPanel.getByRole('columnheader', { name: 'Open BIA' })).toBeVisible()
+  await expect(listPanel.getByText('GRP-DCG-05')).toBeVisible()
+  await expect(listPanel.getByText('BIA-2026-0002').first()).toBeVisible()
+
+  // History dialog
+  await listPanel.getByRole('button', { name: /BIA history of Digital Channels Group|2/i }).first().click()
+  const historyDialog = page.getByRole('dialog', { name: 'BIAs of Digital Channels Group' })
+  await expect(historyDialog).toBeVisible()
+  await expect(historyDialog.getByText('Expired', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await listPanel.getByRole('button', { name: 'By directorate', exact: true }).click()
+  await expect(listPanel.getByRole('columnheader', { name: 'Final coverage' })).toBeVisible()
+  await expect(listPanel.getByRole('link', { name: 'Export to Excel' })).toBeVisible()
+
   // Approval bottlenecks tab
   await page.getByRole('tab', { name: 'Approval' }).click()
   const approvalPanel = page.getByRole('tabpanel', { name: 'Approval' })
@@ -986,19 +1027,31 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await expect(approvalPanel.getByRole('columnheader', { name: 'Assess days' })).toBeVisible()
   await expect(approvalPanel.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/monitoring/export.xlsx?tab=bottlenecks')
 
-  // Detail page loads KPI summary, tab badges, and tabs (Gap check summary box is hidden)
+  // Detail page loads KPI summary and follows Add-new-BIA tab mapping (Sign off page -> RA questionnaire -> Business functions -> Appendix -> Approval template)
   await page.goto('/bianca/monitoring/4')
   await expect(page.getByRole('button', { name: /Business functions/ })).toBeVisible({ timeout: 45_000 })
   await expect(page.getByText(/Gap check:/)).toHaveCount(0)
 
-  await page.getByRole('tab', { name: /Impact assessment/ }).click()
-  await expect(page.getByText('OCTO Mobile Onboarding').first()).toBeVisible()
+  const mainTabList = page.locator('#main-content').getByRole('tablist').first()
+  await expect(mainTabList.getByRole('tab')).toHaveText([
+    /Sign off page/,
+    /RA questionnaire/,
+    /Business functions/,
+    /Appendix/,
+    /Approval template/,
+  ])
 
-  await page.getByRole('tab', { name: /IT & non-IT dependencies/ }).click()
-  await expect(page.getByText('Core Banking').first()).toBeVisible()
+  await page.getByRole('tab', { name: /Business functions/ }).click()
+  const functionsPanel = page.getByRole('tabpanel', { name: /Business functions/ })
+  const fnTabList = page.getByRole('tablist', { name: 'Business function parts' })
+  await expect(fnTabList.getByRole('tab', { name: /Part 1 · Impact assessment/ })).toBeVisible()
+  await expect(functionsPanel.getByText('OCTO Mobile Onboarding').first()).toBeVisible()
 
-  await page.getByRole('tab', { name: /Recovery strategies/ }).click()
-  await expect(page.getByText('Hyspace').first()).toBeVisible()
+  await fnTabList.getByRole('tab', { name: /Part 2 · IT & non-IT dependencies/ }).click()
+  await expect(functionsPanel.getByText('Core Banking').first()).toBeVisible()
+
+  await fnTabList.getByRole('tab', { name: /Part 3 · Recovery strategies/ }).click()
+  await expect(functionsPanel.getByText('Hyspace').first()).toBeVisible()
 
   expect(pageErrors).toEqual([])
 })
@@ -1026,6 +1079,81 @@ test('Monitoring detail Appendix supports Export all and Export selected to Exce
   const allReq = page.waitForRequest((req) => req.url().endsWith('/api/bianca/assessments/4/export'))
   await exportAllBtn.click()
   await allReq
+
+  expect(pageErrors).toEqual([])
+})
+
+test('Monitoring detail supports Excel export for each section and all sections', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (err) => pageErrors.push(err.message))
+  await signIn(page, { permissions: BIANCA_PERMISSIONS })
+  await setupBiancaMocks(page)
+
+  await page.goto('/bianca/monitoring/4')
+  const exportAllSectionsBtn = page.getByRole('button', { name: 'Export all sections' })
+  await expect(exportAllSectionsBtn).toBeVisible({ timeout: 45_000 })
+
+  const allSectionsReq = page.waitForRequest((req) => req.url().includes('/api/bianca/monitoring/assessments/4/export?section=all'))
+  await exportAllSectionsBtn.click()
+  await allSectionsReq
+
+  const topTabSections = [
+    { tab: /Sign off page/, panel: 'Sign off page', section: 'details' },
+    { tab: /RA questionnaire/, panel: 'RA questionnaire', section: 'details' },
+    { tab: /Approval template/, panel: 'Approval template', section: 'signoff' },
+  ] as const
+
+  for (const item of topTabSections) {
+    await page.getByRole('tab', { name: item.tab }).click()
+    const panel = page.getByRole('tabpanel', { name: item.panel })
+    const btn = panel.getByRole('button', { name: 'Export to Excel' })
+    await expect(btn).toBeVisible()
+    const reqPromise = page.waitForRequest((req) =>
+      req.url().includes(`/api/bianca/monitoring/assessments/4/export?section=${item.section}`),
+    )
+    await btn.click()
+    await reqPromise
+  }
+
+  // Business functions sub-parts (Part 1 - Part 4)
+  await page.getByRole('tab', { name: /Business functions/ }).click()
+  const functionsPanel = page.getByRole('tabpanel', { name: /Business functions/ })
+  const fnTabList = page.getByRole('tablist', { name: 'Business function parts' })
+  const partSections = [
+    { label: /Part 1 · Impact assessment/, section: 'impact' },
+    { label: /Part 2 · IT & non-IT dependencies/, section: 'dependencies' },
+    { label: /Part 3 · Recovery strategies/, section: 'recovery' },
+    { label: /Part 4 · Critical timings/, section: 'timings' },
+  ] as const
+
+  for (const part of partSections) {
+    await fnTabList.getByRole('tab', { name: part.label }).click()
+    const btn = functionsPanel.getByRole('button', { name: 'Export to Excel' })
+    await expect(btn).toBeVisible()
+    const reqPromise = page.waitForRequest((req) =>
+      req.url().includes(`/api/bianca/monitoring/assessments/4/export?section=${part.section}`),
+    )
+    await btn.click()
+    await reqPromise
+  }
+
+  // Dependencies with issues filter appends issues_only=1
+  await fnTabList.getByRole('tab', { name: /Part 2 · IT & non-IT dependencies/ }).click()
+  await functionsPanel.getByRole('button', { name: /With gaps \/ alerts/ }).click()
+  const issuesReq = page.waitForRequest((req) =>
+    req.url().includes('/api/bianca/monitoring/assessments/4/export?section=dependencies&issues_only=1'),
+  )
+  await functionsPanel.getByRole('button', { name: 'Export to Excel' }).click()
+  await issuesReq
+
+  // Appendix section summary export
+  await page.getByRole('tab', { name: /Appendix/ }).click()
+  const appendixPanel = page.getByRole('tabpanel', { name: 'Appendix' })
+  const appendixSummaryReq = page.waitForRequest((req) =>
+    req.url().includes('/api/bianca/monitoring/assessments/4/export?section=appendix'),
+  )
+  await appendixPanel.getByRole('button', { name: 'Export section summary' }).click()
+  await appendixSummaryReq
 
   expect(pageErrors).toEqual([])
 })

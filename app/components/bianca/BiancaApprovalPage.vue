@@ -7,23 +7,25 @@ import type {
   BiancaWaitLevel,
   BiancaWaiting,
 } from '~/composables/useBiancaApproval'
+import BiancaApprovalBoardCard from '~/components/bianca/BiancaApprovalBoardCard.vue'
 import BiancaOnBehalfDialog from '~/components/bianca/BiancaOnBehalfDialog.vue'
 import BiancaReassignDialog from '~/components/bianca/BiancaReassignDialog.vue'
 
 /**
  * BIANCA Approval, as SCCA's and RA's: my inbox (BIAs whose current sign-off step is mine, with
  * those coming to me later), my history (what I submitted, approved or returned), and for BCM,
- * the BCM board (every BIA in approval).
+ * the BCM board (every BIA in approval; Administrators get full assign/reassign/on-behalf access).
  */
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
-const { can } = useAuth()
+const { can, hasRole } = useAuth()
 const reassignDialog = useOverlay().create(BiancaReassignDialog)
 const onBehalfDialog = useOverlay().create(BiancaOnBehalfDialog)
 
 const bcm = computed(() => can('bianca.approval.manage'))
+const isAdmin = computed(() => hasRole('administrator'))
 type ApprovalTab = 'inbox' | 'history' | 'board'
 const tab = computed<ApprovalTab>({
   get: () => {
@@ -206,6 +208,11 @@ const boardColumns: TableColumn<BiancaBoardRow>[] = [
   { accessorKey: 'escalated_at', header: boardSortHeader('Escalated on', 'escalated_at'), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
   { id: 'actions', header: '' },
 ]
+const allColumns: TableColumn<BiancaBoardRow>[] = [
+  ...boardColumns.slice(0, 6),
+  { id: 'steps', header: 'Sign-off steps', meta: { class: { th: 'min-w-52', td: 'min-w-52' } } },
+  ...boardColumns.slice(6),
+]
 
 const picked = ref<Set<number>>(new Set())
 watch(boardRows, () => (picked.value = new Set()))
@@ -290,11 +297,12 @@ async function onBehalf(row: BiancaBoardRow) {
 }
 
 function boardActions(row: BiancaBoardRow): DropdownMenuItem[] {
+  const actAllowed = isAdmin.value || row.can_act
   return [
     { label: 'Open', icon: 'i-lucide-folder-open', to: biancaApprovalPath(row.id) },
     { label: 'Send a reminder now', icon: 'i-lucide-bell-ring', onSelect: () => nudge(row) },
-    { label: 'Reassign the step', icon: 'i-lucide-user-round-cog', disabled: !row.can_act, onSelect: () => reassign(row) },
-    { label: 'Approve on behalf', icon: 'i-lucide-badge-check', disabled: !row.can_act, onSelect: () => onBehalf(row) },
+    { label: isAdmin.value ? 'Assign / Reassign approver' : 'Reassign the step', icon: 'i-lucide-user-round-cog', disabled: !actAllowed, onSelect: () => reassign(row) },
+    { label: 'Approve on behalf', icon: 'i-lucide-badge-check', disabled: !actAllowed, onSelect: () => onBehalf(row) },
   ]
 }
 
@@ -557,206 +565,41 @@ const tabs = computed(() => [
         v-if="board"
         #board
       >
-        <UCard
-          class="mt-4"
-          :ui="{ body: 'p-0 sm:p-0' }"
-        >
-          <ListFilterBar
-            :filtered="filtered"
-            @clear="clearFilters"
-          >
-            <template #search>
-              <UInput
-                v-model="search"
-                icon="i-lucide-search"
-                placeholder="Group, directorate or ref. no."
-                aria-label="Search the board"
-                class="w-full"
-              />
-            </template>
-            <USelectMenu
-              v-model="boardStep"
-              value-key="value"
-              :items="stepItems"
-              :search-input="false"
-              aria-label="Step"
-              class="w-48"
-            />
-            <USelectMenu
-              v-model="boardLevel"
-              value-key="value"
-              :items="levelItems"
-              :search-input="false"
-              aria-label="Waiting time"
-              class="w-44"
-            />
-            <USelectMenu
-              v-model="categoryFilter"
-              value-key="value"
-              :items="categoryItems"
-              :search-input="false"
-              aria-label="Category"
-              class="w-44"
-            />
-            <UserPicker
-              v-model="boardApprover"
-              placeholder="Any approver"
-              aria-label="Approver"
-              permission="bianca.access"
-              class="w-56"
-            />
-          </ListFilterBar>
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
-            <p class="text-sm text-muted">
-              Reminders and escalation follow
-              <NuxtLink
-                v-if="can('bianca.settings.manage') && can('bianca.config.view')"
-                to="/admin/bianca-config?tab=reminders"
-                class="text-primary hover:underline"
-              >BIANCA configuration > Reminders and escalation</NuxtLink><span v-else>the BIANCA reminder rules</span>.
-            </p>
-            <div class="flex flex-wrap items-center gap-2">
-              <UButton
-                :to="biancaApprovalExportUrl('board', {
-                  step: boardStep === 'all' ? undefined : boardStep,
-                  level: boardLevel === 'all' ? undefined : boardLevel,
-                  category: categoryFilter === 'all' ? undefined : categoryFilter,
-                  approver_id: boardApprover ?? undefined,
-                  q: text('q'),
-                })"
-                external
-                download
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-file-spreadsheet"
-                label="Export to Excel"
-              />
-              <UButton
-                icon="i-lucide-bell-ring"
-                :label="`Send reminder (${pickedRows.length})`"
-                :loading="nudgingBulk"
-                :disabled="!pickedRows.length || nudgingBulk"
-                @click="nudgeMany"
-              />
-            </div>
-          </div>
-          <UTable
-            :data="boardRows"
-            :columns="boardColumns"
-            :loading="board.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
-          >
-            <template #select-header>
-              <UCheckbox
-                v-if="boardRows.length"
-                v-model="allPicked"
-                aria-label="Select every BIA on this page"
-              />
-            </template>
-            <template #select-cell="{ row }">
-              <UCheckbox
-                :model-value="picked.has(row.original.id)"
-                :aria-label="`Select ${row.original.ref_no ?? `#${row.original.id}`}`"
-                @update:model-value="pick(row.original, $event)"
-              />
-            </template>
-            <template #org_group-cell="{ row }">
-              <NuxtLink
-                :to="biancaApprovalPath(row.original.id)"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ row.original.org_group || 'BIA' }}
-              </NuxtLink>
-              <p
-                v-if="row.original.directorate"
-                class="text-xs text-muted"
-              >
-                {{ row.original.directorate }}
-              </p>
-            </template>
-            <template #ref_no-cell="{ row }">
-              <span class="font-mono text-xs">{{ row.original.ref_no || '—' }}</span>
-            </template>
-            <template #highest_category-cell="{ row }">
-              <StatusBadge
-                v-if="row.original.highest_category"
-                :scale="BIANCA_CATEGORY"
-                :value="row.original.highest_category as keyof typeof BIANCA_CATEGORY"
-                size="sm"
-              />
-              <span
-                v-else
-                class="text-muted"
-              >—</span>
-            </template>
-            <template #step_title-cell="{ row }">
-              {{ row.original.step_title || row.original.step || '—' }}
-            </template>
-            <template #approver-cell="{ row }">
-              {{ row.original.approver || '—' }}
-              <p
-                v-if="!row.original.can_act"
-                class="text-xs text-muted"
-              >
-                Your own BIA: reminders only
-              </p>
-            </template>
-            <template #level-cell="{ row }">
-              <StatusBadge
-                :scale="biancaWaitLevel"
-                :value="row.original.level"
-                size="sm"
-              />
-            </template>
-            <template #waiting_since-cell="{ row }">
-              {{ formatDate(row.original.waiting_since) || '—' }}
-            </template>
-            <template #working_days_waiting-cell="{ row }">
-              <span class="block text-right tabular-nums">{{ biancaWaiting(row.original.working_days_waiting) }}</span>
-            </template>
-            <template #reminders_sent-cell="{ row }">
-              <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
-            </template>
-            <template #escalated_at-cell="{ row }">
-              <span
-                v-if="row.original.escalated_at"
-                class="text-error"
-              >{{ formatDate(row.original.escalated_at) }}</span>
-              <span
-                v-else
-                class="text-muted"
-              >—</span>
-            </template>
-            <template #actions-cell="{ row }">
-              <UDropdownMenu
-                :items="boardActions(row.original)"
-                :content="{ align: 'end' }"
-              >
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  size="sm"
-                  trailing-icon="i-lucide-chevron-down"
-                  label="Act"
-                  :aria-label="`Act on ${row.original.ref_no ?? `#${row.original.id}`}`"
-                />
-              </UDropdownMenu>
-            </template>
-            <template #empty>
-              <p class="py-6 text-center text-sm text-muted">
-                {{ filtered ? 'Nothing in approval matches these filters.' : 'Nothing is in approval.' }}
-              </p>
-            </template>
-          </UTable>
-          <TablePagination
-            v-model:per-page="perPage"
-            :page="boardPage"
-            page-sizes
-            :total="board.data.value?.total ?? 0"
-            :to="pageTo"
-            label="BCM board"
-          />
-        </UCard>
+        <BiancaApprovalBoardCard
+          v-model:search="search"
+          v-model:step="boardStep"
+          v-model:level="boardLevel"
+          v-model:category="categoryFilter"
+          v-model:approver="boardApprover"
+          :mode="isAdmin ? 'all' : 'board'"
+          :rows="board.data.value?.items ?? []"
+          :total="board.data.value?.total ?? 0"
+          :loading="board.status.value === 'pending'"
+          :page="boardPage"
+          :per-page="perPage"
+          :filtered="filtered"
+          :columns="isAdmin ? allColumns : boardColumns"
+          :step-items="stepItems"
+          :level-items="levelItems"
+          :category-items="categoryItems"
+          :export-url="biancaApprovalExportUrl('board', {
+            step: boardStep === 'all' ? undefined : boardStep,
+            level: boardLevel === 'all' ? undefined : boardLevel,
+            category: categoryFilter === 'all' ? undefined : categoryFilter,
+            approver_id: boardApprover ?? undefined,
+            q: text('q'),
+          })"
+          :nudging-bulk="nudgingBulk"
+          :picked="picked"
+          :all-picked="allPicked"
+          :page-to="pageTo"
+          :actions-for="boardActions"
+          @clear="clearFilters"
+          @nudge-many="nudgeMany"
+          @pick="pick"
+          @update:all-picked="allPicked = $event"
+          @update:per-page="perPage = $event"
+        />
       </template>
     </UTabs>
   </AppPage>

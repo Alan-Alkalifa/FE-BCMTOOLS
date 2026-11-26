@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { BiaFunctionItem } from '~/composables/useBiaWorkflow'
+import type { BiaDetailSection, BiaFunctionItem } from '~/composables/useBiaWorkflow'
 import type { BiancaGapTab } from '~/components/bianca/BiancaGapSummary.vue'
 
 definePageMeta({ permission: 'bianca.access' })
@@ -91,10 +91,15 @@ async function jumpToGap(payload: { tab: BiancaGapTab, message: string }) {
   if (payload.tab === 'dependencies') {
     depsFilter.value = 'all'
   }
-  if (tab.value !== payload.tab) {
-    await router.replace({
-      query: { ...route.query, tab: payload.tab === 'details' ? undefined : payload.tab },
-    })
+  const targetTab: DetailTab = payload.tab === 'details' ? 'ra' : 'functions'
+  const targetPart: FunctionPartTab | undefined = payload.tab === 'details' ? undefined : payload.tab
+  if (tab.value !== targetTab || (targetTab === 'functions' && functionPart.value !== targetPart)) {
+    const nextQuery: Record<string, string | string[] | null | undefined> = {
+      ...route.query,
+      tab: targetTab,
+      part: targetTab === 'functions' && targetPart && targetPart !== 'impact' ? targetPart : undefined,
+    }
+    await router.replace({ query: nextQuery })
   }
 
   activeGapRow.value = null
@@ -208,12 +213,51 @@ const hasPart1Notes = computed(() => Boolean(
   || detail.value?.notes?.justification_customer,
 ))
 
-const TABS = ['details', 'impact', 'dependencies', 'recovery', 'timings', 'signoff', 'appendix'] as const
-type DetailTab = (typeof TABS)[number]
+type DetailTab = 'sign' | 'ra' | 'functions' | 'appendix' | 'approval'
+const FUNCTION_PARTS = ['impact', 'dependencies', 'recovery', 'timings'] as const
+type FunctionPartTab = (typeof FUNCTION_PARTS)[number]
+
+function normalizeTabParam(raw: unknown): DetailTab {
+  const val = String(raw || '')
+  if (val === 'details' || val === 'sign') return 'sign'
+  if (val === 'ra') return 'ra'
+  if (val === 'functions' || FUNCTION_PARTS.includes(val as FunctionPartTab)) return 'functions'
+  if (val === 'appendix') return 'appendix'
+  if (val === 'approval' || val === 'signoff') return 'approval'
+  return 'sign'
+}
+
+function normalizePartParam(tabRaw: unknown, partRaw: unknown): FunctionPartTab {
+  if (FUNCTION_PARTS.includes(partRaw as FunctionPartTab)) return partRaw as FunctionPartTab
+  if (FUNCTION_PARTS.includes(tabRaw as FunctionPartTab)) return tabRaw as FunctionPartTab
+  return 'impact'
+}
+
 const tab = computed<DetailTab>({
-  get: () => (TABS.includes(route.query.tab as DetailTab) ? route.query.tab as DetailTab : 'details'),
-  set: (value) => router.replace({ query: { ...route.query, tab: value === 'details' ? undefined : value } }),
+  get: () => normalizeTabParam(route.query.tab),
+  set: (value) => router.replace({
+    query: {
+      ...route.query,
+      tab: value === 'sign' ? undefined : value,
+      part: value === 'functions' ? route.query.part : undefined,
+    },
+  }),
 })
+
+const functionPart = computed<FunctionPartTab>({
+  get: () => normalizePartParam(route.query.tab, route.query.part),
+  set: (value) => router.replace({
+    query: {
+      ...route.query,
+      tab: 'functions',
+      part: value === 'impact' ? undefined : value,
+    },
+  }),
+})
+
+function openFunctionPart(part: FunctionPartTab) {
+  functionPart.value = part
+}
 
 const DEFAULT_IMPACT_PERIODS = ['4 Hours', 'Day 1', 'Day 2', 'Day 3', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
 const impactPeriods = computed(() =>
@@ -255,6 +299,8 @@ const impactTableMeta = computed(() => ({
 }))
 
 const exporter = useBiancaExport()
+const sectionExporter = useBiancaDownload()
+const activeExportSection = ref<BiaDetailSection | null>(null)
 const appendixPicked = ref<number[]>([])
 const allAppendixPicked = computed(() =>
   (detail.value?.functions.length ?? 0) > 0 && appendixPicked.value.length === detail.value?.functions.length,
@@ -277,6 +323,25 @@ function toggleAllAppendix(on: boolean) {
 async function exportAppendixFunctions(seqNos?: number[]) {
   if (!detail.value) return
   await exporter.run(detail.value.id, seqNos)
+}
+
+async function exportDetailSection(section: BiaDetailSection) {
+  if (!detail.value) return
+  activeExportSection.value = section
+  try {
+    const url = biaDetailSectionExportUrl(
+      detail.value.id,
+      section,
+      section === 'dependencies' && depsFilter.value === 'issues',
+    )
+    const safeRef = (detail.value.ref_no || `BIA-${detail.value.id}`).replace(/[^A-Za-z0-9._-]+/g, '-')
+    const fallback = section === 'all'
+      ? `${safeRef}-monitoring-all-sections.xlsx`
+      : `${safeRef}-monitoring-${section}.xlsx`
+    await sectionExporter.download(url, fallback, 'Excel file downloaded')
+  } finally {
+    activeExportSection.value = null
+  }
 }
 
 const appendixColumns: TableColumn<BiaFunctionItem>[] = [
@@ -452,27 +517,37 @@ const detailSummary = computed(() => {
   }
 })
 
-const tabAlertCounts = computed<Record<DetailTab, number>>(() => {
+const tabAlertCounts = computed(() => {
   const g = detail.value?.gaps
+  const impact = g?.impact?.length ?? 0
+  const dependencies = g?.dependencies?.length ?? 0
+  const recovery = g?.recovery?.length ?? 0
   return {
-    details: g?.details?.length ?? 0,
-    impact: g?.impact?.length ?? 0,
-    dependencies: g?.dependencies?.length ?? 0,
-    recovery: g?.recovery?.length ?? 0,
+    sign: 0,
+    ra: g?.details?.length ?? 0,
+    functions: impact + dependencies + recovery,
+    impact,
+    dependencies,
+    recovery,
     timings: 0,
-    signoff: 0,
     appendix: 0,
+    approval: 0,
   }
 })
 
 const tabs = computed(() => [
-  { label: 'Details & personnel', value: 'details', icon: 'i-lucide-building-2', slot: 'details' as const, badge: tabAlertCounts.value.details || undefined },
-  { label: 'Impact assessment', value: 'impact', icon: 'i-lucide-chart-column', slot: 'impact' as const, badge: tabAlertCounts.value.impact || undefined },
-  { label: 'IT & non-IT dependencies', value: 'dependencies', icon: 'i-lucide-network', slot: 'dependencies' as const, badge: tabAlertCounts.value.dependencies || undefined },
-  { label: 'Recovery strategies', value: 'recovery', icon: 'i-lucide-life-buoy', slot: 'recovery' as const, badge: tabAlertCounts.value.recovery || undefined },
-  { label: 'Critical timings', value: 'timings', icon: 'i-lucide-calendar', slot: 'timings' as const, badge: tabAlertCounts.value.timings || undefined },
-  { label: 'Sign-off', value: 'signoff', icon: 'i-lucide-badge-check', slot: 'signoff' as const, badge: tabAlertCounts.value.signoff || undefined },
-  { label: 'Appendix', value: 'appendix', icon: 'i-lucide-file-text', slot: 'appendix' as const },
+  { label: 'Sign off page', value: 'sign', icon: 'i-lucide-signature', slot: 'sign' as const },
+  { label: 'RA questionnaire', value: 'ra', icon: 'i-lucide-clipboard-list', slot: 'ra' as const, badge: tabAlertCounts.value.ra || undefined },
+  { label: 'Business functions', value: 'functions', icon: 'i-lucide-workflow', slot: 'functions' as const, badge: tabAlertCounts.value.functions || undefined },
+  { label: 'Appendix', value: 'appendix', icon: 'i-lucide-table-2', slot: 'appendix' as const },
+  { label: 'Approval template', value: 'approval', icon: 'i-lucide-badge-check', slot: 'approval' as const },
+])
+
+const functionParts = computed<Array<{ value: FunctionPartTab, label: string, icon: string, badge?: number }>>(() => [
+  { value: 'impact', label: 'Part 1 · Impact assessment', icon: 'i-lucide-chart-column', badge: tabAlertCounts.value.impact || undefined },
+  { value: 'dependencies', label: 'Part 2 · IT & non-IT dependencies', icon: 'i-lucide-network', badge: tabAlertCounts.value.dependencies || undefined },
+  { value: 'recovery', label: 'Part 3 · Recovery strategies', icon: 'i-lucide-life-buoy', badge: tabAlertCounts.value.recovery || undefined },
+  { value: 'timings', label: 'Part 4 · Critical timings', icon: 'i-lucide-calendar' },
 ])
 
 const lossPeriodTotals = computed(() =>
@@ -532,6 +607,77 @@ const pageCrumbs = computed(() => [
   ...(backNavigation.value.middleCrumb ? [backNavigation.value.middleCrumb] : []),
   ...(detail.value ? [{ label: detail.value.ref_no }] : []),
 ])
+
+const statusGroupTooltip = computed(() => {
+  const current = detail.value
+  if (!current) return ''
+  const group = current.status_group
+  if (group === 'final' || current.status === 'approved') {
+    return current.approved_at
+      ? `All sign-off steps are complete and this BIA was finalised on ${formatDate(current.approved_at)}.`
+      : 'All sign-off steps are complete and this BIA is finalised.'
+  }
+  if (group === 'in_approval' || current.status === 'in_signoff') {
+    return current.current_step_title
+      ? `Submitted for approval; currently awaiting sign-off at ${current.current_step_title}.`
+      : 'Submitted and currently awaiting sign-off in the approval workflow.'
+  }
+  if (group === 'in_renewal') {
+    return 'Annual renewal BIA is currently in progress.'
+  }
+  if (current.is_returned || current.revision_state === 'need_revision' || current.revision_state === 'in_revision') {
+    return 'Returned by an approver for revision before resubmission.'
+  }
+  return 'Draft assessment that has not been submitted for approval yet.'
+})
+
+const statusDetailTooltip = computed(() => {
+  const current = detail.value
+  if (!current?.status_detail_label) return ''
+  const due = current.renewal_date ? formatDate(current.renewal_date) : null
+  switch (current.status_detail) {
+    case 'full_approved':
+      return due ? `Fully approved and valid until the next annual renewal on ${due}.` : 'Fully approved and currently valid.'
+    case 'due_30':
+    case 'due_60':
+    case 'due_90':
+      return due ? `Annual renewal is ${current.status_detail_label.toLowerCase()} (due ${due}).` : `Annual renewal is ${current.status_detail_label.toLowerCase()}.`
+    case 'overdue':
+      return due ? `Annual renewal is overdue (was due on ${due}).` : 'Annual renewal is overdue.'
+    case 'expired':
+      return 'Superseded by a newer BIA or past its validity period.'
+    case 'cancelled':
+      return 'This BIA assessment was cancelled.'
+    case 'waiting_approval':
+      return current.current_step_title
+        ? `Waiting for approval sign-off from ${current.current_step_title}.`
+        : 'Waiting for approval sign-off.'
+    case 'escalated':
+      return 'Approval wait time has exceeded the escalation threshold.'
+    case 'need_revision':
+    case 'in_revision':
+      return 'Returned by an approver; needs updates and resubmission.'
+    case 'waiting_submission':
+    case 'not_started':
+      return 'Draft has not been submitted for sign-off yet.'
+    default:
+      return `Current lifecycle status: ${current.status_detail_label}.`
+  }
+})
+
+const highestCategoryTooltip = computed(() => {
+  const current = detail.value
+  if (!current?.highest_category) return ''
+  const mtdText = current.shortest_mtd ? ` (shortest Expected MTD: ${current.shortest_mtd})` : ''
+  switch (current.highest_category) {
+    case 'Business Critical':
+      return `Highest criticality across all business functions: Business Critical${mtdText}.`
+    case 'Important':
+      return `Highest criticality across all business functions: Important${mtdText}.`
+    default:
+      return `Highest criticality across all business functions: ${current.highest_category}${mtdText}.`
+  }
+})
 </script>
 
 <template>
@@ -574,49 +720,6 @@ const pageCrumbs = computed(() => [
     :crumbs="pageCrumbs"
   >
     <template #actions>
-      <UBadge
-        v-if="detail.config_version"
-        color="neutral"
-        variant="subtle"
-      >
-        Config {{ detail.config_version }}
-      </UBadge>
-      <UButton
-        v-if="detail.renewal_of"
-        :to="`/bianca/monitoring/${detail.renewal_of.id}`"
-        color="neutral"
-        variant="subtle"
-        size="sm"
-        icon="i-lucide-history"
-        :label="`Renewing ${detail.renewal_of.ref_no}`"
-      />
-      <StatusBadge
-        v-if="detail.status_group"
-        :scale="biaStatusGroup"
-        :value="detail.status_group"
-      />
-      <StatusBadge
-        v-else
-        :scale="biaStatus"
-        :value="biaStatusKey(detail)"
-      />
-      <UBadge
-        v-if="detail.status_detail_label"
-        :color="detail.status_detail === 'overdue' || detail.status_detail === 'need_revision' || detail.status_detail === 'escalated'
-          ? 'error'
-          : detail.status_detail === 'full_approved'
-            ? 'success'
-            : detail.status_detail === 'due_30' || detail.status_detail === 'in_revision' || detail.status_detail === 'waiting_approval'
-              ? 'warning'
-              : 'neutral'"
-        variant="subtle"
-        :label="detail.status_detail_label"
-      />
-      <StatusBadge
-        v-if="detail.highest_category"
-        :scale="biaCategory"
-        :value="detail.highest_category"
-      />
       <UButton
         :to="`/bianca/report/${detail.id}`"
         color="neutral"
@@ -642,11 +745,94 @@ const pageCrumbs = computed(() => [
     </template>
 
     <div class="mb-6 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <UTooltip
+            v-if="detail.config_version"
+            :text="`BIA impact thresholds, category rules, and guide version (${detail.config_version}) applied to this assessment.`"
+          >
+            <span class="inline-flex">
+              <UBadge
+                color="neutral"
+                variant="subtle"
+              >
+                Config {{ detail.config_version }}
+              </UBadge>
+            </span>
+          </UTooltip>
+          <UTooltip
+            v-if="detail.renewal_of"
+            :text="`Annual renewal of ${detail.renewal_of.ref_no}. Click to open the previous assessment.`"
+          >
+            <UButton
+              :to="`/bianca/monitoring/${detail.renewal_of.id}`"
+              color="neutral"
+              variant="subtle"
+              size="sm"
+              icon="i-lucide-history"
+              :label="`Renewing ${detail.renewal_of.ref_no}`"
+            />
+          </UTooltip>
+          <UTooltip :text="statusGroupTooltip">
+            <span class="inline-flex">
+              <StatusBadge
+                v-if="detail.status_group"
+                :scale="biaStatusGroup"
+                :value="detail.status_group"
+              />
+              <StatusBadge
+                v-else
+                :scale="biaStatus"
+                :value="biaStatusKey(detail)"
+              />
+            </span>
+          </UTooltip>
+          <UTooltip
+            v-if="detail.status_detail_label"
+            :text="statusDetailTooltip"
+          >
+            <span class="inline-flex">
+              <UBadge
+                :color="detail.status_detail === 'overdue' || detail.status_detail === 'need_revision' || detail.status_detail === 'escalated'
+                  ? 'error'
+                  : detail.status_detail === 'full_approved'
+                    ? 'success'
+                    : detail.status_detail === 'due_30' || detail.status_detail === 'in_revision' || detail.status_detail === 'waiting_approval'
+                      ? 'warning'
+                      : 'neutral'"
+                variant="subtle"
+                :label="detail.status_detail_label"
+              />
+            </span>
+          </UTooltip>
+          <UTooltip
+            v-if="detail.highest_category"
+            :text="highestCategoryTooltip"
+          >
+            <span class="inline-flex">
+              <StatusBadge
+                :scale="biaCategory"
+                :value="detail.highest_category"
+              />
+            </span>
+          </UTooltip>
+        </div>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-file-spreadsheet"
+          label="Export all sections"
+          :loading="sectionExporter.busy.value && activeExportSection === 'all'"
+          :disabled="sectionExporter.busy.value"
+          @click="exportDetailSection('all')"
+        />
+      </div>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <button
           type="button"
           class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
-          @click="tab = 'impact'"
+          @click="openFunctionPart('impact')"
         >
           <p class="text-xs text-muted">
             Business functions
@@ -661,7 +847,7 @@ const pageCrumbs = computed(() => [
         <button
           type="button"
           class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
-          @click="tab = 'impact'"
+          @click="openFunctionPart('impact')"
         >
           <p class="text-xs text-muted">
             Shortest Expected MTD
@@ -676,7 +862,7 @@ const pageCrumbs = computed(() => [
         <button
           type="button"
           class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
-          @click="tab = 'dependencies'"
+          @click="openFunctionPart('dependencies')"
         >
           <p class="text-xs text-muted">
             IT DAAT gaps
@@ -694,7 +880,7 @@ const pageCrumbs = computed(() => [
         <button
           type="button"
           class="rounded-lg border border-default bg-default p-3.5 text-left transition hover:bg-elevated/60"
-          @click="tab = 'recovery'"
+          @click="openFunctionPart('recovery')"
         >
           <p class="text-xs text-muted">
             BCP seat shortage
@@ -722,32 +908,40 @@ const pageCrumbs = computed(() => [
       v-model="tab"
       :items="tabs"
       variant="link"
-      size="xs"
       :unmount-on-hide="false"
       :ui="{
-        list: 'overflow-x-auto gap-0.5',
-        trigger: 'shrink-0 px-2.5 py-1.5 text-xs gap-1.5 whitespace-nowrap',
-        leadingIcon: 'size-3.5',
-        label: 'overflow-visible text-clip whitespace-nowrap',
+        list: 'flex-wrap gap-1',
+        trigger: 'shrink-0 px-3 py-2 gap-1.5 whitespace-nowrap',
+        leadingIcon: 'size-4',
       }"
     >
-      <template #details>
-        <div class="mt-4 grid gap-6 lg:grid-cols-2">
+      <template #sign>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-sm text-muted">
+            Section A: general information of the Group, work locations, recovery strategy, BCM Coordinators, and business function criticality.
+          </p>
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="xs"
+            icon="i-lucide-file-spreadsheet"
+            label="Export to Excel"
+            :loading="sectionExporter.busy.value && activeExportSection === 'details'"
+            :disabled="sectionExporter.busy.value"
+            @click="exportDetailSection('details')"
+          />
+        </div>
+        <div class="mt-3 space-y-6">
           <UCard>
             <template #header>
-              <h2 class="text-base font-semibold text-highlighted">
-                Group & work locations
+              <h2 class="text-sm font-semibold text-highlighted">
+                Section A · General information of the Group
               </h2>
+              <p class="text-xs text-muted">
+                Informasi umum unit kerja / Group
+              </p>
             </template>
             <dl class="divide-y divide-default text-sm">
-              <div class="grid grid-cols-3 gap-4 py-2.5">
-                <dt class="text-muted">
-                  Group
-                </dt>
-                <dd class="col-span-2 font-medium text-highlighted">
-                  {{ detail.group.name }} ({{ detail.group.code }})
-                </dd>
-              </div>
               <div class="grid grid-cols-3 gap-4 py-2.5">
                 <dt class="text-muted">
                   Directorate
@@ -766,1469 +960,1631 @@ const pageCrumbs = computed(() => [
               </div>
               <div class="grid grid-cols-3 gap-4 py-2.5">
                 <dt class="text-muted">
+                  Group
+                </dt>
+                <dd class="col-span-2 font-medium text-highlighted">
+                  {{ detail.group.name }} ({{ detail.group.code }})
+                </dd>
+              </div>
+              <div class="grid grid-cols-3 gap-4 py-2.5">
+                <dt class="text-muted">
                   Group description
                 </dt>
                 <dd class="col-span-2 whitespace-pre-line text-muted">
                   {{ detail.group.description }}
                 </dd>
               </div>
-              <div class="grid grid-cols-3 gap-4 py-2.5">
-                <dt class="text-muted">
-                  Main work location
-                </dt>
-                <dd class="col-span-2">
-                  <p class="font-medium text-highlighted">
-                    {{ detail.group.main_building }}
-                  </p>
-                  <p class="text-xs text-muted">
-                    {{ detail.group.main_address }}
-                  </p>
-                </dd>
+            </dl>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <h2 class="text-sm font-semibold text-highlighted">
+                Work locations
+              </h2>
+              <p class="text-xs text-muted">
+                Lokasi kerja utama dan alternatif: building and floor
+              </p>
+            </template>
+            <div class="grid gap-4 sm:grid-cols-2 text-sm">
+              <div class="rounded-md border border-default p-3 space-y-1">
+                <p class="text-xs font-medium text-muted">
+                  Main location
+                </p>
+                <p class="font-medium text-highlighted">
+                  {{ detail.group.main_building }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ detail.group.main_address }}
+                </p>
               </div>
-              <div class="grid grid-cols-3 gap-4 py-2.5">
-                <dt class="text-muted">
-                  Alternate work location
-                </dt>
-                <dd class="col-span-2">
-                  <p class="font-medium text-highlighted">
-                    {{ detail.group.alt_building }}
-                  </p>
-                  <p class="text-xs text-muted">
-                    {{ detail.group.alt_address }}
-                  </p>
-                </dd>
+              <div class="rounded-md border border-default p-3 space-y-1">
+                <p class="text-xs font-medium text-muted">
+                  Alternate location
+                </p>
+                <p class="font-medium text-highlighted">
+                  {{ detail.group.alt_building }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ detail.group.alt_address }}
+                </p>
               </div>
-              <div class="grid grid-cols-3 gap-4 py-2.5">
+            </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <h2 class="text-sm font-semibold text-highlighted">
+                Group recovery strategy
+              </h2>
+              <p class="text-xs text-muted">
+                Strategi pemulihan dari Group
+              </p>
+            </template>
+            <dl class="text-sm">
+              <div class="grid grid-cols-3 gap-4">
                 <dt class="text-muted">
-                  Group recovery strategy
+                  High-level recovery strategy
                 </dt>
-                <dd class="col-span-2">
+                <dd class="col-span-2 whitespace-pre-line text-highlighted">
                   {{ detail.group.recovery_strategy }}
                 </dd>
               </div>
             </dl>
           </UCard>
 
-          <div class="space-y-6">
-            <UCard>
+          <UCard>
+            <template #header>
+              <h2 class="text-sm font-semibold text-highlighted">
+                BCM Coordinator and Alternate BCM Coordinator
+              </h2>
+              <p class="text-xs text-muted">
+                Two different people, picked from the user directory. Their NIK, phone and email come from it.
+              </p>
+            </template>
+            <div class="grid gap-6 sm:grid-cols-2">
+              <section
+                v-for="person in [
+                  { key: 'coord', title: 'BCM Coordinator', icon: 'i-lucide-user-round-check', data: detail.coordinator },
+                  { key: 'alt', title: 'Alternate BCM Coordinator', icon: 'i-lucide-user-round', data: detail.alt_coordinator },
+                ]"
+                :key="person.key"
+                class="space-y-3"
+              >
+                <h3 class="flex items-center gap-2 text-sm font-medium text-highlighted">
+                  <UIcon
+                    :name="person.icon"
+                    class="size-4 text-muted"
+                  />
+                  {{ person.title }}
+                </h3>
+                <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span class="text-muted">Name</span>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="font-medium text-highlighted">{{ person.data.name }}</span>
+                    <UBadge
+                      v-if="person.data.id"
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                      icon="i-lucide-user-check"
+                      label="Directory"
+                    />
+                  </div>
+                </div>
+                <dl class="divide-y divide-default rounded-md border border-default bg-elevated/30 text-sm">
+                  <div class="flex items-start justify-between gap-3 px-3 py-2">
+                    <dt class="text-muted">
+                      NIK
+                    </dt>
+                    <dd class="min-w-0 text-right break-all">
+                      {{ person.data.nik || '—' }}
+                    </dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3 px-3 py-2">
+                    <dt class="text-muted">
+                      Phone
+                    </dt>
+                    <dd class="min-w-0 text-right break-all">
+                      {{ person.data.phone || '—' }}
+                    </dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3 px-3 py-2">
+                    <dt class="text-muted">
+                      Email
+                    </dt>
+                    <dd class="min-w-0 text-right break-all">
+                      {{ person.data.email || '—' }}
+                    </dd>
+                  </div>
+                </dl>
+                <div class="flex items-start justify-between gap-3 text-sm">
+                  <span class="text-muted">Additional phone number</span>
+                  <span class="font-medium text-highlighted">{{ person.data.phone_2 || '—' }}</span>
+                </div>
+              </section>
+            </div>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-0 sm:p-0' }">
+            <template #header>
+              <h2 class="text-sm font-semibold text-highlighted">
+                Business function criticality
+              </h2>
+              <p class="text-xs text-muted">
+                Filled in automatically from Part 1 and Part 2a (read only).
+              </p>
+            </template>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-elevated/60 text-xs text-muted">
+                  <tr>
+                    <th class="w-12 px-4 py-2 font-medium">
+                      No.
+                    </th>
+                    <th class="px-4 py-2 font-medium">
+                      Business function
+                    </th>
+                    <th class="px-4 py-2 font-medium">
+                      Business function category
+                    </th>
+                    <th class="px-4 py-2 font-medium">
+                      MTD
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr
+                    v-for="fn in detail.functions"
+                    :key="fn.seq_no"
+                  >
+                    <td class="px-4 py-2 tabular-nums text-muted">
+                      {{ fn.seq_no }}
+                    </td>
+                    <td class="px-4 py-2 font-medium text-highlighted">
+                      {{ fn.name }}
+                    </td>
+                    <td class="px-4 py-2">
+                      <StatusBadge
+                        v-if="fn.category"
+                        :scale="biaCategory"
+                        :value="fn.category"
+                        size="sm"
+                      />
+                      <span
+                        v-else
+                        class="text-muted"
+                      >—</span>
+                    </td>
+                    <td class="px-4 py-2">
+                      {{ fn.expected_mtd || '—' }}
+                    </td>
+                  </tr>
+                  <tr v-if="!detail.functions.length">
+                    <td
+                      colspan="4"
+                      class="px-4 py-3 text-muted"
+                    >
+                      No business function recorded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </UCard>
+        </div>
+      </template>
+
+      <template #ra>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-sm text-muted">
+            Group personnel breakdown, risk assessment questionnaire responses, and justification.
+          </p>
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="xs"
+            icon="i-lucide-file-spreadsheet"
+            label="Export to Excel"
+            :loading="sectionExporter.busy.value && activeExportSection === 'details'"
+            :disabled="sectionExporter.busy.value"
+            @click="exportDetailSection('details')"
+          />
+        </div>
+        <UCard class="mt-3">
+          <template #header>
+            <h2 class="text-base font-semibold text-highlighted">
+              Personnel & risk assessment questionnaire
+            </h2>
+          </template>
+          <dl class="divide-y divide-default text-sm">
+            <div class="grid grid-cols-3 gap-4 py-2.5">
+              <dt class="text-muted">
+                Total personnel
+              </dt>
+              <dd class="col-span-2 font-medium tabular-nums text-highlighted">
+                {{ formatNumber(detail.ra_questionnaire.total_staff, 0) }} staff
+                <span
+                  v-if="detail.ra_questionnaire.personnel_breakdown?.length"
+                  class="font-normal text-muted"
+                >
+                  ({{ detail.ra_questionnaire.personnel_breakdown.map((g) => `${g.label}: ${g.count}`).join(', ') }})
+                </span>
+                <span
+                  v-else
+                  class="font-normal text-muted"
+                >
+                  (U1–U3: {{ detail.ra_questionnaire.senior_mgmt }}, U4–U5: {{ detail.ra_questionnaire.middle_mgmt }}, U6–U9: {{ detail.ra_questionnaire.executive_mgr }}, U10–U11: {{ detail.ra_questionnaire.staff }})
+                </span>
+                <template v-if="detail.ra_questionnaire.personnel_breakdown?.some((g) => g.note)">
+                  <p
+                    v-for="grade in detail.ra_questionnaire.personnel_breakdown.filter((g) => g.note)"
+                    :key="`note-${grade.code}`"
+                    class="mt-1 text-xs font-normal text-muted"
+                  >
+                    {{ grade.label }} note: {{ grade.note }}
+                  </p>
+                </template>
+                <p
+                  v-else-if="detail.ra_questionnaire.others_note"
+                  class="mt-1 text-xs font-normal text-muted"
+                >
+                  Others note: {{ detail.ra_questionnaire.others_note }}
+                </p>
+              </dd>
+            </div>
+            <div class="grid grid-cols-3 gap-4 py-2.5">
+              <dt class="text-muted">
+                BC considered in RA
+              </dt>
+              <dd class="col-span-2">
+                {{ detail.ra_questionnaire.considered_bc }}
+              </dd>
+            </div>
+            <div class="grid grid-cols-3 gap-4 py-2.5">
+              <dt class="text-muted">
+                Risk assessment tools
+              </dt>
+              <dd class="col-span-2">
+                {{ detail.ra_questionnaire.tools_used }} (BC controls included: {{ detail.ra_questionnaire.controls_included }})
+              </dd>
+            </div>
+            <div class="grid grid-cols-3 gap-4 py-2.5">
+              <dt class="text-muted">
+                Location RA completed
+              </dt>
+              <dd class="col-span-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span>{{ detail.ra_questionnaire.location_ra_completed }}</span>
+                  <UBadge
+                    v-if="detail.ra_questionnaire.location_ra_completed_flag === false"
+                    color="warning"
+                    variant="subtle"
+                    size="xs"
+                    label="Follow up with Head of Sub-Directorate / BCM"
+                  />
+                </div>
+              </dd>
+            </div>
+            <div
+              v-if="detail.notes?.ra_justification || detail.ra_questionnaire.ra_justification_required"
+              data-gap-target="details-ra"
+              class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+              :class="isGapTargetActive('details-ra') ? 'gap-flash-box' : ''"
+            >
+              <dt class="text-muted">
+                RA justification
+              </dt>
+              <dd class="col-span-2">
+                <span v-if="detail.notes?.ra_justification">{{ detail.notes.ra_justification }}</span>
+                <UBadge
+                  v-else
+                  color="error"
+                  variant="subtle"
+                  size="xs"
+                  label="Required when BC is not considered/included"
+                />
+              </dd>
+            </div>
+          </dl>
+        </UCard>
+      </template>
+
+      <template #functions>
+        <div class="mt-4 space-y-4">
+          <div
+            class="flex flex-wrap gap-1.5 rounded-lg border border-default bg-elevated/40 p-1"
+            role="tablist"
+            aria-label="Business function parts"
+          >
+            <button
+              v-for="item in functionParts"
+              :key="item.value"
+              type="button"
+              role="tab"
+              :aria-selected="functionPart === item.value"
+              class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition"
+              :class="functionPart === item.value ? 'bg-default text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+              @click="functionPart = item.value"
+            >
+              <UIcon
+                :name="item.icon"
+                class="size-3.5 shrink-0"
+              />
+              <span>{{ item.label }}</span>
+              <UBadge
+                v-if="item.badge"
+                color="neutral"
+                variant="subtle"
+                size="xs"
+                :label="String(item.badge)"
+              />
+            </button>
+          </div>
+
+          <div
+            v-show="functionPart === 'impact'"
+            class="space-y-6"
+          >
+            <UCard :ui="{ body: 'p-0 sm:p-0' }">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+                <p class="text-sm text-muted">
+                  Part 1 &amp; Part 2a: Suggested vs Expected MTD, Business Function Category, peak financial loss, and maximum impact scores ({{ scoreRangeLabel }}).
+                </p>
+                <div class="flex flex-wrap items-center gap-3">
+                  <p
+                    v-if="detail.loss_totals"
+                    class="text-xs text-muted tabular-nums"
+                  >
+                    Total peak loss ({{ peakPeriodLabel }}):
+                    <span class="font-semibold text-highlighted">{{ formatCurrency(detail.loss_totals.peak_loss ?? detail.loss_totals.fin_loss_w4) }}</span>
+                  </p>
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="xs"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export to Excel"
+                    :loading="sectionExporter.busy.value && activeExportSection === 'impact'"
+                    :disabled="sectionExporter.busy.value"
+                    @click="exportDetailSection('impact')"
+                  />
+                </div>
+              </div>
+              <UTable
+                :data="detail.functions"
+                :columns="impactColumns"
+                :meta="impactTableMeta"
+                :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+              >
+                <template #suggested_mtd-header>
+                  <span class="inline-flex items-center gap-1">
+                    <span>Suggested MTD</span>
+                    <UTooltip text="Recommended Maximum Tolerable Downtime derived from financial loss and regulatory/customer impact.">
+                      <UIcon
+                        name="i-lucide-info"
+                        class="size-3.5 text-muted"
+                      />
+                    </UTooltip>
+                  </span>
+                </template>
+                <template #expected_mtd-header>
+                  <span class="inline-flex items-center gap-1">
+                    <span>Expected MTD</span>
+                    <UTooltip text="Committed Maximum Tolerable Downtime target for this business function.">
+                      <UIcon
+                        name="i-lucide-info"
+                        class="size-3.5 text-muted"
+                      />
+                    </UTooltip>
+                  </span>
+                </template>
+                <template #name-cell="{ row }">
+                  <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+                </template>
+                <template #suggested_mtd-cell="{ row }">
+                  <div class="inline-flex items-center gap-1.5">
+                    <span>{{ row.original.suggested_mtd }}</span>
+                    <UTooltip
+                      v-if="row.original.suggested_mtd_matches === false && row.original.computed_suggested_mtd"
+                      :text="`Rule suggests ${row.original.computed_suggested_mtd}${triggerSummary(row.original) ? ` · ${triggerSummary(row.original)}` : ''}`"
+                    >
+                      <UIcon
+                        name="i-lucide-triangle-alert"
+                        class="size-3.5 text-warning"
+                      />
+                    </UTooltip>
+                    <UTooltip
+                      v-else-if="triggerSummary(row.original)"
+                      :text="triggerSummary(row.original)!"
+                    >
+                      <UIcon
+                        name="i-lucide-calculator"
+                        class="size-3.5 text-muted"
+                      />
+                    </UTooltip>
+                  </div>
+                </template>
+                <template #expected_mtd-cell="{ row }">
+                  <div class="inline-flex items-center gap-1.5">
+                    <span :class="row.original.expected_within_suggested === false ? 'font-medium text-error' : ''">
+                      {{ row.original.expected_mtd }}
+                    </span>
+                    <UTooltip
+                      v-if="row.original.expected_within_suggested === true"
+                      text="Expected MTD is equal to or shorter than Suggested MTD"
+                    >
+                      <UIcon
+                        name="i-lucide-circle-check"
+                        class="size-3.5 text-success"
+                      />
+                    </UTooltip>
+                    <UTooltip
+                      v-else-if="row.original.expected_within_suggested === false"
+                      text="Expected MTD exceeds Suggested MTD"
+                    >
+                      <UIcon
+                        name="i-lucide-triangle-alert"
+                        class="size-3.5 text-error"
+                      />
+                    </UTooltip>
+                  </div>
+                </template>
+                <template #category-cell="{ row }">
+                  <StatusBadge
+                    :scale="biaCategory"
+                    :value="row.original.category"
+                    size="sm"
+                  />
+                </template>
+                <template #peak_loss-cell="{ row }">
+                  <span :class="lossTone(row.original.peak_loss ?? row.original.fin_loss_w4)">
+                    {{ formatCurrency(row.original.peak_loss ?? row.original.fin_loss_w4) }}
+                  </span>
+                </template>
+                <template #scores-cell="{ row }">
+                  <span class="tabular-nums">A: {{ row.original.reg_score_max }} · B: {{ row.original.cust_score_max }}</span>
+                </template>
+              </UTable>
+            </UCard>
+
+            <UCard :ui="{ body: 'p-0 sm:p-0' }">
               <template #header>
                 <h2 class="text-base font-semibold text-highlighted">
-                  BCM coordinators & BIA users
+                  Potential cumulative financial loss (IDR) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
                 </h2>
               </template>
-              <dl class="divide-y divide-default text-sm">
-                <div
-                  v-if="detail.created_by"
-                  class="grid grid-cols-3 gap-4 py-2.5"
-                >
-                  <dt class="text-muted">
-                    Created by
-                  </dt>
-                  <dd class="col-span-2 font-medium text-highlighted">
-                    {{ detail.created_by }}
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    BCM Coordinator
-                  </dt>
-                  <dd class="col-span-2">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <p class="font-medium text-highlighted">
-                        {{ detail.coordinator.name }} ({{ detail.coordinator.nik }})
-                      </p>
-                      <UBadge
-                        v-if="detail.coordinator.id"
-                        color="neutral"
-                        variant="subtle"
-                        size="xs"
-                        icon="i-lucide-user-check"
-                        label="Directory"
-                      />
-                    </div>
-                    <p class="text-xs text-muted">
-                      {{ detail.coordinator.email }} · {{ detail.coordinator.phone }}<template v-if="detail.coordinator.phone_2">
-                        / {{ detail.coordinator.phone_2 }}
-                      </template>
-                    </p>
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    Alternate coordinator
-                  </dt>
-                  <dd class="col-span-2">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <p class="font-medium text-highlighted">
-                        {{ detail.alt_coordinator.name }} ({{ detail.alt_coordinator.nik }})
-                      </p>
-                      <UBadge
-                        v-if="detail.alt_coordinator.id"
-                        color="neutral"
-                        variant="subtle"
-                        size="xs"
-                        icon="i-lucide-user-check"
-                        label="Directory"
-                      />
-                    </div>
-                    <p class="text-xs text-muted">
-                      {{ detail.alt_coordinator.email }} · {{ detail.alt_coordinator.phone }}<template v-if="detail.alt_coordinator.phone_2">
-                        / {{ detail.alt_coordinator.phone_2 }}
-                      </template>
-                    </p>
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    Group BIA users
-                  </dt>
-                  <dd class="col-span-2">
-                    <div
-                      v-if="detail.group_users?.length"
-                      class="flex flex-wrap gap-1.5"
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead>
+                    <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
+                      <th class="py-3 ps-4 pe-3 whitespace-nowrap">
+                        No
+                      </th>
+                      <th class="py-3 px-3 whitespace-nowrap">
+                        Business function
+                      </th>
+                      <th
+                        v-for="periodLabel in impactPeriods"
+                        :key="`loss-h-${periodLabel}`"
+                        class="py-3 px-3 text-right whitespace-nowrap"
+                      >
+                        {{ periodLabel }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-default">
+                    <tr
+                      v-for="fn in detail.functions"
+                      :key="`loss-${fn.seq_no}`"
                     >
-                      <UBadge
-                        v-for="member in detail.group_users"
-                        :key="member.id"
-                        color="neutral"
-                        variant="subtle"
+                      <td class="py-3 ps-4 pe-3 tabular-nums text-muted">
+                        {{ fn.seq_no }}
+                      </td>
+                      <td class="py-3 px-3 font-medium text-highlighted whitespace-nowrap">
+                        {{ fn.name }}
+                      </td>
+                      <td
+                        v-for="(periodLabel, idx) in impactPeriods"
+                        :key="`loss-${fn.seq_no}-${periodLabel}`"
+                        class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
+                        :class="[lossTone(fn.losses?.[idx]), isTriggerPeriod(fn, idx, 'loss') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                        :title="lossCellTitle(fn.losses?.[idx])"
                       >
-                        {{ member.name }}<template v-if="member.org_level">
-                          ({{ member.org_level }})
-                        </template><template v-if="member.roles.length">
-                          · {{ member.roles[0] }}
-                        </template>
-                      </UBadge>
-                    </div>
-                    <span
-                      v-else
-                      class="text-muted"
-                    >No active BIANCA user assigned to this group</span>
-                  </dd>
-                </div>
-                <div
-                  v-if="detail.directorate_users?.length"
-                  class="grid grid-cols-3 gap-4 py-2.5"
-                >
-                  <dt class="text-muted">
-                    Directorate / Sub
-                  </dt>
-                  <dd class="col-span-2">
-                    <div class="flex flex-wrap gap-1.5">
-                      <UBadge
-                        v-for="leader in detail.directorate_users"
-                        :key="`dir-${leader.id}`"
-                        color="neutral"
-                        variant="outline"
+                        {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot v-if="detail.functions.length">
+                    <tr class="border-t border-default bg-elevated/40 font-semibold text-highlighted">
+                      <td class="py-3 ps-4 pe-3" />
+                      <td class="py-3 px-3 whitespace-nowrap">
+                        Total
+                      </td>
+                      <td
+                        v-for="(totalVal, idx) in lossPeriodTotals"
+                        :key="`loss-total-${idx}`"
+                        class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
                       >
-                        {{ leader.name }}<template v-if="leader.org_level">
-                          ({{ leader.org_level }})
-                        </template><template v-if="leader.sub_directorate">
-                          · {{ leader.sub_directorate }}
-                        </template>
-                      </UBadge>
-                    </div>
-                  </dd>
+                        {{ formatCurrency(totalVal) }}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </UCard>
+
+            <UCard :ui="{ body: 'p-0 sm:p-0' }">
+              <template #header>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <h2 class="text-base font-semibold text-highlighted">
+                    Potential regulatory (A) &amp; customer service (B) impact (Score {{ scoreRangeLabel }}) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
+                  </h2>
+                  <span class="text-xs text-muted">A = Regulatory Impact · B = Customer Service Impact</span>
                 </div>
-              </dl>
+              </template>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead>
+                    <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
+                      <th class="py-3 ps-4 pe-3 whitespace-nowrap">
+                        No
+                      </th>
+                      <th class="py-3 px-3 whitespace-nowrap">
+                        Business function
+                      </th>
+                      <th class="py-3 px-3 whitespace-nowrap">
+                        Impact
+                      </th>
+                      <th
+                        v-for="periodLabel in impactPeriods"
+                        :key="`score-h-${periodLabel}`"
+                        class="py-3 px-3 text-center whitespace-nowrap"
+                      >
+                        {{ periodLabel }}
+                      </th>
+                      <th class="py-3 px-3 text-right whitespace-nowrap">
+                        Suggested MTD
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-default">
+                    <template
+                      v-for="fn in detail.functions"
+                      :key="`score-${fn.seq_no}`"
+                    >
+                      <tr>
+                        <td
+                          rowspan="2"
+                          class="py-3 ps-4 pe-3 align-top tabular-nums text-muted"
+                        >
+                          {{ fn.seq_no }}
+                        </td>
+                        <td
+                          rowspan="2"
+                          class="py-3 px-3 align-top font-medium text-highlighted whitespace-nowrap"
+                        >
+                          {{ fn.name }}
+                        </td>
+                        <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
+                          Regulatory (A)
+                        </td>
+                        <td
+                          v-for="(periodLabel, idx) in impactPeriods"
+                          :key="`reg-${fn.seq_no}-${periodLabel}`"
+                          class="py-2 px-3 text-center tabular-nums"
+                          :class="[scoreTone(fn.regulatory_scores?.[idx]), isTriggerPeriod(fn, idx, 'regulatory') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                          :title="impactScoreTitle('regulatory', fn.regulatory_scores?.[idx])"
+                        >
+                          {{ fn.regulatory_scores?.[idx] ?? '—' }}
+                        </td>
+                        <td
+                          rowspan="2"
+                          class="py-3 px-3 text-right align-top"
+                        >
+                          <p class="font-medium text-highlighted whitespace-nowrap">
+                            {{ fn.suggested_mtd }}
+                          </p>
+                          <p
+                            v-if="fn.suggested_mtd_matches === false && fn.computed_suggested_mtd"
+                            class="mt-1 text-[11px] font-medium text-warning whitespace-nowrap"
+                          >
+                            Rule suggests: {{ fn.computed_suggested_mtd }}
+                          </p>
+                          <p
+                            v-if="triggerSummary(fn)"
+                            class="mt-1 max-w-56 text-[11px] leading-snug text-muted"
+                          >
+                            {{ triggerSummary(fn) }}
+                          </p>
+                        </td>
+                      </tr>
+                      <tr class="bg-elevated/30">
+                        <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
+                          Customer (B)
+                        </td>
+                        <td
+                          v-for="(periodLabel, idx) in impactPeriods"
+                          :key="`cust-${fn.seq_no}-${periodLabel}`"
+                          class="py-2 px-3 text-center tabular-nums"
+                          :class="[scoreTone(fn.customer_scores?.[idx]), isTriggerPeriod(fn, idx, 'customer') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
+                          :title="impactScoreTitle('customer', fn.customer_scores?.[idx])"
+                        >
+                          {{ fn.customer_scores?.[idx] ?? '—' }}
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </UCard>
+
+            <UCard v-if="detail.impact_reference">
+              <template #header>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <h2 class="text-base font-semibold text-highlighted">
+                    Impact reference matrix (Config {{ detail.config_version || 'active' }})
+                  </h2>
+                  <span class="text-xs text-muted">
+                    Alert threshold: &gt; {{ formatCurrency(detail.impact_reference.loss_alert_idr) }} or Score ≥ {{ detail.impact_reference.score_alert }}
+                  </span>
+                </div>
+              </template>
+              <div class="grid gap-6 lg:grid-cols-2">
+                <div v-if="detail.impact_reference.financial_bands.length">
+                  <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Potential cumulative financial loss matrix
+                  </h3>
+                  <dl class="mt-2 divide-y divide-default text-sm">
+                    <div
+                      v-for="band in detail.impact_reference.financial_bands"
+                      :key="band.code"
+                      class="flex items-baseline justify-between gap-4 py-2"
+                    >
+                      <dt class="font-medium text-highlighted">
+                        {{ band.label }}
+                      </dt>
+                      <dd class="text-right text-muted tabular-nums">
+                        {{ band.description }}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <div v-if="detail.impact_reference.impact_matrix.length">
+                  <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Regulatory (A) &amp; customer service (B) matrix
+                  </h3>
+                  <div class="mt-2 divide-y divide-default text-xs">
+                    <div
+                      v-for="item in detail.impact_reference.impact_matrix"
+                      :key="item.score"
+                      class="py-2"
+                    >
+                      <p
+                        class="font-semibold"
+                        :class="scoreTone(item.score)"
+                      >
+                        Score {{ item.score }}
+                      </p>
+                      <p class="mt-0.5 text-muted">
+                        <span class="font-medium text-highlighted">Regulatory (A):</span> {{ item.regulatory }}
+                      </p>
+                      <p class="mt-0.5 text-muted">
+                        <span class="font-medium text-highlighted">Customer (B):</span> {{ item.customer }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="detail.impact_reference.expected_mtd?.length"
+                class="mt-4 border-t border-default pt-4"
+              >
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Expected MTD → Business Function Category mapping (Config {{ detail.config_version || 'active' }})
+                </h3>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <div
+                    v-for="row in detail.impact_reference.expected_mtd"
+                    :key="row.value"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-default px-2.5 py-1 text-xs"
+                  >
+                    <span class="font-medium text-highlighted">{{ row.value }}</span>
+                    <span class="text-muted">→</span>
+                    <StatusBadge
+                      :scale="biaCategory"
+                      :value="row.category"
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="detail.guides?.suggested_mtd || detail.guides?.expected_mtd"
+                class="mt-4 space-y-1.5 border-t border-default pt-3 text-xs text-muted"
+              >
+                <p v-if="detail.guides?.suggested_mtd">
+                  <span class="font-medium text-highlighted">Suggested MTD guide:</span> {{ detail.guides.suggested_mtd }}
+                </p>
+                <p v-if="detail.guides?.expected_mtd">
+                  <span class="font-medium text-highlighted">Expected MTD guide:</span> {{ detail.guides.expected_mtd }}
+                </p>
+              </div>
             </UCard>
 
             <UCard>
               <template #header>
                 <h2 class="text-base font-semibold text-highlighted">
-                  Personnel & risk assessment questionnaire
+                  Financial loss formula &amp; rating justifications (Part 1)
                 </h2>
               </template>
               <dl class="divide-y divide-default text-sm">
                 <div class="grid grid-cols-3 gap-4 py-2.5">
                   <dt class="text-muted">
-                    Total personnel
+                    Financial loss formula
                   </dt>
-                  <dd class="col-span-2 font-medium tabular-nums text-highlighted">
-                    {{ formatNumber(detail.ra_questionnaire.total_staff, 0) }} staff
-                    <span
-                      v-if="detail.ra_questionnaire.personnel_breakdown?.length"
-                      class="font-normal text-muted"
-                    >
-                      ({{ detail.ra_questionnaire.personnel_breakdown.map((g) => `${g.label}: ${g.count}`).join(', ') }})
-                    </span>
-                    <span
+                  <dd class="col-span-2 whitespace-pre-line">
+                    <span v-if="detail.notes?.loss_formula">{{ detail.notes.loss_formula }}</span>
+                    <UBadge
                       v-else
-                      class="font-normal text-muted"
-                    >
-                      (U1–U3: {{ detail.ra_questionnaire.senior_mgmt }}, U4–U5: {{ detail.ra_questionnaire.middle_mgmt }}, U6–U9: {{ detail.ra_questionnaire.executive_mgr }}, U10–U11: {{ detail.ra_questionnaire.staff }})
-                    </span>
-                    <template v-if="detail.ra_questionnaire.personnel_breakdown?.some((g) => g.note)">
-                      <p
-                        v-for="grade in detail.ra_questionnaire.personnel_breakdown.filter((g) => g.note)"
-                        :key="`note-${grade.code}`"
-                        class="mt-1 text-xs font-normal text-muted"
-                      >
-                        {{ grade.label }} note: {{ grade.note }}
-                      </p>
-                    </template>
-                    <p
-                      v-else-if="detail.ra_questionnaire.others_note"
-                      class="mt-1 text-xs font-normal text-muted"
-                    >
-                      Others note: {{ detail.ra_questionnaire.others_note }}
-                    </p>
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    BC considered in RA
-                  </dt>
-                  <dd class="col-span-2">
-                    {{ detail.ra_questionnaire.considered_bc }}
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    Risk assessment tools
-                  </dt>
-                  <dd class="col-span-2">
-                    {{ detail.ra_questionnaire.tools_used }} (BC controls included: {{ detail.ra_questionnaire.controls_included }})
-                  </dd>
-                </div>
-                <div class="grid grid-cols-3 gap-4 py-2.5">
-                  <dt class="text-muted">
-                    Location RA completed
-                  </dt>
-                  <dd class="col-span-2">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span>{{ detail.ra_questionnaire.location_ra_completed }}</span>
-                      <UBadge
-                        v-if="detail.ra_questionnaire.location_ra_completed_flag === false"
-                        color="warning"
-                        variant="subtle"
-                        size="xs"
-                        label="Follow up with Head of Sub-Directorate / BCM"
-                      />
-                    </div>
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                      label="Not provided"
+                    />
                   </dd>
                 </div>
                 <div
-                  v-if="detail.notes?.ra_justification || detail.ra_questionnaire.ra_justification_required"
-                  data-gap-target="details-ra"
-                  class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
-                  :class="isGapTargetActive('details-ra') ? 'gap-flash-box' : ''"
+                  v-if="detail.notes?.justification_regulatory || !hasPart1Notes"
+                  class="grid grid-cols-3 gap-4 py-2.5"
                 >
                   <dt class="text-muted">
-                    RA justification
+                    Regulatory impact (A)
                   </dt>
-                  <dd class="col-span-2">
-                    <span v-if="detail.notes?.ra_justification">{{ detail.notes.ra_justification }}</span>
+                  <dd class="col-span-2 whitespace-pre-line text-muted">
+                    {{ detail.notes?.justification_regulatory || '—' }}
+                  </dd>
+                </div>
+                <div
+                  v-if="detail.notes?.justification_customer || !hasPart1Notes"
+                  class="grid grid-cols-3 gap-4 py-2.5"
+                >
+                  <dt class="text-muted">
+                    Customer service impact (B)
+                  </dt>
+                  <dd class="col-span-2 whitespace-pre-line text-muted">
+                    {{ detail.notes?.justification_customer || '—' }}
+                  </dd>
+                </div>
+              </dl>
+            </UCard>
+          </div>
+
+          <div
+            v-show="functionPart === 'dependencies'"
+            class="space-y-6"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div
+                v-if="detail.guides?.it_dependency || detail.guides?.non_it_dependency"
+                class="min-w-0 flex-1 space-y-1 text-xs text-muted"
+              >
+                <p v-if="detail.guides?.it_dependency">
+                  <span class="font-medium text-highlighted">IT dependency guide:</span> {{ detail.guides.it_dependency }}
+                </p>
+                <p v-if="detail.guides?.non_it_dependency">
+                  <span class="font-medium text-highlighted">Non-IT dependency guide:</span> {{ detail.guides.non_it_dependency }}
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <div
+                  class="inline-flex shrink-0 rounded-md border border-default p-0.5 text-xs"
+                  role="group"
+                  aria-label="Filter dependency functions"
+                >
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 font-medium transition"
+                    :class="depsFilter === 'all' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="depsFilter = 'all'"
+                  >
+                    All functions ({{ detail.functions.length }})
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 font-medium transition"
+                    :class="depsFilter === 'issues' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
+                    @click="depsFilter = 'issues'"
+                  >
+                    With gaps / alerts ({{ detail.functions.filter(fnHasDepIssue).length }})
+                  </button>
+                </div>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="xs"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                  :loading="sectionExporter.busy.value && activeExportSection === 'dependencies'"
+                  :disabled="sectionExporter.busy.value"
+                  @click="exportDetailSection('dependencies')"
+                />
+              </div>
+            </div>
+
+            <UCard v-if="!displayedDepFunctions.length">
+              <p class="py-6 text-center text-sm text-muted">
+                No business function has IT or non-IT dependency gaps or alerts.
+              </p>
+            </UCard>
+
+            <UCard
+              v-for="fn in displayedDepFunctions"
+              :key="fn.seq_no"
+              :data-gap-target="gapKey('dep-fn', fn.seq_no)"
+              :class="activeGapRow === gapKey('dep-fn', fn.seq_no) ? 'gap-flash-box' : ''"
+            >
+              <template #header>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 class="text-base font-semibold text-highlighted">
+                      {{ fn.seq_no }}. {{ fn.name }}
+                    </h2>
+                    <p class="text-xs text-muted">
+                      Suggested MTD: <span class="font-medium text-highlighted">{{ fn.suggested_mtd }}</span> ·
+                      Expected MTD:
+                      <span :class="fn.expected_within_suggested === false ? 'font-medium text-error' : 'font-medium text-highlighted'">
+                        {{ fn.expected_mtd }}
+                      </span> ·
+                      Planned capacity: <span class="font-medium text-highlighted">{{ fn.planned_capacity }}</span>
+                    </p>
+                  </div>
+                  <StatusBadge
+                    :scale="biaCategory"
+                    :value="fn.category"
+                    size="sm"
+                  />
+                </div>
+              </template>
+
+              <div class="space-y-4">
+                <div
+                  v-for="itSection in itDependencySections(fn)"
+                  :key="`${fn.seq_no}-it-${itSection.key}`"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-highlighted">
+                      {{ itSection.title }}
+                    </h3>
+                    <UBadge
+                      v-if="itSection.rows.length"
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                      :label="plural(itSection.rows.length, 'app')"
+                    />
+                  </div>
+                  <div class="mt-2 overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                      <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
+                        <tr>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            Application
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            <span class="inline-flex items-center gap-1">
+                              <span>Committed RTO</span>
+                              <UTooltip :text="detail.guides?.rto || 'Recovery Time Objective — target maximum time to restore the IT application.'">
+                                <UIcon
+                                  name="i-lucide-info"
+                                  class="size-3.5 text-muted"
+                                />
+                              </UTooltip>
+                            </span>
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            <span class="inline-flex items-center gap-1">
+                              <span>Committed RPO</span>
+                              <UTooltip :text="detail.guides?.rpo || 'Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).'">
+                                <UIcon
+                                  name="i-lucide-info"
+                                  class="size-3.5 text-muted"
+                                />
+                              </UTooltip>
+                            </span>
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            Workaround
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            Backlog clear
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            <span class="inline-flex items-center gap-1">
+                              <span>DAAT</span>
+                              <UTooltip :text="detail.guides?.daat || 'Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.'">
+                                <UIcon
+                                  name="i-lucide-info"
+                                  class="size-3.5 text-muted"
+                                />
+                              </UTooltip>
+                            </span>
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            System usage
+                          </th>
+                          <th class="px-3 py-2 whitespace-nowrap">
+                            Workaround critical gaps
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-default">
+                        <tr v-if="!itSection.rows.length">
+                          <td
+                            colspan="8"
+                            class="px-3 py-3 text-xs text-muted"
+                          >
+                            {{ itSection.empty }}
+                          </td>
+                        </tr>
+                        <tr
+                          v-for="dep in itSection.rows"
+                          :key="`${itSection.key}-${dep.app_code}-${dep.app_name}`"
+                          :data-gap-target="gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)"
+                          :class="isGapTargetActive(gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)) ? 'gap-flash-row' : ''"
+                        >
+                          <td class="px-3 py-2 font-medium text-highlighted">
+                            <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
+                              <span class="text-muted">No IT application dependency (NA)</span>
+                            </template>
+                            <template v-else>
+                              {{ dep.app_name }}
+                            </template>
+                          </td>
+                          <td class="px-3 py-2 tabular-nums whitespace-nowrap">
+                            <div class="inline-flex items-center gap-1">
+                              <span :class="dep.rto_reaches_mtd ? 'font-medium text-warning' : ''">
+                                {{ dep.rto }}
+                              </span>
+                              <UTooltip
+                                v-if="dep.rto_reaches_mtd"
+                                text="RTO ≥ Expected MTD — requires Part 2a justification"
+                              >
+                                <UIcon
+                                  name="i-lucide-triangle-alert"
+                                  class="size-3.5 text-warning"
+                                />
+                              </UTooltip>
+                            </div>
+                          </td>
+                          <td class="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                            {{ dep.rpo }}
+                          </td>
+                          <td class="px-3 py-2 whitespace-nowrap">
+                            {{ dep.workaround }}
+                          </td>
+                          <td class="px-3 py-2 whitespace-nowrap">
+                            {{ dep.backlog_time }}
+                          </td>
+                          <td class="px-3 py-2 whitespace-nowrap">
+                            <div class="inline-flex items-center gap-1.5">
+                              <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
+                                {{ dep.daat }}
+                              </span>
+                              <UBadge
+                                v-if="dep.daat && dep.daat !== '—' && dep.daat.toUpperCase() !== 'NA'"
+                                :color="dep.daat_negative || dep.daat.startsWith('-') ? 'error' : 'success'"
+                                variant="subtle"
+                                size="xs"
+                                :label="dep.daat_negative || dep.daat.startsWith('-') ? 'Gap' : 'OK'"
+                              />
+                              <UTooltip
+                                v-if="dep.daat_warnings?.length"
+                                :text="dep.daat_warnings.join(' ')"
+                              >
+                                <UIcon
+                                  name="i-lucide-info"
+                                  class="size-3.5 text-muted"
+                                />
+                              </UTooltip>
+                            </div>
+                          </td>
+                          <td class="px-3 py-2 whitespace-nowrap">
+                            {{ dep.system_usage }}
+                          </td>
+                          <td class="px-3 py-2 text-muted">
+                            <UBadge
+                              v-if="dep.workaround_gap_required && !dep.critical_gap"
+                              color="error"
+                              variant="subtle"
+                              size="xs"
+                              label="Mandatory gap note missing"
+                            />
+                            <template v-else>
+                              {{ dep.critical_gap || '—' }}
+                            </template>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div
+                  v-for="section in nonItDependencySections(fn)"
+                  :key="`${fn.seq_no}-${section.key}`"
+                >
+                  <h3 class="text-sm font-semibold text-highlighted">
+                    {{ section.title }}
+                  </h3>
+                  <div class="mt-2 overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                      <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
+                        <tr>
+                          <th class="px-3 py-2">
+                            Party / business unit
+                          </th>
+                          <th class="px-3 py-2">
+                            Planned capacity
+                          </th>
+                          <th class="px-3 py-2">
+                            Expected MTD
+                          </th>
+                          <th class="px-3 py-2">
+                            SLA
+                          </th>
+                          <th class="px-3 py-2">
+                            Outsourcing
+                          </th>
+                          <th class="px-3 py-2">
+                            Material service
+                          </th>
+                          <th class="px-3 py-2">
+                            Alignment
+                          </th>
+                          <th class="px-3 py-2">
+                            Justification
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-default">
+                        <tr v-if="!section.rows.length">
+                          <td
+                            colspan="8"
+                            class="px-3 py-3 text-xs text-muted"
+                          >
+                            {{ section.empty }}
+                          </td>
+                        </tr>
+                        <tr
+                          v-for="(ndep, idx) in section.rows"
+                          :key="idx"
+                          :data-gap-target="gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)"
+                          :class="isGapTargetActive(gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)) ? 'gap-flash-row' : ''"
+                        >
+                          <td class="px-3 py-2 font-medium text-highlighted">
+                            {{ ndep.party_name }}
+                          </td>
+                          <td class="px-3 py-2 tabular-nums">
+                            {{ ndep.planned_capacity }}
+                          </td>
+                          <td class="px-3 py-2">
+                            {{ ndep.expected_mtd }}
+                          </td>
+                          <td class="px-3 py-2">
+                            {{ ndep.sla }}
+                          </td>
+                          <td class="px-3 py-2">
+                            {{ ndep.is_outsourcing }}
+                          </td>
+                          <td class="px-3 py-2">
+                            {{ ndep.is_material }}
+                          </td>
+                          <td class="px-3 py-2">
+                            <UTooltip
+                              v-if="ndep.alignment_warnings?.length"
+                              :text="ndep.alignment_warnings.join(' ')"
+                            >
+                              <UBadge
+                                color="warning"
+                                variant="subtle"
+                                size="xs"
+                                label="Needs justification"
+                              />
+                            </UTooltip>
+                            <UBadge
+                              v-else
+                              color="success"
+                              variant="subtle"
+                              size="xs"
+                              label="Aligned"
+                            />
+                          </td>
+                          <td class="max-w-xs px-3 py-2 whitespace-pre-line text-xs text-muted">
+                            <span
+                              v-if="ndep.justification"
+                              class="text-default"
+                            >{{ ndep.justification }}</span>
+                            <UBadge
+                              v-else-if="ndep.alignment_warnings?.length && !detail.notes?.justification_dependency"
+                              color="error"
+                              variant="subtle"
+                              size="xs"
+                              label="Required"
+                            />
+                            <template v-else>
+                              —
+                            </template>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </UCard>
+
+            <UCard v-if="detail.notes?.justification_rto || detail.notes?.justification_dependency || detailSummary.missingRtoJustification || detailSummary.missingDepJustification">
+              <template #header>
+                <h2 class="text-base font-semibold text-highlighted">
+                  RTO &amp; dependency justifications (Part 2a &amp; Part 2b)
+                </h2>
+              </template>
+              <dl class="divide-y divide-default text-sm">
+                <div
+                  v-if="detail.notes?.justification_rto || detailSummary.missingRtoJustification"
+                  data-gap-target="dep-rto-note"
+                  class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
+                  :class="isGapTargetActive('dep-rto-note') ? 'gap-flash-box' : ''"
+                >
+                  <dt class="text-muted">
+                    IT RTO justification (Part 2a)
+                  </dt>
+                  <dd class="col-span-2 whitespace-pre-line">
+                    <span v-if="detail.notes?.justification_rto">{{ detail.notes.justification_rto }}</span>
                     <UBadge
                       v-else
                       color="error"
                       variant="subtle"
                       size="xs"
-                      label="Required when BC is not considered/included"
+                      label="Required (an IT RTO ≥ Expected MTD)"
+                    />
+                  </dd>
+                </div>
+                <div
+                  v-if="detail.notes?.justification_dependency || detailSummary.missingDepJustification"
+                  class="grid grid-cols-3 gap-4 py-2.5"
+                >
+                  <dt class="text-muted">
+                    Dependency capacity / MTD justification (Part 2b)
+                  </dt>
+                  <dd class="col-span-2 whitespace-pre-line">
+                    <span v-if="detail.notes?.justification_dependency">{{ detail.notes.justification_dependency }}</span>
+                    <UBadge
+                      v-else
+                      color="error"
+                      variant="subtle"
+                      size="xs"
+                      label="Required (misaligned capacity or MTD)"
                     />
                   </dd>
                 </div>
               </dl>
             </UCard>
           </div>
-        </div>
-      </template>
 
-      <template #impact>
-        <div class="mt-4 space-y-6">
-          <UCard :ui="{ body: 'p-0 sm:p-0' }">
-            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
-              <p class="text-sm text-muted">
-                Part 1 &amp; Part 2a: Suggested vs Expected MTD, Business Function Category, peak financial loss, and maximum impact scores ({{ scoreRangeLabel }}).
-              </p>
-              <p
-                v-if="detail.loss_totals"
-                class="text-xs text-muted tabular-nums"
-              >
-                Total peak loss ({{ peakPeriodLabel }}):
-                <span class="font-semibold text-highlighted">{{ formatCurrency(detail.loss_totals.peak_loss ?? detail.loss_totals.fin_loss_w4) }}</span>
-              </p>
-            </div>
-            <UTable
-              :data="detail.functions"
-              :columns="impactColumns"
-              :meta="impactTableMeta"
-              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
-            >
-              <template #suggested_mtd-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>Suggested MTD</span>
-                  <UTooltip text="Recommended Maximum Tolerable Downtime derived from financial loss and regulatory/customer impact.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
-              <template #expected_mtd-header>
-                <span class="inline-flex items-center gap-1">
-                  <span>Expected MTD</span>
-                  <UTooltip text="Committed Maximum Tolerable Downtime target for this business function.">
-                    <UIcon
-                      name="i-lucide-info"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </span>
-              </template>
-              <template #name-cell="{ row }">
-                <span class="font-medium text-highlighted">{{ row.original.name }}</span>
-              </template>
-              <template #suggested_mtd-cell="{ row }">
-                <div class="inline-flex items-center gap-1.5">
-                  <span>{{ row.original.suggested_mtd }}</span>
-                  <UTooltip
-                    v-if="row.original.suggested_mtd_matches === false && row.original.computed_suggested_mtd"
-                    :text="`Rule suggests ${row.original.computed_suggested_mtd}${triggerSummary(row.original) ? ` · ${triggerSummary(row.original)}` : ''}`"
-                  >
-                    <UIcon
-                      name="i-lucide-triangle-alert"
-                      class="size-3.5 text-warning"
-                    />
-                  </UTooltip>
-                  <UTooltip
-                    v-else-if="triggerSummary(row.original)"
-                    :text="triggerSummary(row.original)!"
-                  >
-                    <UIcon
-                      name="i-lucide-calculator"
-                      class="size-3.5 text-muted"
-                    />
-                  </UTooltip>
-                </div>
-              </template>
-              <template #expected_mtd-cell="{ row }">
-                <div class="inline-flex items-center gap-1.5">
-                  <span :class="row.original.expected_within_suggested === false ? 'font-medium text-error' : ''">
-                    {{ row.original.expected_mtd }}
-                  </span>
-                  <UTooltip
-                    v-if="row.original.expected_within_suggested === true"
-                    text="Expected MTD is equal to or shorter than Suggested MTD"
-                  >
-                    <UIcon
-                      name="i-lucide-circle-check"
-                      class="size-3.5 text-success"
-                    />
-                  </UTooltip>
-                  <UTooltip
-                    v-else-if="row.original.expected_within_suggested === false"
-                    text="Expected MTD exceeds Suggested MTD"
-                  >
-                    <UIcon
-                      name="i-lucide-triangle-alert"
-                      class="size-3.5 text-error"
-                    />
-                  </UTooltip>
-                </div>
-              </template>
-              <template #category-cell="{ row }">
-                <StatusBadge
-                  :scale="biaCategory"
-                  :value="row.original.category"
-                  size="sm"
-                />
-              </template>
-              <template #peak_loss-cell="{ row }">
-                <span :class="lossTone(row.original.peak_loss ?? row.original.fin_loss_w4)">
-                  {{ formatCurrency(row.original.peak_loss ?? row.original.fin_loss_w4) }}
-                </span>
-              </template>
-              <template #scores-cell="{ row }">
-                <span class="tabular-nums">A: {{ row.original.reg_score_max }} · B: {{ row.original.cust_score_max }}</span>
-              </template>
-            </UTable>
-          </UCard>
-
-          <UCard :ui="{ body: 'p-0 sm:p-0' }">
-            <template #header>
-              <h2 class="text-base font-semibold text-highlighted">
-                Potential cumulative financial loss (IDR) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
-              </h2>
-            </template>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
-                <thead>
-                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
-                    <th class="py-3 ps-4 pe-3 whitespace-nowrap">
-                      No
-                    </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Business function
-                    </th>
-                    <th
-                      v-for="periodLabel in impactPeriods"
-                      :key="`loss-h-${periodLabel}`"
-                      class="py-3 px-3 text-right whitespace-nowrap"
-                    >
-                      {{ periodLabel }}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr
-                    v-for="fn in detail.functions"
-                    :key="`loss-${fn.seq_no}`"
-                  >
-                    <td class="py-3 ps-4 pe-3 tabular-nums text-muted">
-                      {{ fn.seq_no }}
-                    </td>
-                    <td class="py-3 px-3 font-medium text-highlighted whitespace-nowrap">
-                      {{ fn.name }}
-                    </td>
-                    <td
-                      v-for="(periodLabel, idx) in impactPeriods"
-                      :key="`loss-${fn.seq_no}-${periodLabel}`"
-                      class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
-                      :class="[lossTone(fn.losses?.[idx]), isTriggerPeriod(fn, idx, 'loss') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
-                      :title="lossCellTitle(fn.losses?.[idx])"
-                    >
-                      {{ formatCurrency(fn.losses?.[idx] ?? 0) }}
-                    </td>
-                  </tr>
-                </tbody>
-                <tfoot v-if="detail.functions.length">
-                  <tr class="border-t border-default bg-elevated/40 font-semibold text-highlighted">
-                    <td class="py-3 ps-4 pe-3" />
-                    <td class="py-3 px-3 whitespace-nowrap">
-                      Total
-                    </td>
-                    <td
-                      v-for="(totalVal, idx) in lossPeriodTotals"
-                      :key="`loss-total-${idx}`"
-                      class="py-3 px-3 text-right tabular-nums whitespace-nowrap"
-                    >
-                      {{ formatCurrency(totalVal) }}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </UCard>
-
-          <UCard :ui="{ body: 'p-0 sm:p-0' }">
-            <template #header>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <h2 class="text-base font-semibold text-highlighted">
-                  Potential regulatory (A) &amp; customer service (B) impact (Score {{ scoreRangeLabel }}) — {{ impactPeriods[0] }} to {{ impactPeriods[impactPeriods.length - 1] }}
-                </h2>
-                <span class="text-xs text-muted">A = Regulatory Impact · B = Customer Service Impact</span>
-              </div>
-            </template>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
-                <thead>
-                  <tr class="border-b border-default text-xs font-medium uppercase tracking-wide text-muted">
-                    <th class="py-3 ps-4 pe-3 whitespace-nowrap">
-                      No
-                    </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Business function
-                    </th>
-                    <th class="py-3 px-3 whitespace-nowrap">
-                      Impact
-                    </th>
-                    <th
-                      v-for="periodLabel in impactPeriods"
-                      :key="`score-h-${periodLabel}`"
-                      class="py-3 px-3 text-center whitespace-nowrap"
-                    >
-                      {{ periodLabel }}
-                    </th>
-                    <th class="py-3 px-3 text-right whitespace-nowrap">
-                      Suggested MTD
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <template
-                    v-for="fn in detail.functions"
-                    :key="`score-${fn.seq_no}`"
-                  >
-                    <tr>
-                      <td
-                        rowspan="2"
-                        class="py-3 ps-4 pe-3 align-top tabular-nums text-muted"
-                      >
-                        {{ fn.seq_no }}
-                      </td>
-                      <td
-                        rowspan="2"
-                        class="py-3 px-3 align-top font-medium text-highlighted whitespace-nowrap"
-                      >
-                        {{ fn.name }}
-                      </td>
-                      <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
-                        Regulatory (A)
-                      </td>
-                      <td
-                        v-for="(periodLabel, idx) in impactPeriods"
-                        :key="`reg-${fn.seq_no}-${periodLabel}`"
-                        class="py-2 px-3 text-center tabular-nums"
-                        :class="[scoreTone(fn.regulatory_scores?.[idx]), isTriggerPeriod(fn, idx, 'regulatory') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
-                        :title="impactScoreTitle('regulatory', fn.regulatory_scores?.[idx])"
-                      >
-                        {{ fn.regulatory_scores?.[idx] ?? '—' }}
-                      </td>
-                      <td
-                        rowspan="2"
-                        class="py-3 px-3 text-right align-top"
-                      >
-                        <p class="font-medium text-highlighted whitespace-nowrap">
-                          {{ fn.suggested_mtd }}
-                        </p>
-                        <p
-                          v-if="fn.suggested_mtd_matches === false && fn.computed_suggested_mtd"
-                          class="mt-1 text-[11px] font-medium text-warning whitespace-nowrap"
-                        >
-                          Rule suggests: {{ fn.computed_suggested_mtd }}
-                        </p>
-                        <p
-                          v-if="triggerSummary(fn)"
-                          class="mt-1 max-w-56 text-[11px] leading-snug text-muted"
-                        >
-                          {{ triggerSummary(fn) }}
-                        </p>
-                      </td>
-                    </tr>
-                    <tr class="bg-elevated/30">
-                      <td class="py-2 px-3 text-xs font-medium text-muted whitespace-nowrap">
-                        Customer (B)
-                      </td>
-                      <td
-                        v-for="(periodLabel, idx) in impactPeriods"
-                        :key="`cust-${fn.seq_no}-${periodLabel}`"
-                        class="py-2 px-3 text-center tabular-nums"
-                        :class="[scoreTone(fn.customer_scores?.[idx]), isTriggerPeriod(fn, idx, 'customer') ? 'bg-error/10 ring-1 ring-inset ring-error/30' : '']"
-                        :title="impactScoreTitle('customer', fn.customer_scores?.[idx])"
-                      >
-                        {{ fn.customer_scores?.[idx] ?? '—' }}
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </UCard>
-
-          <UCard v-if="detail.impact_reference">
-            <template #header>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <h2 class="text-base font-semibold text-highlighted">
-                  Impact reference matrix (Config {{ detail.config_version || 'active' }})
-                </h2>
-                <span class="text-xs text-muted">
-                  Alert threshold: &gt; {{ formatCurrency(detail.impact_reference.loss_alert_idr) }} or Score ≥ {{ detail.impact_reference.score_alert }}
-                </span>
-              </div>
-            </template>
-            <div class="grid gap-6 lg:grid-cols-2">
-              <div v-if="detail.impact_reference.financial_bands.length">
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Potential cumulative financial loss matrix
-                </h3>
-                <dl class="mt-2 divide-y divide-default text-sm">
-                  <div
-                    v-for="band in detail.impact_reference.financial_bands"
-                    :key="band.code"
-                    class="flex items-baseline justify-between gap-4 py-2"
-                  >
-                    <dt class="font-medium text-highlighted">
-                      {{ band.label }}
-                    </dt>
-                    <dd class="text-right text-muted tabular-nums">
-                      {{ band.description }}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-              <div v-if="detail.impact_reference.impact_matrix.length">
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Regulatory (A) &amp; customer service (B) matrix
-                </h3>
-                <div class="mt-2 divide-y divide-default text-xs">
-                  <div
-                    v-for="item in detail.impact_reference.impact_matrix"
-                    :key="item.score"
-                    class="py-2"
-                  >
-                    <p
-                      class="font-semibold"
-                      :class="scoreTone(item.score)"
-                    >
-                      Score {{ item.score }}
-                    </p>
-                    <p class="mt-0.5 text-muted">
-                      <span class="font-medium text-highlighted">Regulatory (A):</span> {{ item.regulatory }}
-                    </p>
-                    <p class="mt-0.5 text-muted">
-                      <span class="font-medium text-highlighted">Customer (B):</span> {{ item.customer }}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              v-if="detail.impact_reference.expected_mtd?.length"
-              class="mt-4 border-t border-default pt-4"
-            >
-              <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
-                Expected MTD → Business Function Category mapping (Config {{ detail.config_version || 'active' }})
-              </h3>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <div
-                  v-for="row in detail.impact_reference.expected_mtd"
-                  :key="row.value"
-                  class="inline-flex items-center gap-1.5 rounded-md border border-default px-2.5 py-1 text-xs"
-                >
-                  <span class="font-medium text-highlighted">{{ row.value }}</span>
-                  <span class="text-muted">→</span>
-                  <StatusBadge
-                    :scale="biaCategory"
-                    :value="row.category"
-                    size="sm"
-                  />
-                </div>
-              </div>
-            </div>
-            <div
-              v-if="detail.guides?.suggested_mtd || detail.guides?.expected_mtd"
-              class="mt-4 space-y-1.5 border-t border-default pt-3 text-xs text-muted"
-            >
-              <p v-if="detail.guides?.suggested_mtd">
-                <span class="font-medium text-highlighted">Suggested MTD guide:</span> {{ detail.guides.suggested_mtd }}
-              </p>
-              <p v-if="detail.guides?.expected_mtd">
-                <span class="font-medium text-highlighted">Expected MTD guide:</span> {{ detail.guides.expected_mtd }}
-              </p>
-            </div>
-          </UCard>
-
-          <UCard>
-            <template #header>
-              <h2 class="text-base font-semibold text-highlighted">
-                Financial loss formula &amp; rating justifications (Part 1)
-              </h2>
-            </template>
-            <dl class="divide-y divide-default text-sm">
-              <div class="grid grid-cols-3 gap-4 py-2.5">
-                <dt class="text-muted">
-                  Financial loss formula
-                </dt>
-                <dd class="col-span-2 whitespace-pre-line">
-                  <span v-if="detail.notes?.loss_formula">{{ detail.notes.loss_formula }}</span>
-                  <UBadge
-                    v-else
-                    color="warning"
-                    variant="subtle"
-                    size="xs"
-                    label="Not provided"
-                  />
-                </dd>
-              </div>
-              <div
-                v-if="detail.notes?.justification_regulatory || !hasPart1Notes"
-                class="grid grid-cols-3 gap-4 py-2.5"
-              >
-                <dt class="text-muted">
-                  Regulatory impact (A)
-                </dt>
-                <dd class="col-span-2 whitespace-pre-line text-muted">
-                  {{ detail.notes?.justification_regulatory || '—' }}
-                </dd>
-              </div>
-              <div
-                v-if="detail.notes?.justification_customer || !hasPart1Notes"
-                class="grid grid-cols-3 gap-4 py-2.5"
-              >
-                <dt class="text-muted">
-                  Customer service impact (B)
-                </dt>
-                <dd class="col-span-2 whitespace-pre-line text-muted">
-                  {{ detail.notes?.justification_customer || '—' }}
-                </dd>
-              </div>
-            </dl>
-          </UCard>
-        </div>
-      </template>
-
-      <template #dependencies>
-        <div class="mt-4 space-y-6">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div
-              v-if="detail.guides?.it_dependency || detail.guides?.non_it_dependency"
-              class="min-w-0 flex-1 space-y-1 text-xs text-muted"
-            >
-              <p v-if="detail.guides?.it_dependency">
-                <span class="font-medium text-highlighted">IT dependency guide:</span> {{ detail.guides.it_dependency }}
-              </p>
-              <p v-if="detail.guides?.non_it_dependency">
-                <span class="font-medium text-highlighted">Non-IT dependency guide:</span> {{ detail.guides.non_it_dependency }}
-              </p>
-            </div>
-            <div
-              class="inline-flex shrink-0 rounded-md border border-default p-0.5 text-xs"
-              role="group"
-              aria-label="Filter dependency functions"
-            >
-              <button
-                type="button"
-                class="rounded px-2.5 py-1 font-medium transition"
-                :class="depsFilter === 'all' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
-                @click="depsFilter = 'all'"
-              >
-                All functions ({{ detail.functions.length }})
-              </button>
-              <button
-                type="button"
-                class="rounded px-2.5 py-1 font-medium transition"
-                :class="depsFilter === 'issues' ? 'bg-elevated text-highlighted shadow-xs' : 'text-muted hover:text-highlighted'"
-                @click="depsFilter = 'issues'"
-              >
-                With gaps / alerts ({{ detail.functions.filter(fnHasDepIssue).length }})
-              </button>
-            </div>
-          </div>
-
-          <UCard v-if="!displayedDepFunctions.length">
-            <p class="py-6 text-center text-sm text-muted">
-              No business function has IT or non-IT dependency gaps or alerts.
-            </p>
-          </UCard>
-
-          <UCard
-            v-for="fn in displayedDepFunctions"
-            :key="fn.seq_no"
-            :data-gap-target="gapKey('dep-fn', fn.seq_no)"
-            :class="activeGapRow === gapKey('dep-fn', fn.seq_no) ? 'gap-flash-box' : ''"
+          <div
+            v-show="functionPart === 'recovery'"
+            class="space-y-6"
           >
-            <template #header>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 class="text-base font-semibold text-highlighted">
-                    {{ fn.seq_no }}. {{ fn.name }}
-                  </h2>
-                  <p class="text-xs text-muted">
-                    Suggested MTD: <span class="font-medium text-highlighted">{{ fn.suggested_mtd }}</span> ·
-                    Expected MTD:
-                    <span :class="fn.expected_within_suggested === false ? 'font-medium text-error' : 'font-medium text-highlighted'">
-                      {{ fn.expected_mtd }}
-                    </span> ·
-                    Planned capacity: <span class="font-medium text-highlighted">{{ fn.planned_capacity }}</span>
+            <UCard :ui="{ body: 'p-0 sm:p-0' }">
+              <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default p-4">
+                <div class="min-w-0 flex-1 space-y-1.5">
+                  <p class="text-sm text-muted">
+                    Part 3: full recovery strategies, staffing, BCP seats, alternate-site equipment, and vital records.
+                  </p>
+                  <p
+                    v-if="detail.guides?.recovery"
+                    class="text-xs text-muted"
+                  >
+                    <span class="font-medium text-highlighted">Recovery guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
+                  </p>
+                  <p
+                    v-if="detail.guides?.alternate_site"
+                    class="text-xs text-muted"
+                  >
+                    <span class="font-medium text-highlighted">Alternate site guide:</span> {{ detail.guides.alternate_site }}
                   </p>
                 </div>
-                <StatusBadge
-                  :scale="biaCategory"
-                  :value="fn.category"
-                  size="sm"
-                />
-              </div>
-            </template>
-
-            <div class="space-y-4">
-              <div
-                v-for="itSection in itDependencySections(fn)"
-                :key="`${fn.seq_no}-it-${itSection.key}`"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <h3 class="text-sm font-semibold text-highlighted">
-                    {{ itSection.title }}
-                  </h3>
-                  <UBadge
-                    v-if="itSection.rows.length"
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+                    <UIcon
+                      name="i-lucide-move-horizontal"
+                      class="size-3.5"
+                    />
+                    <span>Scroll horizontally · Function pinned</span>
+                  </span>
+                  <UButton
                     color="neutral"
-                    variant="subtle"
+                    variant="outline"
                     size="xs"
-                    :label="plural(itSection.rows.length, 'app')"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export to Excel"
+                    :loading="sectionExporter.busy.value && activeExportSection === 'recovery'"
+                    :disabled="sectionExporter.busy.value"
+                    @click="exportDetailSection('recovery')"
                   />
                 </div>
-                <div class="mt-2 overflow-x-auto">
-                  <table class="w-full text-left text-sm">
-                    <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
-                      <tr>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          Application
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          <span class="inline-flex items-center gap-1">
-                            <span>Committed RTO</span>
-                            <UTooltip :text="detail.guides?.rto || 'Recovery Time Objective — target maximum time to restore the IT application.'">
-                              <UIcon
-                                name="i-lucide-info"
-                                class="size-3.5 text-muted"
-                              />
-                            </UTooltip>
-                          </span>
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          <span class="inline-flex items-center gap-1">
-                            <span>Committed RPO</span>
-                            <UTooltip :text="detail.guides?.rpo || 'Recovery Point Objective — maximum acceptable data loss (LST, LSB, or LDB).'">
-                              <UIcon
-                                name="i-lucide-info"
-                                class="size-3.5 text-muted"
-                              />
-                            </UTooltip>
-                          </span>
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          Workaround
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          Backlog clear
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          <span class="inline-flex items-center gap-1">
-                            <span>DAAT</span>
-                            <UTooltip :text="detail.guides?.daat || 'Damage Assessment & Activation Time (Expected MTD − RTO − Backlog). Negative means RTO + backlog exceeds MTD.'">
-                              <UIcon
-                                name="i-lucide-info"
-                                class="size-3.5 text-muted"
-                              />
-                            </UTooltip>
-                          </span>
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          System usage
-                        </th>
-                        <th class="px-3 py-2 whitespace-nowrap">
-                          Workaround critical gaps
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-default">
-                      <tr v-if="!itSection.rows.length">
-                        <td
-                          colspan="8"
-                          class="px-3 py-3 text-xs text-muted"
-                        >
-                          {{ itSection.empty }}
-                        </td>
-                      </tr>
-                      <tr
-                        v-for="dep in itSection.rows"
-                        :key="`${itSection.key}-${dep.app_code}-${dep.app_name}`"
-                        :data-gap-target="gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)"
-                        :class="isGapTargetActive(gapKey('dep-it', fn.seq_no, dep.app_name || dep.app_code)) ? 'gap-flash-row' : ''"
-                      >
-                        <td class="px-3 py-2 font-medium text-highlighted">
-                          <template v-if="dep.app_name?.trim().toUpperCase() === 'NA'">
-                            <span class="text-muted">No IT application dependency (NA)</span>
-                          </template>
-                          <template v-else>
-                            {{ dep.app_name }}
-                          </template>
-                        </td>
-                        <td class="px-3 py-2 tabular-nums whitespace-nowrap">
-                          <div class="inline-flex items-center gap-1">
-                            <span :class="dep.rto_reaches_mtd ? 'font-medium text-warning' : ''">
-                              {{ dep.rto }}
-                            </span>
-                            <UTooltip
-                              v-if="dep.rto_reaches_mtd"
-                              text="RTO ≥ Expected MTD — requires Part 2a justification"
-                            >
-                              <UIcon
-                                name="i-lucide-triangle-alert"
-                                class="size-3.5 text-warning"
-                              />
-                            </UTooltip>
-                          </div>
-                        </td>
-                        <td class="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                          {{ dep.rpo }}
-                        </td>
-                        <td class="px-3 py-2 whitespace-nowrap">
-                          {{ dep.workaround }}
-                        </td>
-                        <td class="px-3 py-2 whitespace-nowrap">
-                          {{ dep.backlog_time }}
-                        </td>
-                        <td class="px-3 py-2 whitespace-nowrap">
-                          <div class="inline-flex items-center gap-1.5">
-                            <span :class="dep.daat_negative || dep.daat.startsWith('-') ? 'font-medium text-error' : ''">
-                              {{ dep.daat }}
-                            </span>
-                            <UBadge
-                              v-if="dep.daat && dep.daat !== '—' && dep.daat.toUpperCase() !== 'NA'"
-                              :color="dep.daat_negative || dep.daat.startsWith('-') ? 'error' : 'success'"
-                              variant="subtle"
-                              size="xs"
-                              :label="dep.daat_negative || dep.daat.startsWith('-') ? 'Gap' : 'OK'"
-                            />
-                            <UTooltip
-                              v-if="dep.daat_warnings?.length"
-                              :text="dep.daat_warnings.join(' ')"
-                            >
-                              <UIcon
-                                name="i-lucide-info"
-                                class="size-3.5 text-muted"
-                              />
-                            </UTooltip>
-                          </div>
-                        </td>
-                        <td class="px-3 py-2 whitespace-nowrap">
-                          {{ dep.system_usage }}
-                        </td>
-                        <td class="px-3 py-2 text-muted">
-                          <UBadge
-                            v-if="dep.workaround_gap_required && !dep.critical_gap"
-                            color="error"
-                            variant="subtle"
-                            size="xs"
-                            label="Mandatory gap note missing"
-                          />
-                          <template v-else>
-                            {{ dep.critical_gap || '—' }}
-                          </template>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
               </div>
-
-              <div
-                v-for="section in nonItDependencySections(fn)"
-                :key="`${fn.seq_no}-${section.key}`"
-              >
-                <h3 class="text-sm font-semibold text-highlighted">
-                  {{ section.title }}
-                </h3>
-                <div class="mt-2 overflow-x-auto">
-                  <table class="w-full text-left text-sm">
-                    <thead class="border-b border-default bg-muted text-xs uppercase text-muted">
-                      <tr>
-                        <th class="px-3 py-2">
-                          Party / business unit
-                        </th>
-                        <th class="px-3 py-2">
-                          Planned capacity
-                        </th>
-                        <th class="px-3 py-2">
-                          Expected MTD
-                        </th>
-                        <th class="px-3 py-2">
-                          SLA
-                        </th>
-                        <th class="px-3 py-2">
-                          Outsourcing
-                        </th>
-                        <th class="px-3 py-2">
-                          Material service
-                        </th>
-                        <th class="px-3 py-2">
-                          Alignment
-                        </th>
-                        <th class="px-3 py-2">
-                          Justification
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-default">
-                      <tr v-if="!section.rows.length">
-                        <td
-                          colspan="8"
-                          class="px-3 py-3 text-xs text-muted"
-                        >
-                          {{ section.empty }}
-                        </td>
-                      </tr>
-                      <tr
-                        v-for="(ndep, idx) in section.rows"
-                        :key="idx"
-                        :data-gap-target="gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)"
-                        :class="isGapTargetActive(gapKey('dep-nonit', fn.seq_no, section.key, ndep.party_name)) ? 'gap-flash-row' : ''"
+              <div class="overflow-x-auto">
+                <table class="w-full border-separate border-spacing-0 text-left text-sm">
+                  <thead>
+                    <tr class="bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      <th
+                        colspan="2"
+                        class="sticky left-0 z-20 border-b border-r border-default bg-elevated/95 py-2 ps-4 pe-3 backdrop-blur-xs"
                       >
-                        <td class="px-3 py-2 font-medium text-highlighted">
-                          {{ ndep.party_name }}
-                        </td>
-                        <td class="px-3 py-2 tabular-nums">
-                          {{ ndep.planned_capacity }}
-                        </td>
-                        <td class="px-3 py-2">
-                          {{ ndep.expected_mtd }}
-                        </td>
-                        <td class="px-3 py-2">
-                          {{ ndep.sla }}
-                        </td>
-                        <td class="px-3 py-2">
-                          {{ ndep.is_outsourcing }}
-                        </td>
-                        <td class="px-3 py-2">
-                          {{ ndep.is_material }}
-                        </td>
-                        <td class="px-3 py-2">
+                        Business function
+                      </th>
+                      <th
+                        colspan="3"
+                        class="border-b border-default px-3 py-2"
+                      >
+                        Target &amp; classification
+                      </th>
+                      <th
+                        colspan="3"
+                        class="border-b border-l border-default px-3 py-2"
+                      >
+                        Staffing &amp; recovery level
+                      </th>
+                      <th
+                        colspan="3"
+                        class="border-b border-l border-default px-3 py-2"
+                      >
+                        Recovery strategies
+                      </th>
+                      <th
+                        colspan="2"
+                        class="border-b border-l border-default px-3 py-2"
+                      >
+                        BCP seats
+                      </th>
+                      <th
+                        colspan="5"
+                        class="border-b border-l border-default px-3 py-2"
+                      >
+                        Alternate-site equipment
+                      </th>
+                      <th
+                        colspan="2"
+                        class="border-b border-l border-default ps-3 pe-4 py-2"
+                      >
+                        Vital records
+                      </th>
+                    </tr>
+                    <tr class="bg-default text-xs font-medium uppercase tracking-wide text-muted">
+                      <th class="sticky left-0 z-20 w-12 border-b border-default bg-default py-2.5 ps-4 pe-2 whitespace-nowrap">
+                        No
+                      </th>
+                      <th class="sticky left-12 z-20 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-2.5 whitespace-nowrap">
+                        Name of business function
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Planned capacity
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Category
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Expected MTD
+                      </th>
+                      <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Total staff
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Staff required
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Recovery level
+                      </th>
+                      <th class="min-w-56 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
+                        Prioritization strategy
+                      </th>
+                      <th class="min-w-56 border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Outstanding strategy
+                      </th>
+                      <th class="min-w-44 border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Alternate site strategy
+                      </th>
+                      <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Current seats
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Seats required
+                      </th>
+                      <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        PC
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Phone (Fixed Line)
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Fax
+                      </th>
+                      <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
+                        Copier
+                      </th>
+                      <th class="min-w-36 border-b border-default px-3 py-2.5 whitespace-nowrap">
+                        Others
+                      </th>
+                      <th class="min-w-44 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
+                        Vital record
+                      </th>
+                      <th class="min-w-44 border-b border-default ps-3 pe-4 py-2.5 whitespace-nowrap">
+                        Vital record location
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!detail.functions.length">
+                      <td
+                        colspan="20"
+                        class="px-4 py-6 text-center text-sm text-muted"
+                      >
+                        No business functions recorded.
+                      </td>
+                    </tr>
+                    <tr
+                      v-for="fn in detail.functions"
+                      :key="`rec-${fn.seq_no}`"
+                      :data-gap-target="gapKey('recovery-fn', fn.seq_no)"
+                      class="group hover:bg-elevated/40"
+                      :class="activeGapRow === gapKey('recovery-fn', fn.seq_no) ? 'gap-flash-row' : ''"
+                    >
+                      <td class="sticky left-0 z-10 w-12 border-b border-default bg-default py-3 ps-4 pe-2 align-top tabular-nums text-muted group-hover:bg-elevated/40">
+                        {{ fn.seq_no }}
+                      </td>
+                      <td class="sticky left-12 z-10 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-3 align-top font-medium text-highlighted group-hover:bg-elevated/40">
+                        {{ fn.name }}
+                      </td>
+                      <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
+                        {{ fn.planned_capacity }}
+                      </td>
+                      <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
+                        <StatusBadge
+                          :scale="biaCategory"
+                          :value="fn.category"
+                          size="sm"
+                        />
+                      </td>
+                      <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
+                        {{ fn.expected_mtd }}
+                      </td>
+                      <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        {{ formatNumber(fn.total_staff, 0) }}
+                      </td>
+                      <td
+                        :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'staff')"
+                        class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                        :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'staff')) ? 'gap-flash-cell' : ''"
+                      >
+                        <div class="inline-flex items-center justify-end gap-1">
+                          <span :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''">
+                            {{ formatNumber(fn.required_staff, 0) }}
+                          </span>
                           <UTooltip
-                            v-if="ndep.alignment_warnings?.length"
-                            :text="ndep.alignment_warnings.join(' ')"
+                            v-if="fn.total_staff > 0 && fn.required_staff > fn.total_staff"
+                            text="Required recovery staff exceeds total staff in the unit"
+                          >
+                            <UIcon
+                              name="i-lucide-triangle-alert"
+                              class="size-3.5 text-warning"
+                            />
+                          </UTooltip>
+                        </div>
+                      </td>
+                      <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
+                        {{ fn.recovery_level }}
+                      </td>
+                      <td class="min-w-56 max-w-72 border-b border-l border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
+                        {{ fn.prioritization_strategy || '—' }}
+                      </td>
+                      <td class="min-w-56 max-w-72 border-b border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
+                        {{ fn.outstanding_strategy || '—' }}
+                      </td>
+                      <td
+                        :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'altsite')"
+                        class="min-w-44 border-b border-default px-3 py-3 align-top"
+                        :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'altsite')) ? 'gap-flash-cell' : ''"
+                      >
+                        <div class="space-y-1">
+                          <span class="block text-sm">{{ fn.alt_site_strategy }}</span>
+                          <UTooltip
+                            v-if="altSiteOffRecommendation(fn)"
+                            :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
                           >
                             <UBadge
                               color="warning"
                               variant="subtle"
                               size="xs"
-                              label="Needs justification"
+                              label="Outside category guidance"
                             />
                           </UTooltip>
+                        </div>
+                      </td>
+                      <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        <UTooltip
+                          v-if="isWfhStrategy(fn)"
+                          text="Alternate-site resource requirements exclude Work from Home (WFH)"
+                        >
                           <UBadge
-                            v-else
-                            color="success"
+                            color="neutral"
                             variant="subtle"
                             size="xs"
-                            label="Aligned"
+                            label="WFH"
                           />
-                        </td>
-                        <td class="max-w-xs px-3 py-2 whitespace-pre-line text-xs text-muted">
-                          <span
-                            v-if="ndep.justification"
-                            class="text-default"
-                          >{{ ndep.justification }}</span>
-                          <UBadge
-                            v-else-if="ndep.alignment_warnings?.length && !detail.notes?.justification_dependency"
-                            color="error"
-                            variant="subtle"
-                            size="xs"
-                            label="Required"
-                          />
-                          <template v-else>
-                            —
+                        </UTooltip>
+                        <span v-else>{{ formatNumber(fn.bcp_seats_current, 0) }}</span>
+                      </td>
+                      <td
+                        :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'seats')"
+                        class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
+                        :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'seats')) ? 'gap-flash-cell' : ''"
+                      >
+                        <span
+                          v-if="isWfhStrategy(fn)"
+                          class="text-muted"
+                        >—</span>
+                        <span
+                          v-else
+                          :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
+                        >
+                          {{ formatNumber(fn.bcp_seats_required, 0) }}
+                          <template v-if="fn.bcp_seats_current < fn.bcp_seats_required">
+                            (-{{ fn.bcp_seats_required - fn.bcp_seats_current }})
                           </template>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </UCard>
-
-          <UCard v-if="detail.notes?.justification_rto || detail.notes?.justification_dependency || detailSummary.missingRtoJustification || detailSummary.missingDepJustification">
-            <template #header>
-              <h2 class="text-base font-semibold text-highlighted">
-                RTO &amp; dependency justifications (Part 2a &amp; Part 2b)
-              </h2>
-            </template>
-            <dl class="divide-y divide-default text-sm">
-              <div
-                v-if="detail.notes?.justification_rto || detailSummary.missingRtoJustification"
-                data-gap-target="dep-rto-note"
-                class="grid grid-cols-3 gap-4 rounded-md px-2 -mx-2 py-2.5"
-                :class="isGapTargetActive('dep-rto-note') ? 'gap-flash-box' : ''"
-              >
-                <dt class="text-muted">
-                  IT RTO justification (Part 2a)
-                </dt>
-                <dd class="col-span-2 whitespace-pre-line">
-                  <span v-if="detail.notes?.justification_rto">{{ detail.notes.justification_rto }}</span>
-                  <UBadge
-                    v-else
-                    color="error"
-                    variant="subtle"
-                    size="xs"
-                    label="Required (an IT RTO ≥ Expected MTD)"
-                  />
-                </dd>
-              </div>
-              <div
-                v-if="detail.notes?.justification_dependency || detailSummary.missingDepJustification"
-                class="grid grid-cols-3 gap-4 py-2.5"
-              >
-                <dt class="text-muted">
-                  Dependency capacity / MTD justification (Part 2b)
-                </dt>
-                <dd class="col-span-2 whitespace-pre-line">
-                  <span v-if="detail.notes?.justification_dependency">{{ detail.notes.justification_dependency }}</span>
-                  <UBadge
-                    v-else
-                    color="error"
-                    variant="subtle"
-                    size="xs"
-                    label="Required (misaligned capacity or MTD)"
-                  />
-                </dd>
-              </div>
-            </dl>
-          </UCard>
-        </div>
-      </template>
-
-      <template #recovery>
-        <div class="mt-4 space-y-6">
-          <UCard :ui="{ body: 'p-0 sm:p-0' }">
-            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default p-4">
-              <div class="min-w-0 flex-1 space-y-1.5">
-                <p class="text-sm text-muted">
-                  Part 3: full recovery strategies, staffing, BCP seats, alternate-site equipment, and vital records.
-                </p>
-                <p
-                  v-if="detail.guides?.recovery"
-                  class="text-xs text-muted"
-                >
-                  <span class="font-medium text-highlighted">Recovery guide (Config {{ detail.config_version || 'active' }}):</span> {{ detail.guides.recovery }}
-                </p>
-                <p
-                  v-if="detail.guides?.alternate_site"
-                  class="text-xs text-muted"
-                >
-                  <span class="font-medium text-highlighted">Alternate site guide:</span> {{ detail.guides.alternate_site }}
-                </p>
-              </div>
-              <span class="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
-                <UIcon
-                  name="i-lucide-move-horizontal"
-                  class="size-3.5"
-                />
-                <span>Scroll horizontally · Function pinned</span>
-              </span>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full border-separate border-spacing-0 text-left text-sm">
-                <thead>
-                  <tr class="bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    <th
-                      colspan="2"
-                      class="sticky left-0 z-20 border-b border-r border-default bg-elevated/95 py-2 ps-4 pe-3 backdrop-blur-xs"
-                    >
-                      Business function
-                    </th>
-                    <th
-                      colspan="3"
-                      class="border-b border-default px-3 py-2"
-                    >
-                      Target &amp; classification
-                    </th>
-                    <th
-                      colspan="3"
-                      class="border-b border-l border-default px-3 py-2"
-                    >
-                      Staffing &amp; recovery level
-                    </th>
-                    <th
-                      colspan="3"
-                      class="border-b border-l border-default px-3 py-2"
-                    >
-                      Recovery strategies
-                    </th>
-                    <th
-                      colspan="2"
-                      class="border-b border-l border-default px-3 py-2"
-                    >
-                      BCP seats
-                    </th>
-                    <th
-                      colspan="5"
-                      class="border-b border-l border-default px-3 py-2"
-                    >
-                      Alternate-site equipment
-                    </th>
-                    <th
-                      colspan="2"
-                      class="border-b border-l border-default ps-3 pe-4 py-2"
-                    >
-                      Vital records
-                    </th>
-                  </tr>
-                  <tr class="bg-default text-xs font-medium uppercase tracking-wide text-muted">
-                    <th class="sticky left-0 z-20 w-12 border-b border-default bg-default py-2.5 ps-4 pe-2 whitespace-nowrap">
-                      No
-                    </th>
-                    <th class="sticky left-12 z-20 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-2.5 whitespace-nowrap">
-                      Name of business function
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Planned capacity
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Category
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Expected MTD
-                    </th>
-                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Total staff
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Staff required
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Recovery level
-                    </th>
-                    <th class="min-w-56 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
-                      Prioritization strategy
-                    </th>
-                    <th class="min-w-56 border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Outstanding strategy
-                    </th>
-                    <th class="min-w-44 border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Alternate site strategy
-                    </th>
-                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Current seats
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Seats required
-                    </th>
-                    <th class="border-b border-l border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      PC
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Phone (Fixed Line)
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Fax
-                    </th>
-                    <th class="border-b border-default px-3 py-2.5 text-right whitespace-nowrap">
-                      Copier
-                    </th>
-                    <th class="min-w-36 border-b border-default px-3 py-2.5 whitespace-nowrap">
-                      Others
-                    </th>
-                    <th class="min-w-44 border-b border-l border-default px-3 py-2.5 whitespace-nowrap">
-                      Vital record
-                    </th>
-                    <th class="min-w-44 border-b border-default ps-3 pe-4 py-2.5 whitespace-nowrap">
-                      Vital record location
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="!detail.functions.length">
-                    <td
-                      colspan="20"
-                      class="px-4 py-6 text-center text-sm text-muted"
-                    >
-                      No business functions recorded.
-                    </td>
-                  </tr>
-                  <tr
-                    v-for="fn in detail.functions"
-                    :key="`rec-${fn.seq_no}`"
-                    :data-gap-target="gapKey('recovery-fn', fn.seq_no)"
-                    class="group hover:bg-elevated/40"
-                    :class="activeGapRow === gapKey('recovery-fn', fn.seq_no) ? 'gap-flash-row' : ''"
-                  >
-                    <td class="sticky left-0 z-10 w-12 border-b border-default bg-default py-3 ps-4 pe-2 align-top tabular-nums text-muted group-hover:bg-elevated/40">
-                      {{ fn.seq_no }}
-                    </td>
-                    <td class="sticky left-12 z-10 min-w-48 max-w-60 border-b border-r border-default bg-default px-3 py-3 align-top font-medium text-highlighted group-hover:bg-elevated/40">
-                      {{ fn.name }}
-                    </td>
-                    <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
-                      {{ fn.planned_capacity }}
-                    </td>
-                    <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
-                      <StatusBadge
-                        :scale="biaCategory"
-                        :value="fn.category"
-                        size="sm"
-                      />
-                    </td>
-                    <td class="border-b border-default px-3 py-3 align-top whitespace-nowrap">
-                      {{ fn.expected_mtd }}
-                    </td>
-                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      {{ formatNumber(fn.total_staff, 0) }}
-                    </td>
-                    <td
-                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'staff')"
-                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
-                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'staff')) ? 'gap-flash-cell' : ''"
-                    >
-                      <div class="inline-flex items-center justify-end gap-1">
-                        <span :class="fn.total_staff > 0 && fn.required_staff > fn.total_staff ? 'font-semibold text-warning' : ''">
-                          {{ formatNumber(fn.required_staff, 0) }}
                         </span>
-                        <UTooltip
-                          v-if="fn.total_staff > 0 && fn.required_staff > fn.total_staff"
-                          text="Required recovery staff exceeds total staff in the unit"
-                        >
-                          <UIcon
-                            name="i-lucide-triangle-alert"
-                            class="size-3.5 text-warning"
-                          />
-                        </UTooltip>
-                      </div>
-                    </td>
-                    <td class="border-b border-default px-3 py-3 align-top tabular-nums whitespace-nowrap">
-                      {{ fn.recovery_level }}
-                    </td>
-                    <td class="min-w-56 max-w-72 border-b border-l border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
-                      {{ fn.prioritization_strategy || '—' }}
-                    </td>
-                    <td class="min-w-56 max-w-72 border-b border-default px-3 py-3 align-top whitespace-pre-line text-xs leading-relaxed text-default">
-                      {{ fn.outstanding_strategy || '—' }}
-                    </td>
-                    <td
-                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'altsite')"
-                      class="min-w-44 border-b border-default px-3 py-3 align-top"
-                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'altsite')) ? 'gap-flash-cell' : ''"
-                    >
-                      <div class="space-y-1">
-                        <span class="block text-sm">{{ fn.alt_site_strategy }}</span>
-                        <UTooltip
-                          v-if="altSiteOffRecommendation(fn)"
-                          :text="`Workbook recommends for ${fn.category}: ${altSiteOffRecommendation(fn)}`"
-                        >
-                          <UBadge
-                            color="warning"
-                            variant="subtle"
-                            size="xs"
-                            label="Outside category guidance"
-                          />
-                        </UTooltip>
-                      </div>
-                    </td>
-                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      <UTooltip
-                        v-if="isWfhStrategy(fn)"
-                        text="Alternate-site resource requirements exclude Work from Home (WFH)"
+                      </td>
+                      <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        <span
+                          v-if="isWfhStrategy(fn)"
+                          class="text-muted"
+                        >—</span>
+                        <span v-else>{{ formatNumber(fn.equipment?.pc ?? 0, 0) }}</span>
+                      </td>
+                      <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        <span
+                          v-if="isWfhStrategy(fn)"
+                          class="text-muted"
+                        >—</span>
+                        <span v-else>{{ formatNumber(fn.equipment?.phone ?? 0, 0) }}</span>
+                      </td>
+                      <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        <span
+                          v-if="isWfhStrategy(fn)"
+                          class="text-muted"
+                        >—</span>
+                        <span v-else>{{ formatNumber(fn.equipment?.fax ?? 0, 0) }}</span>
+                      </td>
+                      <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
+                        <span
+                          v-if="isWfhStrategy(fn)"
+                          class="text-muted"
+                        >—</span>
+                        <span v-else>{{ formatNumber(fn.equipment?.copier ?? 0, 0) }}</span>
+                      </td>
+                      <td class="min-w-36 max-w-56 border-b border-default px-3 py-3 align-top text-xs text-muted">
+                        <span v-if="isWfhStrategy(fn)">Excluded (WFH)</span>
+                        <span v-else>{{ fn.equipment?.others || '—' }}</span>
+                      </td>
+                      <td
+                        :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'vital')"
+                        class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top"
+                        :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'vital')) ? 'gap-flash-cell' : ''"
                       >
                         <UBadge
-                          color="neutral"
+                          v-if="fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')"
+                          color="error"
                           variant="subtle"
-                          size="xs"
-                          label="WFH"
+                          size="sm"
+                          label="Vital record required"
                         />
-                      </UTooltip>
-                      <span v-else>{{ formatNumber(fn.bcp_seats_current, 0) }}</span>
-                    </td>
-                    <td
-                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'seats')"
-                      class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap"
-                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'seats')) ? 'gap-flash-cell' : ''"
-                    >
-                      <span
-                        v-if="isWfhStrategy(fn)"
-                        class="text-muted"
-                      >—</span>
-                      <span
-                        v-else
-                        :class="fn.bcp_seats_current < fn.bcp_seats_required ? 'font-semibold text-error' : ''"
-                      >
-                        {{ formatNumber(fn.bcp_seats_required, 0) }}
-                        <template v-if="fn.bcp_seats_current < fn.bcp_seats_required">
-                          (-{{ fn.bcp_seats_required - fn.bcp_seats_current }})
-                        </template>
-                      </span>
-                    </td>
-                    <td class="border-b border-l border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      <span
-                        v-if="isWfhStrategy(fn)"
-                        class="text-muted"
-                      >—</span>
-                      <span v-else>{{ formatNumber(fn.equipment?.pc ?? 0, 0) }}</span>
-                    </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      <span
-                        v-if="isWfhStrategy(fn)"
-                        class="text-muted"
-                      >—</span>
-                      <span v-else>{{ formatNumber(fn.equipment?.phone ?? 0, 0) }}</span>
-                    </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      <span
-                        v-if="isWfhStrategy(fn)"
-                        class="text-muted"
-                      >—</span>
-                      <span v-else>{{ formatNumber(fn.equipment?.fax ?? 0, 0) }}</span>
-                    </td>
-                    <td class="border-b border-default px-3 py-3 text-right align-top tabular-nums whitespace-nowrap">
-                      <span
-                        v-if="isWfhStrategy(fn)"
-                        class="text-muted"
-                      >—</span>
-                      <span v-else>{{ formatNumber(fn.equipment?.copier ?? 0, 0) }}</span>
-                    </td>
-                    <td class="min-w-36 max-w-56 border-b border-default px-3 py-3 align-top text-xs text-muted">
-                      <span v-if="isWfhStrategy(fn)">Excluded (WFH)</span>
-                      <span v-else>{{ fn.equipment?.others || '—' }}</span>
-                    </td>
-                    <td
-                      :data-gap-target="gapKey('recovery-cell', fn.seq_no, 'vital')"
-                      class="min-w-44 max-w-60 border-b border-l border-default px-3 py-3 align-top"
-                      :class="isGapTargetActive(gapKey('recovery-cell', fn.seq_no, 'vital')) ? 'gap-flash-cell' : ''"
-                    >
-                      <UBadge
-                        v-if="fn.category === 'Business Critical' && (!fn.vital_record || fn.vital_record === '—')"
-                        color="error"
-                        variant="subtle"
-                        size="sm"
-                        label="Vital record required"
-                      />
-                      <span
-                        v-else
-                        class="font-medium text-highlighted"
-                      >{{ fn.vital_record }}</span>
-                    </td>
-                    <td class="min-w-44 max-w-60 border-b border-default ps-3 pe-4 py-3 align-top">
-                      <UBadge
-                        v-if="fn.category === 'Business Critical' && (!fn.vital_record_location || fn.vital_record_location === '—')"
-                        color="error"
-                        variant="subtle"
-                        size="sm"
-                        label="Storage location required"
-                      />
-                      <span
-                        v-else
-                        class="text-muted"
-                      >{{ fn.vital_record_location }}</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </UCard>
+                        <span
+                          v-else
+                          class="font-medium text-highlighted"
+                        >{{ fn.vital_record }}</span>
+                      </td>
+                      <td class="min-w-44 max-w-60 border-b border-default ps-3 pe-4 py-3 align-top">
+                        <UBadge
+                          v-if="fn.category === 'Business Critical' && (!fn.vital_record_location || fn.vital_record_location === '—')"
+                          color="error"
+                          variant="subtle"
+                          size="sm"
+                          label="Storage location required"
+                        />
+                        <span
+                          v-else
+                          class="text-muted"
+                        >{{ fn.vital_record_location }}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </UCard>
+          </div>
+
+          <div
+            v-show="functionPart === 'timings'"
+            class="space-y-6"
+          >
+            <UCard
+              :ui="{ body: 'p-0 sm:p-0' }"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
+                <p class="text-sm text-muted">
+                  Part 4: critical timing, frequency and activities that must be performed at the deadline.
+                </p>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="xs"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                  :loading="sectionExporter.busy.value && activeExportSection === 'timings'"
+                  :disabled="sectionExporter.busy.value"
+                  @click="exportDetailSection('timings')"
+                />
+              </div>
+              <UTable
+                :data="detail.functions"
+                :columns="timingColumns"
+                :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
+              >
+                <template #name-cell="{ row }">
+                  <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+                </template>
+                <template #category-cell="{ row }">
+                  <StatusBadge
+                    :scale="biaCategory"
+                    :value="row.original.category"
+                    size="sm"
+                  />
+                </template>
+                <template #description-cell="{ row }">
+                  <p class="max-w-md whitespace-normal text-muted">
+                    {{ row.original.description || '—' }}
+                  </p>
+                </template>
+                <template #critical_activity-cell="{ row }">
+                  <p class="max-w-md whitespace-normal">
+                    {{ row.original.critical_activity || '—' }}
+                  </p>
+                </template>
+              </UTable>
+            </UCard>
+          </div>
         </div>
       </template>
 
-      <template #timings>
-        <UCard
-          class="mt-4"
-          :ui="{ body: 'p-0 sm:p-0' }"
-        >
-          <div class="border-b border-default p-4">
-            <p class="text-sm text-muted">
-              Part 4: critical timing, frequency and activities that must be performed at the deadline.
-            </p>
-          </div>
-          <UTable
-            :data="detail.functions"
-            :columns="timingColumns"
-            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
-          >
-            <template #name-cell="{ row }">
-              <span class="font-medium text-highlighted">{{ row.original.name }}</span>
-            </template>
-            <template #category-cell="{ row }">
-              <StatusBadge
-                :scale="biaCategory"
-                :value="row.original.category"
-                size="sm"
-              />
-            </template>
-            <template #description-cell="{ row }">
-              <p class="max-w-md whitespace-normal text-muted">
-                {{ row.original.description || '—' }}
-              </p>
-            </template>
-            <template #critical_activity-cell="{ row }">
-              <p class="max-w-md whitespace-normal">
-                {{ row.original.critical_activity || '—' }}
-              </p>
-            </template>
-          </UTable>
-        </UCard>
-      </template>
-
-      <template #signoff>
+      <template #approval>
         <div class="mt-4 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm text-muted">
+              Management attestation, approval sign-off steps, review comments, and approval history.
+            </p>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="xs"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+              :loading="sectionExporter.busy.value && activeExportSection === 'signoff'"
+              :disabled="sectionExporter.busy.value"
+              @click="exportDetailSection('signoff')"
+            />
+          </div>
           <UCard v-if="detail.guides?.attestation">
             <template #header>
               <h2 class="text-base font-semibold text-highlighted">
@@ -2387,6 +2743,16 @@ const pageCrumbs = computed(() => [
                     variant="subtle"
                     size="sm"
                     label="For BCM Use Only"
+                  />
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-file-spreadsheet"
+                    label="Export section summary"
+                    :loading="sectionExporter.busy.value && activeExportSection === 'appendix'"
+                    :disabled="sectionExporter.busy.value"
+                    @click="exportDetailSection('appendix')"
                   />
                   <UButton
                     color="neutral"

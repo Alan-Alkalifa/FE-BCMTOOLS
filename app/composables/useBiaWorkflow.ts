@@ -448,7 +448,10 @@ export interface BiaMonitoringFilters {
   category?: BiaCategory | 'none'
   state?:
     | 'approved'
+    | 'final_group'
     | 'full_approved'
+    | 'expired'
+    | 'cancelled'
     | 'in_renewal'
     | 'valid'
     | 'draft_group'
@@ -469,6 +472,7 @@ export interface BiaMonitoringFilters {
     | 'due_90'
     | 'open'
   reason?: BiaReason
+  basis?: 'assessments' | 'groups'
   from?: string
   to?: string
   directorate?: string
@@ -507,7 +511,9 @@ export interface BiaGenerateResult {
 }
 
 export interface BiaOverviewResponse {
+  basis?: 'assessments' | 'groups'
   cards: {
+    assessments?: number
     groups: number
     assessed: number
     not_assessed: number
@@ -679,6 +685,28 @@ export function biaExportUrl(
   }
   const text = query.toString()
   return `/api/bianca/monitoring/export.xlsx${text ? `?${text}` : ''}`
+}
+
+export type BiaDetailSection
+  = | 'details'
+    | 'impact'
+    | 'dependencies'
+    | 'recovery'
+    | 'timings'
+    | 'signoff'
+    | 'appendix'
+    | 'all'
+
+export function biaDetailSectionExportUrl(
+  id: number,
+  section: BiaDetailSection,
+  issuesOnly = false,
+) {
+  const query = new URLSearchParams({ section })
+  if (section === 'dependencies' && issuesOnly) {
+    query.set('issues_only', '1')
+  }
+  return `/api/bianca/monitoring/assessments/${id}/export?${query.toString()}`
 }
 
 export interface BiancaSettings {

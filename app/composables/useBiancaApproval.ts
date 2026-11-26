@@ -79,6 +79,7 @@ export interface BiancaBoardRow {
   escalated_at: string | null
   level: BiancaWaitLevel
   can_act: boolean
+  steps?: BiancaSignoffRow[]
 }
 
 export type BiancaBoardResult = BiancaAssessment & { email_sent: boolean }
@@ -156,10 +157,10 @@ export const biancaBoardApi = {
       method: 'POST',
       body: { assessment_ids: assessmentIds },
     }),
-  reassign: (id: number, userId: number, reason: string) =>
+  reassign: (id: number, userId: number, reason: string, role?: string) =>
     $fetch<BiancaBoardResult>(`/api/bianca/assessments/${id}/reassign`, {
       method: 'POST',
-      body: { user_id: userId, reason },
+      body: { user_id: userId, reason, ...(role ? { role } : {}) },
     }),
   approveOnBehalf: (id: number, reason: string, file: File) => {
     const body = new FormData()
