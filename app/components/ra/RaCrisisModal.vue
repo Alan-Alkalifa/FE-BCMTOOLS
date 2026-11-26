@@ -181,6 +181,7 @@ const date = computed<CalendarDate | undefined>({
 const formError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
+const { $posthog } = useNuxtApp()
 
 const RADIUS_PRESETS = [0.5, 1, 5, 10, 25]
 
@@ -203,6 +204,7 @@ async function onSubmit() {
     const saved = editing.value
       ? await raCrisisApi.update(props.crisis!.id, body)
       : await raCrisisApi.declare(body)
+    if (!editing.value) $posthog?.capture('crisis_declared', { type: crisisType.value })
     emit('close', saved)
   } catch (error) {
     fieldErrors.value = Object.fromEntries(apiFieldErrors(error).map((item) => [item.name, item.message ?? '']))

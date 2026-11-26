@@ -40,6 +40,7 @@ const emit = defineEmits<{ saved: [assessment: BiancaAssessment, tab: string] }>
 
 const toast = useToast()
 const confirm = useConfirm()
+const { $posthog } = useNuxtApp()
 const { data: lookups } = useBiancaLookups(() => props.assessment?.id)
 
 provide('bianca-guides', computed(() => lookups.value?.guides))
@@ -64,6 +65,7 @@ async function startRenewal() {
   renewing.value = true
   try {
     const draft = await biancaApi.renew(saved.value.id)
+    $posthog?.capture('bianca_renewal_started')
     toast.add({ title: `Renewal ${draft.ref_no ?? ''} started`.trim(), color: 'success', icon: 'i-lucide-refresh-cw' })
     await navigateTo(biancaPath(draft.id))
   } catch (failure) {
@@ -983,7 +985,10 @@ async function save(quiet = false) {
     dirty.value = false
     clearTimeout(keepTimer)
     dropUnsaved('new', result.id)
-    if (!quiet) toast.add({ title: wasNew ? `Draft ${result.ref_no} created` : 'Draft saved', color: 'success', icon: 'i-lucide-circle-check' })
+    if (!quiet) {
+      $posthog?.capture('bianca_draft_saved', { is_new: wasNew })
+      toast.add({ title: wasNew ? `Draft ${result.ref_no} created` : 'Draft saved', color: 'success', icon: 'i-lucide-circle-check' })
+    }
     emit('saved', saved.value, tab.value)
     return result
   } catch (error) {
@@ -1010,6 +1015,7 @@ async function submit() {
     const result = await save(true)
     if (!result) return
     const sent = await biancaApi.submit(result.id)
+    $posthog?.capture('bianca_submitted', { function_count: result.functions.length })
     toast.add({ title: `${sent.ref_no} submitted for approval`, color: 'success', icon: 'i-lucide-circle-check' })
     // Pages that read this BIA (the report, its tab here) now show it locked for approval.
     refreshNuxtData(`bianca-assessment-${result.id}`)

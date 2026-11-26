@@ -25,6 +25,7 @@
     "echarts": "^5.6.0",
     "leaflet": "^1.9.4",
     "nuxt": "^4.6.1",
+    "posthog-js": "^1.455.2",
     "tailwindcss": "^4.3.3",
     "vue-echarts": "^7.0.3",
     "vue-router": "^5.4.0",
