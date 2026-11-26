@@ -10,6 +10,7 @@ const props = defineProps<{ assessment: BiancaAssessment }>()
 const emit = defineEmits<{ decided: [assessment: BiancaAssessment] }>()
 
 const toast = useToast()
+const { $posthog } = useNuxtApp()
 const dialog = ref<'approve' | 'reject' | null>(null)
 const note = ref('')
 const busy = ref(false)
@@ -44,6 +45,7 @@ async function decide() {
     const result = kind === 'approve'
       ? await biancaApprovalApi.approve(props.assessment.id, note.value.trim() || null)
       : await biancaApprovalApi.reject(props.assessment.id, note.value.trim())
+    $posthog?.capture('bianca_approval_decided', { decision: kind, is_final: result.status === 'final' })
     dialog.value = null
     toast.add(kind === 'approve'
       ? {
