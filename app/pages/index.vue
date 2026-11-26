@@ -38,9 +38,9 @@ const modules = computed(() =>
 /**
  * The overview, one tab per module the user's roles open (SCCA, RA HO, RA Branch, BIA, Sites),
  * with the same cards as its Task Management tab (`taskCards`): Waiting for me and In approval
- * for everyone, and for the module's BCM the Overview Administrator (stuck sign-offs, overdue
- * renewals, and in RA HO and RA Branch the buildings waiting for approval). Each card opens
- * that list in Task Management.
+ * for everyone, and above them, for the module's BCM, the Overview Administrator (stuck
+ * sign-offs, overdue renewals, and in RA HO and RA Branch the buildings waiting for approval).
+ * Each card opens that list in Task Management. A count not read yet shows 0.
  */
 const { data: summary } = useTaskSummary()
 function tasksLink(module: TaskModule, filter: TaskCardFilter) {
@@ -143,21 +143,6 @@ const greeting = computed(() => {
         class="w-full"
         aria-label="Overview by module"
       />
-      <div
-        class="grid gap-4 sm:grid-cols-2"
-        data-testid="home-overview-cards"
-      >
-        <KpiCard
-          v-for="card in glance.basic"
-          :key="card.key"
-          :to="tasksLink(glance.module, card.filter)"
-          :label="card.label"
-          :value="card.value ?? 0"
-          :hint="card.hint"
-          :icon="card.icon"
-          :tone="card.tone"
-        />
-      </div>
       <section
         v-if="glance.admin.length"
         class="space-y-3"
@@ -191,6 +176,21 @@ const greeting = computed(() => {
           />
         </div>
       </section>
+      <div
+        class="grid gap-4 sm:grid-cols-2"
+        data-testid="home-overview-cards"
+      >
+        <KpiCard
+          v-for="card in glance.basic"
+          :key="card.key"
+          :to="tasksLink(glance.module, card.filter)"
+          :label="card.label"
+          :value="card.value ?? 0"
+          :hint="card.hint"
+          :icon="card.icon"
+          :tone="card.tone"
+        />
+      </div>
     </section>
 
     <section

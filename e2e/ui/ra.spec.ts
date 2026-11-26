@@ -84,8 +84,8 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
   await expect(page.getByText(/Slowest step: Unit Critical Business Function, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
-  // The step is named by its configured short name.
-  await expect(page.getByRole('table').getByText('LICOM', { exact: true })).toBeVisible()
+  // The step is named by its configured title.
+  await expect(page.getByRole('table').getByRole('cell', { name: 'Reviewed by Alternate Location Incident Commander (LICOM)', exact: true })).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
 })
 

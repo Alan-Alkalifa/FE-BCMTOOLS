@@ -360,10 +360,10 @@ test('Upload Excel on a draft replaces its ratings from the workbook, the status
   })
   await page.goto('/ra/manage/1')
   await expect(page.getByRole('button', { name: 'Upload Excel' })).toBeVisible({ timeout: 60_000 })
-  // The status, completion, highest residual and hazards rated moved to the top bar: once on the
-  // page, before Upload Excel.
+  // The status, highest residual and hazards rated are in the top bar: once on the page, before
+  // Upload Excel. The completion badge is no longer shown.
   await expect(page.getByText('Draft', { exact: true })).toHaveCount(1)
-  await expect(page.getByText('Incomplete', { exact: true })).toHaveCount(1)
+  await expect(page.getByText('Incomplete', { exact: true })).toHaveCount(0)
   await expect(page.getByTitle(/^Highest residual risk:/)).toHaveCount(1)
   await expect(page.getByTitle(/ hazards rated$/)).toHaveCount(1)
   const order = await page.evaluate(() => {
