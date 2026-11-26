@@ -45,7 +45,7 @@ function text(name: string) {
 
 // --- filters, kept in the URL so a filtered view can be shared -------------------------------
 
-type Period = 'all' | 'year' | '12m' | 'custom'
+type Period = 'all' | 'month' | 'quarter' | 'year' | '12m' | `year:${number}` | 'custom'
 
 const CATEGORY_FILTERS = [...BIA_CATEGORIES, 'none'] as const
 const STATES = [
@@ -92,29 +92,69 @@ function setQuery(patch: Record<string, string | undefined>) {
 }
 
 const today = todayIn('Asia/Jakarta')
+const monthStart = `${today.year}-${String(today.month).padStart(2, '0')}-01`
+const monthEndDay = new Date(today.year, today.month, 0).getDate()
+const monthEnd = `${today.year}-${String(today.month).padStart(2, '0')}-${String(monthEndDay).padStart(2, '0')}`
+const quarterStartMonth = Math.floor((today.month - 1) / 3) * 3 + 1
+const quarterEndMonth = quarterStartMonth + 2
+const quarterStart = `${today.year}-${String(quarterStartMonth).padStart(2, '0')}-01`
+const quarterEndDay = new Date(today.year, quarterEndMonth, 0).getDate()
+const quarterEnd = `${today.year}-${String(quarterEndMonth).padStart(2, '0')}-${String(quarterEndDay).padStart(2, '0')}`
 const yearStart = `${today.year}-01-01`
 const yearAgo = today.subtract({ years: 1 }).toString()
+
+const availablePastYears = computed(() => {
+  const fromApi = overview.data.value?.available_years ?? []
+  const defaults = [today.year - 1, today.year - 2]
+  return [...new Set([...fromApi, ...defaults])]
+    .filter((yr) => yr !== today.year)
+    .sort((a, b) => b - a)
+})
+
 const period = computed<Period>({
   get: () => {
     const { from, to } = filters.value
     if (!from && !to) return 'all'
-    if (from === yearStart && !to) return 'year'
+    if (from === monthStart && to === monthEnd) return 'month'
+    if (from === quarterStart && to === quarterEnd) return 'quarter'
+    if (from === yearStart && (!to || to === `${today.year}-12-31`)) return 'year'
     if (from === yearAgo && !to) return '12m'
+    const fullYearMatch = from?.match(/^(\d{4})-01-01$/)
+    if (fullYearMatch && to === `${fullYearMatch[1]}-12-31`) {
+      const yr = Number(fullYearMatch[1])
+      if (availablePastYears.value.includes(yr)) return `year:${yr}` as Period
+    }
     return 'custom'
   },
   set: (value) => {
     if (value === 'all') return setQuery({ from: undefined, to: undefined })
+    if (value === 'month') return setQuery({ from: monthStart, to: monthEnd })
+    if (value === 'quarter') return setQuery({ from: quarterStart, to: quarterEnd })
     if (value === 'year') return setQuery({ from: yearStart, to: undefined })
     if (value === '12m') return setQuery({ from: yearAgo, to: undefined })
+    if (value.startsWith('year:')) {
+      const yr = Number(value.slice(5))
+      return setQuery({ from: `${yr}-01-01`, to: `${yr}-12-31` })
+    }
     setQuery({ from: filters.value.from ?? yearStart, to: filters.value.to ?? today.toString() })
   },
 })
-const periodItems = [
-  { label: 'All dates', value: 'all' as const },
+const periodItems = computed(() => [
+  { label: 'All periods', value: 'all' as const },
+  { label: 'This month', value: 'month' as const },
+  { label: 'This quarter', value: 'quarter' as const },
   { label: 'This year', value: 'year' as const },
   { label: 'Last 12 months', value: '12m' as const },
+  ...availablePastYears.value.map((yr) => ({ label: `Year ${yr}`, value: `year:${yr}` as Period })),
   { label: 'Custom range', value: 'custom' as const },
-]
+])
+const overviewPeriodSummary = computed(() => {
+  const { from, to } = filters.value
+  if (!from && !to) return 'All assessment dates'
+  if (from && to) return `${formatDate(from)} – ${formatDate(to)}`
+  if (from) return `From ${formatDate(from)}`
+  return `Until ${formatDate(to!)}`
+})
 const fromDate = computed<CalendarDate | undefined>({
   get: () => (filters.value.from ? parseDate(filters.value.from) : undefined),
   set: (value) => setQuery({ from: value?.toString() }),
@@ -139,7 +179,7 @@ const state = computed<string>({
   set: (value) => setQuery({ state: value === 'any' ? undefined : value }),
 })
 const stateItems = [
-  { label: 'Any state', value: 'any' },
+  { label: 'Any status', value: 'any' },
   { label: 'Final: Full Approved', value: 'full_approved' },
   { label: 'In Renewal: All', value: 'in_renewal' },
   { label: 'In Renewal: Due in 90 days', value: 'due_90' },
@@ -402,10 +442,13 @@ const categorySummary = computed(() => {
     ? `${plural(total, 'group')} with a final BIA; ${formatNumber(critical, 0)} with Business Critical functions.`
     : ''
 })
+const monthWindowLabel = computed(() =>
+  filters.value.from || filters.value.to ? 'in the selected period' : 'in the last 12 months',
+)
 const monthSummary = computed(() => {
   const total = monthPoints.value.reduce((sum, row) => sum + row.value, 0)
   const top = [...monthPoints.value].sort((a, b) => b.value - a.value)[0]
-  return top && total ? `${plural(total, 'BIA')} approved in the last 12 months. The most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
+  return top && total ? `${plural(total, 'BIA')} approved ${monthWindowLabel.value}. The most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
 })
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
@@ -798,7 +841,7 @@ function record(id: number) {
           :items="stateItems"
           :search-input="false"
           class="w-48"
-          aria-label="State"
+          aria-label="Status"
         />
         <USelectMenu
           v-model="category"
@@ -870,6 +913,52 @@ function record(id: number) {
     >
       <template #overview>
         <div class="mt-4 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default bg-default px-4 py-3">
+            <div class="flex items-center gap-2 text-sm">
+              <UIcon
+                name="i-lucide-calendar-range"
+                class="size-4 text-muted"
+              />
+              <span class="font-medium text-highlighted">Period</span>
+              <span class="text-xs text-muted">
+                {{ overviewPeriodSummary }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <USelectMenu
+                v-model="period"
+                value-key="value"
+                :items="periodItems"
+                :search-input="false"
+                class="w-44"
+                aria-label="Overview period"
+              />
+              <template v-if="period === 'custom'">
+                <DatePicker
+                  v-model="fromDate"
+                  class="w-40"
+                  placeholder="From"
+                  aria-label="Overview from date"
+                />
+                <DatePicker
+                  v-model="toDate"
+                  class="w-40"
+                  placeholder="To"
+                  aria-label="Overview to date"
+                />
+              </template>
+              <UButton
+                v-if="period !== 'all'"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-rotate-ccw"
+                label="Reset"
+                @click="period = 'all'"
+              />
+            </div>
+          </div>
+
           <BiancaPieChart
             title="BIA status by group"
             :summary="`4 standardized status groups across ${plural(totalStatusGroups, 'group')}. Click a slice to inspect.`"
@@ -922,7 +1011,7 @@ function record(id: number) {
               :points="monthPoints"
               :summary="monthSummary"
               :loading="overview.status.value === 'pending' && !overview.data.value"
-              :empty="monthSummary ? null : 'No BIA was approved in the last 12 months.'"
+              :empty="monthSummary ? null : `No BIA was approved ${monthWindowLabel}.`"
             />
           </div>
         </div>

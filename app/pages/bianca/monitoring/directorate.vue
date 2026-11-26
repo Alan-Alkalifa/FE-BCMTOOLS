@@ -113,7 +113,7 @@ watch(search, (value) => {
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
 const stateItems = [
-  { label: 'Any state', value: '__all__' },
+  { label: 'Any status', value: '__all__' },
   { label: 'Final: Full Approved', value: 'full_approved' },
   { label: 'In Renewal: All', value: 'in_renewal' },
   { label: 'In Renewal: Due in 90 days', value: 'due_90' },
@@ -772,6 +772,7 @@ const summary = computed(() => detail.data.value?.summary)
                 :items="stateItems"
                 size="sm"
                 class="w-44"
+                aria-label="Status"
               />
               <USelect
                 v-model="categoryModel"
