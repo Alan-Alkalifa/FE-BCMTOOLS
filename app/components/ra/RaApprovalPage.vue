@@ -70,34 +70,59 @@ watch(() => route.query.tab, () => {
 const filtered = computed(() => Boolean(text('q') || text('action') || text('step')))
 function clearFilters() {
   search.value = ''
-  router.replace({ query: { tab: route.query.tab } })
+  // The sorts survive Clear filters (docs/design-system.md > Sorting).
+  const { tab: shown, sort, dir, coming_sort, coming_dir } = route.query
+  router.replace({ query: { tab: shown, sort, dir, coming_sort, coming_dir } })
 }
 const kind = computed(() => ra.value.kind)
 
 // --- my inbox -------------------------------------------------------------------------------
 
+// Every column sorts on the server, as SCCA's tables (`?sort=&dir=`, kept in the URL); dates and
+// counts start with the biggest. Coming up keeps its own (`?coming_sort=`).
+const SORT_FIRST_DESC = ['submitted_at', 'waiting_since', 'working_days_waiting', 'reminders_sent', 'escalated_at', 'at']
+const { query: sortQuery, header: sortable } = useTableSort(SORT_FIRST_DESC)
+const { query: comingSortQuery, header: comingSortable } = useTableSort(SORT_FIRST_DESC, { prefix: 'coming_', page: 'coming' })
+const sortOf = (name: ApprovalTab) => (tab.value === name ? sortQuery.value : {})
+
 const inboxPage = pageOf('inbox')
 const comingPage = computed(() => (tab.value === 'inbox' ? number('coming') : 1))
-const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: perPage.value })))
-const upcoming = useRaUpcoming(computed(() => ({ kind: kind.value, page: comingPage.value, per_page: COMING_PER_PAGE })))
+const inbox = useRaInbox(computed(() => ({ kind: kind.value, page: inboxPage.value, per_page: perPage.value, ...sortOf('inbox') })))
+const upcoming = useRaUpcoming(computed(() => ({
+  kind: kind.value,
+  page: comingPage.value,
+  per_page: COMING_PER_PAGE,
+  ...(tab.value === 'inbox' ? comingSortQuery.value : {}),
+})))
 
-/** The step's title ("Prepared by Location Incident Coordinator (LIC)"), like SCCA shows it. */
-function stepLabel(role: string | null, title?: string | null) {
-  return role ? (title || raStepTitle(role, ra.value.signoffRoles)) : '—'
+/** The step's short name ("LIC"), like SCCA shows it; the rows carry it from their own
+ *  configuration version. */
+function stepLabel(role: string | null, short?: string | null) {
+  return role ? (short || raStepShort(role, ra.value.signoffRoles)) : '—'
+}
+
+/** A column's width (header and cells), as SCCA's tables set it so the columns line up. */
+function width(cls: string, center = false) {
+  const value = center ? `${cls} text-center` : cls
+  return { class: { th: value, td: value } }
 }
 
 const waitingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: 'RA' },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
-  { accessorKey: 'step', header: 'Step' },
-  { accessorKey: 'submitted_by', header: 'Submitted by' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
+  { id: 'assessment', header: sortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
+  { accessorKey: 'ref_no', header: sortable('RA ref. no.', 'ref_no'), meta: width('min-w-32') },
+  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', true) },
+  { accessorKey: 'step', header: sortable('My step', 'step'), meta: width('min-w-32') },
+  { accessorKey: 'submitted_at', header: sortable('Submitted date', 'submitted_at'), meta: width('min-w-28') },
+  { accessorKey: 'submitted_by', header: sortable('Submitted by', 'submitted_by'), meta: width('min-w-32') },
+  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', true) },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24') },
 ])
 const comingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: 'RA' },
-  { accessorKey: 'step', header: 'Now at' },
-  { id: 'signer', header: 'With' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
+  { id: 'assessment', header: comingSortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
+  { accessorKey: 'step', header: comingSortable('Current approval step', 'step'), meta: width('min-w-32') },
+  { id: 'signer', header: comingSortable('Approver', 'signer'), meta: width('min-w-32') },
+  { accessorKey: 'working_days_waiting', header: comingSortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
 ])
 
 function openReview(_event: Event, row: { original: { id: number } }) {
@@ -120,6 +145,7 @@ const history = useRaHistory(computed(() => ({
   q: tab.value === 'history' ? text('q') : undefined,
   page: historyPage.value,
   per_page: perPage.value,
+  ...sortOf('history'),
 })))
 const actionItems = [
   { label: 'All actions', value: 'all' as const },
@@ -147,13 +173,13 @@ function historyNote(row: RaHistoryRow) {
   if (row.on_behalf) return `For ${row.for_user ?? 'the signer'}, by ${row.user ?? 'BCM'}`
   return null
 }
-const historyColumns: TableColumn<RaHistoryRow>[] = [
-  { accessorKey: 'at', header: 'When' },
-  { id: 'assessment', header: 'RA' },
-  { accessorKey: 'role', header: 'Step' },
-  { accessorKey: 'action', header: 'Action' },
-  { id: 'status_now', header: 'Status now', meta: RA_STATUS_COLUMN },
-]
+const historyColumns = computed<TableColumn<RaHistoryRow>[]>(() => [
+  { accessorKey: 'at', header: sortable('Decided on', 'at') },
+  { id: 'assessment', header: sortable(ra.value.location.single, 'assessment') },
+  { accessorKey: 'role', header: sortable('Approval step', 'role') },
+  { accessorKey: 'action', header: sortable('Decision', 'action') },
+  { id: 'status_now', header: sortable('Status now', 'status_now'), meta: RA_STATUS_COLUMN },
+])
 
 // --- BCM board ------------------------------------------------------------------------------
 
@@ -173,6 +199,7 @@ const board = useRaBoard(
     q: tab.value === 'board' ? text('q') : undefined,
     page: boardPage.value,
     per_page: perPage.value,
+    ...sortOf('board'),
   })),
   bcm,
 )
@@ -181,11 +208,16 @@ const stepItems = computed(() => [
   ...steps.value.map((role) => ({ label: role.hint, value: role.value })),
 ])
 const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: 'RA' },
-  { accessorKey: 'step', header: 'Current step' },
-  { id: 'signer', header: 'Signer' },
-  { accessorKey: 'working_days_waiting', header: 'Waiting' },
-  { accessorKey: 'reminders_sent', header: 'Reminders' },
+  { id: 'assessment', header: sortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
+  { accessorKey: 'ref_no', header: sortable('RA ref. no.', 'ref_no'), meta: width('min-w-32') },
+  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', true) },
+  { accessorKey: 'step', header: sortable('Current approval step', 'step'), meta: width('min-w-32') },
+  { id: 'signer', header: sortable('Approver', 'signer'), meta: width('min-w-32') },
+  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', true) },
+  { accessorKey: 'waiting_since', header: sortable('Assess since', 'waiting_since'), meta: width('min-w-28') },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24') },
+  { accessorKey: 'escalated_at', header: sortable('Escalated on', 'escalated_at'), meta: width('min-w-28') },
   { id: 'actions', header: '' },
 ])
 
@@ -193,7 +225,7 @@ const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
 async function nudge(row: RaSignoffWaiting) {
   const ok = await confirm({
     title: `Remind ${row.signer?.name ?? 'the signer'} now?`,
-    description: `They get an email asking them to sign off ${row.ref_no ?? row.location.name} (${stepLabel(row.step, row.step_title)}). It counts as a reminder.`,
+    description: `They get an email asking them to sign off ${row.ref_no ?? row.location.name} (${stepLabel(row.step, row.step_short)}). It counts as a reminder.`,
     confirmLabel: 'Send reminder',
   })
   if (!ok) return
@@ -214,7 +246,7 @@ function waitingStep(row: RaSignoffWaiting): RaWaitingStep {
     kind: ra.value.kind,
     ref: row.ref_no ?? `#${row.id}`,
     location: row.location.name,
-    step: stepLabel(row.step, row.step_title),
+    step: stepLabel(row.step, row.step_short),
     signer: row.signer?.name ?? null,
     working_days_waiting: row.working_days_waiting,
   }
@@ -241,7 +273,7 @@ function boardActions(row: RaSignoffWaiting): DropdownMenuItem[] {
 const tabs = computed(() => [
   { label: 'My inbox', value: 'inbox', icon: 'i-lucide-inbox', slot: 'inbox' as const, badge: inbox.data.value?.total || undefined },
   { label: 'My history', value: 'history', icon: 'i-lucide-history', slot: 'history' as const },
-  ...(bcm.value ? [{ label: 'BCM board', value: 'board', icon: 'i-lucide-layout-list', slot: 'board' as const }] : []),
+  ...(bcm.value ? [{ label: 'BCM board', value: 'board', icon: 'i-lucide-kanban', slot: 'board' as const }] : []),
 ])
 </script>
 
@@ -275,7 +307,7 @@ const tabs = computed(() => [
               :loading="inbox.status.value === 'pending'"
               class="cursor-pointer"
               :on-select="openReview"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #assessment-cell="{ row }">
                 <NuxtLink
@@ -284,12 +316,9 @@ const tabs = computed(() => [
                 >
                   {{ row.original.location.name }}
                 </NuxtLink>
-                <p class="font-mono text-xs text-muted">
-                  {{ row.original.ref_no ?? `#${row.original.id}` }}<span
-                    v-if="row.original.reason"
-                    class="font-sans"
-                  > · {{ raReasonLabel(row.original.reason) }}</span>
-                </p>
+              </template>
+              <template #ref_no-cell="{ row }">
+                <span class="font-mono text-xs">{{ row.original.ref_no ?? `#${row.original.id}` }}</span>
               </template>
               <template #highest_residual_level-cell="{ row }">
                 <StatusBadge
@@ -304,16 +333,26 @@ const tabs = computed(() => [
                 >—</span>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step, row.original.step_title) }}
+                {{ stepLabel(row.original.step, row.original.step_short) }}
+              </template>
+              <template #submitted_at-cell="{ row }">
+                <span class="whitespace-nowrap">{{ formatDate(row.original.submitted_at) || '—' }}</span>
               </template>
               <template #submitted_by-cell="{ row }">
                 {{ row.original.submitted_by ?? '—' }}
-                <p class="text-xs text-muted">
-                  {{ formatDate(row.original.submitted_at) }}
-                </p>
+              </template>
+              <template #level-cell="{ row }">
+                <StatusBadge
+                  :scale="raWaitLevel"
+                  :value="row.original.level"
+                  size="sm"
+                />
               </template>
               <template #working_days_waiting-cell="{ row }">
                 {{ raWaiting(row.original.working_days_waiting) }}
+              </template>
+              <template #reminders_sent-cell="{ row }">
+                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #empty>
                 <p class="py-8 text-center text-sm text-muted">
@@ -344,7 +383,7 @@ const tabs = computed(() => [
               :data="upcoming.data.value?.items ?? []"
               :columns="comingColumns"
               :loading="upcoming.status.value === 'pending'"
-              :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+              :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
             >
               <template #assessment-cell="{ row }">
                 <NuxtLink
@@ -358,7 +397,7 @@ const tabs = computed(() => [
                 </p>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step, row.original.step_title) }}
+                {{ stepLabel(row.original.step, row.original.step_short) }}
               </template>
               <template #signer-cell="{ row }">
                 {{ row.original.signer?.name ?? '—' }}
@@ -431,7 +470,7 @@ const tabs = computed(() => [
               </p>
             </template>
             <template #role-cell="{ row }">
-              {{ stepLabel(row.original.role, row.original.role_title) }}
+              {{ stepLabel(row.original.role, row.original.role_short) }}
             </template>
             <template #action-cell="{ row }">
               <StatusBadge
@@ -520,7 +559,7 @@ const tabs = computed(() => [
             :data="board.data.value?.items ?? []"
             :columns="boardColumns"
             :loading="board.status.value === 'pending'"
-            :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4 align-top' }"
+            :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
             <template #assessment-cell="{ row }">
               <NuxtLink
@@ -529,15 +568,24 @@ const tabs = computed(() => [
               >
                 {{ row.original.location.name }}
               </NuxtLink>
-              <p class="font-mono text-xs text-muted">
-                {{ row.original.ref_no ?? `#${row.original.id}` }}<span
-                  v-if="row.original.reason"
-                  class="font-sans"
-                > · {{ raReasonLabel(row.original.reason) }}</span>
-              </p>
+            </template>
+            <template #ref_no-cell="{ row }">
+              <span class="font-mono text-xs">{{ row.original.ref_no ?? `#${row.original.id}` }}</span>
+            </template>
+            <template #highest_residual_level-cell="{ row }">
+              <StatusBadge
+                v-if="row.original.highest_residual_level"
+                :scale="raRiskLevel"
+                :value="row.original.highest_residual_level"
+                size="sm"
+              />
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #step-cell="{ row }">
-              {{ stepLabel(row.original.step, row.original.step_title) }}
+              {{ stepLabel(row.original.step, row.original.step_short) }}
             </template>
             <template #signer-cell="{ row }">
               {{ row.original.signer?.name ?? '—' }}
@@ -548,24 +596,31 @@ const tabs = computed(() => [
                 Your own RA: reminders only
               </p>
             </template>
-            <template #working_days_waiting-cell="{ row }">
+            <template #level-cell="{ row }">
               <StatusBadge
                 :scale="raWaitLevel"
                 :value="row.original.level"
                 size="sm"
               />
-              <p class="mt-1 text-xs text-muted">
-                {{ raWaiting(row.original.working_days_waiting) }}
-              </p>
+            </template>
+            <template #waiting_since-cell="{ row }">
+              <span class="whitespace-nowrap">{{ formatDate(row.original.waiting_since) || '—' }}</span>
+            </template>
+            <template #working_days_waiting-cell="{ row }">
+              {{ raWaiting(row.original.working_days_waiting) }}
             </template>
             <template #reminders_sent-cell="{ row }">
               <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
-              <p
+            </template>
+            <template #escalated_at-cell="{ row }">
+              <span
                 v-if="row.original.escalated_at"
-                class="text-xs text-error"
-              >
-                Escalated {{ formatDate(row.original.escalated_at) }}
-              </p>
+                class="whitespace-nowrap text-error"
+              >{{ formatDate(row.original.escalated_at) }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #actions-cell="{ row }">
               <UDropdownMenu
