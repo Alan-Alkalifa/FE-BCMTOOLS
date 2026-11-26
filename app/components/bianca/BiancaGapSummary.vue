@@ -15,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const showGapSummary = false
 
 const TABS: Array<{ value: BiancaGapTab, label: string }> = [
   { value: 'details', label: 'Details & personnel' },
@@ -39,8 +40,9 @@ function tabLink(tab: BiancaGapTab) {
 }
 </script>
 
-<!-- <template>
+<template>
   <div
+    v-if="showGapSummary"
     class="rounded-md border p-3"
     :class="gapCount ? 'border-warning/40 bg-warning/5' : 'border-default'"
   >
@@ -108,4 +110,4 @@ function tabLink(tab: BiancaGapTab) {
       Gaps don't block Submit. Explain them in the justification notes on Part 2a, Part 2b or the RA Questionnaire.
     </p>
   </div>
-</template> -->
+</template>

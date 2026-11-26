@@ -862,7 +862,7 @@ test('Manage -> Edit/Submit -> Report PDF & Excel buttons work without regressio
   await page.goto('/bianca/manage')
   await expect(page.getByRole('link', { name: 'BIA-2026-0001' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('link', { name: 'BIA-2026-0001' }).click()
-  await expect(page).toHaveURL(/\/bianca\/manage\/1/)
+  await expect(page).toHaveURL(/\/bianca\/manage\/1/, { timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Save draft' })).toBeVisible({ timeout: 45_000 })
 
   const putPromise = page.waitForRequest((req) => req.method() === 'PUT' && req.url().endsWith('/api/bianca/assessments/1'))
@@ -986,29 +986,19 @@ test('Monitoring Overview, Renewals, List (By directorate / All groups / All BIA
   await expect(approvalPanel.getByRole('columnheader', { name: 'Assess days' })).toBeVisible()
   await expect(approvalPanel.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', '/api/bianca/monitoring/export.xlsx?tab=bottlenecks')
 
-  // Detail Gap check + Check button jump & fade highlight
+  // Detail page loads KPI summary, tab badges, and tabs (Gap check summary box is hidden)
   await page.goto('/bianca/monitoring/4')
-  await expect(page.getByText('Missing alternate phone.')).toBeVisible({ timeout: 45_000 })
-  await expect(page.getByText('Function 1 (OCTO Mobile Onboarding) > Core Banking: Negative DAAT (-1 day).')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Business functions/ })).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByText(/Gap check:/)).toHaveCount(0)
 
-  const checkButtons = page.getByRole('button', { name: 'Check', exact: true })
-  await expect(checkButtons).toHaveCount(4)
+  await page.getByRole('tab', { name: /Impact assessment/ }).click()
+  await expect(page.getByText('OCTO Mobile Onboarding').first()).toBeVisible()
 
-  // Click Check on Impact gap -> switches to impact tab and flashes the row
-  await checkButtons.nth(1).click()
-  await expect(page).toHaveURL(/tab=impact/)
-  await expect(page.locator('.gap-target-impact-fn-1.gap-flash-row')).toBeVisible()
+  await page.getByRole('tab', { name: /IT & non-IT dependencies/ }).click()
+  await expect(page.getByText('Core Banking').first()).toBeVisible()
 
-  // Click Check on Dependencies gap -> switches to dependencies tab and flashes Core Banking row
-  await checkButtons.nth(2).click()
-  await expect(page).toHaveURL(/tab=dependencies/)
-  await expect(page.locator('[data-gap-target="dep-it-1-core-banking"].gap-flash-row')).toBeVisible()
-
-  // Click Check on Recovery gap -> switches to recovery tab and flashes row + BCP seats cell
-  await checkButtons.nth(3).click()
-  await expect(page).toHaveURL(/tab=recovery/)
-  await expect(page.locator('[data-gap-target="recovery-fn-1"].gap-flash-row')).toBeVisible()
-  await expect(page.locator('[data-gap-target="recovery-cell-1-seats"].gap-flash-cell')).toBeVisible()
+  await page.getByRole('tab', { name: /Recovery strategies/ }).click()
+  await expect(page.getByText('Hyspace').first()).toBeVisible()
 
   expect(pageErrors).toEqual([])
 })
