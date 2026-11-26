@@ -20,9 +20,9 @@ test('the branch drafts show their region', async ({ page }) => {
   const request = page.waitForRequest((r) => r.url().includes('/api/ra/assessments') && r.method() === 'GET')
   await page.goto('/ra-branch/manage')
   expect(new URL((await request).url()).searchParams.get('kind')).toBe('branch')
-  await expect(page.getByRole('link', { name: 'RAB-2025-0001' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'KCP Bogor Pajajaran' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('Region Jabar')).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Branch' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Sort by Branch', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra-branch/manage/new')
 })
 

@@ -405,6 +405,7 @@ export async function mockRa(
   }
   actForSigner(current)
   await signIn(page, options.permissions ? { permissions: options.permissions } : {})
+  await page.route('**/api/tasks/summary', (route) => route.fulfill({ json: { modules: [] } }))
   await page.route('**/api/ra/regions', (route) => route.fulfill({ json: { items: options.regions ? REGION_DIRECTORY : [] } }))
   // The building form's organization lists (the user master's values).
   await page.route('**/api/ra/org-values', (route) => route.fulfill({ json: ORG_VALUES }))
