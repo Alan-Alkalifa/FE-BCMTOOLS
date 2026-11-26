@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import type { TableColumn } from '@nuxt/ui'
 import type { BiancaConfigVersion } from '~/composables/useBiancaConfigAdmin'
+import type { MenuNode } from '~/composables/useAuth'
 import { biancaListItems } from '~/utils/bianca-config'
 
 definePageMeta({ permission: 'bianca.config.view' })
@@ -27,7 +28,7 @@ const editable = computed(() => version.value?.status === 'draft' && can('bianca
 const busy = ref<string | null>(null)
 const failure = ref<string | null>(null)
 const schema = z.object({ name: z.string().trim().min(1, 'Enter a version name.').max(255) }).passthrough()
-const tabs = computed(() => [
+const sections = computed(() => [
   { label: 'Versions', value: 'versions', icon: 'i-lucide-git-branch' },
   { label: 'Personnel levels', value: 'personnel', icon: 'i-lucide-users' },
   { label: 'Lists', value: 'lists', icon: 'i-lucide-list' },
@@ -40,6 +41,30 @@ const tabs = computed(() => [
     : []),
   { label: 'Changes', value: 'changes', icon: 'i-lucide-git-compare' },
 ])
+// Each section is also a submenu of Administration > BIA configuration (/admin/bianca-config?tab=…).
+// The tabs follow the submenus' order, label and icon as set in Administration > Menus; a section
+// hidden or moved out of the group there stays reachable here, after the others.
+const { menu } = useAuth()
+function submenus(nodes: MenuNode[]): MenuNode[] {
+  for (const node of nodes) {
+    if (node.code === 'admin.bianca-config') return node.children
+    const found = submenus(node.children)
+    if (found.length) return found
+  }
+  return []
+}
+const tabs = computed(() => {
+  const order = submenus(menu.value ?? [])
+    .map((node) => ({ node, value: node.route ? new URLSearchParams(node.route.split('?')[1] ?? '').get('tab') : null }))
+    .filter((entry) => entry.value)
+  const listed = order
+    .map(({ node, value }) => {
+      const known = sections.value.find((item) => item.value === value)
+      return known && { ...known, label: node.label, icon: node.icon || known.icon }
+    })
+    .filter((item): item is (typeof sections.value)[number] => !!item)
+  return [...listed, ...sections.value.filter((item) => !listed.some((entry) => entry.value === item.value))]
+})
 const versionStatus = defineStatusScale<BiancaConfigVersion['status']>({
   draft: { label: 'Draft', color: 'warning', icon: 'i-lucide-pencil' },
   active: { label: 'Active', color: 'success', icon: 'i-lucide-circle-check' },
@@ -60,6 +85,11 @@ const tab = computed({
   get: () => tabs.value.some((t) => t.value === route.query.tab) ? String(route.query.tab) : 'versions',
   set: (value) => router.replace({ query: { ...route.query, tab: value } }),
 })
+// The tab is always in the address, so its submenu is the one highlighted in the sidebar.
+watch(() => route.query.tab, (value) => {
+  if (value !== tab.value) router.replace({ query: { ...route.query, tab: tab.value } })
+}, { immediate: true })
+const section = computed(() => tabs.value.find((item) => item.value === tab.value))
 async function discardEdits() {
   return !dirty.value || await confirm({ title: 'Discard unsaved changes?', description: 'Your unsaved configuration edits will be lost.', confirmLabel: 'Discard changes', destructive: true })
 }
@@ -135,7 +165,7 @@ async function action(operation: 'request-publish' | 'withdraw' | 'publish' | 'd
     title="BIA configuration"
     icon="i-lucide-file-cog"
     description="Personnel levels, assessment parameters, guides, approval template by version, and live reminder rules."
-    :crumbs="[{ label: 'Administration' }, { label: 'BIA configuration' }]"
+    :crumbs="[{ label: 'Administration' }, { label: 'BIA configuration', to: '/admin/bianca-config?tab=versions' }, { label: section?.label ?? 'Versions' }]"
   >
     <template #actions>
       <template v-if="tab !== 'reminders'">

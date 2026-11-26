@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { signIn, ALL_PERMISSIONS } from '../fixtures/auth'
+import { signIn, menuFor, ALL_PERMISSIONS } from '../fixtures/auth'
 import type { BiancaConfigPayload, BiancaConfigVersion } from '../../app/composables/useBiancaConfigAdmin'
 
 test.describe.configure({ timeout: 60000 })
@@ -551,4 +551,50 @@ test('Changes separates fields in every nested configuration section', async ({ 
   await expect(assigned.getByRole('cell', { name: 'Changed', exact: true })).toBeVisible()
   await expect(assigned.getByRole('cell', { name: 'Added', exact: true })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Removed', exact: true })).toHaveCount(1)
+})
+
+test('each section is a submenu: the sidebar opens it, keeps the draft, and sets the tab order', async ({ page }) => {
+  await signIn(page, { permissions })
+  // Administration > Menus moved Changes to the top and renamed Lists: the tabs follow.
+  await page.route('**/api/me/menu', (route) => {
+    const items = menuFor(permissions)
+    const admin = items.find((item) => item.code === 'admin')!
+    const group = admin.children.find((item) => item.code === 'admin.bianca-config')!
+    const changes = group.children.find((item) => item.code === 'bianca_config.changes')!
+    group.children = [changes, ...group.children.filter((item) => item !== changes)]
+    group.children.find((item) => item.code === 'bianca_config.lists')!.label = 'Dropdown lists'
+    return route.fulfill({ json: { items } })
+  })
+  const draft = { ...version(), id: 2, code: 'V2', status: 'draft' as const }
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, (route) => route.fulfill({ json: { items: [draft] } }))
+
+  await page.goto('/admin/bianca-config')
+  await expect(page).toHaveURL(/tab=versions/)
+  const tabs = page.getByRole('tablist').first().getByRole('tab')
+  await expect(tabs.first()).toHaveText('Changes')
+  await expect(page.getByRole('tab', { name: 'Dropdown lists' })).toBeVisible()
+
+  const sidebar = page.getByRole('navigation').first()
+  await sidebar.getByRole('link', { name: 'Personnel levels' }).click()
+  await expect(page).toHaveURL(/tab=personnel/)
+  await expect(page.getByRole('tab', { name: 'Personnel levels' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('textbox', { name: /^Category name/ }).first().fill('Senior Leaders')
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
+
+  // Another section from the sidebar: same page, the edit is still there, nothing asks.
+  await sidebar.getByRole('link', { name: 'Dropdown lists' }).click()
+  await expect(page).toHaveURL(/tab=lists/)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Personnel levels' }).click()
+  await expect(page.getByRole('textbox', { name: /^Category name/ }).first()).toHaveValue('Senior Leaders')
+})
+
+test('the old reminders address opens the Reminders and escalation section', async ({ page }) => {
+  await signIn(page, { permissions: [...permissions, 'bianca.approval.manage'] })
+  await page.route(/\/api\/admin\/bianca-config\/versions(?:\/.*)?$/, (route) => route.fulfill({ json: { items: [version()] } }))
+  await page.route('**/api/bianca/settings*', (route) => route.fulfill({ json: {} }))
+  await page.goto('/admin/bia-reminders')
+  await expect(page).toHaveURL(/\/admin\/bianca-config\?tab=reminders/)
+  await expect(page.getByRole('tab', { name: 'Reminders and escalation' })).toHaveAttribute('aria-selected', 'true')
 })

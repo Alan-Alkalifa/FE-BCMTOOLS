@@ -51,4 +51,13 @@ export const MENU_ICONS = [
   'i-lucide-scroll-text',
   'i-lucide-circle-help',
   'i-lucide-circle',
+  // BIA configuration submenus (and Master data > Master MTD).
+  'i-lucide-git-branch',
+  'i-lucide-list',
+  'i-lucide-calculator',
+  'i-lucide-map-pin',
+  'i-lucide-signature',
+  'i-lucide-bell-ring',
+  'i-lucide-git-compare',
+  'i-lucide-timer',
 ] as const

@@ -96,6 +96,17 @@ const MENUS = [
   { code: 'admin.ra_migration', label: 'RA migration', icon: 'i-lucide-file-up', route: '/admin/ra-migration', parent: 'admin', permission: 'ra.migrate' },
   { code: 'admin.masterdata', label: 'Master data', icon: 'i-lucide-database', route: null, parent: 'admin', permission: null },
   { code: 'masterdata.mtd', label: 'Master MTD', icon: 'i-lucide-timer', route: '/masterdata/mtd', parent: 'admin.masterdata', permission: 'masterdata.mtd.view' },
+  // Administration > BIA configuration: a group with a submenu per tab of the page.
+  { code: 'admin.bianca-config', label: 'BIA configuration', icon: 'i-lucide-file-cog', route: null, parent: 'admin', permission: null },
+  { code: 'bianca_config.versions', label: 'Versions', icon: 'i-lucide-git-branch', route: '/admin/bianca-config?tab=versions', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.personnel', label: 'Personnel levels', icon: 'i-lucide-users', route: '/admin/bianca-config?tab=personnel', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.lists', label: 'Lists', icon: 'i-lucide-list', route: '/admin/bianca-config?tab=lists', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.impact', label: 'Impact and MTD', icon: 'i-lucide-calculator', route: '/admin/bianca-config?tab=impact', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.locations', label: 'Office location types', icon: 'i-lucide-map-pin', route: '/admin/bianca-config?tab=locations', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.guides', label: 'Guides and statements', icon: 'i-lucide-list-checks', route: '/admin/bianca-config?tab=guides', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.steps', label: 'Approval template', icon: 'i-lucide-signature', route: '/admin/bianca-config?tab=steps', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'bianca_config.reminders', label: 'Reminders and escalation', icon: 'i-lucide-bell-ring', route: '/admin/bianca-config?tab=reminders', parent: 'admin.bianca-config', permission: 'bianca.approval.manage' },
+  { code: 'bianca_config.changes', label: 'Changes', icon: 'i-lucide-git-compare', route: '/admin/bianca-config?tab=changes', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
