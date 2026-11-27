@@ -45,8 +45,8 @@ export const BIANCA_NOTES = {
 
   // Part 2b
   planned_capacity: 'The capacity (%) this business function must run at during a disruption.',
-  upstream: 'Who triggers the activity. If there is no upstream, type NA.',
-  downstream: 'Who receives or processes your output / instruction. If there is no downstream, type NA.',
+  upstream: 'Who triggers the activity.',
+  downstream: 'Who receives or processes your output / instruction. If there is no downstream.',
   dependency_capacity: 'Planned capacity (%) of the upstream / downstream. Justify it on its row if it is lower than your function\'s.',
   dependency_mtd: 'Expected MTD of the upstream / downstream. Justify it on its row if it is longer than your function\'s.',
   dependency_justification: 'Needed when their planned capacity is less than your business function\'s, or their MTD is longer than your function\'s Expected MTD.',

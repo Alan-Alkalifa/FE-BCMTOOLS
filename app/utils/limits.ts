@@ -7,6 +7,8 @@ export const TEXT_LIMITS = {
   medium: 64,
   name: 255,
   long: 2000,
+  /** A BIA's free texts (justifications, descriptions, strategies...): app/schemas/bianca/assessment.py. */
+  bia: 500,
   /** An RA hazard's free text: existing mitigation, action plan (app/schemas/ra/types.py). */
   hazard: 3000,
 } as const
