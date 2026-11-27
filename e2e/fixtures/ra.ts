@@ -85,6 +85,7 @@ export const BUILDING_APPROVER_STEP = {
 export function withTexts<T extends { kind: string }>(formula: T) {
   return {
     ...formula,
+    renewal_months: 12,
     status: 'active',
     hazard_intro: HAZARD_INTRO,
     signoff_statement_en: STATEMENT_EN,
@@ -355,6 +356,7 @@ export const REGION_DIRECTORY = [
     city: 'TANGERANG SELATAN',
     areas: [
       { area: 'Jakarta Region Area I', level: 'D-2', head: 'Area Head Jakarta I', office: 'KC - Jakarta - Graha CIMB Niaga - NAA', city: 'JAKARTA SELATAN' },
+      { area: null, level: 'D-2', head: 'Group Head Jakarta', office: 'KC - Jakarta - Graha CIMB Niaga - NAA', city: 'JAKARTA SELATAN' },
     ],
   },
 ]
@@ -378,6 +380,10 @@ export async function mockRa(
     scopeIds?: number[]
     /** Why a building can't be picked, by reason then building id (the API's `problems`). */
     scopeProblems?: Partial<Record<'annual_review' | 'structural_change', Record<string, string>>>
+    /** The active formula's renewal period, in months. */
+    renewalMonths?: number
+    /** Leave one historical rating blank so BNPB's suggestion can be tested. */
+    emptyHistorical?: string
     /** The draft is on 2025-r4 while 2025-r5 is active: it can move (as SCCA's). */
     oldVersion?: boolean
     /** With `pendingLocation`: the version has no building approver step, so the RA waits for
@@ -396,6 +402,11 @@ export async function mockRa(
   }
   if (options.ready || options.status) readyToSubmit(current)
   if (options.oldVersion) Object.assign(current, { latest_version: '2025-r5', can_move_version: true })
+  if (options.emptyHistorical) {
+    Object.assign(current, {
+      ratings: current.ratings.map((row) => row.code === options.emptyHistorical ? { ...row, historical: null } : row),
+    })
+  }
   if (options.status === 'in_signoff') setStatus(current, 'in_signoff', 'prepared_by')
   if (options.status === 'approved') setStatus(current, 'approved')
   const actForSigner = (assessment: MockAssessment) => {
@@ -405,6 +416,7 @@ export async function mockRa(
   }
   actForSigner(current)
   await signIn(page, options.permissions ? { permissions: options.permissions } : {})
+  await page.route('**/api/tasks/summary', (route) => route.fulfill({ json: { modules: [] } }))
   await page.route('**/api/ra/regions', (route) => route.fulfill({ json: { items: options.regions ? REGION_DIRECTORY : [] } }))
   // The building form's organization lists (the user master's values).
   await page.route('**/api/ra/org-values', (route) => route.fulfill({ json: ORG_VALUES }))
@@ -423,6 +435,7 @@ export async function mockRa(
     const params = new URL(route.request().url()).searchParams
     const branch = params.get('kind') === 'branch' || (params.get('version') ?? '').startsWith('branch')
     const formula = withTexts(branch ? BRANCH_FORMULA : FORMULA)
+    if (options.renewalMonths) Object.assign(formula, { renewal_months: options.renewalMonths })
     if (!branch && options.steps) Object.assign(formula, { signoff_steps: options.steps, signoff_roles: options.steps.map((row) => row.code) })
     // The default steps start with the building approver (texts.pending_step): it signs first.
     if (!branch && !options.steps && !options.noPendingStep) {

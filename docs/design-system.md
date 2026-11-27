@@ -293,7 +293,7 @@ Use `UTable` (TanStack Table under the hood). The app config makes every table c
 | Alignment | Text left, numbers and money **right**, status badges and actions left |
 | Columns | Most important identifying column first (name/ID). Actions column last, `sm` ghost icon buttons or a `...` dropdown |
 | Width | Don't wrap identifiers; truncate long text with a tooltip showing the full value |
-| Sorting | Sortable headers are `<SortHeader>` buttons in the column's `#<column>-header` slot: the header's type (12px uppercase), an up/down arrow on the sorted column and a faint ↕ on the others, an `aria-label` saying the current order. A click sorts by that column in its natural first direction (dates and counts newest/largest first, text A–Z); a second click reverses it. The sort is done on the server across all pages, lives in the URL (`sort`, `dir`; the default is left out) and survives *Clear filters*. The default sort is the most useful one (e.g. Buildings: *Last updated*, newest first) |
+| Sorting | Sortable headers are `<SortHeader>` buttons in the column's `#<column>-header` slot: the header's type (12px uppercase), an up/down arrow on the sorted column and a faint ↕ on the others, an `aria-label` saying the current order. A click sorts by that column in its natural first direction (dates and counts newest/largest first, text A–Z); a second click reverses it. The sort is done on the server across all pages, lives in the URL (`sort`, `dir`; the default is left out) and survives *Clear filters*. The default sort is the most useful one (e.g. Buildings: *Last updated*, newest first). The SCCA and RA lists (Monitoring, Manage, Approval) sort on every column. Two tables on one page keep their own sort: the second gets its own URL keys (`useTableSort(firstDesc, { prefix: 'coming_', page: 'coming' })`, as RA Approval's *Coming up*) |
 | Filtering | `<ListFilterBar>` above the table, the same on every list: search first (`#search`), then the filters in the order status/step → category → reason → person → dates, *Clear filters* when one is set, export or primary actions on the right (`#actions`). Filters live in the URL |
 | Pagination | `UPagination` below the table, right-aligned, with "Showing 1–20 of 312" and **Rows per page** (10, 20, 50 or 100) on the left. 20 rows per page by default (`ROWS_PER_PAGE`); list pages keep the size in the URL with `useRowsPerPage()`, and pass `page-sizes` to `TablePagination` |
 | Row click | If rows open a detail page, the whole row is clickable **and** the name cell is a real link (for keyboard and new-tab use) |
@@ -565,8 +565,8 @@ SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), V
 | Disaster or incident | Every hazard is one or the other (Sites configuration › Disaster or incident; by default Natural disasters are disasters). The Disaster and Incident menus each have Monitoring, Manage and Approval; words follow the type (Declare Incident, Update incident) |
 | Division | A unit working in a building, picked from the division list in RA configuration; its MTD and critical rating follow it |
 | LRP | Location Risk Profile, the RA scorecard workbook |
-| LIC | Location Incident Coordinator |
-| LICOM | Location Incident Commander |
+| LIC | Head-office label for the assessor; RA Branch displays **BOSM** |
+| LICOM | Head-office label for the incident lead; RA Branch displays **NRSOH** |
 | CBF | Critical business function |
 | Gross risk | Probability × impact before the existing mitigation measures |
 | Residual risk | Probability × impact after the existing mitigation measures |
@@ -579,7 +579,7 @@ SCCA categories use `sccaCategory` in `app/utils/scca.ts`: Critical (`error`), V
 | RA migration | Administration › RA migration is the same page as SCCA migration (choose, review, import, runs with undo). Several signed workbooks at once belong here, not in Import from Excel. A migrated RA's page carries a neutral alert, *Brought in from the signed workbook*, with **Signed workbook** to download it |
 | Active, not in force | Say *active* for what applies now (BMKG's warnings, *Active (3)*, *No active weather warning.*) and *current RA* for a building's latest approved RA. Don't write *in force* |
 | Team diagrams | The recovery team structure and location call tree charts (the HO workbook's LCP pictures by default), per kind, set in RA configuration › Team diagrams. A location's Recovery team and Call tree tabs open them with **View structure chart** / **View call tree chart** (`RaDiagramButton`, neutral outline; `compact` is a small link for lists such as a disaster's affected places), and the downloads print them |
-| BOSM / BM / NRSOH | Branch roles in RA Branch: the BOSM is the LIC and prepares the RA, the branch manager (BM) approves it, the NRSOH is the LICOM and reviews it |
+| BOSM / BM / NRSOH | Branch roles in RA Branch: BOSM is the assessor and prepares the RA, the branch manager (BM) approves it, and NRSOH is the incident lead and reviews it |
 | Disaster | One of the 33 RA hazards happening now at a point, with an affected radius; open until closed, with a history |
 | Map legend | Every map has one under it (`RaMapLegend`): the symbols that map can draw (the same `RaMapSymbol` as the pins) and what the pin colours mean. The Location map lists all of them; the disaster dialog and disaster page only theirs. Maps in a dialog or on the disaster pages zoom with the scroll wheel; the Location map has a **Scroll to zoom** switch |
 | Disaster print view | `/disasters/{id}/report`: plain tables, no links or buttons on paper, a page per affected place |

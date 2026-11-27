@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { RaRatingValue } from '~/utils/ra'
+
 /**
  * Under a hazard's Probability. How often the outside sources recorded the hazard over the
  * review years picked for it (the last 10 without them), for the assessor to weigh.
@@ -15,9 +17,13 @@
  * Sites configuration > Past disasters sets them. A source shows nothing until it has been read.
  */
 const props = defineProps<{ locationId: number, code: string, fromYear: number | null, toYear: number | null }>()
+const emit = defineEmits<{ suggested: [rating: RaRatingValue] }>()
 
 const { data } = useRaPastDisasters(() => props.locationId, () => ({ from: props.fromYear, to: props.toYear }))
 const found = computed(() => data.value?.hazards[props.code] ?? null)
+watch(() => data.value?.synced_at && found.value ? found.value.rating : null, (rating) => {
+  if (rating !== null && rating !== undefined) emit('suggested', rating)
+}, { immediate: true })
 const period = computed(() => (data.value ? span(data.value.from_year, data.value.to_year) : ''))
 const plural = (count: number) => (count === 1 ? 'once' : `${formatNumber(count, 0)} times`)
 function span(from: number, to: number) {

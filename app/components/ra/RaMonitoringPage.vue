@@ -25,8 +25,13 @@ const perPage = useRowsPerPage()
 
 const tab = computed<MonitorTab>({
   get: () => (TABS.includes(route.query.tab as MonitorTab) ? route.query.tab as MonitorTab : 'overview'),
-  set: (value) => router.replace({ query: { ...route.query, tab: value === 'overview' ? undefined : value, page: undefined } }),
+  set: (value) => router.replace({ query: { ...route.query, tab: value === 'overview' ? undefined : value, page: undefined, sort: undefined, dir: undefined } }),
 })
+
+// Every column sorts on the server, as SCCA's tables (`?sort=&dir=`, kept in the URL); dates and
+// counts start with the biggest.
+const { query: sortQuery, header: sortable } = useTableSort(['approved_date', 'renewal_date', 'waiting_since', 'working_days_waiting', 'working_days_in_signoff', 'reminders_sent', 'escalated_at', 'assessment_count'])
+const sortOf = (name: MonitorTab) => (tab.value === name ? sortQuery.value : {})
 
 function text(name: string) {
   const value = route.query[name]
@@ -173,7 +178,8 @@ const filtered = computed(() => {
 })
 function clearFilters() {
   search.value = ''
-  router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined } })
+  // The sort survives Clear filters (docs/design-system.md > Sorting).
+  router.replace({ query: { tab: route.query.tab, from: undefined, to: undefined, sort: route.query.sort, dir: route.query.dir } })
 }
 
 // --- data ------------------------------------------------------------------------------------
@@ -189,6 +195,7 @@ const renewals = useRaRenewals(computed(() => ({
   page: page.value,
   per_page: perPage.value,
   bucket: bucket.value,
+  ...sortOf('renewals'),
 })))
 const renewalCards = [
   { bucket: 'overdue' as const, label: 'Overdue', hint: 'Past the renewal date', icon: 'i-lucide-circle-alert', tone: 'error' as const },
@@ -199,13 +206,14 @@ const register = useRaRegister(computed(() => ({
   ...filters.value,
   page: page.value,
   per_page: perPage.value,
+  ...sortOf('register'),
 })))
-/** The List's Sub directorate: the location's (a branch's region is its Sub Directorate). */
+/** The location's Sub directorate (a branch's region is its Sub Directorate). */
 function subDirectorateOf(row: RaMonitorLocation) {
   return row.location.sub_directorate || (row.location.kind === 'branch' ? row.location.region : null) || null
 }
 
-/** The List's Group / Area: the location's Group (a branch's area). */
+/** The location's Group (a branch's area). */
 function groupOf(row: RaMonitorLocation) {
   return row.location.org_group || row.location.area || null
 }
@@ -218,6 +226,7 @@ const bottlenecks = useRaBottlenecks(computed(() => ({
   ...filters.value,
   page: page.value,
   per_page: perPage.value,
+  ...sortOf('bottlenecks'),
 })))
 const stepAverages = useRaBottlenecksStepAverages(filters)
 
@@ -294,18 +303,34 @@ function daysLeft(row: RaMonitorLocation) {
 }
 
 /** As SCCA's Renewals: the row picks for Generate annual review, then the columns, then Act. */
+/** A column's width (header and cells), as SCCA's tables set it so the columns line up. */
+function width(cls: string, center = false) {
+  const value = center ? `${cls} text-center` : cls
+  return { class: { th: value, td: value } }
+}
+const REF = 'min-w-36'
+const NAME = 'min-w-40'
+const ORG = 'min-w-36'
+const PERSON = 'min-w-36'
+const DATE = 'min-w-32'
+
 const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'location', header: locationColumn.value },
-  { id: 'code', header: `${locationColumn.value} ID` },
-  { id: 'level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
-  { id: 'approved', header: 'Last final RA' },
-  { id: 'approved_date', header: 'Last final RA date' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { accessorKey: 'days_left', header: 'Due' },
-  { id: 'assessor', header: 'Assessor' },
-  { id: 'licom', header: 'LICOM' },
-  { id: 'renewal', header: 'Renewal' },
+  { id: 'location', header: sortable(locationColumn.value, 'location'), meta: width(NAME) },
+  { id: 'code', header: sortable(`${locationColumn.value} ID`, 'code'), meta: width('min-w-32') },
+  { id: 'directorate', header: sortable('Directorate', 'directorate'), meta: width(ORG) },
+  { id: 'sub_directorate', header: sortable('Sub directorate', 'sub_directorate'), meta: width(ORG) },
+  { id: 'group', header: sortable('Group', 'group'), meta: width(ORG) },
+  { id: 'level', header: sortable('Highest residual', 'level'), meta: width('min-w-32', true) },
+  { id: 'approved', header: sortable('Latest final RA ref. no.', 'approved'), meta: width(REF) },
+  { id: 'approved_date', header: sortable('Latest final RA date', 'approved_date'), meta: width(DATE) },
+  { accessorKey: 'renewal_date', header: sortable('Renewal date', 'renewal_date'), meta: width(DATE) },
+  { accessorKey: 'days_left', header: sortable('Due', 'days_left'), meta: width('min-w-36') },
+  { id: 'assessor', header: sortable('Assessor', 'assessor'), meta: width(PERSON) },
+  { id: 'licom', header: sortable(ra.value.licom.short, 'licom'), meta: width(PERSON) },
+  { id: 'renewal', header: sortable('Renewal status', 'renewal'), meta: width('min-w-32', true) },
+  { id: 'renewal_ref', header: sortable('Renewal RA ref. no.', 'renewal_ref'), meta: width(REF) },
+  { id: 'renewal_step', header: sortable('Current renewal step', 'renewal_step'), meta: width(ORG) },
   { id: 'actions', header: '' },
 ])
 
@@ -339,7 +364,7 @@ function announce(result: RaGenerateResult) {
     title: `Created ${created}, skipped ${skipped}`,
     description: why.length
       ? why.slice(0, 3).join(' · ') + (why.length > 3 ? ` · and ${why.length - 3} more` : '')
-      : `${plural(created, 'draft')} waiting in Manage, with you as the assessor and LIC.`,
+      : `${plural(created, 'draft')} waiting in Manage, with you as the assessor and ${ra.value.lic.short}.`,
     color: created ? 'success' : 'warning',
     icon: created ? 'i-lucide-circle-check' : 'i-lucide-circle-alert',
     actions: created
@@ -394,10 +419,10 @@ function renewalActions(row: RaMonitorLocation): DropdownMenuItem[] {
   ]
 }
 
-/** The step's title ("Prepared by Location Incident Coordinator (LIC)"), like SCCA shows it;
- *  the rows carry the title from their own configuration version. */
-function stepLabel(role: string, title?: string | null) {
-  return title || raStepTitle(role, ra.value.signoffRoles)
+/** The step's short name ("LIC"), like SCCA shows it; the rows carry it from their own
+ *  configuration version. */
+function stepLabel(role: string, short?: string | null) {
+  return short || raStepShort(role, ra.value.signoffRoles)
 }
 
 const locationColumn = computed(() => ra.value.location.single)
@@ -405,20 +430,20 @@ const locationColumn = computed(() => ra.value.location.single)
  *  organization; the checkboxes pick buildings for the Excel export. */
 const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'select', header: '', meta: { class: { th: 'w-0', td: 'w-0' } } },
-  { id: 'location', header: locationColumn.value },
-  { id: 'code', header: `${locationColumn.value} ID` },
-  { id: 'directorate', header: 'Directorate' },
-  { id: 'sub_directorate', header: 'Sub directorate' },
-  { id: 'group', header: 'Group / Area' },
-  { id: 'level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
-  { id: 'approved', header: 'Last final RA' },
-  { id: 'approved_date', header: 'Last final RA date' },
-  { accessorKey: 'renewal_date', header: 'Renewal date' },
-  { id: 'open', header: 'Open RA', meta: RA_STATUS_COLUMN },
-  { id: 'open_step', header: 'Waiting for' },
-  { id: 'assessor', header: 'Assessor' },
-  { id: 'licom', header: 'LICOM' },
-  { accessorKey: 'assessment_count', header: 'RA(s)' },
+  { id: 'location', header: sortable(locationColumn.value, 'location'), meta: width(NAME) },
+  { id: 'code', header: sortable(`${locationColumn.value} ID`, 'code'), meta: width('min-w-32') },
+  { id: 'directorate', header: sortable('Directorate', 'directorate'), meta: width(ORG) },
+  { id: 'sub_directorate', header: sortable('Sub directorate', 'sub_directorate'), meta: width(ORG) },
+  { id: 'group', header: sortable('Group', 'group'), meta: width(ORG) },
+  { id: 'level', header: sortable('Highest residual', 'level'), meta: width('min-w-32', true) },
+  { id: 'approved', header: sortable('Latest final RA ref. no.', 'approved'), meta: width(REF) },
+  { id: 'approved_date', header: sortable('Latest final RA date', 'approved_date'), meta: width(DATE) },
+  { accessorKey: 'renewal_date', header: sortable('Renewal date', 'renewal_date'), meta: width(DATE) },
+  { id: 'open', header: sortable('Status', 'open'), meta: width('min-w-32', true) },
+  { id: 'open_step', header: sortable('Current approval step', 'open_step'), meta: width(ORG) },
+  { id: 'assessor', header: sortable('Assessor', 'assessor'), meta: width(PERSON) },
+  { id: 'licom', header: sortable(ra.value.licom.short, 'licom'), meta: width(PERSON) },
+  { accessorKey: 'assessment_count', header: sortable('RAs', 'assessment_count', true), meta: width('min-w-24') },
 ])
 
 /** Buildings ticked for the Excel export, kept across pages and filters until cleared. */
@@ -454,16 +479,16 @@ function registerRecord(row: RaMonitorLocation) {
 }
 /** As SCCA's Approval tab. */
 const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
-  { id: 'assessment', header: locationColumn.value, meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
-  { accessorKey: 'ref_no', header: 'RA ref. no.', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
-  { accessorKey: 'step', header: 'Current approval step', meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
-  { id: 'signer', header: 'Approver', meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
-  { accessorKey: 'level', header: 'Status', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'waiting_since', header: 'Waiting since', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'working_days_waiting', header: 'Working days', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'reminders_sent', header: 'Reminders sent', meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
-  { accessorKey: 'escalated_at', header: 'Escalated on', meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'working_days_in_signoff', header: 'Working days in approval', meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { id: 'assessment', header: sortable(locationColumn.value, 'assessment'), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'ref_no', header: sortable('RA ref. no.', 'ref_no'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'step', header: sortable('Current approval step', 'step'), meta: { class: { th: 'min-w-48', td: 'min-w-48' } } },
+  { id: 'signer', header: sortable('Approver', 'signer'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
+  { accessorKey: 'level', header: sortable('Status', 'level'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'waiting_since', header: sortable('Assess since', 'waiting_since'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { accessorKey: 'escalated_at', header: sortable('Escalated on', 'escalated_at'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
+  { accessorKey: 'working_days_in_signoff', header: sortable('Working days in approval', 'working_days_in_signoff', true), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
 ])
 
 const tabs = [
@@ -746,15 +771,18 @@ function record(id: number) {
                 v-else
                 class="font-medium text-highlighted"
               >{{ row.original.location.name }}</span>
-              <p
-                v-if="row.original.location.directorate"
-                class="text-xs text-muted"
-              >
-                {{ row.original.location.directorate }}
-              </p>
             </template>
             <template #code-cell="{ row }">
               <span class="font-mono text-xs">{{ row.original.location.code || '—' }}</span>
+            </template>
+            <template #directorate-cell="{ row }">
+              <span :class="row.original.location.directorate ? '' : 'text-muted'">{{ row.original.location.directorate || '—' }}</span>
+            </template>
+            <template #sub_directorate-cell="{ row }">
+              <span :class="subDirectorateOf(row.original) ? '' : 'text-muted'">{{ subDirectorateOf(row.original) || '—' }}</span>
+            </template>
+            <template #group-cell="{ row }">
+              <span :class="groupOf(row.original) ? '' : 'text-muted'">{{ groupOf(row.original) || '—' }}</span>
             </template>
             <template #approved-cell="{ row }">
               <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
@@ -817,27 +845,47 @@ function record(id: number) {
               <NuxtLink
                 v-if="row.original.open && openable(row.original.open)"
                 :to="record(row.original.open.id)"
-                class="hover:underline"
+                class="inline-block hover:underline"
+                :aria-label="`${refLabel(row.original.open)}: ${raStatus[raStatusKey(row.original.open)].label}`"
               >
                 <StatusBadge
                   :scale="raStatus"
                   :value="raStatusKey(row.original.open)"
                   size="sm"
                 />
-                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
               </NuxtLink>
-              <span v-else-if="row.original.open">
-                <StatusBadge
-                  :scale="raStatus"
-                  :value="raStatusKey(row.original.open)"
-                  size="sm"
-                />
-                <span class="ms-1 font-mono text-xs">{{ refLabel(row.original.open) }}</span>
-              </span>
+              <StatusBadge
+                v-else-if="row.original.open"
+                :scale="raStatus"
+                :value="raStatusKey(row.original.open)"
+                size="sm"
+              />
               <span
                 v-else
                 class="text-muted"
               >Not started</span>
+            </template>
+            <template #renewal_ref-cell="{ row }">
+              <span
+                v-if="row.original.open"
+                class="font-mono text-xs"
+              >{{ refLabel(row.original.open) }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+            <template #renewal_step-cell="{ row }">
+              <span
+                v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role"
+                class="text-sm"
+              >
+                {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_short) }}
+              </span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
             </template>
             <template #empty>
               <p class="py-6 text-center text-sm text-muted">
@@ -937,7 +985,6 @@ function record(id: number) {
             <template #sub_directorate-cell="{ row }">
               <span :class="subDirectorateOf(row.original) ? '' : 'text-muted'">{{ subDirectorateOf(row.original) || '—' }}</span>
             </template>
-            <!-- The location's Group, as the user master names it; a branch's is its area. -->
             <template #group-cell="{ row }">
               <span :class="groupOf(row.original) ? '' : 'text-muted'">{{ groupOf(row.original) || '—' }}</span>
             </template>
@@ -964,12 +1011,6 @@ function record(id: number) {
             <template #approved-cell="{ row }">
               <template v-if="row.original.approved">
                 <span class="font-mono text-xs">{{ refLabel(row.original.approved) }}</span>
-                <p
-                  v-if="row.original.approved.reason"
-                  class="text-xs text-muted"
-                >
-                  {{ raReasonLabel(row.original.approved.reason) }}
-                </p>
               </template>
               <span
                 v-else
@@ -1009,7 +1050,7 @@ function record(id: number) {
                 v-if="row.original.open?.status === 'in_signoff' && row.original.open.current_signoff_role"
                 class="text-sm"
               >
-                {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_title) }}
+                {{ stepLabel(row.original.open.current_signoff_role, row.original.open.current_step_short) }}
               </span>
               <span
                 v-else
@@ -1066,7 +1107,7 @@ function record(id: number) {
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
                 <template v-if="bottlenecks.data.value?.total">
-                  {{ bottlenecks.data.value.total }} {{ plural(bottlenecks.data.value.total, 'RA') }} in approval, longest-waiting first.
+                 {{ plural(bottlenecks.data.value.total, 'RA') }} in approval, longest-waiting first.
                 </template>
                 <template v-else>
                   No RA is in approval.
@@ -1111,7 +1152,7 @@ function record(id: number) {
                 <span class="font-mono text-xs">{{ refLabel(row.original) }}</span>
               </template>
               <template #step-cell="{ row }">
-                {{ stepLabel(row.original.step, row.original.step_title) }}
+                {{ stepLabel(row.original.step, row.original.step_short) }}
               </template>
               <template #level-cell="{ row }">
                 <StatusBadge

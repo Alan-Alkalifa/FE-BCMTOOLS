@@ -11,6 +11,7 @@ import type { RaGenerateResult, RaMonitorLocation } from '~/composables/useRa'
 const props = defineProps<{ rows: RaMonitorLocation[], levels: string[], kind: RaKind, noun: string }>()
 const emit = defineEmits<{ close: [result?: RaGenerateResult] }>()
 
+const ra = computed(() => RA_MODULES[props.kind])
 const { user } = useAuth()
 const suggested = computed<PickedUser | null>(() => {
   const ids = new Set(props.rows.map((row) => row.licom_user_id ?? null))
@@ -26,7 +27,7 @@ const levelText = computed(() => (props.levels.length ? props.levels.join(' or '
 async function generate() {
   errors.value = {}
   if (!licomId.value) {
-    errors.value.licom_user_id = 'Pick the LICOM.'
+    errors.value.licom_user_id = `Pick the ${ra.value.licom.short}.`
     return
   }
   busy.value = true
@@ -62,7 +63,7 @@ async function generate() {
         />
         <p class="text-sm">
           Each draft copies its last final RA, with its ratings and signers, dated today.
-          <span class="font-medium">You are the assessor and LIC.</span> The drafts wait in Manage.
+          <span class="font-medium">You are the assessor and {{ ra.lic.short }}.</span> The drafts wait in Manage.
         </p>
         <ul
           v-if="rows.length > 1"
@@ -78,10 +79,10 @@ async function generate() {
           </li>
         </ul>
         <UFormField
-          label="LICOM"
+          :label="ra.licom.short"
           name="licom_user_id"
           required
-          :help="`A ${levelText} user from any directorate${rows.length > 1 ? ', for every draft' : ''}.${suggested ? ' Suggested is the last final\'s LICOM.' : ''}`"
+          :help="`A ${levelText} user from any directorate${rows.length > 1 ? ', for every draft' : ''}.${suggested ? ` Suggested is the last final's ${ra.licom.short}.` : ''}`"
           :error="errors.licom_user_id"
         >
           <UserPicker
@@ -89,7 +90,7 @@ async function generate() {
             :selected="suggested"
             :endpoint="`/api/ra/monitoring/renewals/contributors?kind=${kind}`"
             :placeholder="`Search ${levelText} users`"
-            aria-label="LICOM"
+            :aria-label="ra.licom.short"
           />
         </UFormField>
       </form>

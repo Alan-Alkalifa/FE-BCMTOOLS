@@ -73,15 +73,8 @@ function saveCallTree(rows: RowValues[]) {
 <template>
   <section
     class="space-y-4"
-    aria-labelledby="ra-building-heading"
+    aria-label="Building Data"
   >
-    <h2
-      id="ra-building-heading"
-      class="text-lg font-semibold"
-    >
-      {{ ra.location.single }}
-    </h2>
-
     <UAlert
       v-if="error"
       color="error"
@@ -200,9 +193,9 @@ function saveCallTree(rows: RowValues[]) {
         >
           <RaGroupedRowsForm
             :key="`calltree-${formKey}`"
-            :groups="RA_CALL_TREE_GROUPS"
+            :groups="raCallTreeGroups(ra.kind)"
             group-key="level"
-            :lead="RA_CALL_TREE_LEAD"
+            :lead="raCallTreeLead(ra.kind)"
             :fields="RA_CALL_TREE_FIELDS"
             :initial="callTreeRows"
             item-label="contact"

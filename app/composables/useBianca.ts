@@ -175,6 +175,8 @@ export interface BiancaAssessment extends Omit<BiancaSummary, 'functions'>, Bian
   /** The BCM Coordinator / Alternate as the user directory has them; null when typed. */
   bcm_coordinator_user: BiancaPerson | null
   bcm_alternate_user: BiancaPerson | null
+  /** The Alternate BCM Coordinators (none, one or more). */
+  bcm_alternates?: BiancaAlternate[]
   alt_location: BiancaPlace | null
   total_staff: number
   loss_totals: number[]
@@ -296,7 +298,26 @@ export interface BiancaMainLocation {
   source: 'location' | 'occupants' | 'people' | null
 }
 
-export type BiancaInput = Partial<BiancaHeader> & Partial<BiancaOrg> & { config_version_id?: number | null, functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[] }
+/** An Alternate BCM Coordinator as sent: a user picked from the directory, or named in Excel. */
+export interface BiancaAlternateInput {
+  user_id?: number | null
+  name?: string | null
+  nik?: string | null
+  phone?: string | null
+  phone_2?: string | null
+  email?: string | null
+}
+/** An Alternate BCM Coordinator of a BIA, with its directory user (for the picker). */
+export interface BiancaAlternate extends BiancaAlternateInput {
+  user?: BiancaPerson | null
+}
+
+export type BiancaInput = Partial<BiancaHeader> & Partial<BiancaOrg> & {
+  config_version_id?: number | null
+  functions?: Omit<BiancaFunction, 'category' | 'within_suggested_mtd'>[]
+  /** Optional, as many as the Group names (MoM 26 Nov). */
+  bcm_alternates?: BiancaAlternateInput[]
+}
 
 export function useBiancaAssessments(query: MaybeRefOrGetter<BiancaListQuery>) {
   return useFetch<BiancaPage<BiancaSummary>>('/api/bianca/assessments', {

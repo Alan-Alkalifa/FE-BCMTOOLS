@@ -54,6 +54,7 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
     <!-- Part 1 -->
     <UCard
       v-if="shows('p1')"
+      class="break-inside-avoid"
       :ui="{ body: 'p-0 sm:p-0' }"
     >
       <template #header>
@@ -61,8 +62,8 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
           Part 1 · Impact assessment
         </h3>
       </template>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[48rem] text-sm">
+      <div class="overflow-x-auto print:overflow-visible">
+        <table class="w-full min-w-[48rem] text-sm print:min-w-0 print:text-[9px]">
           <thead class="bg-elevated/50 text-xs text-muted">
             <tr>
               <th class="px-4 py-2 text-left font-medium">
@@ -127,6 +128,7 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
     <!-- Part 2a -->
     <UCard
       v-if="shows('p2a')"
+      class="break-inside-avoid"
       :ui="{ body: 'p-0 sm:p-0' }"
     >
       <template #header>
@@ -139,8 +141,8 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
           <span><span class="text-muted">Category:</span> {{ shown(fn.category) }}</span>
         </div>
       </template>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[64rem] text-sm">
+      <div class="overflow-x-auto print:overflow-visible">
+        <table class="w-full min-w-[64rem] text-sm print:min-w-0 print:text-[9px]">
           <thead class="bg-elevated/50 text-left text-xs text-muted">
             <tr>
               <th class="px-4 py-2 font-medium">
@@ -219,6 +221,7 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
     <!-- Part 2b -->
     <UCard
       v-if="shows('p2b')"
+      class="break-inside-avoid"
       :ui="{ body: 'p-0 sm:p-0' }"
     >
       <template #header>
@@ -238,8 +241,8 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
         <p class="px-4 pt-3 text-sm font-medium">
           {{ side.title }} <span class="font-normal text-muted">· {{ side.text }}</span>
         </p>
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[64rem] text-sm">
+        <div class="overflow-x-auto print:overflow-visible">
+          <table class="w-full min-w-[64rem] text-sm print:min-w-0 print:text-[9px]">
             <thead class="text-left text-xs text-muted">
               <tr>
                 <th class="px-4 py-2 font-medium">
@@ -310,6 +313,7 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
     <!-- Part 3 -->
     <UCard
       v-if="shows('p3')"
+      class="break-inside-avoid"
     >
       <template #header>
         <h3 class="text-sm font-semibold">
@@ -365,6 +369,7 @@ function systemName(row: { application_name?: string, is_other?: boolean }) {
     <!-- Part 4 -->
     <UCard
       v-if="shows('p4')"
+      class="break-inside-avoid"
     >
       <template #header>
         <h3 class="text-sm font-semibold">

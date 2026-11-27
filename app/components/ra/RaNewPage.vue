@@ -25,6 +25,9 @@ const form = useTemplateRef('form')
 const formError = ref<string | null>(null)
 
 const { data: locations } = useRaLocations(() => ({ kind: ra.value.kind, assessable: true }))
+const { data: formula } = useRaFormula(() => ra.value.kind)
+const renewalMonths = computed(() => formula.value?.renewal_months ?? 12)
+const renewalPeriod = computed(() => raRenewalPeriod(renewalMonths.value))
 /** 1 January this year (WIB): the earliest date a New building can have. */
 const yearStart = parseDate(`${raTodayIso().slice(0, 4)}-01-01`)
 
@@ -52,9 +55,9 @@ const schema = computed(() => z.object({
   due_date: z.string().nullable(),
   // The LIC is the assessor: the signed-in user, never picked or sent.
   lic_user_id: z.number().nullable(),
-  lic_phone: phoneField('Enter the LIC mobile number.'),
-  licom_user_id: z.number('Choose the LICOM.'),
-  licom_phone: phoneField('Enter the LICOM mobile number.'),
+  lic_phone: phoneField(`Enter the ${ra.value.lic.short} mobile number.`),
+  licom_user_id: z.number(`Choose the ${ra.value.licom.short}.`),
+  licom_phone: phoneField(`Enter the ${ra.value.licom.short} mobile number.`),
 }).superRefine((value, context) => {
   // One RA per building per period (the year of the assessment date), said before the API
   // does. A Structural change may follow in the same period once that period's RA is final.
@@ -70,14 +73,15 @@ const schema = computed(() => z.object({
   // As SCCA's New application: a New building can be back-dated, not to an earlier year.
   const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
   if (backYear) context.addIssue({ code: 'custom', path: ['assessment_date'], message: backYear })
-  // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
+  // Like SCCA's System change: a structural change picks its renewal date within the configured period.
+  const period = renewalPeriod.value
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {
-    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Enter the renewal due date. It can be sooner than one year.' })
+    context.addIssue({ code: 'custom', path: ['due_date'], message: `Enter the renewal due date. It can be sooner than ${period}.` })
   } else if (value.due_date < value.assessment_date) {
     context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be before the assessment date.' })
-  } else if (value.due_date > parseDate(value.assessment_date).add({ years: 1 }).toString()) {
-    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be later than one year after the assessment date.' })
+  } else if (value.due_date > parseDate(value.assessment_date).add({ months: renewalMonths.value }).toString()) {
+    context.addIssue({ code: 'custom', path: ['due_date'], message: `Cannot be later than ${renewalPeriod.value} after the assessment date.` })
   }
 }))
 type State = Omit<z.infer<typeof schema.value>, 'lic_user_id' | 'licom_user_id' | 'reason'> & {
@@ -285,7 +289,7 @@ const pickedNote = computed(() => {
     return {
       color: 'info' as const,
       title: `No RA yet for this ${noun}`,
-      description: 'Pick the LICOM below. The hazards are rated from scratch.',
+      description: `Pick the ${ra.value.licom.short} below. The hazards are rated from scratch.`,
     }
   }
   const ref = [last.ref_no, last.assessment_date ? formatDate(last.assessment_date) : null].filter(Boolean).join(', ')
@@ -294,7 +298,7 @@ const pickedNote = computed(() => {
     return {
       color: 'warning' as const,
       title: `This ${noun} already has an RA ${raStatus[last.status].label.toLowerCase()}`,
-      description: `${copied} Check with its LIC before starting another one.`,
+      description: `${copied} Check with its ${ra.value.lic.short} before starting another one.`,
     }
   }
   return {
@@ -308,13 +312,14 @@ const pickedNote = computed(() => {
 
 const dueDate = computed(() => {
   if (!state.assessment_date) return null
-  const date = parseDate(state.assessment_date).add({ years: 1 })
+  const date = parseDate(state.assessment_date).add({ months: renewalMonths.value })
   return date.toString()
 })
 /** As SCCA: every other field waits for the reason. */
 const noReason = computed(() => !state.reason)
 /** Structural change picks its renewal date (like SCCA's System change). */
 const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
+const standardRenewal = computed(() => state.reason === 'new_building' || state.reason === 'annual_review')
 const chosenDue = computed({
   get: () => state.due_date ? parseDate(state.due_date) : undefined,
   set: (value: CalendarDate | null | undefined) => {
@@ -429,7 +434,7 @@ async function createWithBuilding() {
     locationForm.value?.setErrors(own)
     if (own.length) buildingTab.value = 'details'
     form.value?.setErrors(raHeaderErrors(errors.filter((item) => !item.name?.includes('.'))))
-    formError.value = raErrorText(error)
+    formError.value = raErrorText(error, { lic: ra.value.lic.short, licom: ra.value.licom.short })
   } finally {
     submitting.value = false
   }
@@ -456,7 +461,7 @@ async function onSubmit() {
     await navigateTo(raPath(ra.value.kind, 'manage', created.id), { replace: true })
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
-    formError.value = raErrorText(error)
+    formError.value = raErrorText(error, { lic: ra.value.lic.short, licom: ra.value.licom.short })
   }
 }
 </script>
@@ -496,7 +501,7 @@ async function onSubmit() {
       <UCard>
         <template #header>
           <h2 class="text-lg font-semibold">
-            Assessment
+            Assessment details
           </h2>
         </template>
         <!-- As SCCA: the reason first (the select half width, its help the full row); the other
@@ -505,7 +510,7 @@ async function onSubmit() {
           label="Reason for assessment"
           name="reason"
           required
-          :help="raReasonHelp(state.reason)"
+          :help="raReasonHelp(state.reason, renewalMonths)"
         >
           <USelect
             v-model="state.reason"
@@ -574,20 +579,28 @@ async function onSubmit() {
             label="Renewal due date"
             name="due_date"
             required
-            help="Standard renewal is one year after the assessment. A structural change can be sooner."
+            :help="`Standard renewal is ${renewalPeriod} after the assessment. A structural change can be sooner.`"
           >
             <DatePicker
               v-model="chosenDue"
               :min="assessmentDate"
-              :max="assessmentDate?.add({ years: 1 })"
+              :max="assessmentDate?.add({ months: renewalMonths })"
             />
           </UFormField>
-          <p
-            v-else-if="dueDate"
-            class="self-center text-sm text-muted sm:pt-6"
+          <UFormField
+            v-else-if="dueDate && standardRenewal"
+            label="Renewal due date"
+            name="due_date"
+            :help="`Renewal is due ${renewalPeriod} after the assessment date.`"
           >
-            Renewal due {{ formatDate(dueDate) }}, one year after this assessment.
-          </p>
+            <template #label>
+              <span class="invisible">Renewal due date</span>
+            </template>
+            <div
+              class="h-9"
+              aria-hidden="true"
+            />
+          </UFormField>
           <!-- As SCCA's Assessor: below the assessment date, the person creating it. -->
           <UFormField
             label="Assessor"
@@ -611,7 +624,7 @@ async function onSubmit() {
               Location incident team
             </h2>
             <p class="text-sm text-muted">
-              Who leads the response at this {{ ra.location.lower }}. You are the LIC, as the assessor. Pick the LICOM from the BCM Tools users.
+              Who leads the response at this {{ ra.location.lower }}. You are the {{ ra.lic.short }}, as the assessor. Pick the {{ ra.licom.short }} from the BCM Tools users.
             </p>
           </template>
           <fieldset
@@ -637,6 +650,8 @@ async function onSubmit() {
                 v-model:phone="state[`${member}_phone`]"
                 :member="member"
                 :label="ra[member].label"
+                :short-label="ra[member].short"
+                :phone-label="`${ra[member].short} mobile number`"
                 :fixed="member === 'lic'"
               />
             </fieldset>
@@ -660,14 +675,8 @@ async function onSubmit() {
     <section
       v-if="newBuilding"
       class="max-w-6xl space-y-4"
-      aria-labelledby="new-building-heading"
+      aria-label="Building details"
     >
-      <h2
-        id="new-building-heading"
-        class="text-lg font-semibold"
-      >
-        New {{ ra.location.lower }}
-      </h2>
       <UTabs
         v-model="buildingTab"
         :items="buildingTabs"
@@ -722,9 +731,9 @@ async function onSubmit() {
           <RaGroupedRowsForm
             ref="callTreeForm"
             draft
-            :groups="RA_CALL_TREE_GROUPS"
+            :groups="raCallTreeGroups(ra.kind)"
             group-key="level"
-            :lead="RA_CALL_TREE_LEAD"
+            :lead="raCallTreeLead(ra.kind)"
             :fields="RA_CALL_TREE_FIELDS"
             :initial="[]"
             item-label="contact"

@@ -312,7 +312,9 @@ test('new BIA questionnaire renders a configured sixth category', async ({ page 
   await page.getByRole('option', { name: 'Hyspace', exact: true }).click()
   await page.getByRole('button', { name: 'BCM Coordinator', exact: true }).click()
   await page.getByRole('option', { name: 'Test Coordinator' }).click()
-  await page.getByRole('button', { name: 'Alternate BCM Coordinator', exact: true }).click()
+  // The Alternate is optional: added with "Add alternate", one or more (MoM 26 Nov).
+  await page.getByRole('button', { name: 'Add alternate', exact: true }).click()
+  await page.getByRole('button', { name: 'Alternate BCM Coordinator 1', exact: true }).click()
   await page.getByRole('option', { name: 'Test Alternate' }).click()
   // The risk assessment questions are on the RA questionnaire (MoM 23 Nov), not the Sign off page.
   await expect(page.locator('#bianca-sign').getByText('Have you considered business continuity')).toHaveCount(0)

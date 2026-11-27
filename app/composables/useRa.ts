@@ -41,6 +41,7 @@ export interface RaFormula {
   code: string
   kind: RaKind
   name: string
+  renewal_months: number
   status?: 'draft' | 'active' | 'retired'
   /** The rating inputs of this kind, in questionnaire order. */
   inputs: RaRatingField[]
@@ -737,6 +738,8 @@ export interface RaAssessmentSummary {
   current_signoff_role: RaSignoffRole | null
   /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
   current_step_title?: string | null
+  /** Its short name ("LIC"), as the tables show the step. */
+  current_step_short?: string | null
   is_returned: boolean
   revision_state?: RaRevisionState | null
   approved_at?: string | null
@@ -814,6 +817,9 @@ export interface RaListQuery {
   mine?: '1'
   page: number
   per_page: number
+  /** Manage: the column to sort by (any column, as SCCA's), and its direction. */
+  sort?: string
+  dir?: 'asc' | 'desc'
 }
 
 export interface RaPage<T> {
@@ -1767,6 +1773,8 @@ export interface RaAssessmentRef {
   current_signoff_role: string | null
   /** Who signs the current step, e.g. "Location Incident Coordinator (LIC)". */
   current_step_title?: string | null
+  /** Its short name ("LIC"), as the tables show the step. */
+  current_step_short?: string | null
   highest_residual_level: RaLevel | null
   approved_at: string | null
   is_returned: boolean
@@ -1819,6 +1827,8 @@ export interface RaSignoffWaiting extends RaAssessmentRef {
   step: string
   /** Who signs the step, e.g. "Location Incident Coordinator (LIC)" (like SCCA). */
   step_title?: string
+  /** Its short name ("LIC"), as the tables show the step. */
+  step_short?: string | null
   signer: RaUserRef | null
   waiting_since: string | null
   working_days_waiting: number
@@ -1838,6 +1848,8 @@ export interface RaHistoryRow extends Omit<RaSignoffEvent, 'role'> {
   role: string | null
   /** Who signs the role, e.g. "Location Incident Coordinator (LIC)". */
   role_title?: string | null
+  /** Its short name ("LIC"), as the tables show the step. */
+  role_short?: string | null
   assessment: RaAssessmentRef & { location: RaLocationRef }
 }
 
@@ -1894,7 +1906,8 @@ export interface RaStepAverage {
   average_working_days: number | null
 }
 
-type Paged<T> = MaybeRefOrGetter<T & { page: number, per_page: number }>
+/** A page of a list, sorted by a column (as SCCA's tables) when `sort` is set. */
+type Paged<T> = MaybeRefOrGetter<T & { page: number, per_page: number, sort?: string, dir?: 'asc' | 'desc' }>
 
 function useRaList<T>(path: string, query: MaybeRefOrGetter<object>) {
   return useFetch<RaPage<T> & { counts?: Record<string, number> }>(path, {
@@ -1964,12 +1977,20 @@ export interface RaNetworkHead {
   city: string | null
 }
 export interface RaNetworkArea extends RaNetworkHead {
-  area: string
+  area?: string | null
 }
 export interface RaNetworkRegion extends RaNetworkHead {
   region: string
   directorate: string
   areas: RaNetworkArea[]
+}
+
+export const RA_GROUP_HEAD_AREA = 'Group Head'
+export function raNetworkAreaName(area: RaNetworkArea) {
+  return area.area?.trim() || (area.head?.trim() ? RA_GROUP_HEAD_AREA : '')
+}
+export function raNetworkAreaDescription(area: RaNetworkArea) {
+  return area.city?.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase()) ?? ''
 }
 
 /** The region directory for a branch's Region and Area (the DataRegion sheet; LDAP in

@@ -21,7 +21,9 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   const request = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.method() === 'GET')
   await page.goto('/ra/manage')
   expect(new URL((await request).url()).searchParams.get('status')).toBe('draft')
-  await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
+  // As SCCA's, the ref. no. is plain text and the building is the link.
+  await expect(page.getByRole('cell', { name: 'RA-2025-0001', exact: true })).toBeVisible()
   await expect(page.getByText('Griya CIMB Niaga 2')).toBeVisible()
   await expect(page.getByText('32 of 33')).toBeVisible()
   await expect(page.getByRole('cell', { name: /Draft/ })).toBeVisible()
@@ -41,13 +43,13 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await bar.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page).not.toHaveURL(/reason=/)
   expect(new URL((await request).url()).searchParams.get('mine')).toBe('1')
-  // SCCA's columns. Renews, My role, Assessor and Next step.
-  for (const header of ['Renews', 'My role', 'Assessor', 'Next step']) {
-    await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  // SCCA's columns, in SCCA's words.
+  for (const header of ['Current RA ref. no.', 'Building ID', 'Assessment reason', 'Renews RA ref. no.', 'My role', 'Highest residual', 'Assessor', 'Renewal date', 'Next step']) {
+    await expect(page.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
   }
   await expect(page.getByRole('cell', { name: 'Rate all 33 hazards' })).toBeVisible()
 
-  await page.getByRole('link', { name: 'RA-2025-0001' }).click()
+  await page.getByRole('link', { name: 'Griya CIMB Niaga 2' }).click()
   await expect(page).toHaveURL(/\/ra\/manage\/1$/)
 })
 
@@ -77,15 +79,15 @@ test('Monitoring shows the portfolio, renewals, the register and waiting sign-of
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   const approval = page.getByRole('table').filter({ visible: true })
   await expect(approval.getByText('Budi Hartono')).toBeVisible()
-  for (const header of ['Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
-    await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  for (const header of ['Current approval step', 'Approver', 'Status', 'Assess since', 'Assess days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
+    await expect(approval.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
   }
   await expect(page.getByText('6 working days').first()).toBeVisible()
   // Waiting past the reminder threshold, and the average wait of each step.
   await expect(page.getByText('Reminder due').first()).toBeVisible()
   await expect(page.getByText(/Slowest step: Unit Critical Business Function, 4[.,]5 working days on average, over 4 approvals\./)).toBeVisible()
-  // The step is named by its configured title.
-  await expect(page.getByRole('table').getByRole('cell', { name: 'Reviewed by Alternate Location Incident Commander (LICOM)', exact: true })).toBeVisible()
+  // The step is named by its short name, like SCCA's.
+  await expect(page.getByRole('table').getByRole('cell', { name: 'LICOM', exact: true })).toBeVisible()
   expect(log.workflow.some((path) => path.startsWith('/api/ra/monitoring/bottlenecks/step-averages'))).toBe(true)
 })
 
@@ -94,8 +96,8 @@ test('Monitoring Renewals generates annual reviews from the ticked rows, as SCCA
   await page.goto('/ra/monitoring?tab=renewals')
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByText('Menara Sentraya')).toBeVisible({ timeout: 60_000 })
-  for (const header of ['Building ID', 'Last final RA date', 'Assessor', 'LICOM', 'Renewal']) {
-    await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  for (const header of ['Building ID', 'Directorate', 'Sub directorate', 'Group', 'Latest final RA ref. no.', 'Latest final RA date', 'Assessor', 'LICOM', 'Renewal status', 'Renewal RA ref. no.', 'Current renewal step']) {
+    await expect(table.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
   }
   // Griya's renewal is already a draft: it can't be generated.
   await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2' })).toBeDisabled()
@@ -123,17 +125,14 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table').filter({ visible: true })
   await expect(table.getByText('Griya CIMB Niaga 2')).toBeVisible({ timeout: 60_000 })
-  for (const header of ['Building ID', 'Directorate', 'Sub directorate', 'Group / Area', 'Last final RA date', 'Assessor', 'LICOM', 'RA(s)']) {
-    await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  for (const header of ['Building ID', 'Directorate', 'Sub directorate', 'Group', 'Latest final RA date', 'Assessor', 'LICOM', 'RAs']) {
+    await expect(table.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
   }
-  // Sub directorate sits between Directorate and Group / Area.
-  const headers = await table.getByRole('columnheader').allTextContents()
-  const at = (name: string) => headers.findIndex((text) => text.trim() === name)
-  expect(at('Sub directorate')).toBe(at('Directorate') + 1)
-  expect(at('Group / Area')).toBe(at('Sub directorate') + 1)
-  await expect(table.getByRole('row', { name: /Griya CIMB Niaga 2/ }).getByText('Ops Support')).toBeVisible()
-  await expect(table.getByText('Building Management')).toBeVisible()
-  await expect(table.getByRole('columnheader', { name: 'Department', exact: true })).toHaveCount(0)
+  // RA has no owner organisation: no directorate, sub-directorate or group / area column.
+  for (const header of ['Directorate owner', 'Owner sub-directorate', 'Owner group / area']) {
+    await expect(table.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toHaveCount(0)
+  }
+  await expect(table.getByRole('columnheader', { name: 'Sort by Department', exact: true })).toHaveCount(0)
   await expect(table.getByRole('checkbox', { name: 'Select Griya CIMB Niaga 2 for the Excel export' })).toBeVisible()
 
   // The location's organization filters, as SCCA's.
@@ -158,8 +157,8 @@ test('Monitoring List: org filters, SCCA\'s columns, RA(s) history; the export c
   await page.keyboard.press('Escape')
   await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   const approval = page.getByRole('table').filter({ visible: true })
-  for (const header of ['RA ref. no.', 'Current approval step', 'Approver', 'Status', 'Waiting since', 'Working days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
-    await expect(approval.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  for (const header of ['RA ref. no.', 'Current approval step', 'Approver', 'Status', 'Assess since', 'Assess days', 'Reminders sent', 'Escalated on', 'Working days in approval']) {
+    await expect(approval.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
   }
 })
 
@@ -210,6 +209,10 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   const inbox = page.getByRole('table').first()
   await expect(inbox.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/approval/1')
   await expect(inbox.getByText('2 working days')).toBeVisible()
+  // SCCA's inbox columns.
+  for (const header of ['RA ref. no.', 'Highest residual', 'My step', 'Submitted date', 'Submitted by', 'Status', 'Assess days', 'Reminders sent']) {
+    await expect(inbox.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
+  }
   await expect(page.getByRole('heading', { name: 'Coming up' })).toBeVisible()
 
   await page.getByRole('tab', { name: 'My history' }).click()
@@ -226,8 +229,13 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
 
   await page.getByRole('tab', { name: 'BCM board' }).click()
   const board = page.getByRole('table').filter({ visible: true })
-  await expect(board.getByText('Reviewed by Alternate Location Incident Commander (LICOM)')).toBeVisible()
+  await expect(board.getByRole('cell', { name: 'LICOM', exact: true })).toBeVisible()
+  // No reason under the building, like SCCA's.
+  await expect(board.getByText('New building')).toHaveCount(0)
   await expect(board.getByText('Reminder due')).toBeVisible()
+  for (const header of ['RA ref. no.', 'Highest residual', 'Current approval step', 'Approver', 'Status', 'Assess since', 'Assess days', 'Reminders sent', 'Escalated on']) {
+    await expect(board.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
+  }
   // Like SCCA's board: send the signer a reminder now.
   await page.getByRole('button', { name: /^Act on/ }).click()
   await expect(page.getByRole('menuitem', { name: 'Open sign-off' })).toBeVisible()
@@ -267,7 +275,7 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   expect(String(body)).toContain('Approved by email on 12 Oct 2026')
   expect(String(body)).toContain('filename="approval.pdf"')
 
-  await page.getByLabel('Step').click()
+  await page.getByLabel('Step', { exact: true }).click()
   await page.getByRole('option', { name: 'LIC', exact: true }).click()
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
 })
@@ -469,6 +477,13 @@ test('each hazard reviews past disasters over its own years, saved with its rati
   // None recorded for another hazard: it says so.
   await page.goto('/ra/manage/1?tab=hazards&hazard=H03')
   await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none in Kota Adm. Jakarta Selatan from 2017 to 2026.', { timeout: 60_000 })
+})
+
+test('BNPB historical rating fills an empty Historical of occurrence field', async ({ page }) => {
+  await mockRa(page, { emptyHistorical: 'H01' })
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const historical = page.getByRole('combobox', { name: '1 - Historical of occurrence' })
+  await expect(historical).toContainText('4', { timeout: 60_000 })
 })
 
 test('WHO\'s outbreak news and OpenAQ\'s air quality show on their hazards over the review years', async ({ page }) => {
@@ -1080,7 +1095,7 @@ test('Manage shows a generated annual review of the directorate read-only, with 
 test('Manage has New assessment in the top bar', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage')
-  await expect(page.getByRole('link', { name: 'RA-2025-0001' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('link', { name: 'View buildings' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'New assessment' })).toHaveAttribute('href', '/ra/manage/new')
   // In the top bar next to the bell, not in the table's toolbar.
@@ -1161,6 +1176,8 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
   await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Building Data' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Building Details' })).toHaveCount(0)
   // As SCCA's: who made the RA, read-only, under the assessment date.
   const assessor = page.getByLabel('Assessor', { exact: true })
   await expect(assessor).toHaveValue('Test User')
@@ -1172,14 +1189,31 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await date.click()
   await page.getByRole('gridcell', { name: /17/ }).first().click()
   await expect(date).toContainText('17 Mar 2025')
-  // As SCCA: every reason but a structural change renews a year after the assessment.
-  await expect(page.getByText('Renewal due 17 Mar 2026, one year after this assessment.')).toBeVisible()
+  // Standard renewal is automatic; keep its hint and the date column's layout without a field.
+  const renewal = page.getByRole('button', { name: /Renewal due date/ })
+  await expect(renewal).toHaveCount(0)
+  await expect(page.getByText('Renewal is due one year after the assessment date.')).toBeVisible()
   await expect(page.getByText('RA period 2025, the year of this date.')).toBeVisible()
   const request = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1'))
   await page.getByRole('button', { name: 'Save assessment' }).click()
   const body = (await request).postDataJSON()
   expect(body).toMatchObject({ assessment_date: '2025-03-17', period_year: 2025, reason: 'new_building' })
   expect(body).not.toHaveProperty('due_date')
+})
+
+test('New assessment uses the configured renewal period and building data heading', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-03-10T05:00:00Z'))
+  await mockRa(page, { renewalMonths: 18 })
+  await page.goto('/ra/manage/new')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /New building/ }).click()
+
+  await expect(page.getByRole('heading', { name: 'Assessment details' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Building Data' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'New Head office building' })).toHaveCount(0)
+  await expect(page.getByText('Renewal is due 18 months after the assessment date.')).toBeVisible()
+  const renewal = page.getByRole('button', { name: /Renewal due date/ })
+  await expect(renewal).toHaveCount(0)
 })
 
 test('a new building can be back-dated this year, not to an earlier year, as SCCA\'s new application', async ({ page }) => {
@@ -1672,13 +1706,13 @@ test('the List tab works like SCCA\'s Register', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/monitoring?tab=register')
   const table = page.getByRole('table')
-  await expect(table.getByRole('columnheader', { name: 'Last final RA', exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(table.getByRole('columnheader', { name: 'Open RA' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Sort by Latest final RA ref. no.', exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(table.getByRole('columnheader', { name: 'Sort by Status', exact: true })).toBeVisible()
   const headers = (await table.getByRole('columnheader').allTextContents()).map((text) => text.trim())
-  expect(headers.at(-1)).toBe('RA(s)')
-  // The open RA's status and whose step it waits for are two columns; statuses are centred.
-  expect(headers.indexOf('Waiting for')).toBe(headers.indexOf('Open RA') + 1)
-  await expect(table.getByRole('columnheader', { name: 'Open RA' })).toHaveClass(/text-center/)
+  expect(headers.at(-1)).toBe('RAs')
+  // The open RA's status and its current approval step are two columns; statuses are centred.
+  expect(headers.indexOf('Current approval step')).toBe(headers.indexOf('Status') + 1)
+  await expect(table.getByRole('columnheader', { name: 'Sort by Status', exact: true })).toHaveClass(/text-center/)
   // The name opens the last final RA; its code is text, not a link.
   await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toHaveAttribute('href', '/ra/monitoring/1')
   await expect(table.getByText('RA-2025-0001', { exact: true })).toBeVisible()
@@ -1759,4 +1793,35 @@ test('an assessment date whose period already has an RA says so on the date', as
   await expect(page.getByText(/^RA period \d{4}, the year of this date\.$/)).toHaveCount(0)
   // As SCCA's banner: the summary, then each field's message.
   await expect(page.getByText(/^Some fields need attention/)).toContainText('• Assessment date: This location already has an assessment for 2026.')
+})
+
+test('every column of the RA tables sorts on the server, as SCCA\'s', async ({ page }) => {
+  await mockRa(page)
+  await page.goto('/ra/manage')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('link', { name: 'Griya CIMB Niaga 2' })).toBeVisible({ timeout: 60_000 })
+  // A first click sorts ascending, a second turns it round; the URL keeps it.
+  const ascending = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.url().includes('sort=location'))
+  await table.getByRole('button', { name: 'Sort by Building', exact: true }).click()
+  expect(new URL((await ascending).url()).searchParams.get('dir')).toBe('asc')
+  await expect(page).toHaveURL(/sort=location&dir=asc/)
+  const descending = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.url().includes('dir=desc'))
+  await table.getByRole('button', { name: 'Building, sorted ascending. Sort descending' }).click()
+  expect(new URL((await descending).url()).searchParams.get('sort')).toBe('location')
+  // Dates start with the newest.
+  const saved = page.waitForRequest((r) => r.url().includes('/api/ra/assessments?') && r.url().includes('sort=updated_at'))
+  await table.getByRole('button', { name: 'Sort by Last saved', exact: true }).click()
+  expect(new URL((await saved).url()).searchParams.get('dir')).toBe('desc')
+
+  // Monitoring and Approval send the sort of the tab shown.
+  await page.goto('/ra/monitoring?tab=register')
+  const list = page.getByRole('table').filter({ visible: true })
+  const register = page.waitForRequest((r) => r.url().includes('/api/ra/monitoring/register') && r.url().includes('sort=directorate'))
+  await list.getByRole('button', { name: 'Sort by Directorate', exact: true }).click()
+  expect(new URL((await register).url()).searchParams.get('dir')).toBe('asc')
+  await page.goto('/ra/approval')
+  const inbox = page.getByRole('table').first()
+  const waiting = page.waitForRequest((r) => r.url().includes('/api/ra/approvals/inbox') && r.url().includes('sort=working_days_waiting'))
+  await inbox.getByRole('button', { name: 'Sort by Assess days', exact: true }).click()
+  expect(new URL((await waiting).url()).searchParams.get('dir')).toBe('desc')
 })

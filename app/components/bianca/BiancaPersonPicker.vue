@@ -74,7 +74,7 @@ function onChange(id: number | null | undefined) {
 </script>
 
 <template>
-  <div class="flex gap-2">
+  <div class="flex min-w-0 gap-2">
     <USelectMenu
       v-model:search-term="search"
       :model-value="value"
@@ -88,7 +88,7 @@ function onChange(id: number | null | undefined) {
       placeholder="Find by name, email or NIP"
       :disabled="disabled"
       :aria-label="ariaLabel"
-      class="w-full"
+      class="w-full min-w-0"
       @update:model-value="onChange"
     >
       <template #empty>

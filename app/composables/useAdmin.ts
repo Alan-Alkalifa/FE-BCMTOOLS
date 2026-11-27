@@ -597,10 +597,10 @@ export function raActivity(event: string) {
 }
 
 const RA_FIELD_NAMES: Record<string, string> = {
-  lic_user_id: 'LIC',
-  licom_user_id: 'LICOM',
-  lic_phone: 'LIC phone',
-  licom_phone: 'LICOM phone',
+  lic_user_id: 'assessor',
+  licom_user_id: 'incident lead',
+  lic_phone: 'assessor phone',
+  licom_phone: 'incident lead phone',
   zip_code: 'postal code',
   is_active: 'active',
 }

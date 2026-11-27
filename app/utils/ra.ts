@@ -80,6 +80,15 @@ export function raTodayIso() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
 }
 
+export function raRenewalPeriod(months: number) {
+  if (months % 12 === 0) {
+    const years = months / 12
+    if (years === 1) return 'one year'
+    return `${years} years`
+  }
+  return `${months} month${months === 1 ? '' : 's'}`
+}
+
 /** A status column: the badges centred under a centred header (as SCCA's lists). */
 export const RA_STATUS_COLUMN = { class: { th: 'text-center', td: 'text-center' } }
 
@@ -198,8 +207,8 @@ export interface RaModule {
   /** The LCP profile tabs: occupants, recovery team, call tree. */
   hasLcp: boolean
   hasRegion: boolean
-  lic: { label: string, hint: string }
-  licom: { label: string, hint: string }
+  lic: { label: string, short: string, hint: string }
+  licom: { label: string, short: string, hint: string }
   signoffRoles: readonly RaSignoffRoleOption[]
   /** RA (head office) and RA Branch are granted separately: ra.* and ra_branch.*. */
   perm: { access: string, edit: string, manage: string }
@@ -222,8 +231,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: false,
     hasLcp: true,
     hasRegion: false,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'The assessor: whoever makes the RA.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: '' },
+    lic: { label: 'Location incident coordinator (LIC)', short: 'LIC', hint: 'The assessor: whoever makes the RA.' },
+    licom: { label: 'Location incident commander (LICOM) / alternate', short: 'LICOM', hint: '' },
     signoffRoles: RA_SIGNOFF_ROLES,
     perm: { access: 'ra.access', edit: 'ra.edit', manage: 'ra.manage' },
   },
@@ -237,8 +246,8 @@ export const RA_MODULES: Record<RaKind, RaModule> = {
     singleRisk: true,
     hasLcp: true,
     hasRegion: true,
-    lic: { label: 'Location incident coordinator (LIC)', hint: 'The assessor (the BOSM), with a WhatsApp number.' },
-    licom: { label: 'Location incident commander (LICOM) / alternate', hint: 'The NRSOH, with a WhatsApp number.' },
+    lic: { label: 'BOSM', short: 'BOSM', hint: 'The assessor, with a WhatsApp number.' },
+    licom: { label: 'NRSOH', short: 'NRSOH', hint: 'With a WhatsApp number.' },
     signoffRoles: RA_BRANCH_SIGNOFF_ROLES,
     perm: { access: 'ra_branch.access', edit: 'ra_branch.edit', manage: 'ra_branch.manage' },
   },
@@ -392,6 +401,14 @@ export function raStepTitle(role: string | null | undefined, roles: readonly RaS
   return roles.find((item) => item.value === role)?.label ?? role
 }
 
+/** A step's short name ("LIC"), as the tables show the step (like SCCA); the step's title when
+ *  it has none. */
+export function raStepShort(role: string | null | undefined, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
+  if (!role) return ''
+  const found = roles.find((item) => item.value === role)
+  return found?.hint || found?.label || role
+}
+
 /** The sign-off steps of a configuration version (as RA configuration sets them), or the
  *  module's defaults. With `codes` (an assessment's `signoff_step_codes`), only the steps that
  *  sign that RA: the building approver only while its building waits for approval. `null`
@@ -466,6 +483,17 @@ export const RA_CALL_TREE_FIELDS = [
   { key: 'home_phone', label: 'Home phone' },
 ]
 export const RA_CALL_TREE_GROUPS = RA_CALL_TREE_LEVELS.map((level) => ({ ...level, label: `${level.label} call tree` }))
+export function raCallTreeGroups(kind: RaKind) {
+  const { lic, licom } = RA_MODULES[kind]
+  return RA_CALL_TREE_GROUPS.map((group) => ({
+    ...group,
+    description: group.description.replaceAll('LICOM', licom.short).replaceAll('LIC', lic.short),
+  }))
+}
+
+export function raCallTreeLead(kind: RaKind) {
+  return { ...RA_CALL_TREE_LEAD, placeholder: `Who calls, e.g. ${RA_MODULES[kind].lic.short} – Legiran` }
+}
 
 /**
  * The team charts beside the recovery team and call tree: the HO workbook's pictures until BCM
@@ -732,17 +760,17 @@ export const RA_REASONS: { value: RaReason, label: string, description: string }
   { value: 'annual_review', label: 'Annual review', description: 'Renews the last final RA.' },
   { value: 'structural_change', label: 'Structural change', description: 'The building changed, e.g. a renovation or new occupants.' },
 ]
-/** Like SCCA's System change: the renewal date is picked (at most a year after the assessment);
- *  every other reason renews a year after it. */
+/** Like SCCA's System change: the renewal date is picked (at most one configured period after the
+ *  assessment); every other reason renews after that period. */
 export const RA_CUSTOM_DUE_REASON: RaReason = 'structural_change'
 
 /** The help under Reason for assessment, which changes with the reason picked (as in SCCA). */
-export function raReasonHelp(value: string | null | undefined) {
+export function raReasonHelp(value: string | null | undefined, renewalMonths = 12) {
   const reason = RA_REASONS.find((item) => item.value === value)
   if (!reason) return 'Pick the reason first: the other fields open once it is chosen, and it decides the renewal due date.'
   const renewal = reason.value === RA_CUSTOM_DUE_REASON
-    ? 'Pick the renewal due date below: it can be sooner than one year.'
-    : 'Renewal is due one year after the assessment date.'
+    ? `Pick the renewal due date below: it can be sooner than ${raRenewalPeriod(renewalMonths)}.`
+    : `Renewal is due ${raRenewalPeriod(renewalMonths)} after the assessment date.`
   return `${reason.description} ${renewal}`
 }
 
@@ -777,16 +805,23 @@ const RA_SECTION_LABELS: Record<string, string> = {
   call_tree: 'Call tree',
 }
 
-function raFieldLabel(name: string) {
+function raFieldLabel(name: string, roles: { lic: string, licom: string }) {
   const [section = '', ...rest] = name.split('.')
   const label = RA_SECTION_LABELS[section]
-  if (!label || !rest.length) return RA_FIELD_LABELS[name] ?? name.replaceAll('_', ' ')
+  const fields: Record<string, string> = {
+    ...RA_FIELD_LABELS,
+    lic_user_id: roles.lic,
+    lic_phone: `${roles.lic} mobile number`,
+    licom_user_id: roles.licom,
+    licom_phone: `${roles.licom} mobile number`,
+  }
+  if (!label || !rest.length) return fields[name] ?? name.replaceAll('_', ' ')
   const row = rest.length > 1 ? `, row ${Number(rest[0]) + 1}` : ''
   return `${label}${row}, ${rest.at(-1)!.replaceAll('_', ' ')}`
 }
 
-export function raErrorText(error: unknown) {
-  const lines = apiFieldErrors(error).map((item) => `• ${raFieldLabel(item.name ?? '')}: ${item.message}`)
+export function raErrorText(error: unknown, roles = { lic: 'LIC', licom: 'LICOM' }) {
+  const lines = apiFieldErrors(error).map((item) => `• ${raFieldLabel(item.name ?? '', roles)}: ${item.message}`)
   return [apiErrorMessage(error), ...lines].join('\n')
 }
 

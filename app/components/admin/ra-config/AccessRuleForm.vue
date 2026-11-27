@@ -37,6 +37,12 @@ const reasonItems = computed(() => props.options.reasons.map((item) => ({ label:
 const statusItems = computed(() => props.options.renewal_statuses.map((item) => ({ label: item.label, value: item.code })))
 const riskItems = computed(() => props.options.risk_levels.map((item) => ({ label: item.label, value: item.code })))
 const annualSelected = computed(() => form.reasons.includes('annual_review'))
+const contributorRole = computed(() => {
+  if (form.kinds.length === 1 && (form.kinds[0] === 'branch' || form.kinds[0] === 'head_office')) {
+    return RA_MODULES[form.kinds[0]].licom.short
+  }
+  return 'LICOM / NRSOH'
+})
 
 function dateModel(key: 'valid_from' | 'valid_until') {
   return computed<CalendarDate | undefined>({
@@ -268,9 +274,9 @@ async function save() {
               />
             </UFormField>
             <UFormField
-              label="LICOM levels"
+              :label="`${contributorRole} levels`"
               name="contributor_levels"
-              help="Who may be the LICOM of an annual review they generate (any directorate)."
+              :help="`Who may be the ${contributorRole} of an annual review they generate (any directorate).`"
               :error="errors.contributor_levels"
             >
               <USelectMenu
@@ -278,7 +284,7 @@ async function save() {
                 :items="levelItems"
                 multiple
                 class="w-full"
-                aria-label="LICOM levels"
+                :aria-label="`${contributorRole} levels`"
               />
             </UFormField>
           </div>
