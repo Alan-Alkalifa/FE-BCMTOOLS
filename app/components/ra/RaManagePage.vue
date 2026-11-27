@@ -104,7 +104,11 @@ const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
   { accessorKey: 'next_step', header: sortable('Next step', 'next_step'), meta: width('min-w-36') },
   { accessorKey: 'updated_at', header: sortable('Last saved', 'updated_at'), meta: width('min-w-32') },
 ])
-const ROLE_LABEL: Record<RaMyRole, string> = { assessor: 'Assessor', licom: 'LICOM', directorate: 'Directorate (view)' }
+const roleLabel = computed<Record<RaMyRole, string>>(() => ({
+  assessor: 'Assessor',
+  licom: ra.value.licom.short,
+  directorate: 'Directorate (view)',
+}))
 
 const locationItems = computed(() => [
   { label: `All ${ra.value.location.lowerPlural}`, value: 'all' as const },
@@ -285,12 +289,12 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
             variant="outline"
             size="sm"
             icon="i-lucide-eye"
-            :label="ROLE_LABEL.directorate"
+            :label="roleLabel.directorate"
           />
           <span
             v-else
             class="whitespace-nowrap"
-          >{{ row.original.my_role ? ROLE_LABEL[row.original.my_role] : '—' }}</span>
+          >{{ row.original.my_role ? roleLabel[row.original.my_role] : '—' }}</span>
         </template>
         <template #created_by-cell="{ row }">
           {{ row.original.created_by || '—' }}

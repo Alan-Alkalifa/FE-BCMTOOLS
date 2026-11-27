@@ -479,6 +479,13 @@ test('each hazard reviews past disasters over its own years, saved with its rati
   await expect(page.getByTestId('past-disasters')).toContainText('BNPB recorded none in Kota Adm. Jakarta Selatan from 2017 to 2026.', { timeout: 60_000 })
 })
 
+test('BNPB historical rating fills an empty Historical of occurrence field', async ({ page }) => {
+  await mockRa(page, { emptyHistorical: 'H01' })
+  await page.goto('/ra/manage/1?tab=hazards&hazard=H01')
+  const historical = page.getByRole('combobox', { name: '1 - Historical of occurrence' })
+  await expect(historical).toContainText('4', { timeout: 60_000 })
+})
+
 test('WHO\'s outbreak news and OpenAQ\'s air quality show on their hazards over the review years', async ({ page }) => {
   await mockRa(page)
   await page.goto('/ra/manage/1?tab=hazards&hazard=H11')
@@ -1169,6 +1176,8 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await page.goto('/ra/manage/1')
   const date = page.getByRole('button', { name: 'Assessment date' })
   await expect(date).toContainText('10 Mar 2025', { timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Building Data' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Building Details' })).toHaveCount(0)
   // As SCCA's: who made the RA, read-only, under the assessment date.
   const assessor = page.getByLabel('Assessor', { exact: true })
   await expect(assessor).toHaveValue('Test User')
@@ -1180,14 +1189,31 @@ test('the assessment date is picked from a calendar; the renewal follows it', as
   await date.click()
   await page.getByRole('gridcell', { name: /17/ }).first().click()
   await expect(date).toContainText('17 Mar 2025')
-  // As SCCA: every reason but a structural change renews a year after the assessment.
-  await expect(page.getByText('Renewal due 17 Mar 2026, one year after this assessment.')).toBeVisible()
+  // Standard renewal is automatic; keep its hint and the date column's layout without a field.
+  const renewal = page.getByRole('button', { name: /Renewal due date/ })
+  await expect(renewal).toHaveCount(0)
+  await expect(page.getByText('Renewal is due one year after the assessment date.')).toBeVisible()
   await expect(page.getByText('RA period 2025, the year of this date.')).toBeVisible()
   const request = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/ra/assessments/1'))
   await page.getByRole('button', { name: 'Save assessment' }).click()
   const body = (await request).postDataJSON()
   expect(body).toMatchObject({ assessment_date: '2025-03-17', period_year: 2025, reason: 'new_building' })
   expect(body).not.toHaveProperty('due_date')
+})
+
+test('New assessment uses the configured renewal period and building data heading', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-03-10T05:00:00Z'))
+  await mockRa(page, { renewalMonths: 18 })
+  await page.goto('/ra/manage/new')
+  await page.getByLabel('Reason for assessment').click({ timeout: 60_000 })
+  await page.getByRole('option', { name: /New building/ }).click()
+
+  await expect(page.getByRole('heading', { name: 'Assessment details' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Building Data' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'New Head office building' })).toHaveCount(0)
+  await expect(page.getByText('Renewal is due 18 months after the assessment date.')).toBeVisible()
+  const renewal = page.getByRole('button', { name: /Renewal due date/ })
+  await expect(renewal).toHaveCount(0)
 })
 
 test('a new building can be back-dated this year, not to an earlier year, as SCCA\'s new application', async ({ page }) => {

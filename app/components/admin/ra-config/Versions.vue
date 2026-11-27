@@ -17,7 +17,7 @@ const columns: TableColumn<RaConfigVersionMeta>[] = [
 
 const part = useRaConfigPart(
   computed(() => props.version),
-  (value) => ({ name: value.name, notes: value.notes ?? '' }),
+  (value) => ({ name: value.name, notes: value.notes ?? '', renewal_months: value.renewal_months }),
   (ref, value) => raConfigApi.update(ref, { ...value, notes: value.notes.trim() || null }),
   (saved) => emit('saved', saved),
   'Version saved',
@@ -122,6 +122,19 @@ const { draft, error, busy, dirty, submit } = part
           >
             <UInput
               v-model="draft.name"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="Renewal period"
+            name="renewal_months"
+            hint="months"
+            :help="`An RA is renewed ${raRenewalPeriod(draft.renewal_months || 12)} after its assessment date. A structural change can pick a sooner date.`"
+          >
+            <UInputNumber
+              v-model="draft.renewal_months"
+              :min="1"
+              :max="120"
               class="w-full"
             />
           </UFormField>

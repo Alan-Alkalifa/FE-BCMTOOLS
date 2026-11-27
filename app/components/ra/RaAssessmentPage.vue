@@ -412,6 +412,7 @@ async function moveVersion() {
           <RaHeaderForm
             :key="`details-${formKey}`"
             :assessment="view!"
+            :formula="formula!"
             @saved="onSaved"
           />
         </template>

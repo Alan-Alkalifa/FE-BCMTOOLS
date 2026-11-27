@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError } from '@nuxt/ui'
 import { z } from 'zod'
-import type { RaLocationDetail, RaNetworkHead, RaOrgValues } from '~/composables/useRa'
+import type { RaLocationDetail, RaOrgValues } from '~/composables/useRa'
 
 /**
  * Building Data Entry: a head office building or a branch. The type is picked in the form
@@ -98,7 +98,7 @@ const schema = computed(() => z.object({
   const region = regionList.value.find((item) => item.region === value.region)
   if (!region) {
     context.addIssue({ code: 'custom', path: ['region'], message: 'Choose the region.' })
-  } else if (region.areas.length && !region.areas.some((item) => item.area === value.area)) {
+  } else if (region.areas.length && !region.areas.some((item) => raNetworkAreaName(item) === value.area)) {
     context.addIssue({ code: 'custom', path: ['area'], message: 'Choose the area.' })
   }
 }))
@@ -193,35 +193,24 @@ const regionItems = computed(() => {
   const items = regionList.value.map((item) => ({
     label: item.region,
     value: item.region,
-    description: [item.head, item.city && titleCase(item.city)].filter(Boolean).join(' · ') || undefined,
   }))
   // A branch saved before the directory keeps its region until it is changed.
   if (state.region && !items.some((item) => item.value === state.region)) {
-    items.unshift({ label: state.region, value: state.region, description: 'Not in the region list' })
+    items.unshift({ label: state.region, value: state.region })
   }
   return items
 })
 const pickedRegion = computed(() => regionList.value.find((item) => item.region === state.region) ?? null)
-const areaItems = computed(() => (pickedRegion.value?.areas ?? []).map((item) => ({
-  label: item.area,
-  value: item.area,
-  description: [item.head, item.city && titleCase(item.city)].filter(Boolean).join(' · ') || undefined,
-})))
-const pickedArea = computed(() => pickedRegion.value?.areas.find((item) => item.area === state.area) ?? null)
+const areaItems = computed(() => (pickedRegion.value?.areas ?? []).flatMap((item) => {
+  const name = raNetworkAreaName(item)
+  return name
+    ? [{ label: name, value: name, description: raNetworkAreaDescription(item) }]
+    : []
+}))
 /** A new region keeps the area only if it is one of its own. */
 watch(() => state.region, () => {
   if (fromDirectory.value && !areaItems.value.some((item) => item.value === state.area)) state.area = ''
 })
-
-/** "KC - Bandung - Asia Afrika - BAA, Bandung": where a head works. */
-function headLine(unit: RaNetworkHead | null) {
-  if (!unit) return null
-  const where = [unit.office, unit.city && titleCase(unit.city)].filter(Boolean).join(', ')
-  return [unit.head ?? 'No head listed', where && `(${where})`].filter(Boolean).join(' ')
-}
-function titleCase(text: string) {
-  return text.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())
-}
 
 function reset(location?: RaLocationDetail) {
   Object.assign(state, fromLocation(location))
@@ -312,7 +301,7 @@ async function onSubmit() {
         <UCard class="@3xl:col-span-2">
           <template #header>
             <h2 class="text-lg font-semibold">
-              {{ ra.location.single }}
+              Building Data
             </h2>
           </template>
           <div class="space-y-4">
@@ -364,7 +353,7 @@ async function onSubmit() {
             <template v-if="isBranch && fromDirectory">
               <div class="space-y-4">
                 <UFormField
-                  label="Region"
+                  label="Region (Sub-directorate)"
                   name="region"
                   required
                   help="The Sub Directorate of Network & Digital Banking."
@@ -379,7 +368,7 @@ async function onSubmit() {
                   />
                 </UFormField>
                 <UFormField
-                  label="Area"
+                  label="Area (Group)"
                   name="area"
                   :required="areaItems.length > 0"
                   :help="state.region ? (areaItems.length ? 'The Group within the region.' : 'This region has no areas.') : 'Choose the region first.'"
@@ -394,26 +383,6 @@ async function onSubmit() {
                     aria-label="Area"
                   />
                 </UFormField>
-                <dl
-                  v-if="pickedRegion"
-                  class="grid gap-x-4 gap-y-1 rounded-md bg-elevated/50 p-3 text-sm sm:grid-cols-[auto_1fr]"
-                  data-testid="branch-organisation"
-                >
-                  <dt class="text-muted">
-                    Directorate
-                  </dt>
-                  <dd>{{ pickedRegion.directorate }}</dd>
-                  <dt class="text-muted">
-                    Region head
-                  </dt>
-                  <dd>{{ headLine(pickedRegion) ?? '—' }}</dd>
-                  <template v-if="pickedArea">
-                    <dt class="text-muted">
-                      Area head
-                    </dt>
-                    <dd>{{ headLine(pickedArea) }}</dd>
-                  </template>
-                </dl>
               </div>
             </template>
             <UFormField

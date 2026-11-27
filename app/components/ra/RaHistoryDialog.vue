@@ -6,6 +6,7 @@ import type { RaLocationHistoryRow, RaMonitorLocation } from '~/composables/useR
  * latest final RA is Current; the final RAs before it are Replaced. */
 const props = defineProps<{ row: RaMonitorLocation, kind: RaKind }>()
 const emit = defineEmits<{ close: [] }>()
+const ra = RA_MODULES[props.kind]
 
 const page = ref(1)
 const perPage = ref(ROWS_PER_PAGE)
@@ -25,7 +26,7 @@ const columns: TableColumn<RaLocationHistoryRow>[] = [
   { accessorKey: 'approved_at', header: 'Final date' },
   { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
   { accessorKey: 'assessor', header: 'Assessor' },
-  { accessorKey: 'licom', header: 'LICOM' },
+  { accessorKey: 'licom', header: ra.licom.short },
 ]
 </script>
 

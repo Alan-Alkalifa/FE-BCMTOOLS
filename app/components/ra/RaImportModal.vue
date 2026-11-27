@@ -11,7 +11,7 @@ import type { RaImportOptions, RaImportPreview, RaImportResult, RaLocation, RaNe
  *    - New building: the building's details, filled in from the workbook where it has them,
  *    - Annual review or Structural change: the registered building it renews (only those the
  *      reason and the access scope fit), and whether its profile is updated from the file,
- *    and the assessment date, the renewal date (Structural change), the LIC (the importer) and
+ *    and the assessment date, the renewal due date (Structural change), the LIC (the importer) and
  *    the LICOM.
  * 2. The empty template to fill in.
  * 3. The filled workbook. The preview shows what it holds, what to fix and what to check,
@@ -40,11 +40,15 @@ watch(open, async (isOpen) => {
 const MAX_BYTES = 10 * 1024 * 1024
 const chosenKind = computed<RaKind>(() => props.kind)
 const ra = computed(() => RA_MODULES[chosenKind.value])
+const { data: formula } = useRaFormula(() => chosenKind.value)
+const renewalMonths = computed(() => formula.value?.renewal_months ?? 12)
+const renewalPeriod = computed(() => raRenewalPeriod(renewalMonths.value))
 
 // --- the form ---------------------------------------------------------------------------------
 
 const newBuilding = computed(() => state.reason === 'new_building')
 const renews = computed(() => state.reason === 'annual_review' || state.reason === 'structural_change')
+const standardRenewal = computed(() => state.reason === 'new_building' || state.reason === 'annual_review')
 
 const schema = computed(() => z.object({
   reason: z.enum(['annual_review', 'new_building', 'structural_change'], 'Choose the reason for assessment.'),
@@ -77,23 +81,23 @@ const schema = computed(() => z.object({
     if (chosenKind.value === 'branch' && fromDirectory.value) {
       const region = regionList.value.find((item) => item.region === value.region)
       if (!region) need('region', 'Choose the region.')
-      else if (region.areas.length && !region.areas.some((item) => item.area === value.area)) need('area', 'Choose the area.')
+      else if (region.areas.length && !region.areas.some((item) => raNetworkAreaName(item) === value.area)) need('area', 'Choose the area.')
     }
   }
   if (value.reason !== 'new_building' && !value.location_id) need('location_id', `Choose the ${ra.value.location.lower}.`)
   if (!value.assessment_date) need('assessment_date', 'Enter the assessment date.')
-  if (!value.licom_user_id) need('licom_user_id', 'Choose the LICOM.')
-  for (const [field, label] of [['lic_phone', 'LIC'], ['licom_phone', 'LICOM']] as const) {
+  if (!value.licom_user_id) need('licom_user_id', `Choose the ${ra.value.licom.short}.`)
+  for (const [field, label] of [['lic_phone', ra.value.lic.short], ['licom_phone', ra.value.licom.short]] as const) {
     const problem = value[field].trim() ? raPhoneProblem(value[field]) : `Enter the ${label} mobile number.`
     if (problem) need(field, problem)
   }
   const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
   if (backYear) need('assessment_date', backYear)
-  // A Structural change picks its renewal date, at most a year on.
+  // A Structural change picks its renewal date, at most one renewal period on.
   if (value.reason === RA_CUSTOM_DUE_REASON && value.assessment_date) {
-    if (!value.due_date) need('due_date', 'Enter the renewal date. It can be sooner than one year.')
+    if (!value.due_date) need('due_date', `Enter the renewal due date. It can be sooner than ${renewalPeriod.value}.`)
     else if (value.due_date < value.assessment_date) need('due_date', 'Cannot be before the assessment date.')
-    else if (value.due_date > parseDate(value.assessment_date).add({ years: 1 }).toString()) need('due_date', 'Cannot be later than one year after the assessment date.')
+    else if (value.due_date > parseDate(value.assessment_date).add({ months: renewalMonths.value }).toString()) need('due_date', `Cannot be later than ${renewalPeriod.value} after the assessment date.`)
   }
 }))
 
@@ -144,7 +148,10 @@ const dueDate = computed({
   },
 })
 const dueMin = computed(() => state.assessment_date ? parseDate(state.assessment_date) : undefined)
-const dueMax = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ years: 1 }) : undefined)
+const dueMax = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ months: renewalMonths.value }) : undefined)
+const standardDueDate = computed(() => state.assessment_date
+  ? parseDate(state.assessment_date).add({ months: renewalMonths.value })
+  : undefined)
 const yearStart = computed(() => parseDate(`${raTodayIso().slice(0, 4)}-01-01`))
 const period = computed(() => (state.assessment_date ? Number(state.assessment_date.slice(0, 4)) : null))
 
@@ -160,9 +167,12 @@ watch(() => open.value && chosenKind.value === 'branch' && state.reason === 'new
   }
 }, { immediate: true })
 const fromDirectory = computed(() => regionList.value.length > 0)
-const regionItems = computed(() => regionList.value.map((item) => ({ label: item.region, value: item.region, description: item.head ?? undefined })))
+const regionItems = computed(() => regionList.value.map((item) => ({ label: item.region, value: item.region })))
 const areaItems = computed(() => (regionList.value.find((item) => item.region === state.region)?.areas ?? [])
-  .map((item) => ({ label: item.area, value: item.area, description: item.head ?? undefined })))
+  .flatMap((item) => {
+    const name = raNetworkAreaName(item)
+    return name ? [{ label: name, value: name, description: raNetworkAreaDescription(item) }] : []
+  }))
 watch(() => state.region, () => {
   if (!areaItems.value.some((item) => item.value === state.area)) state.area = ''
 })
@@ -629,7 +639,7 @@ async function downloadTemplate() {
                   </UFormField>
                   <template v-if="fromDirectory">
                     <UFormField
-                      label="Region"
+                      label="Region (Sub-directorate)"
                       name="region"
                       required
                     >
@@ -643,7 +653,7 @@ async function downloadTemplate() {
                       />
                     </UFormField>
                     <UFormField
-                      label="Area"
+                      label="Area (Group)"
                       name="area"
                       :required="areaItems.length > 0"
                     >
@@ -751,15 +761,29 @@ async function downloadTemplate() {
               </UFormField>
               <UFormField
                 v-if="state.reason === RA_CUSTOM_DUE_REASON"
-                label="Renewal date"
+                label="Renewal due date"
                 name="due_date"
                 required
-                help="At most one year after the assessment date."
+                :help="`At most ${renewalPeriod} after the assessment date.`"
               >
                 <DatePicker
                   v-model="dueDate"
                   :min="dueMin"
                   :max="dueMax"
+                />
+              </UFormField>
+              <UFormField
+                v-else-if="standardRenewal && standardDueDate"
+                label="Renewal due date"
+                name="due_date"
+                :help="`Renewal is due ${renewalPeriod} after the assessment date.`"
+              >
+                <template #label>
+                  <span class="invisible">Renewal due date</span>
+                </template>
+                <div
+                  class="h-9"
+                  aria-hidden="true"
                 />
               </UFormField>
             </div>
@@ -774,7 +798,9 @@ async function downloadTemplate() {
                   v-model:phone="state.lic_phone"
                   member="lic"
                   :label="ra.lic.label"
-                  :hint="preview?.lic?.name && !preview.lic.is_me ? `The file names ${preview.lic.name}. You are the LIC.` : 'You, as the assessor.'"
+                  :short-label="ra.lic.short"
+                  :phone-label="`${ra.lic.short} mobile number`"
+                  :hint="preview?.lic?.name && !preview.lic.is_me ? `The file names ${preview.lic.name}. You are the ${ra.lic.short}.` : 'You, as the assessor.'"
                   fixed
                 />
               </fieldset>
@@ -788,6 +814,8 @@ async function downloadTemplate() {
                   v-model:phone="state.licom_phone"
                   member="licom"
                   :label="ra.licom.label"
+                  :short-label="ra.licom.short"
+                  :phone-label="`${ra.licom.short} mobile number`"
                   :hint="preview?.licom?.name ? (preview.licom.user ? `The file names ${preview.licom.name}. Check this user.` : `The file names ${preview.licom.name}. Pick the user.`) : undefined"
                 />
               </fieldset>

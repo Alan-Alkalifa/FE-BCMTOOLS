@@ -24,17 +24,27 @@ const part = useRaConfigPart<RaSignoffStep[]>(
 )
 const { draft, error, busy, dirty, submit, reset } = part
 const editable = computed(() => props.version.can.edit)
+const ra = computed(() => RA_MODULES[props.version.kind])
 
 const conditionItems = RA_STEP_CONDITIONS.map(({ value, label, description }) => ({ value, label, description }))
 function conditionHelp(value: RaStepCondition | undefined) {
   return RA_STEP_CONDITIONS.find((item) => item.value === (value ?? 'always'))!.description
 }
 
-const modeItems = (Object.keys(raSignerModes) as RaSignerMode[]).map((value) => ({
-  label: raSignerModes[value].label,
+const modeItems = computed(() => (Object.keys(raSignerModes) as RaSignerMode[]).map((value) => ({
+  label: value === 'lic'
+    ? `The ${ra.value.lic.short}`
+    : value === 'licom' ? `The ${ra.value.licom.short}` : raSignerModes[value].label,
   value,
-  description: raSignerModes[value].description,
-}))
+  description: value === 'lic'
+    ? `${ra.value.lic.label} picked on the Details tab.`
+    : value === 'licom' ? `${ra.value.licom.label} picked on the Details tab.` : raSignerModes[value].description,
+})))
+function signerModeHelp(mode: RaSignerMode) {
+  if (mode === 'lic') return `${ra.value.lic.label} picked on the Details tab.`
+  if (mode === 'licom') return `${ra.value.licom.label} picked on the Details tab.`
+  return raSignerModes[mode].description
+}
 /** The report boxes of this kind's workbook: 4 for RA, 3 for RA Branch. */
 const boxCount = computed(() => (props.version.kind === 'branch' ? 3 : 4))
 const boxItems = computed(() => [
@@ -303,7 +313,7 @@ async function pickSigner(code: string, userId: number | null | undefined) {
                 <UFormField
                   label="Signer"
                   :name="`steps.${index}.signer_mode`"
-                  :help="raSignerModes[step.signer_mode].description"
+                  :help="signerModeHelp(step.signer_mode)"
                 >
                   <USelect
                     v-model="step.signer_mode"

@@ -121,7 +121,7 @@ export const raConfigApi = {
   versions: () => $fetch<{ items: RaConfigVersionMeta[], can_start_draft: Record<RaKind, boolean> }>(VERSIONS),
   get: (version: RaVersionRef) => $fetch<RaConfigVersion>(at(version)),
   startDraft: (kind: RaKind) => $fetch<RaConfigVersion>(VERSIONS, { method: 'POST', body: { kind } }),
-  update: (version: RaVersionRef, body: { name: string, notes: string | null }) =>
+  update: (version: RaVersionRef, body: { name: string, notes: string | null, renewal_months: number }) =>
     $fetch<RaConfigVersion>(at(version), { method: 'PATCH', body }),
   discard: (version: RaVersionRef) => $fetch(at(version), { method: 'DELETE' }),
   setHazards: (version: RaVersionRef, body: RaHazardsInput) =>

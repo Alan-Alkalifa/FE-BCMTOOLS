@@ -327,7 +327,7 @@ const renewalColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { accessorKey: 'renewal_date', header: sortable('Renewal date', 'renewal_date'), meta: width(DATE) },
   { accessorKey: 'days_left', header: sortable('Due', 'days_left'), meta: width('min-w-36') },
   { id: 'assessor', header: sortable('Assessor', 'assessor'), meta: width(PERSON) },
-  { id: 'licom', header: sortable('LICOM', 'licom'), meta: width(PERSON) },
+  { id: 'licom', header: sortable(ra.value.licom.short, 'licom'), meta: width(PERSON) },
   { id: 'renewal', header: sortable('Renewal status', 'renewal'), meta: width('min-w-32', true) },
   { id: 'renewal_ref', header: sortable('Renewal RA ref. no.', 'renewal_ref'), meta: width(REF) },
   { id: 'renewal_step', header: sortable('Current renewal step', 'renewal_step'), meta: width(ORG) },
@@ -364,7 +364,7 @@ function announce(result: RaGenerateResult) {
     title: `Created ${created}, skipped ${skipped}`,
     description: why.length
       ? why.slice(0, 3).join(' · ') + (why.length > 3 ? ` · and ${why.length - 3} more` : '')
-      : `${plural(created, 'draft')} waiting in Manage, with you as the assessor and LIC.`,
+      : `${plural(created, 'draft')} waiting in Manage, with you as the assessor and ${ra.value.lic.short}.`,
     color: created ? 'success' : 'warning',
     icon: created ? 'i-lucide-circle-check' : 'i-lucide-circle-alert',
     actions: created
@@ -442,7 +442,7 @@ const registerColumns = computed<TableColumn<RaMonitorLocation>[]>(() => [
   { id: 'open', header: sortable('Status', 'open'), meta: width('min-w-32', true) },
   { id: 'open_step', header: sortable('Current approval step', 'open_step'), meta: width(ORG) },
   { id: 'assessor', header: sortable('Assessor', 'assessor'), meta: width(PERSON) },
-  { id: 'licom', header: sortable('LICOM', 'licom'), meta: width(PERSON) },
+  { id: 'licom', header: sortable(ra.value.licom.short, 'licom'), meta: width(PERSON) },
   { accessorKey: 'assessment_count', header: sortable('RAs', 'assessment_count', true), meta: width('min-w-24') },
 ])
 
