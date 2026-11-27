@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate } from '@internationalized/date'
 import { z } from 'zod'
-import type { RaAssessment, RaAssessmentSummary, RaUserRef } from '~/composables/useRa'
+import type { RaAssessment, RaAssessmentSummary, RaFormula, RaUserRef } from '~/composables/useRa'
 
-const props = defineProps<{ assessment: RaAssessment }>()
+const props = defineProps<{ assessment: RaAssessment, formula: RaFormula }>()
 const emit = defineEmits<{ saved: [assessment: RaAssessment] }>()
 
 const ra = useRaModule()
@@ -29,9 +29,9 @@ const schema = z.object({
   reason: z.string('Choose the reason for this assessment.').nullable(),
   // The LIC is the assessor (who made the RA): shown, never picked or sent.
   lic_user_id: z.number().nullable(),
-  lic_phone: phoneField('Enter the LIC mobile number.'),
-  licom_user_id: z.number('Choose the LICOM.'),
-  licom_phone: phoneField('Enter the LICOM mobile number.'),
+  lic_phone: phoneField(`Enter the ${ra.value.lic.short} mobile number.`),
+  licom_user_id: z.number(`Choose the ${ra.value.licom.short}.`),
+  licom_phone: phoneField(`Enter the ${ra.value.licom.short} mobile number.`),
 }).superRefine((value, context) => {
   // As SCCA's New application: a New building can be back-dated, not to an earlier year. Only
   // when the date or the reason changes, so a draft kept from an earlier year still saves.
@@ -39,14 +39,16 @@ const schema = z.object({
     const backYear = raNewBuildingDateProblem(value.reason, value.assessment_date)
     if (backYear) context.addIssue({ code: 'custom', path: ['assessment_date'], message: backYear })
   }
-  // Like SCCA's System change: a structural change picks its renewal date, at most a year on.
+  const months = props.formula.renewal_months || 12
+  const period = raRenewalPeriod(months)
+  // Like SCCA's System change: a structural change picks its renewal date, at most one renewal period on.
   if (value.reason !== RA_CUSTOM_DUE_REASON || !value.assessment_date) return
   if (!value.due_date) {
-    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Enter the renewal due date. It can be sooner than one year.' })
+    context.addIssue({ code: 'custom', path: ['due_date'], message: `Enter the renewal due date. It can be sooner than ${period}.` })
   } else if (value.due_date < value.assessment_date) {
     context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be before the assessment date.' })
-  } else if (value.due_date > parseDate(value.assessment_date).add({ years: 1 }).toString()) {
-    context.addIssue({ code: 'custom', path: ['due_date'], message: 'Cannot be later than one year after the assessment date.' })
+  } else if (value.due_date > parseDate(value.assessment_date).add({ months }).toString()) {
+    context.addIssue({ code: 'custom', path: ['due_date'], message: `Cannot be later than ${period} after the assessment date.` })
   }
 })
 type State = Omit<z.infer<typeof schema>, 'lic_user_id' | 'licom_user_id'> & {
@@ -129,9 +131,12 @@ const periodShown = computed(() => state.assessment_date !== (props.assessment.a
 /** As SCCA: every other field waits for the reason. */
 const noReason = computed(() => !state.reason)
 
-/** Structural change picks its renewal date; every other reason renews a year after the assessment. */
+/** Structural change picks its renewal date; every other reason follows the configured period. */
 const customDue = computed(() => state.reason === RA_CUSTOM_DUE_REASON)
-const standardDue = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ years: 1 }).toString() : null)
+const standardRenewal = computed(() => state.reason === 'new_building' || state.reason === 'annual_review')
+const renewalMonths = computed(() => props.formula.renewal_months || 12)
+const renewalPeriod = computed(() => raRenewalPeriod(renewalMonths.value))
+const standardDue = computed(() => state.assessment_date ? parseDate(state.assessment_date).add({ months: renewalMonths.value }).toString() : null)
 const dueDate = computed({
   get: () => state.due_date ? parseDate(state.due_date) : undefined,
   set: (value: CalendarDate | null | undefined) => {
@@ -172,7 +177,7 @@ async function onSubmit() {
     emit('saved', saved)
   } catch (error) {
     form.value?.setErrors(raHeaderErrors(apiFieldErrors(error)))
-    formError.value = raErrorText(error)
+    formError.value = raErrorText(error, { lic: ra.value.lic.short, licom: ra.value.licom.short })
   } finally {
     if (saving) saving.value = false
   }
@@ -203,7 +208,7 @@ async function onSubmit() {
         <UCard>
           <template #header>
             <h2 class="text-lg font-semibold">
-              Assessment
+              Assessment details
             </h2>
           </template>
           <!-- As SCCA: the reason first (the select half width, its help the full row); the
@@ -212,7 +217,7 @@ async function onSubmit() {
             label="Reason for assessment"
             name="reason"
             required
-            :help="raReasonHelp(state.reason)"
+            :help="raReasonHelp(state.reason, renewalMonths)"
           >
             <USelect
               v-model="reasonModel"
@@ -244,21 +249,29 @@ async function onSubmit() {
               label="Renewal due date"
               name="due_date"
               required
-              help="Standard renewal is one year after the assessment. A structural change can be sooner."
+              :help="`Standard renewal is ${renewalPeriod} after the assessment. A structural change can be sooner.`"
             >
               <DatePicker
                 v-model="dueDate"
                 :min="assessmentDate"
-                :max="assessmentDate?.add({ years: 1 })"
+                :max="assessmentDate?.add({ months: renewalMonths })"
                 :disabled="locked"
               />
             </UFormField>
-            <p
-              v-else-if="standardDue"
-              class="self-center text-sm text-muted sm:pt-6"
+            <UFormField
+              v-else-if="standardDue && standardRenewal"
+              label="Renewal due date"
+              name="due_date"
+              :help="`Renewal is due ${renewalPeriod} after the assessment date.`"
             >
-              Renewal due {{ formatDate(standardDue) }}, one year after this assessment.
-            </p>
+              <template #label>
+                <span class="invisible">Renewal due date</span>
+              </template>
+              <div
+                class="h-9"
+                aria-hidden="true"
+              />
+            </UFormField>
             <!-- As SCCA's Assessor: below the assessment date, read-only. -->
             <UFormField
               label="Assessor"
@@ -303,10 +316,11 @@ async function onSubmit() {
               v-model:phone="state[`${member}_phone`]"
               :member="member"
               :label="ra[member].label"
+              :short-label="ra[member].short"
               :hint="ra[member].hint"
               :legacy-name="assessment[`${member}_name`]"
               :name-label="ra[member].label"
-              :phone-label="`${member.toUpperCase()} mobile number`"
+              :phone-label="`${ra[member].short} mobile number`"
               :fixed="member === 'lic'"
               :disabled="locked"
             />

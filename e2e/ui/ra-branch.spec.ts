@@ -79,10 +79,20 @@ test('the branch sign-off has the three branch roles, in order', async ({ page }
   await page.getByRole('option', { name: /Dewi Lestari/ }).click()
   await page.getByRole('button', { name: 'Save signers' }).click()
   await expect(page.getByText('Signers saved').first()).toBeVisible()
-  // The BOSM (LIC) prepares and the NRSOH (LICOM) reviews: only the branch manager is sent.
+  // The BOSM prepares and the NRSOH reviews: only the branch manager is sent.
   const roles = (log.signoff[0]![1] as { signoffs: { role: string }[] }).signoffs.map((row) => row.role)
   expect(roles).toEqual(['approved_by'])
   await expect(page.getByRole('textbox', { name: 'Signer: Prepared by' })).toHaveValue('Legiran')
+})
+
+test('a branch assessment labels its location team BOSM and NRSOH', async ({ page }) => {
+  await mockRa(page)
+  await page.goto(`/ra-branch/manage/new?location_id=${BRANCH_ID}`)
+  await expect(page.getByRole('heading', { name: 'Location incident team' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('BOSM: BOSM')).toBeVisible()
+  await expect(page.getByLabel('NRSOH: NRSOH')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'BOSM mobile number' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'NRSOH mobile number' })).toBeVisible()
 })
 
 test('a branch has occupants, a recovery team and a call tree; without the region list its Sub Directorate and Group are picked', async ({ page }) => {
@@ -146,7 +156,7 @@ test('adding a branch needs every field and sends the branch kind', async ({ pag
   expect(log.created[0]).not.toHaveProperty('region')
 })
 
-test('a branch\'s region and area are picked from the region directory, with their heads', async ({ page }) => {
+test('a branch\'s region and area are picked from the region directory', async ({ page }) => {
   const log = await mockRa(page, { regions: true })
   await page.goto('/admin/buildings/new?type=branch')
   await page.getByRole('textbox', { name: /Branch name/ }).fill('KC Bandung Dago', { timeout: 60_000 })
@@ -158,21 +168,23 @@ test('a branch\'s region and area are picked from the region directory, with the
   expect(log.created).toHaveLength(0)
 
   await page.getByRole('button', { name: 'Region', exact: true }).click()
+  await expect(page.getByRole('option', { name: 'Network - Jakarta Region' })).not.toContainText('Tangerang Selatan')
   await page.getByRole('option', { name: /Network - Jabar & Jateng Region/ }).click()
-  const organisation = page.getByTestId('branch-organisation')
-  await expect(organisation).toContainText('Network & Digital Banking')
-  await expect(organisation).toContainText('Region Head Jabar (KC - Bandung - Asia Afrika - BAA, Bandung)')
+  await expect(page.getByTestId('branch-organisation')).toHaveCount(0)
   await page.getByRole('button', { name: 'Add branch' }).click()
   await expect(page.getByText('Choose the area.')).toBeVisible()
   await area.click()
   // Only the areas of the region picked.
   await expect(page.getByRole('option', { name: /Jakarta Region Area I/ })).toHaveCount(0)
   await page.getByRole('option', { name: /Jabar Area II/ }).click()
-  await expect(organisation).toContainText('Area Head Jabar II (KC - Bandung - Dago - DGO, Bandung)')
   // Another region drops an area that isn't its own.
   await page.getByRole('button', { name: 'Region', exact: true }).click()
   await page.getByRole('option', { name: /Network - Jakarta Region/ }).click()
   await expect(area).not.toContainText('Jabar')
+  await area.click()
+  const groupHead = page.getByRole('option', { name: /^Group Head/ })
+  await expect(groupHead).toContainText('Jakarta Selatan')
+  await groupHead.click()
   await area.click()
   await page.getByRole('option', { name: /Jakarta Region Area I/ }).click()
   await page.getByRole('button', { name: 'Add branch' }).click()

@@ -415,9 +415,9 @@ function openAssessment(_event: Event, row: { original: RaAssessmentSummary }) {
           >
             <RaGroupedRowsForm
               :key="`calltree-${formKey}`"
-              :groups="RA_CALL_TREE_GROUPS"
+              :groups="raCallTreeGroups(ra.kind)"
               group-key="level"
-              :lead="RA_CALL_TREE_LEAD"
+              :lead="raCallTreeLead(ra.kind)"
               :fields="RA_CALL_TREE_FIELDS"
               :initial="callTreeRows"
               item-label="contact"

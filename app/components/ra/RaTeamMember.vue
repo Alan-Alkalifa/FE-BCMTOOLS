@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   /** Field labels: "Name" under a legend, or "<label>" with "<short> mobile number". */
   nameLabel?: string
+  shortLabel?: string
   phoneLabel?: string
   /** No picker: the member is looked up (the LIC is the assessor). */
   fixed?: boolean
@@ -25,6 +26,7 @@ const props = withDefaults(defineProps<{
   legacyName: null,
   disabled: false,
   nameLabel: 'Name',
+  shortLabel: undefined,
   phoneLabel: 'Mobile number',
   fixed: false,
 })
@@ -33,7 +35,7 @@ const userId = defineModel<number | null>('userId', { required: true })
 const user = defineModel<RaUserRef | null>('user', { required: true })
 const phone = defineModel<string>('phone', { required: true })
 
-const short = computed(() => props.member.toUpperCase())
+const short = computed(() => props.shortLabel ?? props.member.toUpperCase())
 const help = computed(() =>
   !props.fixed && !userId.value && props.legacyName
     ? `Typed as “${props.legacyName}” before: pick them from the user directory.`

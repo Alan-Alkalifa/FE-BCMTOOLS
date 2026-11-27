@@ -95,7 +95,7 @@ function modeOf(role: string) {
 /** A step signed by the LIC or LICOM picked on the Details tab. */
 function teamMember(role: string) {
   const mode = modeOf(role)
-  return mode === 'lic' || mode === 'licom' ? mode.toUpperCase() : null
+  return mode === 'lic' || mode === 'licom' ? ra.value[mode].short : null
 }
 
 /** A step signed by the fixed signer BCM sets in RA configuration (put on it at Submit). */

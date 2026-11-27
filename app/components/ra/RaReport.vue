@@ -291,7 +291,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
           </div>
           <div>
             <dt class="text-muted">
-              LIC
+              {{ ra.lic.short }}
             </dt>
             <dd>
               {{ assessment.lic_user?.name ?? assessment.lic_name ?? '—' }}
@@ -303,7 +303,7 @@ const downloadItems = computed<DropdownMenuItem[][]>(() => [
           </div>
           <div>
             <dt class="text-muted">
-              LICOM
+              {{ ra.licom.short }}
             </dt>
             <dd>
               {{ assessment.licom_user?.name ?? assessment.licom_name ?? '—' }}

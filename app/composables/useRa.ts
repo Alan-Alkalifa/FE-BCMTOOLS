@@ -41,6 +41,7 @@ export interface RaFormula {
   code: string
   kind: RaKind
   name: string
+  renewal_months: number
   status?: 'draft' | 'active' | 'retired'
   /** The rating inputs of this kind, in questionnaire order. */
   inputs: RaRatingField[]
@@ -1976,12 +1977,20 @@ export interface RaNetworkHead {
   city: string | null
 }
 export interface RaNetworkArea extends RaNetworkHead {
-  area: string
+  area?: string | null
 }
 export interface RaNetworkRegion extends RaNetworkHead {
   region: string
   directorate: string
   areas: RaNetworkArea[]
+}
+
+export const RA_GROUP_HEAD_AREA = 'Group Head'
+export function raNetworkAreaName(area: RaNetworkArea) {
+  return area.area?.trim() || (area.head?.trim() ? RA_GROUP_HEAD_AREA : '')
+}
+export function raNetworkAreaDescription(area: RaNetworkArea) {
+  return area.city?.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase()) ?? ''
 }
 
 /** The region directory for a branch's Region and Area (the DataRegion sheet; LDAP in

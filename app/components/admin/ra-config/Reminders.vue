@@ -244,7 +244,7 @@ async function save() {
               label="Notify before the renewal date"
               name="renewal_notice_days"
               hint="days"
-              help="To the LIC, the LICOM and whoever created the RA, until a new assessment of the building is started."
+              help="To the assessor (LIC for buildings, BOSM for branches), the incident lead (LICOM for buildings, NRSOH for branches) and whoever created the RA, until a new assessment is started."
               :error="errors.renewal_notice_days"
             >
               <UInput

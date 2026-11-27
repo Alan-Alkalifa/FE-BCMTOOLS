@@ -5,7 +5,7 @@ import type { RaMigrationCounts, RaMigrationItem, RaMigrationRow, RaMigrationRun
  * Administration › RA migration: signed RA and RA Branch workbooks brought into BCM Tools in
  * one run, as SCCA migration.
  * 1. Choose the workbooks (HO and Cabang mixed) and the manifest, which says what a workbook
- *    doesn't (the building ID, a new building's address parts, the dates, the LICOM).
+ *    doesn't (the building ID, a new building's address parts, the dates, the incident lead).
  * 2. Review: each workbook is read (nothing is saved) and shows what it will become and why.
  * 3. Import: the ready ones are saved oldest first, one request each, then the run is finished.
  *    A run can be undone for 7 days.
@@ -287,7 +287,7 @@ const OUTCOMES = {
             1. Choose the workbooks
           </h2>
           <p class="mt-1 text-sm text-muted">
-            The HO and Cabang workbooks as they were signed (.xlsx, up to 10 MB each, {{ MAX_FILES }} a run). The manifest is one sheet that says what a workbook doesn't, such as the building ID, a new building's province, city and district, the day it was approved and the LICOM.
+            The HO and Cabang workbooks as they were signed (.xlsx, up to 10 MB each, {{ MAX_FILES }} a run). The manifest is one sheet that says what a workbook doesn't, such as the building ID, a new building's province, city and district, the day it was approved and the NRSOH (branches) or LICOM (HO).
           </p>
         </template>
         <div class="flex flex-wrap items-center gap-3">

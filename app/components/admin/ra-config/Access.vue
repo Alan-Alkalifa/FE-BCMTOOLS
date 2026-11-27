@@ -23,6 +23,12 @@ const reasonLabel = (code: string) => options.value?.reasons.find((item) => item
 const statusLabel = (code: string) => options.value?.renewal_statuses.find((item) => item.code === code)?.label ?? code
 const kindLabel = (code: string) => options.value?.kinds.find((item) => item.code === code)?.label ?? code
 const activeCount = computed(() => rules.value.filter((rule) => rule.is_active).length)
+function contributorRole(kinds: RaKind[]) {
+  if (kinds.length === 1 && (kinds[0] === 'branch' || kinds[0] === 'head_office')) {
+    return RA_MODULES[kinds[0]].licom.short
+  }
+  return 'LICOM / NRSOH'
+}
 
 const columns: TableColumn<RaAccessRule>[] = [
   { accessorKey: 'name', header: 'Rule' },
@@ -172,7 +178,7 @@ async function check(user: PickedUser | null) {
           {{ row.original.reasons.map(reasonLabel).join(', ') }}
         </template>
         <template #generate-cell="{ row }">
-          <span v-if="row.original.can_generate">Yes · LICOM {{ (row.original.contributor_levels ?? ['D-2']).join(' or ') }}</span>
+          <span v-if="row.original.can_generate">Yes · {{ contributorRole(row.original.kinds) }} {{ (row.original.contributor_levels ?? ['D-2']).join(' or ') }}</span>
           <span
             v-else
             class="text-muted"
@@ -268,10 +274,10 @@ async function check(user: PickedUser | null) {
           </div>
           <div>
             <dt class="text-xs text-muted">
-              LICOM
+              LICOM / NRSOH
             </dt>
             <dd>
-              {{ checked.can_be_contributor ? 'Can be the LICOM of a generated annual review' : 'Not of the LICOM levels' }}
+              {{ checked.can_be_contributor ? 'Can be the incident lead of a generated annual review' : 'Not of the incident lead levels' }}
             </dd>
           </div>
         </dl>

@@ -22,8 +22,9 @@ export function raMissing(
   if (empty(assessment.reason)) missing.details.push('Reason for assessment')
   if (empty(assessment.assessment_date)) missing.details.push('Assessment date')
   if (assessment.reason === RA_CUSTOM_DUE_REASON && empty(assessment.due_date)) missing.details.push('Renewal due date')
+  const ra = RA_MODULES[assessment.kind]
   for (const member of ['lic', 'licom'] as const) {
-    const label = member.toUpperCase()
+    const label = ra[member].short
     if (!assessment[`${member}_user`] && empty(assessment[`${member}_name`])) missing.details.push(label)
     if (empty(assessment[`${member}_phone`])) missing.details.push(`${label} mobile number`)
   }

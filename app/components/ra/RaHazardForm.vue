@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { RaAssessment, RaFormula, RaRatingInputs, RaRatingUpdate } from '~/composables/useRa'
+import type { RaRatingValue } from '~/utils/ra'
 
 /**
  * The Hazards tab. A table of every Type of hazard with its ratings (the computed ratings are
@@ -265,6 +266,11 @@ function markNotApplicable() {
   const hazard = active.value
   if (!hazard) return
   for (const key of inputs.value) hazard[key] = 'N/A'
+}
+
+function applyHistoricalSuggestion(value: RaRatingValue) {
+  const hazard = active.value
+  if (!locked.value && hazard && hazard.historical == null) hazard.historical = value
 }
 
 function payload(code: string): RaRatingUpdate {
@@ -578,6 +584,7 @@ async function save() {
             :code="activeHazard.code"
             :from-year="reviewYears.from"
             :to-year="reviewYears.to"
+            @suggested="applyHistoricalSuggestion"
           />
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
