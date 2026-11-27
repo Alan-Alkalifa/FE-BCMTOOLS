@@ -17,7 +17,7 @@ export const BIANCA_TEXTS = {
   sign_guide_group: ['Sign off guide: Section A · the Group', 'Directorate, Sub Directorate and Group come from the organisation in the system. Describe what the Group does.'],
   sign_guide_locations: ['Sign off guide: Work locations', 'The building and floor the Group works from, and where it works when that one can\'t be used. The address comes from the building master.'],
   sign_guide_recovery: ['Sign off guide: Recovery strategy', 'Write the Group\'s recovery strategy at a high level.'],
-  sign_guide_people: ['Sign off guide: BCM Coordinator and Alternate', 'Two different people, picked from the user directory: their NIK, phone and email are filled in and locked. Give an additional phone only when the one there is no longer active.'],
+  sign_guide_people: ['Sign off guide: BCM Coordinator and Alternate', 'One BCM Coordinator and, if the Group has them, one or more Alternates, all picked from the user directory: their NIK, phone and email are filled in and locked. Give an additional phone only when the one there is no longer active.'],
   sign_guide_footer: ['Sign off guide: footer', 'The BIA helps the Directorate / Sub Directorate / Group set the Maximum Tolerable Downtime (MTD) of its business functions, the recovery priorities and the resources recovery needs.'],
   sign_org_help: ['Sign off: help under Directorate / Group', 'From the organisation in the system. Picking a Group fills the main location.'],
   sign_recovery_help: ['Sign off: help under Group recovery strategy', 'Write the Group\'s high-level recovery strategy.'],

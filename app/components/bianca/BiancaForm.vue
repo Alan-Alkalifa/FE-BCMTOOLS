@@ -132,6 +132,8 @@ function onMainChoice() {
 type PersonKey = 'bcm_coordinator' | 'bcm_alternate'
 /** The picked users, as the directory has them (null: none, or typed before). */
 const persons = reactive<Record<PersonKey, BiancaPerson | null>>({ bcm_coordinator: null, bcm_alternate: null })
+/** The Alternate BCM Coordinators: optional, as many as the Group names, added with +. */
+const alternates = ref<BiancaAlternate[]>([])
 const functions = ref<BiancaFunction[]>([])
 const selected = ref(0)
 /** The part of the selected function shown, picked under that function in the list. */
@@ -277,6 +279,7 @@ const preview = ref<BiancaPreview | null>(null)
 
 function hydrate(source: BiancaAssessment | null) {
   Object.assign(header, blankHeader())
+  alternates.value = (source?.bcm_alternates ?? []).map((row) => ({ ...nullToUndefined({ ...row, user: undefined }), user: row.user ?? null }))
   if (source) {
     for (const name of Object.keys(blankHeader()) as (keyof BiancaHeader)[]) {
       (header as Record<string, unknown>)[name] = nullToUndefined(source[name])
@@ -413,11 +416,48 @@ function onPerson(key: PersonKey, person: BiancaPerson | null) {
 
 const PERSON_FIELDS = { nik: '_nik', phone: '_phone', email: '_email' } as const
 const PERSON_DETAILS = [['nik', 'NIK'], ['phone', 'Phone'], ['email', 'Email']] as const
-/** The other role (a person can't be both). */
-function otherRole(key: PersonKey): PersonKey {
-  return key === 'bcm_coordinator' ? 'bcm_alternate' : 'bcm_coordinator'
+/** What is wrong with an Alternate: not picked, the BCM Coordinator, or already in the list. */
+function alternateProblem(index: number) {
+  const row = alternates.value[index]
+  if (!row) return undefined
+  if (!row.user_id && !row.name?.trim()) return 'pick the person'
+  if (row.user_id && row.user_id === header.bcm_coordinator_id) return 'another person than the BCM Coordinator'
+  if (row.user_id && alternates.value.findIndex((other) => other.user_id === row.user_id) < index) return 'already in the list'
+  return undefined
 }
-const samePerson = computed(() => header.bcm_coordinator_id != null && header.bcm_coordinator_id === header.bcm_alternate_id)
+/** The error under an Alternate's name: not picked once Next was tried; a wrong pick at once. */
+function alternateError(index: number) {
+  const problem = alternateProblem(index)
+  if (problem === 'pick the person') return signTried.value ? 'Pick the person.' : undefined
+  if (problem === 'already in the list') return 'This person is already an Alternate.'
+  return problem ? 'Pick someone other than the BCM Coordinator.' : undefined
+}
+/** The Alternates sit in one row, one card at a time, moved with ‹ › (MoM 26 Nov). */
+const alternateRow = ref<HTMLElement | null>(null)
+const ALTERNATE_GAP = 12 // gap-3 between the cards
+function showAlternate(index: number) {
+  const row = alternateRow.value
+  if (!row) return
+  const target = Math.min(Math.max(index, 0), alternates.value.length - 1)
+  row.scrollTo({ left: target * (row.clientWidth + ALTERNATE_GAP), behavior: 'smooth' })
+}
+async function addAlternate() {
+  alternates.value.push({ user: null })
+  await nextTick()
+  showAlternate(alternates.value.length - 1)
+}
+function onAlternate(index: number, person: BiancaPerson | null) {
+  const row = alternates.value[index]
+  if (!row) return
+  Object.assign(row, {
+    user: person,
+    user_id: person?.id,
+    name: person?.name,
+    nik: person?.nik ?? undefined,
+    phone: person?.phone ?? undefined,
+    email: person?.email ?? undefined,
+  })
+}
 /** What the box under a detail says when it's empty. */
 function missingDetail(key: PersonKey, field: keyof typeof PERSON_FIELDS) {
   if (!header[`${key}_id`]) return 'Pick the person to fill it in.'
@@ -480,10 +520,13 @@ function blankRow(row: object) {
 
 function toInput(): BiancaInput {
   const legacyFields = new Set<string>(BIANCA_STAFF)
-  const raw = Object.fromEntries(Object.entries(toRaw(header)).filter(([name]) => !legacyFields.has(name)))
+  // The Alternates go as their list (bcm_alternates); the bcm_alternate_* columns follow it.
+  const raw = Object.fromEntries(Object.entries(toRaw(header))
+    .filter(([name]) => !legacyFields.has(name) && !name.startsWith('bcm_alternate')))
   // A function not named yet is still empty (its parts open once it has a name): not sent.
   const named = toRaw(functions.value).filter((fn) => fn.name?.trim())
   const body = clean({ ...raw, ...toRaw(org.value), config_version_id: lookups.value?.config_version_id, functions: named }) as BiancaInput
+  body.bcm_alternates = toRaw(alternates.value).map(({ user: _user, ...row }) => ({ ...row }))
   for (const fn of body.functions ?? []) {
     fn.it_dependencies = fn.it_dependencies.filter((row) => !blankRow(row))
     fn.dependencies = fn.dependencies.filter((row) => !blankRow(row))
@@ -502,7 +545,7 @@ function previewInput(): BiancaInput {
 
 let timer: ReturnType<typeof setTimeout> | undefined
 let previewSequence = 0
-watch([header, org, functions], () => {
+watch([header, org, functions, alternates], () => {
   dirty.value = true
   clearTimeout(timer)
   const sequence = ++previewSequence
@@ -535,6 +578,7 @@ interface Unsaved {
   functions: BiancaFunction[]
   mainPlace: BiancaPlace | null
   persons: Record<PersonKey, BiancaPerson | null>
+  alternates?: BiancaAlternate[]
 }
 const { user } = useAuth()
 function unsavedKey(id: number | 'new' | undefined = saved.value?.id ?? 'new') {
@@ -560,6 +604,7 @@ function keepUnsaved() {
     functions: toRaw(functions.value),
     mainPlace: toRaw(mainPlace.value),
     persons: toRaw(persons),
+    alternates: toRaw(alternates.value),
   }
   try {
     localStorage.setItem(key, JSON.stringify(copy))
@@ -593,7 +638,7 @@ const restoredAt = ref<string | null>(null)
  * opens (the Group, its location) must not overwrite what was kept before a refresh. */
 let unsavedChecked = false
 let keepTimer: ReturnType<typeof setTimeout> | undefined
-watch([header, org, functions], () => {
+watch([header, org, functions, alternates], () => {
   clearTimeout(keepTimer)
   keepTimer = setTimeout(keepUnsaved, 800)
 }, { deep: true })
@@ -619,6 +664,7 @@ function checkUnsaved() {
   mainPlace.value = copy.mainPlace
   persons.bcm_coordinator = copy.persons?.bcm_coordinator ?? null
   persons.bcm_alternate = copy.persons?.bcm_alternate ?? null
+  alternates.value = copy.alternates ?? alternates.value
   selected.value = 0
   restoredAt.value = copy.at
   keptAt.value = copy.at
@@ -784,9 +830,47 @@ function blankCount(code: string) {
   const value = header.personnel_counts[code] as number | string | null | undefined
   return value == null || value === '' || Number.isNaN(Number(value)) || Number(value) < 0
 }
-function noteMissing(grade: { code: string, requires_note: boolean }) {
-  return grade.requires_note && (Number(header.personnel_counts[grade.code]) || 0) > 0
-    && !header.personnel_notes[grade.code]?.trim()
+/**
+ * A grade that asks who they are (Others): rows of a label and a number, added with +. Kept as
+ * the workbook keeps them: the number is their total, the note "Contract staff (5); Outsourced (3)".
+ */
+interface OtherRow { label: string, count: number | null }
+function otherRows(code: string): OtherRow[] {
+  const note = header.personnel_notes[code]?.trim()
+  const total = Number(header.personnel_counts[code]) || 0
+  if (!note) return total ? [{ label: '', count: total }] : []
+  const rows = note.split(/;\s*/).map((part) => {
+    const match = part.match(/^(.*?)\s*\((\d*)\)$/)
+    return match ? { label: match[1]!.trim(), count: match[2] ? Number(match[2]) : null } : null
+  })
+  // A note typed before the rows (or in the workbook): one row, with the total.
+  return rows.every(Boolean) ? rows as OtherRow[] : [{ label: note, count: total || null }]
+}
+function setOtherRows(code: string, rows: OtherRow[]) {
+  header.personnel_notes[code] = rows
+    .map((row) => `${row.label.replace(/;/g, ',').trim()} (${row.count ?? ''})`.trim())
+    .join('; ')
+  header.personnel_counts[code] = rows.reduce((sum, row) => sum + (Number(row.count) || 0), 0)
+}
+/** A number typed in a row: whole, not negative; empty while nothing is typed. */
+function toCount(value: unknown) {
+  const number = Number(value)
+  return value == null || String(value) === '' || Number.isNaN(number) ? null : Math.max(0, Math.trunc(number))
+}
+function addOther(code: string) {
+  setOtherRows(code, [...otherRows(code), { label: '', count: null }])
+}
+function removeOther(code: string, index: number) {
+  setOtherRows(code, otherRows(code).filter((_, i) => i !== index))
+}
+function updateOther(code: string, index: number, change: Partial<OtherRow>) {
+  setOtherRows(code, otherRows(code).map((row, i) => (i === index ? { ...row, ...change } : row)))
+}
+/** A row added with + needs both its label and its number (1 or more). */
+function otherMissing(code: string, index: number, field: keyof OtherRow) {
+  const row = otherRows(code)[index]
+  if (!row) return false
+  return field === 'label' ? !row.label.trim() : !(Number(row.count) >= 1)
 }
 const orgStructureMissing = computed(() => !saved.value?.org_structure && !pendingOrgStructure.value)
 /** Business continuity in the Group's risk assessment: asked on the RA questionnaire (the
@@ -808,7 +892,12 @@ const raMissing = computed(() => {
   const found: string[] = []
   for (const grade of grades.value) {
     if (blankCount(grade.code)) found.push(`Number of personnel: ${grade.label}`)
-    else if (noteMissing(grade)) found.push(`${grade.label}: please specify`)
+    else if (grade.requires_note) {
+      otherRows(grade.code).forEach((_, i) => {
+        if (otherMissing(grade.code, i, 'label')) found.push(`${grade.label} ${i + 1}: who they are`)
+        if (otherMissing(grade.code, i, 'count')) found.push(`${grade.label} ${i + 1}: how many`)
+      })
+    }
   }
   if (!grades.value.some((grade) => blankCount(grade.code)) && totalStaff.value <= 0) {
     found.push('Number of personnel: the total is 0')
@@ -849,7 +938,12 @@ function signReview(): BiancaReviewSection {
       { label: 'Alternate location', value: locationText('alt') },
       { label: 'Group recovery strategy', value: header.recovery_strategy },
       { label: 'BCM Coordinator', value: personText('bcm_coordinator') },
-      { label: 'Alternate BCM Coordinator', value: personText('bcm_alternate') },
+      ...(alternates.value.length
+        ? alternates.value.map((row, i) => ({
+            label: alternates.value.length > 1 ? `Alternate BCM Coordinator ${i + 1}` : 'Alternate BCM Coordinator',
+            value: [row.name, row.nik && `NIK ${row.nik}`, row.phone_2 || row.phone, row.email].filter(Boolean).join(' · '),
+          }))
+        : [{ label: 'Alternate BCM Coordinator', value: 'None' }]),
     ],
   }
 }
@@ -901,7 +995,14 @@ const signMissing = computed(() => {
       need(`${person.key}_phone_2`, `${person.title}: additional phone (the directory has no phone)`, header[`${person.key}_phone_2`])
     }
   }
-  if (samePerson.value) found.push({ key: 'bcm_alternate_id', label: 'Alternate BCM Coordinator: another person' })
+  alternates.value.forEach((row, i) => {
+    const title = `Alternate BCM Coordinator ${i + 1}`
+    const problem = alternateProblem(i)
+    if (problem) found.push({ key: `alternate_${i}`, label: `${title}: ${problem}` })
+    else if (row.user_id && !row.phone && !row.phone_2?.trim()) {
+      found.push({ key: `alternate_${i}_phone_2`, label: `${title}: additional phone (the directory has no phone)` })
+    }
+  })
   return found
 })
 const signMissingKeys = computed(() => new Set(signMissing.value.map((item) => item.key)))
@@ -944,6 +1045,9 @@ async function goTab(value: string | number) {
       if (current === 'sign') sections.push(signReview())
       if (to > TAB_ORDER.indexOf('ra')) sections.push(raReview())
       const saveToo = to >= TAB_ORDER.indexOf('functions') && (dirty.value || !saved.value)
+      // Let the key or click that asked finish first: Enter on a tab would otherwise press the
+      // dialog's first button as it opens.
+      await new Promise((resolve) => setTimeout(resolve))
       const ok = (await reviewDialog.open({
         title: 'Is this correct?',
         description: saveToo
@@ -1061,7 +1165,7 @@ const currentFunction = computed({
   },
 })
 const functionItems = computed(() => functions.value.map((fn, index) => ({ label: fn.name || `Function ${index + 1}`, value: index })))
-const long = TEXT_LIMITS.long
+const long = TEXT_LIMITS.bia
 
 /** The notes under the workbook's tables: one per Part, for every function together. */
 type NoteKey = 'loss_formula' | 'justification_regulatory' | 'justification_customer' | 'justification_rto' | 'justification_dependency'
@@ -1095,9 +1199,9 @@ const functionCount = computed(() => {
   if (total <= 1) return `${total} function`
   return `${Math.min(selected.value + 1, total)} of ${total} functions`
 })
+// The BCM Coordinator: one, required. The Alternates are a list of their own (alternates).
 const people = [
   { key: 'bcm_coordinator', title: 'BCM Coordinator' },
-  { key: 'bcm_alternate', title: 'Alternate BCM Coordinator' },
 ] as const
 </script>
 
@@ -1291,45 +1395,96 @@ const people = [
       description="Only a draft you created can be edited."
     />
 
-    <UCard v-if="saved && editable && (problems.length || warnings.length)">
-      <details :open="problems.length > 0 && problems.length <= 8">
-        <summary class="cursor-pointer text-sm font-medium">
-          <span v-if="problems.length">Still to fill before you can submit: {{ problems.length }}</span>
-          <span v-else>Ready to submit</span>
-          <span
-            v-if="warnings.length"
-            class="ms-2 text-warning"
-          >· {{ warnings.length }} to check</span>
-        </summary>
-        <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto text-sm">
-          <li
-            v-for="message in problems"
-            :key="message"
-            class="flex gap-2"
-          >
+    <!-- What blocks the submit, and apart from it what is only worth a look (it doesn't block) -->
+    <div
+      v-if="saved && editable && (dirty || problems.length || warnings.length)"
+      class="grid items-start gap-3"
+      :class="warnings.length ? 'lg:grid-cols-2' : ''"
+    >
+      <!-- The server checks the saved draft: with edits not saved yet, the list would be old -->
+      <UAlert
+        v-if="dirty"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-save"
+        title="Save the draft to recheck what is required"
+        description="What is still required is checked on the saved draft."
+      />
+      <UCard
+        v-else-if="problems.length"
+        :ui="{ root: 'ring-error/40', body: 'p-4 sm:p-4' }"
+      >
+        <details :open="problems.length <= 8">
+          <summary class="flex cursor-pointer items-center gap-2 text-sm font-medium text-error">
             <UIcon
-              name="i-lucide-circle-dashed"
-              class="mt-0.5 size-4 shrink-0 text-error"
-            />{{ message }}
-          </li>
-          <li
-            v-for="message in warnings"
-            :key="message"
-            class="flex gap-2 text-warning"
-          >
+              name="i-lucide-circle-alert"
+              class="size-4 shrink-0"
+            />
+            Required before you can submit ({{ problems.length }})
+          </summary>
+          <p class="mt-1 text-xs text-muted">
+            Fill these in: Submit stays off until they are done.
+          </p>
+          <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto text-sm">
+            <li
+              v-for="message in problems"
+              :key="message"
+              class="flex gap-2"
+            >
+              <UIcon
+                name="i-lucide-circle-dashed"
+                class="mt-0.5 size-4 shrink-0 text-error"
+              />{{ message }}
+            </li>
+          </ul>
+        </details>
+      </UCard>
+      <UAlert
+        v-else
+        color="success"
+        variant="subtle"
+        icon="i-lucide-circle-check"
+        title="Ready to submit"
+        description="Everything required is filled in."
+      />
+      <UCard
+        v-if="warnings.length"
+        :ui="{ root: 'ring-warning/40', body: 'p-4 sm:p-4' }"
+      >
+        <details :open="warnings.length <= 8">
+          <summary class="flex cursor-pointer items-center gap-2 text-sm font-medium text-warning">
             <UIcon
               name="i-lucide-triangle-alert"
-              class="mt-0.5 size-4 shrink-0"
-            />{{ message }}
-          </li>
-        </ul>
-      </details>
-    </UCard>
+              class="size-4 shrink-0"
+            />
+            Worth checking ({{ warnings.length }})
+          </summary>
+          <p class="mt-1 text-xs text-muted">
+            These don't stop the submit: check they are right.
+          </p>
+          <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto text-sm">
+            <li
+              v-for="message in warnings"
+              :key="message"
+              class="flex gap-2"
+            >
+              <UIcon
+                name="i-lucide-triangle-alert"
+                class="mt-0.5 size-4 shrink-0 text-warning"
+              />{{ message }}
+            </li>
+          </ul>
+        </details>
+      </UCard>
+    </div>
 
+    <!-- Manual: a tab opens on click (or Enter), not when it gets focus, else the focus going
+         back to the Sign off tab as "Is this correct?" closes would open it again. -->
     <UTabs
       :model-value="tab"
       :items="tabs"
       :content="false"
+      activation-mode="manual"
       variant="link"
       class="overflow-x-auto"
       @update:model-value="goTab"
@@ -1409,7 +1564,7 @@ const people = [
               :error="signError('group_description')"
               :data-missing="!!signError('group_description')"
             >
-              <UTextarea
+              <BiancaTextarea
                 v-model="header.group_description"
                 class="w-full"
                 :rows="3"
@@ -1495,7 +1650,7 @@ const people = [
             :error="signError('recovery_strategy')"
             :data-missing="!!signError('recovery_strategy')"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="header.recovery_strategy"
               class="w-full"
               :rows="3"
@@ -1517,97 +1672,244 @@ const people = [
               />
             </h2>
             <p class="text-xs text-muted">
-              Two different people, picked from the user directory. Their NIK, phone and email come from it.
+              One BCM Coordinator and any Alternates, picked from the user directory. Their NIK, phone and email come from it.
             </p>
           </template>
-          <UAlert
-            v-if="samePerson"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-users"
-            title="The same person is picked twice"
-            description="The BCM Coordinator and the Alternate BCM Coordinator must be two different people. Pick another Alternate."
-            class="mb-4"
-          />
-          <div class="grid gap-6 sm:grid-cols-2">
-            <section
-              v-for="person in people"
-              :key="person.key"
-              class="space-y-3"
-            >
-              <h3 class="flex items-center gap-2 text-sm font-medium">
-                <UIcon
-                  :name="person.key === 'bcm_coordinator' ? 'i-lucide-user-round-check' : 'i-lucide-user-round'"
-                  class="size-4 text-muted"
-                />
-                {{ person.title }}
-              </h3>
-              <UFormField
-                label="Name"
-                required
-                :error="person.key === 'bcm_alternate' && samePerson ? 'Pick someone other than the BCM Coordinator.' : signError(`${person.key}_id`, 'Pick the person.')"
-                :data-missing="!!signError(`${person.key}_id`)"
+          <!-- Two columns only when the card is wide enough (the side panels can leave it narrow) -->
+          <div class="@container">
+            <div class="grid gap-6 @xl:grid-cols-2">
+              <section
+                v-for="person in people"
+                :key="person.key"
+                class="flex min-w-0 flex-col gap-3"
               >
-                <BiancaPersonPicker
-                  v-model="header[`${person.key}_id`]"
-                  :selected="persons[person.key]"
-                  :typed-name="header[`${person.key}_id`] ? undefined : header[person.key]"
-                  :group="org.org_group"
-                  :exclude-id="header[`${otherRole(person.key)}_id`]"
-                  :disabled="!editable"
-                  :aria-label="person.title"
-                  @pick="onPerson(person.key, $event)"
-                />
-              </UFormField>
-              <p
-                v-if="!header[`${person.key}_id`] && header[person.key]"
-                class="text-xs text-warning"
-              >
-                Typed in an Excel upload, not from the user directory: pick the person to confirm.
-              </p>
-              <dl class="divide-y divide-default rounded-md border border-default bg-elevated/30 text-sm">
-                <div
-                  v-for="field in PERSON_DETAILS"
-                  :key="field[0]"
-                  class="flex items-start justify-between gap-3 px-3 py-2"
-                >
-                  <dt class="flex shrink-0 items-center gap-1 text-muted">
-                    <UIcon
-                      name="i-lucide-lock"
-                      class="size-3"
+                <h3 class="flex min-h-7 items-center gap-2 text-sm font-medium">
+                  <UIcon
+                    :name="person.key === 'bcm_coordinator' ? 'i-lucide-user-round-check' : 'i-lucide-user-round'"
+                    class="size-4 text-muted"
+                  />
+                  {{ person.title }}
+                </h3>
+                <!-- Same card as an Alternate's, so the two columns line up -->
+                <div class="min-w-0 flex-1 space-y-3 rounded-md border border-default p-3">
+                  <div class="flex min-h-7 items-center">
+                    <p class="text-xs font-medium text-muted">
+                      Coordinator
+                    </p>
+                  </div>
+                  <UFormField
+                    label="Name"
+                    required
+                    :error="signError(`${person.key}_id`, 'Pick the person.')"
+                    :data-missing="!!signError(`${person.key}_id`)"
+                  >
+                    <BiancaPersonPicker
+                      v-model="header[`${person.key}_id`]"
+                      :selected="persons[person.key]"
+                      :typed-name="header[`${person.key}_id`] ? undefined : header[person.key]"
+                      :group="org.org_group"
+                      :disabled="!editable"
+                      :aria-label="person.title"
+                      @pick="onPerson(person.key, $event)"
                     />
-                    {{ field[1] }}
-                  </dt>
-                  <dd class="min-w-0 text-right">
-                    <span
-                      v-if="header[`${person.key}${PERSON_FIELDS[field[0]]}`]"
-                      class="break-all"
-                    >{{ header[`${person.key}${PERSON_FIELDS[field[0]]}`] }}</span>
-                    <span
-                      v-else
-                      class="text-xs text-dimmed"
-                    >{{ missingDetail(person.key, field[0]) }}</span>
-                  </dd>
+                  </UFormField>
+                  <p
+                    v-if="!header[`${person.key}_id`] && header[person.key]"
+                    class="text-xs text-warning"
+                  >
+                    Typed in an Excel upload, not from the user directory: pick the person to confirm.
+                  </p>
+                  <dl class="divide-y divide-default rounded-md border border-default bg-elevated/30 text-sm">
+                    <div
+                      v-for="field in PERSON_DETAILS"
+                      :key="field[0]"
+                      class="flex items-start justify-between gap-3 px-3 py-2"
+                    >
+                      <dt class="flex shrink-0 items-center gap-1 text-muted">
+                        <UIcon
+                          name="i-lucide-lock"
+                          class="size-3"
+                        />
+                        {{ field[1] }}
+                      </dt>
+                      <dd class="min-w-0 text-right">
+                        <span
+                          v-if="header[`${person.key}${PERSON_FIELDS[field[0]]}`]"
+                          class="break-all"
+                        >{{ header[`${person.key}${PERSON_FIELDS[field[0]]}`] }}</span>
+                        <span
+                          v-else
+                          class="text-xs text-dimmed"
+                        >{{ missingDetail(person.key, field[0]) }}</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <BiancaField
+                    label="Additional phone number"
+                    note-text="Only when the number in Phone is no longer active (or the directory has none). Leave it empty when that number still works."
+                    :help="header[`${person.key}_id`] && !header[`${person.key}_phone`] ? 'Required: the directory has no phone for this person.' : 'Only when the phone above is no longer active.'"
+                    :required="!!header[`${person.key}_id`] && !header[`${person.key}_phone`]"
+                    :error="signError(`${person.key}_phone_2`, 'Give a phone number.')"
+                    :data-missing="!!signError(`${person.key}_phone_2`)"
+                  >
+                    <UInput
+                      v-model="header[`${person.key}_phone_2`]"
+                      class="w-full"
+                      :maxlength="TEXT_LIMITS.medium"
+                      :disabled="!editable"
+                      icon="i-lucide-phone"
+                      placeholder="E.g. 0813-xxxx-xxxx"
+                    />
+                  </BiancaField>
                 </div>
-              </dl>
-              <BiancaField
-                label="Additional phone number"
-                note-text="Only when the number in Phone is no longer active (or the directory has none). Leave it empty when that number still works."
-                :help="header[`${person.key}_id`] && !header[`${person.key}_phone`] ? 'Required: the directory has no phone for this person.' : 'Only when the phone above is no longer active.'"
-                :required="!!header[`${person.key}_id`] && !header[`${person.key}_phone`]"
-                :error="signError(`${person.key}_phone_2`, 'Give a phone number.')"
-                :data-missing="!!signError(`${person.key}_phone_2`)"
-              >
-                <UInput
-                  v-model="header[`${person.key}_phone_2`]"
-                  class="w-full"
-                  :maxlength="TEXT_LIMITS.medium"
-                  :disabled="!editable"
-                  icon="i-lucide-phone"
-                  placeholder="E.g. 0813-xxxx-xxxx"
-                />
-              </BiancaField>
-            </section>
+              </section>
+              <!-- The Alternates: optional, as many as the Group names (MoM 26 Nov) -->
+              <section class="flex min-w-0 flex-col gap-3">
+                <div class="flex min-h-7 items-center justify-between gap-2">
+                  <h3 class="flex min-w-0 items-center gap-2 whitespace-nowrap text-sm font-medium">
+                    <UIcon
+                      name="i-lucide-users-round"
+                      class="size-4 shrink-0 text-muted"
+                    />
+                    <span class="truncate">Alternate BCM Coordinator</span>
+                    <span class="text-xs font-normal text-muted">(optional)</span>
+                  </h3>
+                  <UButton
+                    v-if="editable"
+                    color="neutral"
+                    variant="outline"
+                    size="xs"
+                    icon="i-lucide-plus"
+                    label="Add"
+                    aria-label="Add alternate"
+                    class="shrink-0"
+                    @click="addAlternate"
+                  />
+                </div>
+                <p
+                  v-if="!alternates.length"
+                  class="flex flex-1 items-center justify-center rounded-md border border-dashed border-default px-3 py-4 text-center text-sm text-muted"
+                >
+                  None. Add one or more if the Group has an Alternate BCM Coordinator.
+                </p>
+                <div
+                  v-if="alternates.length"
+                  ref="alternateRow"
+                  class="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  <div
+                    v-for="(row, i) in alternates"
+                    :key="i"
+                    class="w-full min-w-0 shrink-0 basis-full snap-start space-y-3 rounded-md border border-default p-3"
+                  >
+                    <div class="flex min-h-7 items-center justify-between gap-2">
+                      <p class="text-xs font-medium text-muted tabular-nums">
+                        Alternate {{ i + 1 }}<template v-if="alternates.length > 1">
+                          of {{ alternates.length }}
+                        </template>
+                      </p>
+                      <div class="flex items-center">
+                        <template v-if="alternates.length > 1">
+                          <UButton
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            icon="i-lucide-chevron-left"
+                            :aria-label="`Show alternate ${i}`"
+                            :disabled="i === 0"
+                            @click="showAlternate(i - 1)"
+                          />
+                          <UButton
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            icon="i-lucide-chevron-right"
+                            :aria-label="`Show alternate ${i + 2}`"
+                            :disabled="i === alternates.length - 1"
+                            @click="showAlternate(i + 1)"
+                          />
+                        </template>
+                        <UButton
+                          v-if="editable"
+                          color="neutral"
+                          variant="ghost"
+                          size="xs"
+                          icon="i-lucide-trash-2"
+                          :aria-label="`Remove alternate ${i + 1}`"
+                          @click="alternates.splice(i, 1)"
+                        />
+                      </div>
+                    </div>
+                    <UFormField
+                      label="Name"
+                      required
+                      :error="alternateError(i)"
+                      :data-missing="!!alternateProblem(i)"
+                    >
+                      <BiancaPersonPicker
+                        :model-value="row.user_id ?? undefined"
+                        :selected="row.user ?? null"
+                        :typed-name="row.user_id ? undefined : row.name ?? undefined"
+                        :group="org.org_group"
+                        :exclude-id="header.bcm_coordinator_id"
+                        :disabled="!editable"
+                        :aria-label="`Alternate BCM Coordinator ${i + 1}`"
+                        @pick="onAlternate(i, $event)"
+                      />
+                    </UFormField>
+                    <p
+                      v-if="!row.user_id && row.name"
+                      class="text-xs text-warning"
+                    >
+                      Typed in an Excel upload, not from the user directory: pick the person to confirm.
+                    </p>
+                    <dl class="divide-y divide-default rounded-md border border-default bg-elevated/30 text-sm">
+                      <div
+                        v-for="field in PERSON_DETAILS"
+                        :key="field[0]"
+                        class="flex items-start justify-between gap-3 px-3 py-2"
+                      >
+                        <dt class="flex shrink-0 items-center gap-1 text-muted">
+                          <UIcon
+                            name="i-lucide-lock"
+                            class="size-3"
+                          />
+                          {{ field[1] }}
+                        </dt>
+                        <dd class="min-w-0 text-right">
+                          <span
+                            v-if="row[field[0]]"
+                            class="break-all"
+                          >{{ row[field[0]] }}</span>
+                          <span
+                            v-else
+                            class="text-xs text-dimmed"
+                          >{{ row.user_id ? (field[0] === 'phone' ? 'Not in the user directory: give it as the additional phone.' : 'Not in the user directory: ask an admin to add it in Users.') : 'Pick the person to fill it in.' }}</span>
+                        </dd>
+                      </div>
+                    </dl>
+                    <BiancaField
+                      label="Additional phone number"
+                      note-text="Only when the number in Phone is no longer active (or the directory has none). Leave it empty when that number still works."
+                      :help="row.user_id && !row.phone ? 'Required: the directory has no phone for this person.' : 'Only when the phone above is no longer active.'"
+                      :required="!!row.user_id && !row.phone"
+                      :error="signTried && row.user_id && !row.phone && !row.phone_2?.trim() ? 'Give a phone number.' : undefined"
+                    >
+                      <UInput
+                        :model-value="row.phone_2 ?? undefined"
+                        class="w-full"
+                        :maxlength="TEXT_LIMITS.medium"
+                        :disabled="!editable"
+                        icon="i-lucide-phone"
+                        placeholder="E.g. 0813-xxxx-xxxx"
+                        :aria-label="`Alternate ${i + 1}: additional phone`"
+                        @update:model-value="row.phone_2 = $event"
+                      />
+                    </BiancaField>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
         </UCard>
 
@@ -1817,7 +2119,27 @@ const people = [
                             class="text-xs text-muted"
                           >At CIMB Niaga: {{ GRADE_TITLES[grade.code] }}</span>
                         </td>
-                        <td class="px-3 py-1.5">
+                        <td
+                          v-if="grade.requires_note"
+                          class="px-3 py-1.5"
+                        >
+                          <div class="flex items-center justify-end gap-2">
+                            <span class="font-medium tabular-nums">{{ Number(header.personnel_counts[grade.code]) || 0 }}</span>
+                            <UButton
+                              v-if="editable"
+                              color="neutral"
+                              variant="outline"
+                              size="xs"
+                              icon="i-lucide-plus"
+                              :aria-label="`Add ${grade.label}`"
+                              @click="addOther(grade.code)"
+                            />
+                          </div>
+                        </td>
+                        <td
+                          v-else
+                          class="px-3 py-1.5"
+                        >
                           <UInput
                             v-model.number="header.personnel_counts[grade.code]"
                             type="number"
@@ -1835,30 +2157,68 @@ const people = [
                           />
                         </td>
                       </tr>
-                      <!-- Asked only when there are any (e.g. Others) -->
+                      <!-- Who they are and how many, a row each (added with +) -->
                       <tr
-                        v-if="grade.requires_note && (Number(header.personnel_counts[grade.code]) || 0) > 0"
+                        v-if="grade.requires_note && otherRows(grade.code).length"
                         class="align-top"
                       >
                         <td
                           colspan="2"
                           class="px-3 pb-3"
                         >
-                          <UFormField
-                            :label="`${grade.label}: please specify`"
-                            required
-                            :help="t('ra_specify_help')"
-                            :error="raTried && noteMissing(grade) ? 'Say who they are.' : undefined"
-                            :data-missing="raTried && noteMissing(grade)"
-                          >
-                            <UInput
-                              v-model="header.personnel_notes[grade.code]"
-                              class="w-full"
-                              :maxlength="TEXT_LIMITS.name"
-                              :disabled="!editable"
-                              placeholder="E.g. 3 contract employees, 2 outsourced (vendor name)"
-                            />
-                          </UFormField>
+                          <p class="mb-1.5 text-xs text-muted">
+                            {{ t('ra_specify_help') }}
+                          </p>
+                          <ul class="space-y-2">
+                            <li
+                              v-for="(row, i) in otherRows(grade.code)"
+                              :key="i"
+                              class="flex items-start gap-2"
+                            >
+                              <UFormField
+                                class="min-w-0 flex-1"
+                                :error="raTried && otherMissing(grade.code, i, 'label') ? 'Say who they are.' : undefined"
+                                :data-missing="raTried && otherMissing(grade.code, i, 'label')"
+                              >
+                                <UInput
+                                  :model-value="row.label"
+                                  class="w-full"
+                                  :maxlength="TEXT_LIMITS.medium"
+                                  :disabled="!editable"
+                                  placeholder="Who they are, e.g. Contract staff"
+                                  :aria-label="`${grade.label} ${i + 1}: who they are`"
+                                  @update:model-value="updateOther(grade.code, i, { label: String($event ?? '') })"
+                                />
+                              </UFormField>
+                              <UFormField
+                                class="w-28 shrink-0"
+                                :error="raTried && otherMissing(grade.code, i, 'count') ? 'How many?' : undefined"
+                                :data-missing="raTried && otherMissing(grade.code, i, 'count')"
+                              >
+                                <UInput
+                                  :model-value="row.count ?? undefined"
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  inputmode="numeric"
+                                  placeholder="0"
+                                  class="w-full"
+                                  :ui="{ base: 'text-right tabular-nums' }"
+                                  :disabled="!editable"
+                                  :aria-label="`${grade.label} ${i + 1}: how many`"
+                                  @update:model-value="updateOther(grade.code, i, { count: toCount($event) })"
+                                />
+                              </UFormField>
+                              <UButton
+                                v-if="editable"
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-trash-2"
+                                :aria-label="`Remove ${grade.label} ${i + 1}`"
+                                @click="removeOther(grade.code, i)"
+                              />
+                            </li>
+                          </ul>
                         </td>
                       </tr>
                     </template>
@@ -2015,7 +2375,7 @@ const people = [
                 :error="raError('ra_tools')"
                 :data-missing="!!raError('ra_tools')"
               >
-                <UTextarea
+                <BiancaTextarea
                   v-model="header.ra_tools"
                   class="w-full"
                   :rows="2"
@@ -2053,7 +2413,7 @@ const people = [
               :error="raError('ra_justification')"
               :data-missing="!!raError('ra_justification')"
             >
-              <UTextarea
+              <BiancaTextarea
                 v-model="header.ra_justification"
                 class="w-full"
                 :rows="3"
@@ -2267,6 +2627,7 @@ const people = [
             :lookups="lookups"
             :preview="preview?.functions[selected] ?? null"
             :disabled="!editable"
+            :personnel-total="totalStaff || null"
             @toggle-reference="toggleReference"
             @quiet-hint="quietHint"
           >
@@ -2288,7 +2649,7 @@ const people = [
                   :key="note.key"
                   :label="note.label"
                 >
-                  <UTextarea
+                  <BiancaTextarea
                     v-model="header[note.key]"
                     class="w-full"
                     :rows="3"
