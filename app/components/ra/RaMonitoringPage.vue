@@ -285,10 +285,12 @@ const monthSummary = computed(() => {
   const top = [...monthPoints.value].sort((a, b) => b.value - a.value)[0]
   return top && total ? `${plural(total, 'RA')} approved in the last 12 months. The most in ${formatMonth(top.month)} (${formatNumber(top.value, 0)}).` : ''
 })
+/** One decimal once any step averages a day or more, else two (as SCCA's). */
+const stepDigits = computed(() => (stepRows.value.some((row) => (row.average_working_days ?? 0) >= 1) ? 1 : 2))
 const stepSummary = computed(() => {
   const slowest = [...stepRows.value].sort((a, b) => (b.average_working_days ?? 0) - (a.average_working_days ?? 0))[0]
   const approvals = stepRows.value.reduce((sum, row) => sum + row.approvals, 0)
-  return slowest ? `Slowest step: ${stepShort(slowest)}, ${formatNumber(slowest.average_working_days, 1)} working days on average, over ${plural(approvals, 'approval')}.` : ''
+  return slowest ? `Slowest step: ${stepShort(slowest)}, ${formatNumber(slowest.average_working_days, stepDigits.value)} working days on average, over ${plural(approvals, 'approval')}.` : ''
 })
 
 function refLabel(ref: { id: number, ref_no: string | null } | null) {
@@ -485,10 +487,10 @@ const bottleneckColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'signer', header: sortable('Approver', 'signer'), meta: { class: { th: 'min-w-36', td: 'min-w-36' } } },
   { accessorKey: 'level', header: sortable('Status', 'level'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
   { accessorKey: 'waiting_since', header: sortable('Assess since', 'waiting_since'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: { class: { th: 'min-w-28', td: 'min-w-28' } } },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: { class: { th: 'min-w-32 text-right', td: 'min-w-32 text-right' } } },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: { class: { th: 'min-w-28 text-right', td: 'min-w-28 text-right' } } },
   { accessorKey: 'escalated_at', header: sortable('Escalated on', 'escalated_at'), meta: { class: { th: 'min-w-32', td: 'min-w-32' } } },
-  { accessorKey: 'working_days_in_signoff', header: sortable('Working days in approval', 'working_days_in_signoff', true), meta: { class: { th: 'min-w-40', td: 'min-w-40' } } },
+  { accessorKey: 'working_days_in_signoff', header: sortable('Working days in approval', 'working_days_in_signoff', true), meta: { class: { th: 'min-w-40 text-right', td: 'min-w-40 text-right' } } },
 ])
 
 const tabs = [
@@ -646,34 +648,16 @@ function record(id: number) {
             </template>
           </UAlert>
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <ULink
+            <KpiCard
               v-for="card in cards"
               :key="card.key"
               :to="cardLink(card.to)"
-              class="group rounded-lg border border-default bg-default p-4 transition hover:border-accented hover:bg-elevated/40"
-              :aria-label="`${card.label}: ${card.value ?? 'loading'}`"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="text-sm text-muted">
-                    {{ card.label }}
-                  </p>
-                  <p
-                    class="mt-1 text-3xl font-semibold tabular-nums"
-                    :class="card.tone === 'error' && card.value ? 'text-error' : card.tone === 'warning' && card.value ? 'text-warning' : 'text-highlighted'"
-                  >
-                    {{ card.value ?? '—' }}
-                  </p>
-                  <p class="mt-1 text-xs text-muted">
-                    {{ card.hint }}
-                  </p>
-                </div>
-                <UIcon
-                  :name="card.icon"
-                  class="size-5 text-dimmed group-hover:text-muted"
-                />
-              </div>
-            </ULink>
+              :label="card.label"
+              :value="card.value"
+              :hint="card.hint"
+              :icon="card.icon"
+              :tone="card.tone"
+            />
           </div>
           <div class="grid gap-4 lg:grid-cols-2">
             <SccaBarChart
@@ -1096,7 +1080,7 @@ function record(id: number) {
           <SccaBarChart
             title="Average working days per sign-off step"
             measure="Working days"
-            :digits="1"
+            :digits="stepDigits"
             :items="stepBars"
             :summary="stepSummary"
             :loading="stepAverages.status.value === 'pending' && !stepAverages.data.value"
@@ -1107,7 +1091,7 @@ function record(id: number) {
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default p-4">
               <p class="text-sm text-muted">
                 <template v-if="bottlenecks.data.value?.total">
-                 {{ plural(bottlenecks.data.value.total, 'RA') }} in approval, longest-waiting first.
+                  {{ plural(bottlenecks.data.value.total, 'RA') }} in approval, longest-waiting first.
                 </template>
                 <template v-else>
                   No RA is in approval.

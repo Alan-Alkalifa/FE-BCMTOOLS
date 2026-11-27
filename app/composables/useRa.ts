@@ -2029,7 +2029,20 @@ export function useRaHistory(query: Paged<{ kind: RaKind, action?: RaHistoryActi
   return useRaList<RaHistoryRow>('/api/ra/approvals/history', query)
 }
 
-export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: string }>, enabled: MaybeRefOrGetter<boolean>) {
+export interface RaBoardQuery {
+  kind: RaKind
+  step?: string
+  /** Waiting time: ok, reminder or escalated. */
+  wait?: string
+  /** The RA's highest residual. */
+  level?: string
+  approver_id?: number
+  date_from?: string
+  date_to?: string
+  q?: string
+}
+
+export function useRaBoard(query: Paged<RaBoardQuery>, enabled: MaybeRefOrGetter<boolean>) {
   return useFetch<RaPage<RaSignoffWaiting>>('/api/ra/approvals/board', {
     key: computed(() => `ra-board-${JSON.stringify(toValue(query))}`),
     query: computed(() => toValue(query)),
@@ -2038,7 +2051,6 @@ export function useRaBoard(query: Paged<{ kind: RaKind, step?: string, q?: strin
   })
 }
 
-/** The Excel download of a Monitoring view, with the same filters (all rows). */
 /** A Monitoring view as Excel, with the same filters; `ids`: only these buildings (the List
  *  tab's ticked rows), every RA of each. */
 export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks' | 'location-ras', filters: RaMonitoringFilters & { location_id?: number }, ids: number[] = []) {
@@ -2051,4 +2063,36 @@ export function raExportUrl(view: 'register' | 'renewals' | 'bottlenecks' | 'loc
   if (ids.length) query.set('ids', ids.join(','))
   const text = query.toString()
   return `/api/ra/monitoring/${view}.xlsx${text ? `?${text}` : ''}`
+}
+
+function exportQuery(filters: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && key !== 'page' && key !== 'per_page') {
+      query.set(key, String(value))
+    }
+  }
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
+/** An Approval tab as Excel (the board with its filters), as SCCA's Export to Excel. */
+export function raApprovalExportUrl(view: 'inbox' | 'history' | 'board', filters: Record<string, string | number | undefined> = {}) {
+  return `/api/ra/approvals/${view}.xlsx${exportQuery(filters)}`
+}
+
+/** Manage as Excel, with the same filters (every row). */
+export function raManageExportUrl(filters: object) {
+  return `/api/ra/assessments/export.xlsx${exportQuery(filters as Record<string, string | number | undefined>)}`
+}
+
+export interface RaBulkNudgeResult {
+  sent: { id: number, ref_no: string | null }[]
+  skipped: { id: number, ref_no?: string | null, reason: string }[]
+  failed: { id: number, ref_no: string | null }[]
+}
+
+/** BCM board > Send reminder (n). */
+export function raNudgeMany(assessmentIds: number[]) {
+  return $fetch<RaBulkNudgeResult>('/api/ra/approvals/nudge', { method: 'POST', body: { assessment_ids: assessmentIds } })
 }
