@@ -20,6 +20,9 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'string' && Number.isInteger(number) && number > 0 ? number : undefined
 }
 
+// Every column sorts on the server, as SCCA's Manage (`?sort=&dir=`, kept in the URL).
+const { query: sortQuery, header: sortable } = useTableSort(['due_date', 'updated_at'])
+
 const query = computed<RaListQuery>(() => ({
   kind: ra.value.kind,
   status: 'draft',
@@ -30,6 +33,7 @@ const query = computed<RaListQuery>(() => ({
   mine: '1' as const,
   page: Math.max(1, Number(route.query.page) || 1),
   per_page: perPage.value,
+  ...sortQuery.value,
 }))
 
 function setQuery(name: string, value: string | number | undefined) {
@@ -74,22 +78,31 @@ const showSkeleton = useDelayedLoading(() => status.value === 'pending' && !data
 const hasFilters = computed(() => Boolean(query.value.q || query.value.location_id || query.value.year || query.value.reason))
 function clearFilters() {
   search.value = ''
-  router.replace({ query: {} })
+  // The sort survives Clear filters (docs/design-system.md > Sorting).
+  router.replace({ query: { sort: route.query.sort, dir: route.query.dir } })
+}
+
+/** A column's width (header and cells), as SCCA's tables set it so the columns line up. */
+function width(cls: string, align = '') {
+  const value = align ? `${cls} ${align}` : cls
+  return { class: { th: value, td: value } }
 }
 
 const columns = computed<TableColumn<RaAssessmentSummary>[]>(() => [
-  { accessorKey: 'ref_no', header: 'Ref. no.' },
-  { id: 'location', header: ra.value.location.single },
-  { accessorKey: 'period_year', header: 'Period' },
-  { accessorKey: 'reason', header: 'Reason' },
-  { id: 'renews', header: 'Renews' },
-  { accessorKey: 'my_role', header: 'My role' },
-  { id: 'progress', header: 'Rated', meta: { class: { th: 'text-right', td: 'text-right' } } },
-  { accessorKey: 'highest_residual_level', header: 'Highest residual', meta: RA_STATUS_COLUMN },
-  { accessorKey: 'status', header: 'Status', meta: RA_STATUS_COLUMN },
-  { accessorKey: 'created_by', header: 'Assessor' },
-  { accessorKey: 'next_step', header: 'Next step' },
-  { accessorKey: 'updated_at', header: 'Last saved' },
+  { accessorKey: 'ref_no', header: sortable('Current RA ref. no.', 'ref_no'), meta: width('min-w-40') },
+  { id: 'location', header: sortable(ra.value.location.single, 'location'), meta: width('min-w-40') },
+  { id: 'code', header: sortable(`${ra.value.location.single} ID`, 'code'), meta: width('min-w-32') },
+  { accessorKey: 'status', header: sortable('Status', 'status'), meta: width('min-w-28') },
+  { accessorKey: 'reason', header: sortable('Assessment reason', 'reason'), meta: width('min-w-36') },
+  { accessorKey: 'period_year', header: sortable('Period', 'period_year'), meta: width('min-w-20') },
+  { id: 'renews', header: sortable('Renews RA ref. no.', 'renews'), meta: width('min-w-40') },
+  { accessorKey: 'my_role', header: sortable('My role', 'my_role'), meta: width('min-w-32') },
+  { accessorKey: 'created_by', header: sortable('Assessor', 'created_by'), meta: width('min-w-36') },
+  { id: 'progress', header: sortable('Rated', 'progress', true), meta: width('min-w-20', 'text-right') },
+  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32') },
+  { accessorKey: 'due_date', header: sortable('Renewal date', 'due_date'), meta: width('min-w-32') },
+  { accessorKey: 'next_step', header: sortable('Next step', 'next_step'), meta: width('min-w-36') },
+  { accessorKey: 'updated_at', header: sortable('Last saved', 'updated_at'), meta: width('min-w-32') },
 ])
 const ROLE_LABEL: Record<RaMyRole, string> = { assessor: 'Assessor', licom: 'LICOM', directorate: 'Directorate (view)' }
 
@@ -197,24 +210,30 @@ function openRow(_event: Event, row: { original: RaAssessmentSummary }) {
         :loading="status === 'pending'"
         class="cursor-pointer"
         :on-select="openRow"
-        :ui="{ th: 'first:ps-4 last:pe-4', td: 'first:ps-4 last:pe-4' }"
+        :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 h-16' }"
       >
         <template #ref_no-cell="{ row }">
-          <NuxtLink
-            :to="raPath(ra.kind, 'manage', row.original.id)"
-            class="font-medium whitespace-nowrap text-primary hover:underline"
-          >
-            {{ row.original.ref_no || 'Assessment' }}
-          </NuxtLink>
+          <span class="font-mono text-xs whitespace-nowrap">{{ row.original.ref_no || '—' }}</span>
         </template>
         <template #location-cell="{ row }">
-          {{ row.original.location.name }}
+          <NuxtLink
+            :to="raPath(ra.kind, 'manage', row.original.id)"
+            class="font-medium text-primary hover:underline"
+          >
+            {{ row.original.location.name }}
+          </NuxtLink>
           <p
             v-if="ra.hasRegion && row.original.location.region"
             class="text-xs text-muted"
           >
             {{ row.original.location.region }}
           </p>
+        </template>
+        <template #code-cell="{ row }">
+          <span class="font-mono text-xs">{{ row.original.location.code || '—' }}</span>
+        </template>
+        <template #due_date-cell="{ row }">
+          <span class="whitespace-nowrap">{{ formatDate(row.original.due_date ?? row.original.renewal_date) ?? '—' }}</span>
         </template>
         <template #progress-cell="{ row }">
           {{ formatNumber(row.original.rated_count, 0) }} of {{ formatNumber(row.original.hazard_count, 0) }}

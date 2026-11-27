@@ -58,9 +58,16 @@ function openPrint() {
   printFunctions.value = printItems.value.map((item) => item.value)
   printOpen.value = true
 }
-async function print() {
+/** Print once the dialog has gone (a dialog still fading out would print on every page). */
+let printWhenClosed = false
+function print() {
   printing.value = { parts: [...printParts.value], functions: printFunctions.value.map(Number).sort((a, b) => a - b) }
+  printWhenClosed = true
   printOpen.value = false
+}
+async function onPrintClosed() {
+  if (!printWhenClosed) return
+  printWhenClosed = false
   await nextTick()
   window.print()
 }
@@ -245,7 +252,8 @@ onMounted(() => window.addEventListener('afterprint', () => (printing.value = nu
       v-model:open="printOpen"
       title="Print the report"
       description="Pick the parts and the business functions to print."
-      :ui="{ footer: 'justify-end' }"
+      :ui="{ overlay: 'print:hidden', content: 'print:hidden', footer: 'justify-end' }"
+      @after:leave="onPrintClosed"
     >
       <template #body>
         <div class="grid gap-6 sm:grid-cols-2">

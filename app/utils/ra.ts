@@ -392,6 +392,14 @@ export function raStepTitle(role: string | null | undefined, roles: readonly RaS
   return roles.find((item) => item.value === role)?.label ?? role
 }
 
+/** A step's short name ("LIC"), as the tables show the step (like SCCA); the step's title when
+ *  it has none. */
+export function raStepShort(role: string | null | undefined, roles: readonly RaSignoffRoleOption[] = RA_SIGNOFF_ROLES) {
+  if (!role) return ''
+  const found = roles.find((item) => item.value === role)
+  return found?.hint || found?.label || role
+}
+
 /** The sign-off steps of a configuration version (as RA configuration sets them), or the
  *  module's defaults. With `codes` (an assessment's `signoff_step_codes`), only the steps that
  *  sign that RA: the building approver only while its building waits for approval. `null`

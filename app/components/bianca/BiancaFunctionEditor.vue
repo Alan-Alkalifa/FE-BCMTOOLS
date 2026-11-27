@@ -15,6 +15,8 @@ const props = defineProps<{
   disabled?: boolean
   /** The reference panel beside the form (BiancaForm) is open. */
   referenceOpen?: boolean
+  /** The Group's personnel on the RA questionnaire: no function has more staff than that. */
+  personnelTotal?: number | null
 }>()
 const emit = defineEmits<{ 'toggle-reference': [], 'quiet-hint': [] }>()
 /** The hint at Show Guidance ("You can see the details here"), shown by the form. */
@@ -171,12 +173,15 @@ function justifyReasons(index: number, side: Side) {
   const at = rows.slice(0, index).filter((row) => !blank(row)).length
   return props.preview?.dependencies?.[at]?.[side] ?? []
 }
-const long = TEXT_LIMITS.long
+const long = TEXT_LIMITS.bia
 
 /** Part 1's rule for the Suggested MTD, worked out from the impact typed so far. */
 const ruleMtd = computed(() => props.preview?.recommended_suggested_mtd ?? null)
 
 /** Part 3's resources at the alternate site aren't asked of a function working from home. */
+/** A function's staff can't be more than the Group has (RA questionnaire); fewer is fine. */
+const staffOverRa = computed(() => props.personnelTotal != null && fn.value.total_staff != null
+  && String(fn.value.total_staff) !== '' && Number(fn.value.total_staff) > props.personnelTotal)
 const worksFromHome = computed(() => !!fn.value.alt_site_strategy?.toLowerCase().includes('work from home'))
 const recommendedSites = computed(() => props.lookups.alternate_site_by_category?.[props.preview?.category ?? ''] ?? [])
 
@@ -414,6 +419,13 @@ const groupListId = useId()
                   :class="[nonNumeric, lookups.loss_alert_idr < (Number(fn.loss[i]) || 0) ? 'ring-1 ring-error' : '']"
                   :aria-label="`Loss ${periods[i]}`"
                 />
+                <!-- The amount in words, so a zero too many or too few shows: 5000000 = IDR 5 JT -->
+                <p
+                  v-if="fn.loss && fn.loss[i] != null && String(fn.loss[i]) !== ''"
+                  class="mt-0.5 px-1 text-[11px] whitespace-nowrap text-muted tabular-nums"
+                >
+                  {{ idrShort(fn.loss[i]) }}
+                </p>
               </td>
             </tr>
             <tr>
@@ -780,7 +792,7 @@ const groupListId = useId()
                       />
                     </td>
                     <td class="px-3 py-2">
-                      <UTextarea
+                      <BiancaTextarea
                         v-model="row.gaps"
                         class="w-full"
                         :rows="2"
@@ -1039,7 +1051,7 @@ const groupListId = useId()
                     />
                   </td>
                   <td class="px-3 py-2">
-                    <UTextarea
+                    <BiancaTextarea
                       v-model="row.data[`${side.key}_justification`]"
                       class="w-full"
                       :rows="2"
@@ -1096,6 +1108,7 @@ const groupListId = useId()
             label="Total staff strength (no. of staff)"
             required
             note="total_staff"
+            :error="staffOverRa ? `More than the Group's ${personnelTotal} personnel on the RA questionnaire.` : undefined"
           >
             <UInput
               v-model.number="fn.total_staff"
@@ -1145,7 +1158,7 @@ const groupListId = useId()
             required
             note="prioritization_strategy"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="fn.prioritization_strategy"
               class="w-full"
               :rows="3"
@@ -1159,7 +1172,7 @@ const groupListId = useId()
             required
             note="outstanding_strategy"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="fn.outstanding_strategy"
               class="w-full"
               :rows="3"
@@ -1199,6 +1212,7 @@ const groupListId = useId()
             />
           </BiancaField>
           <BiancaField
+            v-if="!worksFromHome"
             label="Current BCP seats in place (seats)"
             required
             note="seats_current"
@@ -1212,6 +1226,7 @@ const groupListId = useId()
             />
           </BiancaField>
           <BiancaField
+            v-if="!worksFromHome"
             label="BCP seats required after the BIA (seats)"
             required
             note="seats_required"
@@ -1287,7 +1302,7 @@ const groupListId = useId()
             label="Other resources (please specify)"
             note="res_others"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="fn.res_others"
               class="w-full"
               :rows="2"
@@ -1309,7 +1324,7 @@ const groupListId = useId()
             :required="preview?.category === 'Business Critical'"
             note="vital_record"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="fn.vital_record"
               class="w-full"
               :rows="3"
@@ -1322,7 +1337,7 @@ const groupListId = useId()
             label="Vital records location"
             :required="preview?.category === 'Business Critical'"
           >
-            <UTextarea
+            <BiancaTextarea
               v-model="fn.vital_record_location"
               class="w-full"
               :rows="3"
@@ -1349,7 +1364,7 @@ const groupListId = useId()
           required
           note="description"
         >
-          <UTextarea
+          <BiancaTextarea
             v-model="fn.description"
             class="w-full"
             :rows="4"
@@ -1385,7 +1400,7 @@ const groupListId = useId()
               :help="t('na_help')"
               note="critical_timings"
             >
-              <UTextarea
+              <BiancaTextarea
                 v-model="fn.critical_timings"
                 class="w-full"
                 :rows="3"
@@ -1400,7 +1415,7 @@ const groupListId = useId()
               :help="t('na_help')"
               note="critical_activity"
             >
-              <UTextarea
+              <BiancaTextarea
                 v-model="fn.critical_activity"
                 class="w-full"
                 :rows="3"

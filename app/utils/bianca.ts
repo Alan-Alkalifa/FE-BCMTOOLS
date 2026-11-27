@@ -44,3 +44,13 @@ export function biancaExportUrl(id: number, functions?: number[]) {
 export function formatIdr(value: number | null | undefined) {
   return value == null ? '—' : new Intl.NumberFormat('id-ID').format(value)
 }
+
+/** An amount in IDR as people say it: 500000 → "IDR 500 RB", 5000000 → "IDR 5 JT", 1500000000 → "IDR 1,5 M". */
+export function idrShort(value: number | string | null | undefined) {
+  const amount = Number(value)
+  if (value == null || value === '' || !Number.isFinite(amount)) return ''
+  const units: [number, string][] = [[1e12, 'T'], [1e9, 'M'], [1e6, 'JT'], [1e3, 'RB']]
+  const [size, unit] = units.find(([size]) => Math.abs(amount) >= size) ?? [1, '']
+  const number = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(amount / size)
+  return `IDR ${number}${unit ? ` ${unit}` : ''}`
+}
