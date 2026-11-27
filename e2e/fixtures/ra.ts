@@ -905,6 +905,13 @@ async function mockRaWorkflow(page: Page, log: RaMockLog) {
     const locations = workflowLocations(branch)
     const waiting = [waitingRow(branch, roles[2]!, 3, 6)]
     const step = url.searchParams.get('step')
+    if (name === 'approvals/nudge') {
+      // BCM board > Send reminder (n).
+      const body = route.request().postDataJSON() as { assessment_ids: number[] }
+      log.signoff.push(['nudge-many', body])
+      await route.fulfill({ json: { sent: body.assessment_ids.map((id) => ({ id, ref_no: 'RA-2025-0001' })), skipped: [], failed: [] } })
+      return
+    }
     if (name === 'monitoring/overview') {
       await route.fulfill({
         json: {

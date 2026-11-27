@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { parseDate, type CalendarDate } from '@internationalized/date'
 import type { RaAssessment, RaHistoryAction, RaHistoryRow, RaSignoffWaiting } from '~/composables/useRa'
 import RaChangeSignerModal, { type RaWaitingStep } from '~/components/ra/RaChangeSignerModal.vue'
 import RaOnBehalfModal from '~/components/ra/RaOnBehalfModal.vue'
@@ -67,7 +68,8 @@ watch(() => route.query.tab, () => {
   clearTimeout(searchTimer)
   search.value = text('q') ?? ''
 })
-const filtered = computed(() => Boolean(text('q') || text('action') || text('step')))
+const FILTER_KEYS = ['q', 'action', 'step', 'wait', 'level', 'approver', 'from', 'to'] as const
+const filtered = computed(() => FILTER_KEYS.some((key) => !!route.query[key]))
 function clearFilters() {
   search.value = ''
   // The sorts survive Clear filters (docs/design-system.md > Sorting).
@@ -102,27 +104,27 @@ function stepLabel(role: string | null, short?: string | null) {
 }
 
 /** A column's width (header and cells), as SCCA's tables set it so the columns line up. */
-function width(cls: string, center = false) {
-  const value = center ? `${cls} text-center` : cls
+function width(cls: string, align?: 'center' | 'end') {
+  const value = align ? `${cls} text-${align}` : cls
   return { class: { th: value, td: value } }
 }
 
 const waitingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: sortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
   { accessorKey: 'ref_no', header: sortable('RA ref. no.', 'ref_no'), meta: width('min-w-32') },
-  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', true) },
+  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', 'center') },
   { accessorKey: 'step', header: sortable('My step', 'step'), meta: width('min-w-32') },
   { accessorKey: 'submitted_at', header: sortable('Submitted date', 'submitted_at'), meta: width('min-w-28') },
   { accessorKey: 'submitted_by', header: sortable('Submitted by', 'submitted_by'), meta: width('min-w-32') },
-  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', true) },
-  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
-  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24') },
+  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', 'center') },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28', 'end') },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24', 'end') },
 ])
 const comingColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
   { id: 'assessment', header: comingSortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
   { accessorKey: 'step', header: comingSortable('Current approval step', 'step'), meta: width('min-w-32') },
   { id: 'signer', header: comingSortable('Approver', 'signer'), meta: width('min-w-32') },
-  { accessorKey: 'working_days_waiting', header: comingSortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
+  { accessorKey: 'working_days_waiting', header: comingSortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28', 'end') },
 ])
 
 function openReview(_event: Event, row: { original: { id: number } }) {
@@ -187,16 +189,55 @@ const historyColumns = computed<TableColumn<RaHistoryRow>[]>(() => [
 const { data: activeFormula } = useRaFormula(kind)
 const steps = computed(() => raRoleOptions(activeFormula.value, ra.value.signoffRoles))
 
+const WAIT_LEVELS = ['ok', 'reminder', 'escalated'] as const
+const boardWait = computed<string>({
+  get: () => (WAIT_LEVELS.includes(route.query.wait as typeof WAIT_LEVELS[number]) ? String(route.query.wait) : 'all'),
+  set: (value) => setQuery({ wait: value === 'all' ? undefined : value, page: undefined }),
+})
+const waitItems = [
+  { label: 'Any waiting time', value: 'all' },
+  ...WAIT_LEVELS.map((level) => ({ label: raWaitLevel[level].label, value: level })),
+]
+const boardLevel = computed<string>({
+  get: () => ([...RA_LEVELS, 'none'].includes(String(route.query.level)) ? String(route.query.level) : 'all'),
+  set: (value) => setQuery({ level: value === 'all' ? undefined : value, page: undefined }),
+})
+const levelItems = [
+  { label: 'Any highest residual', value: 'all' },
+  ...RA_LEVELS.map((level) => ({ label: raRiskLevel[level].label, value: level })),
+  { label: 'Not rated', value: 'none' },
+]
+const boardApprover = computed<number | null>({
+  get: () => Number(route.query.approver) || null,
+  set: (value) => setQuery({ approver: value || undefined, page: undefined }),
+})
+const fromDate = computed<CalendarDate | undefined>({
+  get: () => (text('from') ? parseDate(text('from')!) : undefined),
+  set: (value) => setQuery({ from: value?.toString(), page: undefined }),
+})
+const toDate = computed<CalendarDate | undefined>({
+  get: () => (text('to') ? parseDate(text('to')!) : undefined),
+  set: (value) => setQuery({ to: value?.toString(), page: undefined }),
+})
 const boardStep = computed<string>({
   get: () => (route.query.step && (steps.value.some((role) => role.value === route.query.step) || !activeFormula.value) ? String(route.query.step) : 'all'),
   set: (value) => setQuery({ step: value === 'all' ? undefined : value, page: undefined }),
 })
 const boardPage = pageOf('board')
+/** The board's filters, for the list and for its Excel export. */
+const boardFilters = computed(() => ({
+  step: boardStep.value === 'all' ? undefined : boardStep.value,
+  wait: boardWait.value === 'all' ? undefined : boardWait.value,
+  level: boardLevel.value === 'all' ? undefined : boardLevel.value,
+  approver_id: boardApprover.value ?? undefined,
+  date_from: tab.value === 'board' ? text('from') : undefined,
+  date_to: tab.value === 'board' ? text('to') : undefined,
+  q: tab.value === 'board' ? text('q') : undefined,
+}))
 const board = useRaBoard(
   computed(() => ({
     kind: kind.value,
-    step: boardStep.value === 'all' ? undefined : boardStep.value,
-    q: tab.value === 'board' ? text('q') : undefined,
+    ...boardFilters.value,
     page: boardPage.value,
     per_page: perPage.value,
     ...sortOf('board'),
@@ -205,18 +246,19 @@ const board = useRaBoard(
 )
 const stepItems = computed(() => [
   { label: 'Every step', value: 'all' },
-  ...steps.value.map((role) => ({ label: role.hint, value: role.value })),
+  ...steps.value.map((role) => ({ label: raStepShort(role.value, ra.value.signoffRoles), value: role.value })),
 ])
 const boardColumns = computed<TableColumn<RaSignoffWaiting>[]>(() => [
+  { id: 'select', header: '' },
   { id: 'assessment', header: sortable(ra.value.location.single, 'assessment'), meta: width('min-w-40') },
   { accessorKey: 'ref_no', header: sortable('RA ref. no.', 'ref_no'), meta: width('min-w-32') },
-  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', true) },
+  { accessorKey: 'highest_residual_level', header: sortable('Highest residual', 'highest_residual_level'), meta: width('min-w-32', 'center') },
   { accessorKey: 'step', header: sortable('Current approval step', 'step'), meta: width('min-w-32') },
   { id: 'signer', header: sortable('Approver', 'signer'), meta: width('min-w-32') },
-  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', true) },
+  { accessorKey: 'level', header: sortable('Status', 'level'), meta: width('min-w-32', 'center') },
   { accessorKey: 'waiting_since', header: sortable('Assess since', 'waiting_since'), meta: width('min-w-28') },
-  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28') },
-  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24') },
+  { accessorKey: 'working_days_waiting', header: sortable('Assess days', 'working_days_waiting', true), meta: width('min-w-28', 'end') },
+  { accessorKey: 'reminders_sent', header: sortable('Reminders sent', 'reminders_sent', true), meta: width('min-w-24', 'end') },
   { accessorKey: 'escalated_at', header: sortable('Escalated on', 'escalated_at'), meta: width('min-w-28') },
   { id: 'actions', header: '' },
 ])
@@ -234,6 +276,55 @@ async function nudge(row: RaSignoffWaiting) {
     toast.add(result.sent
       ? { title: 'Reminder sent', color: 'success', icon: 'i-lucide-mail-check' }
       : { title: 'The reminder email could not be sent', description: 'See Audit log > Email outbox.', color: 'warning', icon: 'i-lucide-mail-x' })
+    await board.refresh()
+  } catch (failure) {
+    toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+}
+
+// Send reminder (n): the board's selected rows, with the same rules as one reminder.
+const boardRows = computed(() => board.data.value?.items ?? [])
+const picked = ref<Set<number>>(new Set())
+watch(boardRows, () => (picked.value = new Set()))
+const pickedRows = computed(() => boardRows.value.filter((row) => picked.value.has(row.id)))
+const allPicked = computed<boolean | 'indeterminate'>({
+  get: () => {
+    if (!boardRows.value.length || !pickedRows.value.length) return false
+    return pickedRows.value.length === boardRows.value.length ? true : 'indeterminate'
+  },
+  set: (value) => (picked.value = new Set(value ? boardRows.value.map((row) => row.id) : [])),
+})
+function pick(row: RaSignoffWaiting, value: boolean | 'indeterminate') {
+  const next = new Set(picked.value)
+  if (value === true) next.add(row.id)
+  else next.delete(row.id)
+  picked.value = next
+}
+
+async function nudgeMany() {
+  const rows = pickedRows.value
+  if (!rows.length) return
+  const ok = await confirm({
+    title: `Send a reminder to ${rows.length} signer${rows.length === 1 ? '' : 's'}?`,
+    description: 'Each current signer gets an email asking them to sign off the RA. Signers already reminded today are skipped. Each counts as a reminder.',
+    confirmLabel: `Send reminder (${rows.length})`,
+  })
+  if (!ok) return
+  try {
+    const result = await raNudgeMany(rows.map((row) => row.id))
+    const sent = result.sent.length
+    const skipped = result.skipped.length
+    const failed = result.failed.length
+    toast.add({
+      title: `Sent ${sent} · skipped ${skipped} · failed ${failed}`,
+      description: [
+        ...result.skipped.map((row) => `${row.ref_no ?? `#${row.id}`}: ${row.reason}`),
+        ...(failed ? ['Failed emails are in Audit log > Email outbox.'] : []),
+      ].slice(0, 4).join(' · ') || undefined,
+      color: failed ? 'warning' : sent ? 'success' : 'neutral',
+      icon: failed ? 'i-lucide-mail-x' : 'i-lucide-mail-check',
+    })
+    picked.value = new Set()
     await board.refresh()
   } catch (failure) {
     toast.add({ title: apiErrorMessage(failure), color: 'error', icon: 'i-lucide-circle-alert' })
@@ -294,12 +385,25 @@ const tabs = computed(() => [
         <div class="mt-4 space-y-6">
           <UCard :ui="{ body: 'p-0 sm:p-0' }">
             <template #header>
-              <h2 class="text-lg font-semibold">
-                Waiting for my sign-off
-              </h2>
-              <p class="text-sm text-muted">
-                Open one to approve it or return it for changes.
-              </p>
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 class="text-lg font-semibold">
+                    Waiting for my sign-off
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Open one to approve it or return it for changes.
+                  </p>
+                </div>
+                <UButton
+                  :to="raApprovalExportUrl('inbox', { kind })"
+                  external
+                  download
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-file-spreadsheet"
+                  label="Export to Excel"
+                />
+              </div>
             </template>
             <UTable
               :data="inbox.data.value?.items ?? []"
@@ -349,10 +453,10 @@ const tabs = computed(() => [
                 />
               </template>
               <template #working_days_waiting-cell="{ row }">
-                {{ raWaiting(row.original.working_days_waiting) }}
+                <span class="block text-right tabular-nums">{{ raWaiting(row.original.working_days_waiting) }}</span>
               </template>
               <template #reminders_sent-cell="{ row }">
-                <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
+                <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
               </template>
               <template #empty>
                 <p class="py-8 text-center text-sm text-muted">
@@ -403,7 +507,7 @@ const tabs = computed(() => [
                 {{ row.original.signer?.name ?? '—' }}
               </template>
               <template #working_days_waiting-cell="{ row }">
-                {{ raWaiting(row.original.working_days_waiting) }}
+                <span class="block text-right tabular-nums">{{ raWaiting(row.original.working_days_waiting) }}</span>
               </template>
               <template #empty>
                 <p class="py-6 text-center text-sm text-muted">
@@ -449,6 +553,20 @@ const tabs = computed(() => [
               aria-label="Action"
             />
           </ListFilterBar>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
+            <p class="text-sm text-muted">
+              {{ history.data.value?.total ?? 0 }} decision{{ history.data.value?.total === 1 ? '' : 's' }}
+            </p>
+            <UButton
+              :to="raApprovalExportUrl('history', { kind, action: action === 'all' ? undefined : action, q: text('q') })"
+              external
+              download
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              label="Export to Excel"
+            />
+          </div>
           <UTable
             :data="history.data.value?.items ?? []"
             :columns="historyColumns"
@@ -544,23 +662,89 @@ const tabs = computed(() => [
               class="w-56"
               aria-label="Step"
             />
+            <USelectMenu
+              v-model="boardWait"
+              value-key="value"
+              :items="waitItems"
+              :search-input="false"
+              class="w-44"
+              aria-label="Waiting time"
+            />
+            <USelectMenu
+              v-model="boardLevel"
+              value-key="value"
+              :items="levelItems"
+              :search-input="false"
+              class="w-48"
+              aria-label="Highest residual"
+            />
+            <UserPicker
+              v-model="boardApprover"
+              placeholder="Any approver"
+              aria-label="Approver"
+              :permission="ra.perm.access"
+              class="w-56"
+            />
+            <DatePicker
+              v-model="fromDate"
+              class="w-40"
+              placeholder="From"
+              aria-label="Assessment date from"
+            />
+            <DatePicker
+              v-model="toDate"
+              class="w-40"
+              placeholder="To"
+              aria-label="Assessment date to"
+            />
           </ListFilterBar>
-          <div class="border-b border-default px-4 py-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-2">
             <p class="text-sm text-muted">
-              Send the signer a reminder, change the signer, or approve the step on the signer's behalf. Reminders and escalation follow
+              Reminders and escalation follow
               <NuxtLink
                 v-if="can('ra.config.view')"
                 to="/admin/ra-config?tab=reminders"
                 class="text-primary hover:underline"
               >RA configuration > Reminders and escalation</NuxtLink><span v-else>the RA reminder rules</span>.
             </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                :to="raApprovalExportUrl('board', { kind, ...boardFilters })"
+                external
+                download
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-spreadsheet"
+                label="Export to Excel"
+              />
+              <UButton
+                icon="i-lucide-bell-ring"
+                :label="`Send reminder (${pickedRows.length})`"
+                :disabled="!pickedRows.length"
+                @click="nudgeMany"
+              />
+            </div>
           </div>
           <UTable
-            :data="board.data.value?.items ?? []"
+            :data="boardRows"
             :columns="boardColumns"
             :loading="board.status.value === 'pending'"
             :ui="{ th: 'first:ps-4 last:pe-4 whitespace-nowrap', td: 'first:ps-4 last:pe-4 align-top' }"
           >
+            <template #select-header>
+              <UCheckbox
+                v-if="boardRows.length"
+                v-model="allPicked"
+                aria-label="Select every RA on this page"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="picked.has(row.original.id)"
+                :aria-label="`Select ${row.original.ref_no ?? row.original.location.name}`"
+                @update:model-value="pick(row.original, $event)"
+              />
+            </template>
             <template #assessment-cell="{ row }">
               <NuxtLink
                 :to="raPath(ra.kind, 'approval', row.original.id)"
@@ -607,10 +791,10 @@ const tabs = computed(() => [
               <span class="whitespace-nowrap">{{ formatDate(row.original.waiting_since) || '—' }}</span>
             </template>
             <template #working_days_waiting-cell="{ row }">
-              {{ raWaiting(row.original.working_days_waiting) }}
+              <span class="block text-right tabular-nums">{{ raWaiting(row.original.working_days_waiting) }}</span>
             </template>
             <template #reminders_sent-cell="{ row }">
-              <span class="tabular-nums">{{ row.original.reminders_sent }}</span>
+              <span class="block text-right tabular-nums">{{ row.original.reminders_sent }}</span>
             </template>
             <template #escalated_at-cell="{ row }">
               <span
