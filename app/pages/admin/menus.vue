@@ -105,8 +105,15 @@ async function move(siblings: AdminMenu[], index: number, step: -1 | 1) {
 }
 
 async function setActive(menu: AdminMenu, active: boolean) {
-  await adminApi.updateMenu(menu.id, { ...menu, is_active: active })
-  toast.add({ title: active ? `${menu.label} is shown` : `${menu.label} is hidden`, color: 'success', icon: 'i-lucide-circle-check' })
+  // The API takes the editable fields only: sending the row as it is (with its id) is refused.
+  const { id: _id, code: _code, ...fields } = menu
+  try {
+    await adminApi.updateMenu(menu.id, { ...fields, is_active: active })
+    toast.add({ title: active ? `${menu.label} is shown` : `${menu.label} is hidden`, color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (failure) {
+    toast.add({ title: adminErrorText(failure), color: 'error', icon: 'i-lucide-circle-alert' })
+  }
+  // Also after a refusal, so the switch goes back to what is saved.
   await changed()
 }
 

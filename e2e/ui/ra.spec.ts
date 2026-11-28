@@ -43,6 +43,9 @@ test('Manage lists the drafts and keeps its filters in the URL', async ({ page }
   await bar.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page).not.toHaveURL(/reason=/)
   expect(new URL((await request).url()).searchParams.get('mine')).toBe('1')
+  // As SCCA's Manage: the count and Export to Excel with the same filters and sort.
+  await expect(page.getByText('1 draft')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Export to Excel' })).toHaveAttribute('href', /^\/api\/ra\/assessments\/export\.xlsx\?kind=head_office&status=draft&mine=1/)
   // SCCA's columns, in SCCA's words.
   for (const header of ['Current RA ref. no.', 'Building ID', 'Assessment reason', 'Renews RA ref. no.', 'My role', 'Highest residual', 'Assessor', 'Renewal date', 'Next step']) {
     await expect(page.getByRole('columnheader', { name: `Sort by ${header}`, exact: true })).toBeVisible()
@@ -278,6 +281,51 @@ test('Approval shows my inbox, what is coming, my history and the BCM board', as
   await page.getByLabel('Step', { exact: true }).click()
   await page.getByRole('option', { name: 'LIC', exact: true }).click()
   await expect(page.getByText('No RA is in approval at this step.')).toBeVisible()
+})
+
+test('Approval exports each tab to Excel and the BCM board filters and reminds in bulk, as SCCA\'s', async ({ page }) => {
+  const log = await mockRa(page)
+  await page.goto('/ra/approval')
+  await expect(page.getByRole('heading', { name: 'Waiting for my sign-off' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('link', { name: 'Export to Excel' }).filter({ visible: true })).toHaveAttribute('href', '/api/ra/approvals/inbox.xlsx?kind=head_office')
+  // The numeric columns are right-aligned in header and cells.
+  await expect(page.getByRole('table').first().getByRole('columnheader', { name: 'Sort by Assess days', exact: true })).toHaveClass(/text-end/)
+
+  await page.getByRole('tab', { name: 'My history' }).click()
+  await expect(page.getByRole('link', { name: 'Export to Excel' }).filter({ visible: true })).toHaveAttribute('href', '/api/ra/approvals/history.xlsx?kind=head_office')
+
+  await page.getByRole('tab', { name: 'BCM board' }).click()
+  await expect(page.getByRole('link', { name: 'Export to Excel' }).filter({ visible: true })).toHaveAttribute('href', '/api/ra/approvals/board.xlsx?kind=head_office')
+  const bar = page.getByRole('search').filter({ visible: true })
+  const labels = await bar.locator('[aria-label]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
+  expect(labels).toEqual(expect.arrayContaining(['Step', 'Waiting time', 'Highest residual', 'Approver']))
+  await expect(bar.getByRole('button', { name: 'From' })).toBeVisible()
+  await expect(bar.getByRole('button', { name: 'To', exact: true })).toBeVisible()
+  // The Step filter lists the short names, not the long titles.
+  await page.getByLabel('Step', { exact: true }).click()
+  await expect(page.getByRole('option', { name: 'LIC', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: /Location Incident Coordinator/ })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  const byWait = page.waitForRequest((r) => r.url().includes('/api/ra/approvals/board') && r.url().includes('wait=escalated'))
+  await page.getByLabel('Waiting time').click()
+  await page.getByRole('option', { name: 'Escalated' }).click()
+  await byWait
+  await expect(page).toHaveURL(/wait=escalated/)
+  await expect(page.getByRole('link', { name: 'Export to Excel' }).filter({ visible: true })).toHaveAttribute('href', /wait=escalated/)
+  await bar.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page).not.toHaveURL(/wait=/)
+
+  // Send reminder (n): nothing picked, then one RA.
+  const send = page.getByRole('button', { name: /^Send reminder \(/ })
+  await expect(send).toBeDisabled()
+  await expect(send).toHaveText('Send reminder (0)')
+  await page.getByRole('checkbox', { name: /^Select RA-/ }).click()
+  await expect(send).toHaveText('Send reminder (1)')
+  await send.click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Send reminder (1)' }).click()
+  await expect(page.getByText('Sent 1 · skipped 0 · failed 0').first()).toBeVisible()
+  expect(log.signoff.at(-1)).toEqual(['nudge-many', { assessment_ids: [1] }])
 })
 
 test('the BCM board only reminds on an RA I made, as SCCA\'s', async ({ page }) => {

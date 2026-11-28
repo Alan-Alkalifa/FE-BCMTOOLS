@@ -353,6 +353,9 @@ test('a menu item is hidden and moved', async ({ page }) => {
   await expect(page.getByText('Audit log is hidden', { exact: true })).toBeVisible()
   const hide = calls.find((call) => call.method === 'PUT' && call.url === '/api/admin/menus/12')!
   expect(hide.body).toMatchObject({ is_active: false, label: 'Audit log' })
+  // The API refuses extra fields: the row's id and code are not sent.
+  expect(hide.body).not.toHaveProperty('id')
+  expect(hide.body).not.toHaveProperty('code')
 
   await page.getByRole('button', { name: 'Move Menus up' }).click()
   await expect.poll(() => calls.some((call) => call.url === '/api/admin/menus/order')).toBe(true)
