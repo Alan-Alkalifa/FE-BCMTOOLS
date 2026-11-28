@@ -608,6 +608,26 @@ RA and RA Branch share their screens (`app/components/ra/Ra*Page.vue`, used by t
 
 **Four-eyes approval of buildings and disasters** works like publishing a configuration version: a new building, making a building inactive and a declared disaster each wait for someone else with `sites.approve`. `RaApprovalBanner` shows where it stands at the top of the building or disaster page — a `warning` banner while it waits (who asked, when) with **Approve** (primary) and **Reject** (`error` outline, always asks for a reason), a `error` banner with the reason once rejected and, for a building, **Submit for approval** again. The requester never sees Approve, except the Administrator and BCM admin (`ra.manage`), who may decide on their own requests. Building status uses `raBuildingStatus` (Waiting for approval, Rejected, Deactivation requested, Active, Inactive). Buildings and disasters have no Delete button anywhere: a building no longer used is made inactive, a disaster declared by mistake is rejected and a real one closed (the API's delete is a soft delete); a pending disaster is `warning` / *Pending approval* in `raCrisisStatus`, on the map too. Declaring a disaster is the page's primary action, not a destructive one: `color="primary"`, never `error`. Everything waiting is also on **Task Management** (KPI cards per kind of task that filter the list, like Monitoring's, a search, a task filter and a module filter; disasters use `error` tone, buildings and renewals `warning`, sign-offs `info`), and the RA activity tab of the Audit log shows the same changes as Action (icon + label, the tone of the outcome) with a one-line detail such as "Changed address, postal code" or "4 → 5 rows".
 
+### Glossary (BCP)
+
+| Term | Meaning |
+|---|---|
+| BCP | Business Continuity Plan of a Group, from Template BCP Unit Kerja ver.23. Written after the Group's final BIA when it has a business critical function. Say "BCP", not "plan" or "BC Plan", in the interface |
+| BIA | Business Impact Analysis: where a BCP takes its functions, MTD, locations and staff from |
+| Level of disruption (LoD) | Black, Red, Amber, Yellow or Green: how bad a disruption is, and which plans it activates |
+| IMT / RTF | Incident Management Team and Recovery Task Force of the Group; their lead is *Ketua* |
+| CMT / CCT | Crisis Management Team and Crisis Coordination Team (bank-wide) |
+| Workaround | How a critical function keeps running in one of the conditions (main site closed, system down, staff shortage, pandemic, cyber attack) |
+| Alternate site | The work location used when the main one can't be |
+| Condition | A workaround condition of the BCP (Kondisi 1–4 and any the BCP configuration adds); one tab each on a BCP |
+| Scenario / Procedure | A scenario of a condition and its standard procedures (procedure, form, PIC), kept in Master data › BCP scenario and procedure and copied into each BCP |
+| Waiting to start | A Group whose latest final BIA has a business critical function and no BCP yet (BCP › Manage) |
+| Sign-off (BCP) | The approval steps of a BCP; the coordinator picks the signers of Ketua RTF/IMT and chosen steps before Submit, fixed steps come from the BCP configuration |
+| Workflow History | The last tab of a BCP: what happened to it (created, saved, attachment, submitted, invalid), newest first |
+| No longer required | A BCP whose Group's latest final BIA has no business critical function; it stays for reference |
+
+BCP configuration (Administration › BCP configuration) follows SCCA configuration's layout: the version picker and Start draft, Discard, Withdraw request, Request publish and Publish V*n* in the top bar (one primary at a time), the three version alerts above the tabs, and one card per tab with *Unsaved changes* and the tab's Save at its bottom right. Template text stays in Indonesian as data; the interface around it is English.
+
 ---
 
 ## Changing the system

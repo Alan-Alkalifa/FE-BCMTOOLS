@@ -60,4 +60,9 @@ export const MENU_ICONS = [
   'i-lucide-bell-ring',
   'i-lucide-git-compare',
   'i-lucide-timer',
+  // BCP configuration submenus.
+  'i-lucide-target',
+  'i-lucide-route',
+  'i-lucide-contact',
+  'i-lucide-settings-2',
 ] as const

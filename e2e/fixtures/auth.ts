@@ -107,6 +107,21 @@ const MENUS = [
   { code: 'bianca_config.steps', label: 'Approval template', icon: 'i-lucide-signature', route: '/admin/bianca-config?tab=steps', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
   { code: 'bianca_config.reminders', label: 'Reminders and escalation', icon: 'i-lucide-bell-ring', route: '/admin/bianca-config?tab=reminders', parent: 'admin.bianca-config', permission: 'bianca.approval.manage' },
   { code: 'bianca_config.changes', label: 'Changes', icon: 'i-lucide-git-compare', route: '/admin/bianca-config?tab=changes', parent: 'admin.bianca-config', permission: 'bianca.config.view' },
+  { code: 'admin.bcp-config', label: 'BCP configuration', icon: 'i-lucide-file-cog', route: null, parent: 'admin', permission: null },
+  { code: 'bcp_config.versions', label: 'Versions', icon: 'i-lucide-git-branch', route: '/admin/bcp-config?tab=versions', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.scope', label: 'Scope and triggers', icon: 'i-lucide-target', route: '/admin/bcp-config?tab=scope', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.text', label: 'Standard text', icon: 'i-lucide-file-text', route: '/admin/bcp-config?tab=text', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.glossary', label: 'Glossary', icon: 'i-lucide-book-open', route: '/admin/bcp-config?tab=glossary', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.teams', label: 'Crisis teams', icon: 'i-lucide-users', route: '/admin/bcp-config?tab=teams', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.lod', label: 'Level of disruption', icon: 'i-lucide-siren', route: '/admin/bcp-config?tab=lod', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.workaround', label: 'Workaround conditions', icon: 'i-lucide-route', route: '/admin/bcp-config?tab=workaround', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.contacts', label: 'Contacts and checklists', icon: 'i-lucide-contact', route: '/admin/bcp-config?tab=contacts', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.steps', label: 'Approval template', icon: 'i-lucide-signature', route: '/admin/bcp-config?tab=steps', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.rules', label: 'Document rules', icon: 'i-lucide-settings-2', route: '/admin/bcp-config?tab=rules', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'bcp_config.changes', label: 'Changes', icon: 'i-lucide-git-compare', route: '/admin/bcp-config?tab=changes', parent: 'admin.bcp-config', permission: 'bcp.config.view' },
+  { code: 'masterdata.bcp_scenario', label: 'BCP scenario and procedure', icon: 'i-lucide-route', route: '/masterdata/bcp-scenarios', parent: 'admin.masterdata', permission: 'masterdata.bcp_scenario.view' },
+  { code: 'bcp', label: 'BCP', icon: 'i-lucide-life-buoy', route: null, parent: null, permission: null },
+  { code: 'bcp.manage', label: 'Manage', icon: 'i-lucide-list-checks', route: '/bcp/manage', parent: 'bcp', permission: 'bcp.access' },
 ] as const
 
 /** GET /api/me/menu for these permissions, built the way the backend builds it. */
